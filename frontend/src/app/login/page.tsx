@@ -45,11 +45,6 @@ export default function LoginPage() {
     }
   };
 
-  const handleMicrosoftLogin = () => {
-    // Microsoft OAuth login - placeholder for actual implementation
-    alert('Microsoft login integration coming soon. Please use username/password for now.');
-  };
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
       {/* Logo and Title */}
@@ -70,33 +65,6 @@ export default function LoginPage() {
       {/* Login Form */}
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
         <div className="bg-white py-8 px-4 shadow-xl sm:rounded-xl sm:px-10 border border-gray-100">
-          {/* Microsoft Login Button */}
-          <div className="mb-6">
-            <button
-              type="button"
-              onClick={handleMicrosoftLogin}
-              className="w-full inline-flex items-center justify-center py-3 px-4 border border-gray-300 rounded-lg shadow-sm bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-            >
-              <svg className="w-5 h-5 mr-3" viewBox="0 0 23 23">
-                <path fill="#f35325" d="M1 1h10v10H1z"/>
-                <path fill="#81bc06" d="M12 1h10v10H12z"/>
-                <path fill="#05a6f0" d="M1 12h10v10H1z"/>
-                <path fill="#ffba08" d="M12 12h10v10H12z"/>
-              </svg>
-              Sign in with Microsoft
-            </button>
-          </div>
-
-          {/* Divider */}
-          <div className="relative mb-6">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-gray-200" />
-            </div>
-            <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-white text-gray-500">Or sign in with credentials</span>
-            </div>
-          </div>
-
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
             {/* Error Alert */}
             {error && (

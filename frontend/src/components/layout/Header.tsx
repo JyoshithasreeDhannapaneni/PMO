@@ -24,7 +24,7 @@ export function Header() {
   }, []);
 
   return (
-    <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-6">
+    <header className="h-16 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between px-6 transition-colors">
       {/* Search */}
       <div className="flex-1 max-w-lg">
         <GlobalSearch />
@@ -42,32 +42,32 @@ export function Header() {
         <div className="relative" ref={dropdownRef}>
           <button
             onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-            className="flex items-center gap-3 hover:bg-gray-50 rounded-lg p-1.5 pr-2 transition-colors"
+            className="flex items-center gap-3 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg p-1.5 pr-2 transition-colors"
           >
-            <div className="w-9 h-9 bg-primary-100 rounded-full flex items-center justify-center">
-              <User className="text-primary-600" size={18} />
+            <div className="w-9 h-9 bg-primary-100 dark:bg-primary-900 rounded-full flex items-center justify-center">
+              <User className="text-primary-600 dark:text-primary-400" size={18} />
             </div>
             <div className="text-left hidden sm:block">
-              <p className="text-sm font-medium text-gray-900">{user?.name || 'User'}</p>
-              <p className="text-xs text-gray-500">{user?.email || ''}</p>
+              <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{user?.name || 'User'}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">{user?.email || ''}</p>
             </div>
             <ChevronDown size={16} className="text-gray-400 hidden sm:block" />
           </button>
 
           {/* Dropdown menu */}
           {isDropdownOpen && (
-            <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
-              <div className="px-4 py-3 border-b border-gray-100">
-                <p className="text-sm font-medium text-gray-900">{user?.name}</p>
-                <p className="text-xs text-gray-500 truncate">{user?.email}</p>
-                <span className="inline-block mt-1 px-2 py-0.5 text-xs font-medium bg-primary-50 text-primary-700 rounded">
+            <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-50">
+              <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700">
+                <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{user?.name}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{user?.email}</p>
+                <span className="inline-block mt-1 px-2 py-0.5 text-xs font-medium bg-primary-50 dark:bg-primary-900 text-primary-700 dark:text-primary-300 rounded">
                   {user?.role || 'User'}
                 </span>
               </div>
               
               <Link
                 href="/settings"
-                className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
                 onClick={() => setIsDropdownOpen(false)}
               >
                 <Settings size={16} />
@@ -79,7 +79,7 @@ export function Header() {
                   setIsDropdownOpen(false);
                   logout();
                 }}
-                className="flex items-center gap-2 w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                className="flex items-center gap-2 w-full px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
               >
                 <LogOut size={16} />
                 Sign out

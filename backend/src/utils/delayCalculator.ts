@@ -1,4 +1,4 @@
-import { DelayStatus } from '@prisma/client';
+type DelayStatus = 'NOT_DELAYED' | 'AT_RISK' | 'DELAYED';
 
 interface DelayCalculationResult {
   delayDays: number;
@@ -25,7 +25,7 @@ export function calculateDelay(
     
     return {
       delayDays: Math.max(0, delayDays),
-      delayStatus: delayDays > 0 ? DelayStatus.DELAYED : DelayStatus.NOT_DELAYED,
+      delayStatus: delayDays > 0 ? 'DELAYED' : 'NOT_DELAYED',
     };
   }
   
@@ -37,19 +37,19 @@ export function calculateDelay(
     // Already past deadline
     return {
       delayDays: Math.abs(remainingDays),
-      delayStatus: DelayStatus.DELAYED,
+      delayStatus: 'DELAYED',
     };
   } else if (remainingDays <= 7) {
     // Within 7 days of deadline - at risk
     return {
       delayDays: 0,
-      delayStatus: DelayStatus.AT_RISK,
+      delayStatus: 'AT_RISK',
     };
   }
   
   return {
     delayDays: 0,
-    delayStatus: DelayStatus.NOT_DELAYED,
+    delayStatus: 'NOT_DELAYED',
   };
 }
 

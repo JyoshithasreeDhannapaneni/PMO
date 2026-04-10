@@ -1,7 +1,21 @@
-import { prisma } from '../config/database';
-import { NotificationType, NotificationStatus, Project } from '@prisma/client';
+import { query, execute } from '../config/database';
 import { logger } from '../utils/logger';
 import nodemailer from 'nodemailer';
+import { v4 as uuidv4 } from 'uuid';
+
+type NotificationType = 'DELAY_DETECTED' | 'PROJECT_COMPLETED' | 'CASE_STUDY_REMINDER' | 'PHASE_COMPLETED' | 'GENERAL';
+
+interface Project {
+  id: string;
+  name: string;
+  customerName: string;
+  projectManager: string;
+  accountManager: string;
+  delayDays: number;
+  plannedEnd: Date;
+  actualEnd: Date | null;
+  phase: string;
+}
 
 interface EmailOptions {
   to: string[];
@@ -33,9 +47,6 @@ class NotificationService {
     }
   }
 
-  /**
-   * Create and send a notification
-   */
   async createNotification(
     type: NotificationType,
     title: string,
@@ -43,19 +54,13 @@ class NotificationService {
     recipients: string[],
     projectId?: string
   ): Promise<void> {
-    // Store notification in database
-    const notification = await prisma.notification.create({
-      data: {
-        type,
-        title,
-        message,
-        recipients,
-        projectId,
-        status: 'PENDING',
-      },
-    });
+    const notificationId = uuidv4();
+    await execute(
+      `INSERT INTO notifications (id, type, title, message, recipients, project_id, status)
+       VALUES (?, ?, ?, ?, ?, ?, 'PENDING')`,
+      [notificationId, type, title, message, JSON.stringify(recipients), projectId]
+    );
 
-    // Attempt to send email
     try {
       await this.sendEmail({
         to: recipients,
@@ -63,24 +68,21 @@ class NotificationService {
         html: this.formatEmailHtml(type, title, message),
       });
 
-      await prisma.notification.update({
-        where: { id: notification.id },
-        data: { status: 'SENT', sentAt: new Date() },
-      });
+      await query(
+        `UPDATE notifications SET status = 'SENT', sent_at = NOW() WHERE id = $1`,
+        [notificationId]
+      );
 
       logger.info(`Notification sent: ${type} - ${title}`);
     } catch (error) {
-      await prisma.notification.update({
-        where: { id: notification.id },
-        data: { status: 'FAILED' },
-      });
+      await query(
+        `UPDATE notifications SET status = 'FAILED' WHERE id = $1`,
+        [notificationId]
+      );
       logger.error(`Failed to send notification: ${error}`);
     }
   }
 
-  /**
-   * Send delay detected notification
-   */
   async notifyDelayDetected(project: Project): Promise<void> {
     const recipients = this.getProjectRecipients(project);
     const title = `⚠️ Project Delay Detected: ${project.name}`;
@@ -89,24 +91,15 @@ class NotificationService {
       
       Customer: ${project.customerName}
       Project Manager: ${project.projectManager}
-      Planned End Date: ${project.plannedEnd.toLocaleDateString()}
+      Planned End Date: ${new Date(project.plannedEnd).toLocaleDateString()}
       Current Phase: ${project.phase}
       
       Please review and take necessary action.
     `;
 
-    await this.createNotification(
-      'DELAY_DETECTED',
-      title,
-      message,
-      recipients,
-      project.id
-    );
+    await this.createNotification('DELAY_DETECTED', title, message, recipients, project.id);
   }
 
-  /**
-   * Send project completed notification
-   */
   async notifyProjectCompleted(project: Project): Promise<void> {
     const recipients = this.getProjectRecipients(project);
     const title = `✅ Project Completed: ${project.name}`;
@@ -115,9 +108,9 @@ class NotificationService {
       
       Customer: ${project.customerName}
       Project Manager: ${project.projectManager}
-      Completion Date: ${project.actualEnd?.toLocaleDateString() || 'N/A'}
+      Completion Date: ${project.actualEnd ? new Date(project.actualEnd).toLocaleDateString() : 'N/A'}
       
-      ${project.delayDays > 0 
+      ${project.delayDays > 0
         ? `Note: Project was completed ${project.delayDays} days behind schedule.`
         : 'Project was completed on time!'
       }
@@ -125,18 +118,9 @@ class NotificationService {
       Please ensure a case study is created for this project.
     `;
 
-    await this.createNotification(
-      'PROJECT_COMPLETED',
-      title,
-      message,
-      recipients,
-      project.id
-    );
+    await this.createNotification('PROJECT_COMPLETED', title, message, recipients, project.id);
   }
 
-  /**
-   * Send case study reminder notification
-   */
   async notifyCaseStudyReminder(project: Project): Promise<void> {
     const recipients = this.getProjectRecipients(project);
     const title = `📝 Case Study Reminder: ${project.name}`;
@@ -145,73 +129,78 @@ class NotificationService {
       
       Customer: ${project.customerName}
       Project Manager: ${project.projectManager}
-      Completion Date: ${project.actualEnd?.toLocaleDateString() || 'N/A'}
+      Completion Date: ${project.actualEnd ? new Date(project.actualEnd).toLocaleDateString() : 'N/A'}
       
       Please create a case study for this successful project.
     `;
 
-    await this.createNotification(
-      'CASE_STUDY_REMINDER',
-      title,
-      message,
-      recipients,
-      project.id
-    );
+    await this.createNotification('CASE_STUDY_REMINDER', title, message, recipients, project.id);
   }
 
-  /**
-   * Get all notifications with pagination
-   */
   async getNotifications(
     page: number = 1,
     limit: number = 20,
     projectId?: string
   ): Promise<{ notifications: any[]; total: number }> {
-    const where = projectId ? { projectId } : {};
+    const safeLimit = Math.max(1, Math.min(100, Math.floor(limit)));
+    const safeOffset = Math.max(0, Math.floor((page - 1) * safeLimit));
+    
+    let queryStr = `
+      SELECT n.*, p.id as p_id, p.name as p_name 
+      FROM notifications n
+      LEFT JOIN projects p ON n.project_id = p.id
+    `;
+    const params: any[] = [];
 
-    const [notifications, total] = await Promise.all([
-      prisma.notification.findMany({
-        where,
-        skip: (page - 1) * limit,
-        take: limit,
-        orderBy: { createdAt: 'desc' },
-        include: {
-          project: {
-            select: { id: true, name: true },
-          },
-        },
-      }),
-      prisma.notification.count({ where }),
+    if (projectId) {
+      queryStr += ` WHERE n.project_id = ?`;
+      params.push(projectId);
+    }
+
+    queryStr += ` ORDER BY n.created_at DESC LIMIT ${safeLimit} OFFSET ${safeOffset}`;
+
+    const [notificationsResult, countResult] = await Promise.all([
+      query(queryStr, params),
+      query(
+        projectId
+          ? `SELECT COUNT(*) as count FROM notifications WHERE project_id = ?`
+          : `SELECT COUNT(*) as count FROM notifications`,
+        projectId ? [projectId] : []
+      ),
     ]);
 
-    return { notifications, total };
+    return {
+      notifications: notificationsResult.rows.map((row) => ({
+        id: row.id,
+        projectId: row.project_id,
+        type: row.type,
+        title: row.title,
+        message: row.message,
+        recipients: JSON.parse(row.recipients || '[]'),
+        status: row.status,
+        sentAt: row.sent_at,
+        createdAt: row.created_at,
+        project: row.p_id ? { id: row.p_id, name: row.p_name } : null,
+      })),
+      total: parseInt(countResult.rows[0].count || countResult.rows[0]['COUNT(*)'] || 0),
+    };
   }
 
-  /**
-   * Mark a notification as read (SENT)
-   */
   async markAsRead(id: string): Promise<void> {
-    await prisma.notification.update({
-      where: { id },
-      data: { status: 'SENT', sentAt: new Date() },
-    });
+    await query(
+      `UPDATE notifications SET status = 'SENT', sent_at = NOW() WHERE id = $1`,
+      [id]
+    );
     logger.info(`Notification marked as read: ${id}`);
   }
 
-  /**
-   * Mark all notifications as read
-   */
   async markAllAsRead(): Promise<void> {
-    await prisma.notification.updateMany({
-      where: { status: 'PENDING' },
-      data: { status: 'SENT', sentAt: new Date() },
-    });
+    await query(
+      `UPDATE notifications SET status = 'SENT', sent_at = NOW() WHERE status = 'PENDING'`
+    );
     logger.info('All notifications marked as read');
   }
 
-  /**
-   * Send email using configured transporter
-   */
   private async sendEmail(options: EmailOptions): Promise<void> {
     if (!this.transporter) {
       logger.info(`[MOCK EMAIL] To: ${options.to.join(', ')}`);
@@ -228,9 +217,6 @@ class NotificationService {
     });
   }
 
-  /**
-   * Format email HTML template
-   */
   private formatEmailHtml(type: NotificationType, title: string, message: string): string {
     const typeColors: Record<NotificationType, string> = {
       DELAY_DETECTED: '#ef4444',
@@ -269,12 +255,7 @@ class NotificationService {
     `;
   }
 
-  /**
-   * Get email recipients for a project
-   */
   private getProjectRecipients(project: Project): string[] {
-    // In production, these would be actual email addresses from user records
-    // For now, return placeholder emails based on names
     return [
       `${project.projectManager.toLowerCase().replace(/\s+/g, '.')}@company.com`,
       `${project.accountManager.toLowerCase().replace(/\s+/g, '.')}@company.com`,

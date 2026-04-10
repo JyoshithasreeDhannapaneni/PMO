@@ -1,6 +1,10 @@
-import { prisma } from '../config/database';
-import { RiskCategory, RiskLevel, RiskStatus } from '@prisma/client';
+import { query, execute } from '../config/database';
 import { logger } from '../utils/logger';
+import { v4 as uuidv4 } from 'uuid';
+
+type RiskCategory = 'TECHNICAL' | 'SCHEDULE' | 'RESOURCE' | 'BUDGET' | 'SCOPE' | 'EXTERNAL' | 'ORGANIZATIONAL';
+type RiskLevel = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+type RiskStatus = 'OPEN' | 'MITIGATING' | 'RESOLVED' | 'ACCEPTED' | 'CLOSED';
 
 interface CreateRiskInput {
   projectId: string;
@@ -28,75 +32,126 @@ interface UpdateRiskInput {
   dueDate?: Date;
 }
 
+function mapRiskRow(row: any) {
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    title: row.title,
+    description: row.description,
+    category: row.category,
+    probability: row.probability,
+    impact: row.impact,
+    status: row.status,
+    mitigation: row.mitigation,
+    contingency: row.contingency,
+    owner: row.owner,
+    dueDate: row.due_date,
+    resolvedAt: row.resolved_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
 class RiskService {
   async getByProject(projectId: string) {
-    return prisma.projectRisk.findMany({
-      where: { projectId },
-      orderBy: [
-        { status: 'asc' },
-        { impact: 'desc' },
-        { probability: 'desc' },
-      ],
-    });
+    const result = await query(
+      `SELECT * FROM project_risks WHERE project_id = $1 
+       ORDER BY status ASC, impact DESC, probability DESC`,
+      [projectId]
+    );
+    return result.rows.map(mapRiskRow);
   }
 
   async getById(id: string) {
-    return prisma.projectRisk.findUnique({
-      where: { id },
-      include: { project: true },
-    });
+    const result = await query(
+      `SELECT r.*, p.name as project_name
+       FROM project_risks r
+       JOIN projects p ON r.project_id = p.id
+       WHERE r.id = $1`,
+      [id]
+    );
+
+    if (result.rows.length === 0) return null;
+
+    const row = result.rows[0];
+    return {
+      ...mapRiskRow(row),
+      project: { name: row.project_name },
+    };
   }
 
   async create(data: CreateRiskInput) {
-    const risk = await prisma.projectRisk.create({
-      data: {
-        projectId: data.projectId,
-        title: data.title,
-        description: data.description,
-        category: data.category || 'TECHNICAL',
-        probability: data.probability || 'MEDIUM',
-        impact: data.impact || 'MEDIUM',
-        mitigation: data.mitigation,
-        contingency: data.contingency,
-        owner: data.owner,
-        dueDate: data.dueDate,
-        status: 'OPEN',
-      },
-    });
+    const riskId = uuidv4();
+    await execute(
+      `INSERT INTO project_risks (id, project_id, title, description, category, probability, impact, mitigation, contingency, owner, due_date, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN')`,
+      [
+        riskId,
+        data.projectId,
+        data.title,
+        data.description,
+        data.category || 'TECHNICAL',
+        data.probability || 'MEDIUM',
+        data.impact || 'MEDIUM',
+        data.mitigation,
+        data.contingency,
+        data.owner,
+        data.dueDate,
+      ]
+    );
 
+    const result = await query(`SELECT * FROM project_risks WHERE id = ?`, [riskId]);
+    const risk = mapRiskRow(result.rows[0]);
     logger.info(`Risk created: ${risk.id} for project ${data.projectId}`);
     return risk;
   }
 
   async update(id: string, data: UpdateRiskInput) {
-    const updateData: any = { ...data };
-    
+    const updates: string[] = [];
+    const params: any[] = [];
+    let paramIndex = 1;
+
+    if (data.title !== undefined) { updates.push(`title = $${paramIndex++}`); params.push(data.title); }
+    if (data.description !== undefined) { updates.push(`description = $${paramIndex++}`); params.push(data.description); }
+    if (data.category !== undefined) { updates.push(`category = $${paramIndex++}`); params.push(data.category); }
+    if (data.probability !== undefined) { updates.push(`probability = $${paramIndex++}`); params.push(data.probability); }
+    if (data.impact !== undefined) { updates.push(`impact = $${paramIndex++}`); params.push(data.impact); }
+    if (data.status !== undefined) { updates.push(`status = $${paramIndex++}`); params.push(data.status); }
+    if (data.mitigation !== undefined) { updates.push(`mitigation = $${paramIndex++}`); params.push(data.mitigation); }
+    if (data.contingency !== undefined) { updates.push(`contingency = $${paramIndex++}`); params.push(data.contingency); }
+    if (data.owner !== undefined) { updates.push(`owner = $${paramIndex++}`); params.push(data.owner); }
+    if (data.dueDate !== undefined) { updates.push(`due_date = $${paramIndex++}`); params.push(data.dueDate); }
+
     if (data.status === 'RESOLVED' || data.status === 'CLOSED') {
-      updateData.resolvedAt = new Date();
+      updates.push(`resolved_at = $${paramIndex++}`);
+      params.push(new Date());
     }
 
-    const risk = await prisma.projectRisk.update({
-      where: { id },
-      data: updateData,
-    });
+    params.push(id);
 
+    await execute(
+      `UPDATE project_risks SET ${updates.join(', ')} WHERE id = ?`,
+      params
+    );
+
+    const result = await query(`SELECT * FROM project_risks WHERE id = ?`, [id]);
+    const risk = mapRiskRow(result.rows[0]);
     logger.info(`Risk updated: ${risk.id}`);
     return risk;
   }
 
   async delete(id: string) {
-    await prisma.projectRisk.delete({ where: { id } });
+    await query(`DELETE FROM project_risks WHERE id = $1`, [id]);
     logger.info(`Risk deleted: ${id}`);
   }
 
   async getRiskMatrix(projectId: string) {
-    const risks = await prisma.projectRisk.findMany({
-      where: { 
-        projectId,
-        status: { in: ['OPEN', 'MITIGATING'] },
-      },
-    });
+    const result = await query(
+      `SELECT * FROM project_risks WHERE project_id = $1 AND status IN ('OPEN', 'MITIGATING')`,
+      [projectId]
+    );
 
+    const risks = result.rows;
     const matrix = {
       critical: { high: 0, medium: 0, low: 0 },
       high: { high: 0, medium: 0, low: 0 },
@@ -126,13 +181,18 @@ class RiskService {
 
   async getRiskSummary(projectId: string) {
     const [total, open, mitigating, resolved] = await Promise.all([
-      prisma.projectRisk.count({ where: { projectId } }),
-      prisma.projectRisk.count({ where: { projectId, status: 'OPEN' } }),
-      prisma.projectRisk.count({ where: { projectId, status: 'MITIGATING' } }),
-      prisma.projectRisk.count({ where: { projectId, status: { in: ['RESOLVED', 'CLOSED'] } } }),
+      query(`SELECT COUNT(*) FROM project_risks WHERE project_id = $1`, [projectId]),
+      query(`SELECT COUNT(*) FROM project_risks WHERE project_id = $1 AND status = 'OPEN'`, [projectId]),
+      query(`SELECT COUNT(*) FROM project_risks WHERE project_id = $1 AND status = 'MITIGATING'`, [projectId]),
+      query(`SELECT COUNT(*) FROM project_risks WHERE project_id = $1 AND status IN ('RESOLVED', 'CLOSED')`, [projectId]),
     ]);
 
-    return { total, open, mitigating, resolved };
+    return {
+      total: parseInt(total.rows[0].count || total.rows[0]['COUNT(*)'] || 0),
+      open: parseInt(open.rows[0].count || open.rows[0]['COUNT(*)'] || 0),
+      mitigating: parseInt(mitigating.rows[0].count || mitigating.rows[0]['COUNT(*)'] || 0),
+      resolved: parseInt(resolved.rows[0].count || resolved.rows[0]['COUNT(*)'] || 0),
+    };
   }
 }
 

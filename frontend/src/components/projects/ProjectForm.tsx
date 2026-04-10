@@ -352,7 +352,7 @@ export function ProjectForm({ project, onSubmit, isLoading }: ProjectFormProps) 
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Source Platform Multi-Select */}
-          <div className="relative" ref={sourceDropdownRef}
+          <div className="relative" ref={sourceDropdownRef}>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Source Platform(s)
             </label>
@@ -421,7 +421,7 @@ export function ProjectForm({ project, onSubmit, isLoading }: ProjectFormProps) 
           </div>
 
           {/* Target Platform Multi-Select */}
-          <div className="relative" ref={targetDropdownRef}
+          <div className="relative" ref={targetDropdownRef}>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Target Platform(s)
             </label>
@@ -508,13 +508,13 @@ export function ProjectForm({ project, onSubmit, isLoading }: ProjectFormProps) 
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Timeline</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Input
-            label="Planned Start Date"
+            label="SOW Start Date"
             type="date"
             {...register('plannedStart')}
             error={errors.plannedStart?.message}
           />
           <Input
-            label="Planned End Date"
+            label="SOW End Date"
             type="date"
             {...register('plannedEnd')}
             error={errors.plannedEnd?.message}

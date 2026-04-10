@@ -1,4 +1,4 @@
-import { prisma } from '../config/database';
+import { query } from '../config/database';
 import { logger } from '../utils/logger';
 
 interface SearchResult {
@@ -11,212 +11,137 @@ interface SearchResult {
 }
 
 class SearchService {
-  async globalSearch(query: string, limit = 20): Promise<SearchResult[]> {
-    if (!query || query.length < 2) {
+  async globalSearch(searchQuery: string, limit = 20): Promise<SearchResult[]> {
+    if (!searchQuery || searchQuery.length < 2) {
       return [];
     }
 
-    const searchTerm = `%${query}%`;
     const results: SearchResult[] = [];
+    const searchTerm = `%${searchQuery}%`;
 
     try {
-      // Search Projects
-      const projects = await prisma.project.findMany({
-        where: {
-          OR: [
-            { name: { contains: query } },
-            { customerName: { contains: query } },
-            { projectManager: { contains: query } },
-            { description: { contains: query } },
-          ],
-        },
-        select: {
-          id: true,
-          name: true,
-          customerName: true,
-          status: true,
-        },
-        take: limit,
-      });
+      const [projects, tasks, risks, teamMembers, documents, caseStudies, users] = await Promise.all([
+        query(
+          `SELECT id, name, customer_name, status FROM projects 
+           WHERE name LIKE ? OR customer_name LIKE ? OR project_manager LIKE ? OR description LIKE ?
+           LIMIT ?`,
+          [searchTerm, searchTerm, searchTerm, searchTerm, limit]
+        ),
+        query(
+          `SELECT t.id, t.name, t.project_id, t.status, p.name as project_name
+           FROM project_tasks t
+           JOIN projects p ON t.project_id = p.id
+           WHERE t.name LIKE ? OR t.notes LIKE ? OR t.assignee LIKE ?
+           LIMIT ?`,
+          [searchTerm, searchTerm, searchTerm, limit]
+        ),
+        query(
+          `SELECT r.id, r.title, r.project_id, r.status, p.name as project_name
+           FROM project_risks r
+           JOIN projects p ON r.project_id = p.id
+           WHERE r.title LIKE ? OR r.description LIKE ? OR r.owner LIKE ?
+           LIMIT ?`,
+          [searchTerm, searchTerm, searchTerm, limit]
+        ),
+        query(
+          `SELECT m.id, m.name, m.email, m.project_id, m.role, p.name as project_name
+           FROM project_team_members m
+           JOIN projects p ON m.project_id = p.id
+           WHERE m.name LIKE ? OR m.email LIKE ? OR m.department LIKE ?
+           LIMIT ?`,
+          [searchTerm, searchTerm, searchTerm, limit]
+        ),
+        query(
+          `SELECT d.id, d.name, d.project_id, d.category, p.name as project_name
+           FROM project_documents d
+           JOIN projects p ON d.project_id = p.id
+           WHERE d.name LIKE ? OR d.description LIKE ?
+           LIMIT ?`,
+          [searchTerm, searchTerm, limit]
+        ),
+        query(
+          `SELECT cs.id, cs.title, cs.status, p.name as project_name, p.customer_name
+           FROM case_studies cs
+           JOIN projects p ON cs.project_id = p.id
+           WHERE cs.title LIKE ? OR cs.content LIKE ?
+           LIMIT ?`,
+          [searchTerm, searchTerm, limit]
+        ),
+        query(
+          `SELECT id, name, email, role FROM users
+           WHERE name LIKE ? OR email LIKE ? OR username LIKE ?
+           LIMIT ?`,
+          [searchTerm, searchTerm, searchTerm, limit]
+        ),
+      ]);
 
-      projects.forEach((p) => {
+      projects.rows.forEach((p) => {
         results.push({
           type: 'project',
           id: p.id,
           title: p.name,
-          subtitle: p.customerName,
+          subtitle: p.customer_name,
           url: `/projects/${p.id}`,
           highlight: p.status,
         });
       });
 
-      // Search Tasks
-      const tasks = await prisma.projectTask.findMany({
-        where: {
-          OR: [
-            { name: { contains: query } },
-            { notes: { contains: query } },
-            { assignee: { contains: query } },
-          ],
-        },
-        select: {
-          id: true,
-          name: true,
-          projectId: true,
-          status: true,
-          project: { select: { name: true } },
-        },
-        take: limit,
-      });
-
-      tasks.forEach((t) => {
+      tasks.rows.forEach((t) => {
         results.push({
           type: 'task',
           id: t.id,
           title: t.name,
-          subtitle: t.project.name,
-          url: `/projects/${t.projectId}/tasks`,
+          subtitle: t.project_name,
+          url: `/projects/${t.project_id}/tasks`,
           highlight: t.status,
         });
       });
 
-      // Search Risks
-      const risks = await prisma.projectRisk.findMany({
-        where: {
-          OR: [
-            { title: { contains: query } },
-            { description: { contains: query } },
-            { owner: { contains: query } },
-          ],
-        },
-        select: {
-          id: true,
-          title: true,
-          projectId: true,
-          status: true,
-          project: { select: { name: true } },
-        },
-        take: limit,
-      });
-
-      risks.forEach((r) => {
+      risks.rows.forEach((r) => {
         results.push({
           type: 'risk',
           id: r.id,
           title: r.title,
-          subtitle: r.project.name,
-          url: `/projects/${r.projectId}/manage`,
+          subtitle: r.project_name,
+          url: `/projects/${r.project_id}/manage`,
           highlight: r.status,
         });
       });
 
-      // Search Team Members
-      const teamMembers = await prisma.projectTeamMember.findMany({
-        where: {
-          OR: [
-            { name: { contains: query } },
-            { email: { contains: query } },
-            { department: { contains: query } },
-          ],
-        },
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          projectId: true,
-          role: true,
-          project: { select: { name: true } },
-        },
-        take: limit,
-      });
-
-      teamMembers.forEach((m) => {
+      teamMembers.rows.forEach((m) => {
         results.push({
           type: 'team_member',
           id: m.id,
           title: m.name,
-          subtitle: `${m.project.name} - ${m.role}`,
-          url: `/projects/${m.projectId}/manage`,
+          subtitle: `${m.project_name} - ${m.role}`,
+          url: `/projects/${m.project_id}/manage`,
           highlight: m.email,
         });
       });
 
-      // Search Documents
-      const documents = await prisma.projectDocument.findMany({
-        where: {
-          OR: [
-            { name: { contains: query } },
-            { description: { contains: query } },
-          ],
-        },
-        select: {
-          id: true,
-          name: true,
-          projectId: true,
-          category: true,
-          project: { select: { name: true } },
-        },
-        take: limit,
-      });
-
-      documents.forEach((d) => {
+      documents.rows.forEach((d) => {
         results.push({
           type: 'document',
           id: d.id,
           title: d.name,
-          subtitle: d.project.name,
-          url: `/projects/${d.projectId}/manage`,
+          subtitle: d.project_name,
+          url: `/projects/${d.project_id}/manage`,
           highlight: d.category,
         });
       });
 
-      // Search Case Studies
-      const caseStudies = await prisma.caseStudy.findMany({
-        where: {
-          OR: [
-            { title: { contains: query } },
-            { content: { contains: query } },
-          ],
-        },
-        select: {
-          id: true,
-          title: true,
-          status: true,
-          project: { select: { name: true, customerName: true } },
-        },
-        take: limit,
-      });
-
-      caseStudies.forEach((cs) => {
+      caseStudies.rows.forEach((cs) => {
         results.push({
           type: 'case_study',
           id: cs.id,
-          title: cs.title || cs.project.name,
-          subtitle: cs.project.customerName,
+          title: cs.title || cs.project_name,
+          subtitle: cs.customer_name,
           url: `/case-studies/${cs.id}`,
           highlight: cs.status,
         });
       });
 
-      // Search Users (admin only in production)
-      const users = await prisma.user.findMany({
-        where: {
-          OR: [
-            { name: { contains: query } },
-            { email: { contains: query } },
-            { username: { contains: query } },
-          ],
-        },
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          role: true,
-        },
-        take: limit,
-      });
-
-      users.forEach((u) => {
+      users.rows.forEach((u) => {
         results.push({
           type: 'user',
           id: u.id,
@@ -227,7 +152,7 @@ class SearchService {
         });
       });
 
-      logger.info(`Search for "${query}" returned ${results.length} results`);
+      logger.info(`Search for "${searchQuery}" returned ${results.length} results`);
       return results.slice(0, limit);
     } catch (error) {
       logger.error('Search error:', error);
@@ -235,33 +160,52 @@ class SearchService {
     }
   }
 
-  async searchProjects(query: string, filters?: {
-    status?: string;
-    phase?: string;
-    migrationType?: string;
-  }) {
-    const where: any = {
-      OR: [
-        { name: { contains: query } },
-        { customerName: { contains: query } },
-        { projectManager: { contains: query } },
-      ],
-    };
+  async searchProjects(searchQuery: string, filters?: { status?: string; phase?: string; migrationType?: string }) {
+    const conditions: string[] = [
+      `(name LIKE ? OR customer_name LIKE ? OR project_manager LIKE ?)`
+    ];
+    const searchTerm = `%${searchQuery}%`;
+    const params: any[] = [searchTerm, searchTerm, searchTerm];
 
-    if (filters?.status) where.status = filters.status;
-    if (filters?.phase) where.phase = filters.phase;
+    if (filters?.status) {
+      conditions.push(`status = ?`);
+      params.push(filters.status);
+    }
+    if (filters?.phase) {
+      conditions.push(`phase = ?`);
+      params.push(filters.phase);
+    }
     if (filters?.migrationType) {
-      where.migrationTypes = { contains: filters.migrationType };
+      conditions.push(`migration_types LIKE ?`);
+      params.push(`%${filters.migrationType}%`);
     }
 
-    return prisma.project.findMany({
-      where,
-      include: {
-        phases: true,
-        _count: { select: { tasks: true, risks: true, teamMembers: true } },
+    const result = await query(
+      `SELECT p.*, 
+              (SELECT COUNT(*) FROM project_tasks WHERE project_id = p.id) as task_count,
+              (SELECT COUNT(*) FROM project_risks WHERE project_id = p.id) as risk_count,
+              (SELECT COUNT(*) FROM project_team_members WHERE project_id = p.id) as team_count
+       FROM projects p
+       WHERE ${conditions.join(' AND ')}
+       ORDER BY updated_at DESC`,
+      params
+    );
+
+    return result.rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      customerName: row.customer_name,
+      projectManager: row.project_manager,
+      status: row.status,
+      phase: row.phase,
+      delayStatus: row.delay_status,
+      migrationTypes: row.migration_types,
+      _count: {
+        tasks: parseInt(row.task_count),
+        risks: parseInt(row.risk_count),
+        teamMembers: parseInt(row.team_count),
       },
-      orderBy: { updatedAt: 'desc' },
-    });
+    }));
   }
 }
 

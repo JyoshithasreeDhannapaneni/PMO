@@ -1,12 +1,12 @@
-import { prisma } from '../config/database';
+import { query, execute } from '../config/database';
 import { logger } from '../utils/logger';
 import * as fs from 'fs';
 import * as path from 'path';
 import { randomBytes } from 'crypto';
+import { v4 as uuidv4 } from 'uuid';
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR || './uploads';
 
-// Ensure upload directory exists
 if (!fs.existsSync(UPLOAD_DIR)) {
   fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 }
@@ -31,52 +31,86 @@ class FileUploadService {
     const filename = this.generateFilename(data.originalName);
     const filePath = path.join(UPLOAD_DIR, filename);
 
-    // Write file to disk
     fs.writeFileSync(filePath, data.buffer);
 
-    // Save metadata to database
-    const fileRecord = await prisma.fileUpload.create({
-      data: {
-        filename,
-        originalName: data.originalName,
-        mimeType: data.mimeType,
-        size: data.buffer.length,
-        path: filePath,
-        entityType: data.entityType,
-        entityId: data.entityId,
-        uploadedBy: data.uploadedBy,
-      },
-    });
+    const fileId = uuidv4();
+    await execute(
+      `INSERT INTO file_uploads (id, filename, original_name, mime_type, size, path, entity_type, entity_id, uploaded_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [fileId, filename, data.originalName, data.mimeType, data.buffer.length, filePath, data.entityType, data.entityId, data.uploadedBy]
+    );
 
+    const result = await query(`SELECT * FROM file_uploads WHERE id = ?`, [fileId]);
+    const fileRecord = result.rows[0];
     logger.info(`File uploaded: ${fileRecord.id} - ${data.originalName}`);
-    return fileRecord;
+    
+    return {
+      id: fileRecord.id,
+      filename: fileRecord.filename,
+      originalName: fileRecord.original_name,
+      mimeType: fileRecord.mime_type,
+      size: fileRecord.size,
+      path: fileRecord.path,
+      entityType: fileRecord.entity_type,
+      entityId: fileRecord.entity_id,
+      uploadedBy: fileRecord.uploaded_by,
+      createdAt: fileRecord.created_at,
+    };
   }
 
   async getById(id: string) {
-    return prisma.fileUpload.findUnique({ where: { id } });
+    const result = await query(`SELECT * FROM file_uploads WHERE id = $1`, [id]);
+    if (result.rows.length === 0) return null;
+    
+    const row = result.rows[0];
+    return {
+      id: row.id,
+      filename: row.filename,
+      originalName: row.original_name,
+      mimeType: row.mime_type,
+      size: row.size,
+      path: row.path,
+      entityType: row.entity_type,
+      entityId: row.entity_id,
+      uploadedBy: row.uploaded_by,
+      createdAt: row.created_at,
+    };
   }
 
   async getByEntity(entityType: string, entityId: string) {
-    return prisma.fileUpload.findMany({
-      where: { entityType, entityId },
-      orderBy: { createdAt: 'desc' },
-    });
+    const result = await query(
+      `SELECT * FROM file_uploads WHERE entity_type = $1 AND entity_id = $2 ORDER BY created_at DESC`,
+      [entityType, entityId]
+    );
+    
+    return result.rows.map((row) => ({
+      id: row.id,
+      filename: row.filename,
+      originalName: row.original_name,
+      mimeType: row.mime_type,
+      size: row.size,
+      path: row.path,
+      entityType: row.entity_type,
+      entityId: row.entity_id,
+      uploadedBy: row.uploaded_by,
+      createdAt: row.created_at,
+    }));
   }
 
   async delete(id: string) {
-    const file = await prisma.fileUpload.findUnique({ where: { id } });
+    const result = await query(`SELECT * FROM file_uploads WHERE id = $1`, [id]);
     
-    if (!file) {
+    if (result.rows.length === 0) {
       throw new Error('File not found');
     }
 
-    // Delete physical file
+    const file = result.rows[0];
+
     if (fs.existsSync(file.path)) {
       fs.unlinkSync(file.path);
     }
 
-    // Delete database record
-    await prisma.fileUpload.delete({ where: { id } });
+    await query(`DELETE FROM file_uploads WHERE id = $1`, [id]);
     logger.info(`File deleted: ${id}`);
   }
 
@@ -85,7 +119,8 @@ class FileUploadService {
   }
 
   async getStats() {
-    const files = await prisma.fileUpload.findMany();
+    const result = await query(`SELECT * FROM file_uploads`);
+    const files = result.rows;
     const totalSize = files.reduce((sum, f) => sum + f.size, 0);
     
     return {

@@ -1,10 +1,10 @@
-import { prisma } from '../config/database';
-import { Prisma } from '@prisma/client';
+import { query, execute, transaction } from '../config/database';
 import { AppError } from '../middleware/errorHandler';
 import { logger } from '../utils/logger';
 import { calculateDelay } from '../utils/delayCalculator';
 import { taskService } from './taskService';
 import { caseStudyService } from './caseStudyService';
+import { v4 as uuidv4 } from 'uuid';
 
 export interface CreateProjectDTO {
   name: string;
@@ -25,6 +25,7 @@ export interface CreateProjectDTO {
   notes?: string | null;
   phase?: string;
   status?: string;
+  delayStatus?: string;
 }
 
 export interface UpdateProjectDTO extends Partial<CreateProjectDTO> {}
@@ -46,143 +47,213 @@ export interface PaginationOptions {
   sortOrder?: 'asc' | 'desc';
 }
 
-class ProjectService {
-  /**
-   * Get all projects with filtering, pagination, and sorting
-   */
-  async getAll(
-    filters: ProjectFilters = {},
-    pagination: PaginationOptions = {}
-  ) {
-    const { page = 1, limit = 20, sortBy = 'createdAt', sortOrder = 'desc' } = pagination;
+function mapProjectRow(row: any) {
+  return {
+    id: row.id,
+    name: row.name,
+    customerName: row.customer_name,
+    projectManager: row.project_manager,
+    accountManager: row.account_manager,
+    planType: row.plan_type,
+    plannedStart: row.planned_start,
+    plannedEnd: row.planned_end,
+    actualStart: row.actual_start,
+    actualEnd: row.actual_end,
+    delayDays: row.delay_days,
+    delayStatus: row.delay_status,
+    phase: row.phase,
+    status: row.status,
+    migrationTypes: row.migration_types,
+    sourcePlatform: row.source_platform,
+    targetPlatform: row.target_platform,
+    estimatedCost: row.estimated_cost,
+    actualCost: row.actual_cost,
+    description: row.description,
+    notes: row.notes,
+    templateId: row.template_id,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
 
-    const where: Prisma.ProjectWhereInput = {};
+class ProjectService {
+  async getAll(filters: ProjectFilters = {}, pagination: PaginationOptions = {}) {
+    const { page = 1, limit = 20, sortBy = 'created_at', sortOrder = 'desc' } = pagination;
+    
+    const conditions: string[] = [];
+    const params: any[] = [];
 
     if (filters.status) {
-      where.status = filters.status as any;
+      conditions.push(`status = ?`);
+      params.push(filters.status);
     }
     if (filters.phase) {
-      where.phase = filters.phase as any;
+      conditions.push(`phase = ?`);
+      params.push(filters.phase);
     }
     if (filters.planType) {
-      where.planType = filters.planType as any;
+      conditions.push(`plan_type = ?`);
+      params.push(filters.planType);
     }
     if (filters.delayStatus) {
-      where.delayStatus = filters.delayStatus as any;
+      conditions.push(`delay_status = ?`);
+      params.push(filters.delayStatus);
     }
     if (filters.search) {
-      where.OR = [
-        { name: { contains: filters.search } },
-        { customerName: { contains: filters.search } },
-        { projectManager: { contains: filters.search } },
-      ];
+      conditions.push(`(name LIKE ? OR customer_name LIKE ? OR project_manager LIKE ?)`);
+      params.push(`%${filters.search}%`, `%${filters.search}%`, `%${filters.search}%`);
     }
     if (filters.projectManager) {
-      where.projectManager = filters.projectManager;
+      conditions.push(`project_manager = ?`);
+      params.push(filters.projectManager);
     }
     if (filters.accountManager) {
-      where.accountManager = filters.accountManager;
+      conditions.push(`account_manager = ?`);
+      params.push(filters.accountManager);
     }
 
-    const [projects, total] = await Promise.all([
-      prisma.project.findMany({
-        where,
-        orderBy: { [sortBy]: sortOrder },
-        skip: (page - 1) * limit,
-        take: limit,
-        include: {
-          phases: true,
-          caseStudy: true,
-        },
-      }),
-      prisma.project.count({ where }),
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const sortColumn = sortBy === 'createdAt' ? 'created_at' : sortBy;
+    const safeLimit = Math.max(1, Math.min(100, Math.floor(limit)));
+    const safeOffset = Math.max(0, Math.floor((page - 1) * safeLimit));
+
+    const [projectsResult, countResult] = await Promise.all([
+      query(
+        `SELECT * FROM projects ${whereClause} 
+         ORDER BY ${sortColumn} ${sortOrder} 
+         LIMIT ${safeLimit} OFFSET ${safeOffset}`,
+        params
+      ),
+      query(`SELECT COUNT(*) as count FROM projects ${whereClause}`, params),
     ]);
+
+    const projects = projectsResult.rows.map(mapProjectRow);
+    const total = parseInt(countResult.rows[0].count || countResult.rows[0]['COUNT(*)']);
 
     return {
       projects,
       total,
       page,
-      totalPages: Math.ceil(total / limit),
+      totalPages: Math.ceil(total / safeLimit),
     };
   }
 
-  /**
-   * Get a single project by ID
-   */
   async getById(id: string) {
-    const project = await prisma.project.findUnique({
-      where: { id },
-      include: {
-        phases: {
-          orderBy: { orderIndex: 'asc' },
-          include: {
-            tasks: {
-              orderBy: { orderIndex: 'asc' },
-            },
-          },
-        },
-        tasks: {
-          orderBy: { orderIndex: 'asc' },
-        },
-        caseStudy: true,
-        notifications: {
-          orderBy: { createdAt: 'desc' },
-          take: 10,
-        },
-        template: true,
-      },
-    });
-
-    if (!project) {
+    const projectResult = await query(`SELECT * FROM projects WHERE id = $1`, [id]);
+    
+    if (projectResult.rows.length === 0) {
       throw new AppError('Project not found', 404);
     }
 
-    return project;
+    const project = mapProjectRow(projectResult.rows[0]);
+
+    const [phasesResult, tasksResult, caseStudyResult, notificationsResult] = await Promise.all([
+      query(
+        `SELECT * FROM project_phases WHERE project_id = $1 ORDER BY order_index ASC`,
+        [id]
+      ),
+      query(
+        `SELECT * FROM project_tasks WHERE project_id = $1 ORDER BY order_index ASC`,
+        [id]
+      ),
+      query(`SELECT * FROM case_studies WHERE project_id = $1`, [id]),
+      query(
+        `SELECT * FROM notifications WHERE project_id = $1 ORDER BY created_at DESC LIMIT 10`,
+        [id]
+      ),
+    ]);
+
+    return {
+      ...project,
+      phases: phasesResult.rows.map(row => ({
+        id: row.id,
+        projectId: row.project_id,
+        phaseName: row.phase_name,
+        orderIndex: row.order_index,
+        plannedStart: row.planned_start,
+        plannedEnd: row.planned_end,
+        actualStart: row.actual_start,
+        actualEnd: row.actual_end,
+        status: row.status,
+        progress: row.progress,
+        notes: row.notes,
+      })),
+      tasks: tasksResult.rows.map(row => ({
+        id: row.id,
+        projectId: row.project_id,
+        phaseRecordId: row.phase_record_id,
+        name: row.name,
+        orderIndex: row.order_index,
+        status: row.status,
+        plannedStart: row.planned_start,
+        plannedEnd: row.planned_end,
+        actualStart: row.actual_start,
+        actualEnd: row.actual_end,
+        duration: row.duration,
+        progress: row.progress,
+        assignee: row.assignee,
+        isMilestone: row.is_milestone,
+        notes: row.notes,
+        priority: row.priority,
+      })),
+      caseStudy: caseStudyResult.rows[0] ? {
+        id: caseStudyResult.rows[0].id,
+        projectId: caseStudyResult.rows[0].project_id,
+        status: caseStudyResult.rows[0].status,
+        title: caseStudyResult.rows[0].title,
+        content: caseStudyResult.rows[0].content,
+        publishedAt: caseStudyResult.rows[0].published_at,
+      } : null,
+      notifications: notificationsResult.rows,
+    };
   }
 
-  /**
-   * Create a new project with phases and tasks from template
-   */
   async create(data: CreateProjectDTO) {
     const plannedEnd = new Date(data.plannedEnd);
     const plannedStart = new Date(data.plannedStart);
     const actualEnd = data.actualEnd ? new Date(data.actualEnd) : null;
     const { delayDays, delayStatus } = calculateDelay(plannedEnd, actualEnd);
 
-    // Determine migration type for template
     const migrationTypes = data.migrationTypes?.toUpperCase().split(',').map(t => t.trim()) || [];
     const primaryMigrationType = migrationTypes[0] || null;
 
-    const project = await prisma.project.create({
-      data: {
-        name: data.name,
-        customerName: data.customerName,
-        projectManager: data.projectManager,
-        accountManager: data.accountManager,
-        planType: (data.planType as any) || 'SILVER',
+    const projectId = uuidv4();
+    await execute(
+      `INSERT INTO projects (
+        id, name, customer_name, project_manager, account_manager, plan_type,
+        planned_start, planned_end, actual_start, actual_end,
+        migration_types, source_platform, target_platform,
+        estimated_cost, actual_cost, description, notes,
+        phase, status, delay_days, delay_status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        projectId,
+        data.name,
+        data.customerName,
+        data.projectManager,
+        data.accountManager,
+        data.planType || 'SILVER',
         plannedStart,
         plannedEnd,
-        actualStart: data.actualStart ? new Date(data.actualStart) : null,
+        data.actualStart ? new Date(data.actualStart) : null,
         actualEnd,
-        migrationTypes: data.migrationTypes,
-        sourcePlatform: data.sourcePlatform,
-        targetPlatform: data.targetPlatform,
-        estimatedCost: data.estimatedCost,
-        actualCost: data.actualCost,
-        description: data.description,
-        notes: data.notes,
-        phase: (data.phase as any) || 'KICKOFF',
-        status: (data.status as any) || 'ACTIVE',
+        data.migrationTypes,
+        data.sourcePlatform,
+        data.targetPlatform,
+        data.estimatedCost,
+        data.actualCost,
+        data.description,
+        data.notes,
+        data.phase || 'KICKOFF',
+        data.status || 'ACTIVE',
         delayDays,
-        delayStatus: delayStatus as any,
-      },
-      include: {
-        phases: true,
-        tasks: true,
-      },
-    });
+        delayStatus,
+      ]
+    );
 
-    // Auto-generate tasks from template if migration type is specified
+    const result = await query(`SELECT * FROM projects WHERE id = ?`, [projectId]);
+    const project = mapProjectRow(result.rows[0]);
+
     if (primaryMigrationType) {
       try {
         await taskService.createProjectTasksFromTemplate(
@@ -196,82 +267,68 @@ class ProjectService {
       }
     }
 
-    // Reload project with all relations
-    const fullProject = await prisma.project.findUnique({
-      where: { id: project.id },
-      include: {
-        phases: {
-          orderBy: { orderIndex: 'asc' },
-          include: {
-            tasks: {
-              orderBy: { orderIndex: 'asc' },
-            },
-          },
-        },
-        tasks: true,
-      },
-    });
-
     logger.info(`Project created: ${project.id} - ${project.name}`);
-    return fullProject;
+    return this.getById(project.id);
   }
 
-
-  /**
-   * Update a project
-   */
   async update(id: string, data: UpdateProjectDTO) {
-    const existing = await prisma.project.findUnique({ where: { id } });
-    if (!existing) {
+    const existingResult = await query(`SELECT * FROM projects WHERE id = $1`, [id]);
+    if (existingResult.rows.length === 0) {
       throw new AppError('Project not found', 404);
     }
 
-    const plannedEnd = data.plannedEnd ? new Date(data.plannedEnd) : existing.plannedEnd;
+    const existing = existingResult.rows[0];
+    const plannedEnd = data.plannedEnd ? new Date(data.plannedEnd) : existing.planned_end;
     const actualEnd = data.actualEnd !== undefined
       ? (data.actualEnd ? new Date(data.actualEnd) : null)
-      : existing.actualEnd;
+      : existing.actual_end;
 
-    const { delayDays, delayStatus } = calculateDelay(plannedEnd, actualEnd);
+    // Calculate delay based on dates, but allow manual override
+    const calculated = calculateDelay(plannedEnd, actualEnd);
+    const delayDays = calculated.delayDays;
+    // Use manual delay status if provided, otherwise use calculated
+    const delayStatus = data.delayStatus || calculated.delayStatus;
 
-    const updateData: Prisma.ProjectUpdateInput = {
-      delayDays,
-      delayStatus: delayStatus as any,
-    };
+    const updates: string[] = ['delay_days = $1', 'delay_status = $2'];
+    const params: any[] = [delayDays, delayStatus];
+    let paramIndex = 3;
 
-    if (data.name !== undefined) updateData.name = data.name;
-    if (data.customerName !== undefined) updateData.customerName = data.customerName;
-    if (data.projectManager !== undefined) updateData.projectManager = data.projectManager;
-    if (data.accountManager !== undefined) updateData.accountManager = data.accountManager;
-    if (data.planType !== undefined) updateData.planType = data.planType as any;
-    if (data.migrationTypes !== undefined) updateData.migrationTypes = data.migrationTypes;
-    if (data.sourcePlatform !== undefined) updateData.sourcePlatform = data.sourcePlatform;
-    if (data.targetPlatform !== undefined) updateData.targetPlatform = data.targetPlatform;
-    if (data.estimatedCost !== undefined) updateData.estimatedCost = data.estimatedCost;
-    if (data.actualCost !== undefined) updateData.actualCost = data.actualCost;
-    if (data.description !== undefined) updateData.description = data.description;
-    if (data.notes !== undefined) updateData.notes = data.notes;
-    if (data.phase !== undefined) updateData.phase = data.phase as any;
-    if (data.status !== undefined) updateData.status = data.status as any;
-    if (data.plannedStart !== undefined) updateData.plannedStart = new Date(data.plannedStart);
-    if (data.plannedEnd !== undefined) updateData.plannedEnd = new Date(data.plannedEnd);
-    if (data.actualStart !== undefined) updateData.actualStart = data.actualStart ? new Date(data.actualStart) : null;
-    if (data.actualEnd !== undefined) updateData.actualEnd = actualEnd;
+    if (data.name !== undefined) { updates.push(`name = $${paramIndex++}`); params.push(data.name); }
+    if (data.customerName !== undefined) { updates.push(`customer_name = $${paramIndex++}`); params.push(data.customerName); }
+    if (data.projectManager !== undefined) { updates.push(`project_manager = $${paramIndex++}`); params.push(data.projectManager); }
+    if (data.accountManager !== undefined) { updates.push(`account_manager = $${paramIndex++}`); params.push(data.accountManager); }
+    if (data.planType !== undefined) { updates.push(`plan_type = $${paramIndex++}`); params.push(data.planType); }
+    if (data.migrationTypes !== undefined) { updates.push(`migration_types = $${paramIndex++}`); params.push(data.migrationTypes); }
+    if (data.sourcePlatform !== undefined) { updates.push(`source_platform = $${paramIndex++}`); params.push(data.sourcePlatform); }
+    if (data.targetPlatform !== undefined) { updates.push(`target_platform = $${paramIndex++}`); params.push(data.targetPlatform); }
+    if (data.estimatedCost !== undefined) { updates.push(`estimated_cost = $${paramIndex++}`); params.push(data.estimatedCost); }
+    if (data.actualCost !== undefined) { updates.push(`actual_cost = $${paramIndex++}`); params.push(data.actualCost); }
+    if (data.description !== undefined) { updates.push(`description = $${paramIndex++}`); params.push(data.description); }
+    if (data.notes !== undefined) { updates.push(`notes = $${paramIndex++}`); params.push(data.notes); }
+    if (data.phase !== undefined) { updates.push(`phase = $${paramIndex++}`); params.push(data.phase); }
+    if (data.status !== undefined) { updates.push(`status = $${paramIndex++}`); params.push(data.status); }
+    if (data.plannedStart !== undefined) { updates.push(`planned_start = $${paramIndex++}`); params.push(new Date(data.plannedStart)); }
+    if (data.plannedEnd !== undefined) { updates.push(`planned_end = $${paramIndex++}`); params.push(new Date(data.plannedEnd)); }
+    if (data.actualStart !== undefined) { updates.push(`actual_start = $${paramIndex++}`); params.push(data.actualStart ? new Date(data.actualStart) : null); }
+    if (data.actualEnd !== undefined) { updates.push(`actual_end = $${paramIndex++}`); params.push(actualEnd); }
 
-    const project = await prisma.project.update({
-      where: { id },
-      data: updateData,
-      include: {
-        phases: true,
-        caseStudy: true,
-      },
-    });
+    params.push(id);
 
-    // Auto-create case study when project is completed or closed
+    await execute(
+      `UPDATE projects SET ${updates.join(', ')} WHERE id = ?`,
+      params
+    );
+
+    const result = await query(`SELECT * FROM projects WHERE id = ?`, [id]);
+    const project = mapProjectRow(result.rows[0]);
+
     const isNowCompleted = data.status === 'COMPLETED' && existing.status !== 'COMPLETED';
     const isNowClosed = data.phase === 'CLOSURE' && existing.phase !== 'CLOSURE';
     const isNowInCompletedPhase = data.phase === 'COMPLETED' && existing.phase !== 'COMPLETED';
 
-    if ((isNowCompleted || isNowClosed || isNowInCompletedPhase) && !project.caseStudy) {
+    const caseStudyResult = await query(`SELECT id FROM case_studies WHERE project_id = $1`, [id]);
+
+    if ((isNowCompleted || isNowClosed || isNowInCompletedPhase) && caseStudyResult.rows.length === 0) {
       try {
         await caseStudyService.create({
           projectId: project.id,
@@ -288,52 +345,38 @@ class ProjectService {
     return project;
   }
 
-  /**
-   * Delete a project
-   */
   async delete(id: string): Promise<void> {
-    const existing = await prisma.project.findUnique({ where: { id } });
-    if (!existing) {
+    const existing = await query(`SELECT id FROM projects WHERE id = $1`, [id]);
+    if (existing.rows.length === 0) {
       throw new AppError('Project not found', 404);
     }
 
-    await prisma.project.delete({ where: { id } });
+    await query(`DELETE FROM projects WHERE id = $1`, [id]);
     logger.info(`Project deleted: ${id}`);
   }
 
-  /**
-   * Get delayed projects
-   */
   async getDelayedProjects() {
-    return prisma.project.findMany({
-      where: { delayStatus: 'DELAYED' },
-      orderBy: { delayDays: 'desc' },
-    });
+    const result = await query(
+      `SELECT * FROM projects WHERE delay_status = 'DELAYED' ORDER BY delay_days DESC`
+    );
+    return result.rows.map(mapProjectRow);
   }
 
-  /**
-   * Update all project delays (for cron job)
-   */
   async updateAllDelays(): Promise<number> {
-    const activeProjects = await prisma.project.findMany({
-      where: {
-        status: { in: ['ACTIVE', 'ON_HOLD'] },
-      },
-    });
+    const result = await query(
+      `SELECT * FROM projects WHERE status IN ('ACTIVE', 'ON_HOLD')`
+    );
 
     let updatedCount = 0;
 
-    for (const project of activeProjects) {
-      const { delayDays, delayStatus } = calculateDelay(project.plannedEnd, project.actualEnd);
+    for (const row of result.rows) {
+      const { delayDays, delayStatus } = calculateDelay(row.planned_end, row.actual_end);
 
-      if (delayDays !== project.delayDays || delayStatus !== project.delayStatus) {
-        await prisma.project.update({
-          where: { id: project.id },
-          data: {
-            delayDays,
-            delayStatus: delayStatus as any,
-          },
-        });
+      if (delayDays !== row.delay_days || delayStatus !== row.delay_status) {
+        await query(
+          `UPDATE projects SET delay_days = $1, delay_status = $2 WHERE id = $3`,
+          [delayDays, delayStatus, row.id]
+        );
         updatedCount++;
       }
     }
@@ -341,16 +384,13 @@ class ProjectService {
     return updatedCount;
   }
 
-  /**
-   * Get projects without case study (completed projects)
-   */
   async getProjectsWithoutCaseStudy() {
-    return prisma.project.findMany({
-      where: {
-        status: 'COMPLETED',
-        caseStudy: null,
-      },
-    });
+    const result = await query(
+      `SELECT p.* FROM projects p 
+       LEFT JOIN case_studies cs ON p.id = cs.project_id 
+       WHERE p.status = 'COMPLETED' AND cs.id IS NULL`
+    );
+    return result.rows.map(mapProjectRow);
   }
 }
 

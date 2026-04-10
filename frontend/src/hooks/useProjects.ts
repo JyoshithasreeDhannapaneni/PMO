@@ -9,6 +9,8 @@ export function useProjects(params?: {
   limit?: number;
   status?: string;
   phase?: string;
+  delayStatus?: string;
+  planType?: string;
   search?: string;
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';

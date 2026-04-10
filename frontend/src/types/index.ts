@@ -192,6 +192,7 @@ export interface CreateProjectInput {
   notes?: string;
   phase?: ProjectPhase;
   status?: ProjectStatus;
+  delayStatus?: DelayStatus;
 }
 
 export interface UpdateProjectInput extends Partial<CreateProjectInput> {}

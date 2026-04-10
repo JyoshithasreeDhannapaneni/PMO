@@ -1,66 +1,53 @@
-import { prisma } from '../config/database';
+import { query } from '../config/database';
 import { notificationService } from '../services/notificationService';
 import { logger } from '../utils/logger';
 
-/**
- * Weekly job to send reminders for missing case studies
- * 
- * Business Logic:
- * - Finds all completed projects without case studies
- * - Sends reminder notifications to project managers
- * - Helps ensure successful projects are documented
- */
 class CaseStudyReminderJob {
   async run(): Promise<void> {
     const startTime = Date.now();
     logger.info('Starting case study reminder job...');
 
     try {
-      // Find completed projects without case studies
-      const projectsWithoutCaseStudy = await prisma.project.findMany({
-        where: {
-          status: 'COMPLETED',
-          caseStudy: null,
-        },
-        include: {
-          caseStudy: true,
-        },
-      });
+      const projectsWithoutCaseStudy = await query(
+        `SELECT p.* FROM projects p
+         LEFT JOIN case_studies cs ON p.id = cs.project_id
+         WHERE p.status = 'COMPLETED' AND cs.id IS NULL`
+      );
 
-      // Also find projects with pending case studies
-      const projectsWithPendingCaseStudy = await prisma.project.findMany({
-        where: {
-          status: 'COMPLETED',
-          caseStudy: {
-            status: 'PENDING',
-          },
-        },
-        include: {
-          caseStudy: true,
-        },
-      });
+      const projectsWithPendingCaseStudy = await query(
+        `SELECT p.* FROM projects p
+         JOIN case_studies cs ON p.id = cs.project_id
+         WHERE p.status = 'COMPLETED' AND cs.status = 'PENDING'`
+      );
 
       const allProjectsNeedingReminder = [
-        ...projectsWithoutCaseStudy,
-        ...projectsWithPendingCaseStudy,
+        ...projectsWithoutCaseStudy.rows,
+        ...projectsWithPendingCaseStudy.rows,
       ];
 
       let remindersSent = 0;
 
       for (const project of allProjectsNeedingReminder) {
-        // Check if we've already sent a reminder recently (within 7 days)
-        const recentReminder = await prisma.notification.findFirst({
-          where: {
-            projectId: project.id,
-            type: 'CASE_STUDY_REMINDER',
-            createdAt: {
-              gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
-            },
-          },
-        });
+        const recentReminder = await query(
+          `SELECT id FROM notifications 
+           WHERE project_id = $1 AND type = 'CASE_STUDY_REMINDER' 
+           AND created_at >= NOW() - INTERVAL '7 days'
+           LIMIT 1`,
+          [project.id]
+        );
 
-        if (!recentReminder) {
-          await notificationService.notifyCaseStudyReminder(project);
+        if (recentReminder.rows.length === 0) {
+          await notificationService.notifyCaseStudyReminder({
+            id: project.id,
+            name: project.name,
+            customerName: project.customer_name,
+            projectManager: project.project_manager,
+            accountManager: project.account_manager,
+            delayDays: project.delay_days,
+            plannedEnd: project.planned_end,
+            actualEnd: project.actual_end,
+            phase: project.phase,
+          });
           remindersSent++;
         }
       }

@@ -1,6 +1,8 @@
 import cron from 'node-cron';
 import { logger } from '../utils/logger';
 import { projectService } from '../services/projectService';
+import { taskService } from '../services/taskService';
+import { query } from '../config/database';
 
 /**
  * Initialize all cron jobs
@@ -18,6 +20,27 @@ export function initializeCronJobs(): void {
     }
   });
 
+  // Hourly task status auto-update - runs every hour
+  cron.schedule('0 * * * *', async () => {
+    logger.info('Running hourly task status auto-update job...');
+    try {
+      const projectsResult = await query(
+        `SELECT id FROM projects WHERE status = 'ACTIVE'`
+      );
+      
+      let totalUpdated = 0;
+      for (const project of projectsResult.rows) {
+        const updated = await taskService.autoUpdateTaskStatuses(project.id);
+        totalUpdated += updated;
+      }
+      
+      logger.info(`Task status auto-update completed. Updated phases in ${totalUpdated} projects.`);
+    } catch (error) {
+      logger.error('Task status auto-update job failed:', error);
+    }
+  });
+
   logger.info('Cron jobs scheduled:');
   logger.info('  - Delay check: Daily at 6:00 AM');
+  logger.info('  - Task status auto-update: Every hour');
 }

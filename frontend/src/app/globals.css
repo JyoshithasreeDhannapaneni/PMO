@@ -75,3 +75,13 @@ table {
 .animate-fadeIn {
   animation: fadeIn 0.3s ease-out;
 }
+
+/* Hide scrollbar utility */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}

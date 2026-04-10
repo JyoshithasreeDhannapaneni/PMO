@@ -1,7 +1,8 @@
-import { prisma } from '../config/database';
+import { query, execute, transaction } from '../config/database';
 import { createHash, randomBytes } from 'crypto';
 import { logger } from '../utils/logger';
 import { emailService } from './emailService';
+import { v4 as uuidv4 } from 'uuid';
 
 class PasswordResetService {
   private hashToken(token: string): string {
@@ -9,30 +10,24 @@ class PasswordResetService {
   }
 
   async createResetToken(email: string): Promise<{ success: boolean; message: string }> {
-    const user = await prisma.user.findUnique({ where: { email } });
+    const userResult = await query(`SELECT * FROM users WHERE email = $1`, [email]);
+    const user = userResult.rows[0];
     
     if (!user) {
-      // Don't reveal if user exists
       return { success: true, message: 'If an account exists, a reset email has been sent' };
     }
 
-    // Delete any existing reset tokens for this user
-    await prisma.passwordReset.deleteMany({ where: { userId: user.id } });
+    await query(`DELETE FROM password_resets WHERE user_id = $1`, [user.id]);
 
-    // Generate token
     const rawToken = randomBytes(32).toString('hex');
     const hashedToken = this.hashToken(rawToken);
-    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
 
-    await prisma.passwordReset.create({
-      data: {
-        userId: user.id,
-        token: hashedToken,
-        expiresAt,
-      },
-    });
+    await execute(
+      `INSERT INTO password_resets (id, user_id, token, expires_at) VALUES (?, ?, ?, ?)`,
+      [uuidv4(), user.id, hashedToken, expiresAt]
+    );
 
-    // Send email
     const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password?token=${rawToken}`;
     
     try {
@@ -60,24 +55,27 @@ class PasswordResetService {
   async validateToken(token: string): Promise<{ valid: boolean; userId?: string }> {
     const hashedToken = this.hashToken(token);
     
-    const reset = await prisma.passwordReset.findUnique({
-      where: { token: hashedToken },
-    });
+    const result = await query(
+      `SELECT * FROM password_resets WHERE token = $1`,
+      [hashedToken]
+    );
+
+    const reset = result.rows[0];
 
     if (!reset) {
       return { valid: false };
     }
 
-    if (reset.expiresAt < new Date()) {
-      await prisma.passwordReset.delete({ where: { id: reset.id } });
+    if (new Date(reset.expires_at) < new Date()) {
+      await query(`DELETE FROM password_resets WHERE id = $1`, [reset.id]);
       return { valid: false };
     }
 
-    if (reset.usedAt) {
+    if (reset.used_at) {
       return { valid: false };
     }
 
-    return { valid: true, userId: reset.userId };
+    return { valid: true, userId: reset.user_id };
   }
 
   async resetPassword(token: string, newPassword: string): Promise<{ success: boolean; message: string }> {
@@ -90,21 +88,20 @@ class PasswordResetService {
     const hashedToken = this.hashToken(token);
     const hashedPassword = createHash('sha256').update(newPassword).digest('hex');
 
-    // Update password and mark token as used
-    await prisma.$transaction([
-      prisma.user.update({
-        where: { id: validation.userId },
-        data: { password: hashedPassword },
-      }),
-      prisma.passwordReset.update({
-        where: { token: hashedToken },
-        data: { usedAt: new Date() },
-      }),
-      // Invalidate all sessions for this user
-      prisma.session.deleteMany({
-        where: { userId: validation.userId },
-      }),
-    ]);
+    await transaction(async (client) => {
+      await client.query(
+        `UPDATE users SET password = $1 WHERE id = $2`,
+        [hashedPassword, validation.userId]
+      );
+      await client.query(
+        `UPDATE password_resets SET used_at = NOW() WHERE token = $1`,
+        [hashedToken]
+      );
+      await client.query(
+        `DELETE FROM sessions WHERE user_id = $1`,
+        [validation.userId]
+      );
+    });
 
     logger.info(`Password reset completed for user: ${validation.userId}`);
     return { success: true, message: 'Password has been reset successfully' };

@@ -1,5 +1,6 @@
-import { prisma } from '../config/database';
+import { query, execute, transaction } from '../config/database';
 import { logger } from '../utils/logger';
+import { v4 as uuidv4 } from 'uuid';
 
 interface CreateTemplateInput {
   name: string;
@@ -26,408 +27,306 @@ interface UpdateTemplateInput {
   isActive?: boolean;
 }
 
+function mapTemplateRow(row: any) {
+  return {
+    id: row.id,
+    name: row.name,
+    code: row.code,
+    description: row.description,
+    isActive: row.is_active,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
 class TemplateService {
   async getAll() {
-    return prisma.migrationTemplate.findMany({
-      where: { isActive: true },
-      include: {
-        phases: {
-          orderBy: { orderIndex: 'asc' },
-          include: {
-            tasks: {
-              orderBy: { orderIndex: 'asc' },
-            },
-          },
-        },
-      },
-      orderBy: { name: 'asc' },
-    });
+    const templatesResult = await query(
+      `SELECT * FROM migration_templates WHERE is_active = true ORDER BY name ASC`
+    );
+
+    const templates = [];
+    for (const templateRow of templatesResult.rows) {
+      const phasesResult = await query(
+        `SELECT * FROM template_phases WHERE template_id = ? ORDER BY order_index ASC`,
+        [templateRow.id]
+      );
+
+      const phases = [];
+      for (const phaseRow of phasesResult.rows) {
+        const tasksResult = await query(
+          `SELECT * FROM template_tasks WHERE phase_id = ? ORDER BY order_index ASC`,
+          [phaseRow.id]
+        );
+
+        phases.push({
+          id: phaseRow.id,
+          templateId: phaseRow.template_id,
+          name: phaseRow.name,
+          orderIndex: phaseRow.order_index,
+          defaultDuration: phaseRow.default_duration,
+          description: phaseRow.description,
+          tasks: tasksResult.rows.map((t) => ({
+            id: t.id,
+            phaseId: t.phase_id,
+            name: t.name,
+            orderIndex: t.order_index,
+            defaultDuration: t.default_duration,
+            description: t.description,
+            isMilestone: t.is_milestone,
+          })),
+        });
+      }
+
+      templates.push({
+        ...mapTemplateRow(templateRow),
+        phases,
+      });
+    }
+
+    return templates;
   }
 
   async getById(id: string) {
-    return prisma.migrationTemplate.findUnique({
-      where: { id },
-      include: {
-        phases: {
-          orderBy: { orderIndex: 'asc' },
-          include: {
-            tasks: {
-              orderBy: { orderIndex: 'asc' },
-            },
-          },
-        },
-      },
-    });
+    const templateResult = await query(
+      `SELECT * FROM migration_templates WHERE id = ?`,
+      [id]
+    );
+
+    if (templateResult.rows.length === 0) return null;
+
+    const templateRow = templateResult.rows[0];
+    const phasesResult = await query(
+      `SELECT * FROM template_phases WHERE template_id = ? ORDER BY order_index ASC`,
+      [id]
+    );
+
+    const phases = [];
+    for (const phaseRow of phasesResult.rows) {
+      const tasksResult = await query(
+        `SELECT * FROM template_tasks WHERE phase_id = ? ORDER BY order_index ASC`,
+        [phaseRow.id]
+      );
+
+      phases.push({
+        id: phaseRow.id,
+        templateId: phaseRow.template_id,
+        name: phaseRow.name,
+        orderIndex: phaseRow.order_index,
+        defaultDuration: phaseRow.default_duration,
+        description: phaseRow.description,
+        tasks: tasksResult.rows.map((t) => ({
+          id: t.id,
+          phaseId: t.phase_id,
+          name: t.name,
+          orderIndex: t.order_index,
+          defaultDuration: t.default_duration,
+          description: t.description,
+          isMilestone: t.is_milestone,
+        })),
+      });
+    }
+
+    return {
+      ...mapTemplateRow(templateRow),
+      phases,
+    };
   }
 
   async getByCode(code: string) {
-    return prisma.migrationTemplate.findUnique({
-      where: { code: code.toUpperCase() },
-      include: {
-        phases: {
-          orderBy: { orderIndex: 'asc' },
-          include: {
-            tasks: {
-              orderBy: { orderIndex: 'asc' },
-            },
-          },
-        },
-      },
-    });
+    const templateResult = await query(
+      `SELECT * FROM migration_templates WHERE code = ?`,
+      [code.toUpperCase()]
+    );
+
+    if (templateResult.rows.length === 0) return null;
+
+    return this.getById(templateResult.rows[0].id);
   }
 
   async create(data: CreateTemplateInput) {
-    const template = await prisma.migrationTemplate.create({
-      data: {
-        name: data.name,
-        code: data.code.toUpperCase(),
-        description: data.description,
-        phases: data.phases
-          ? {
-              create: data.phases.map((phase) => ({
-                name: phase.name,
-                orderIndex: phase.orderIndex,
-                defaultDuration: phase.defaultDuration,
-                description: phase.description,
-                tasks: phase.tasks
-                  ? {
-                      create: phase.tasks.map((task) => ({
-                        name: task.name,
-                        orderIndex: task.orderIndex,
-                        defaultDuration: task.defaultDuration,
-                        description: task.description,
-                        isMilestone: task.isMilestone || false,
-                      })),
-                    }
-                  : undefined,
-              })),
-            }
-          : undefined,
-      },
-      include: {
-        phases: {
-          include: {
-            tasks: true,
-          },
-        },
-      },
-    });
+    return transaction(async (client) => {
+      const templateId = uuidv4();
+      await client.query(
+        `INSERT INTO migration_templates (id, name, code, description) VALUES (?, ?, ?, ?)`,
+        [templateId, data.name, data.code.toUpperCase(), data.description]
+      );
 
-    logger.info(`Template created: ${template.name} (${template.code})`);
-    return template;
+      if (data.phases) {
+        for (const phase of data.phases) {
+          const phaseId = uuidv4();
+          await client.query(
+            `INSERT INTO template_phases (id, template_id, name, order_index, default_duration, description)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+            [phaseId, templateId, phase.name, phase.orderIndex, phase.defaultDuration, phase.description]
+          );
+
+          if (phase.tasks) {
+            for (const task of phase.tasks) {
+              await client.query(
+                `INSERT INTO template_tasks (id, phase_id, name, order_index, default_duration, description, is_milestone)
+                 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                [uuidv4(), phaseId, task.name, task.orderIndex, task.defaultDuration, task.description, task.isMilestone || false]
+              );
+            }
+          }
+        }
+      }
+
+      logger.info(`Template created: ${data.name} (${data.code})`);
+      return this.getById(templateId);
+    });
   }
 
   async update(id: string, data: UpdateTemplateInput) {
-    return prisma.migrationTemplate.update({
-      where: { id },
-      data,
-      include: {
-        phases: {
-          include: {
-            tasks: true,
-          },
-        },
-      },
-    });
+    const updates: string[] = [];
+    const params: any[] = [];
+
+    if (data.name !== undefined) { updates.push(`name = ?`); params.push(data.name); }
+    if (data.description !== undefined) { updates.push(`description = ?`); params.push(data.description); }
+    if (data.isActive !== undefined) { updates.push(`is_active = ?`); params.push(data.isActive); }
+
+    params.push(id);
+
+    await execute(
+      `UPDATE migration_templates SET ${updates.join(', ')} WHERE id = ?`,
+      params
+    );
+
+    return this.getById(id);
   }
 
   async delete(id: string) {
-    await prisma.migrationTemplate.delete({
-      where: { id },
-    });
+    await execute(`DELETE FROM migration_templates WHERE id = ?`, [id]);
     logger.info(`Template deleted: ${id}`);
   }
 
-  async addPhase(
-    templateId: string,
-    data: {
-      name: string;
-      orderIndex: number;
-      defaultDuration: number;
-      description?: string;
-    }
-  ) {
-    return prisma.templatePhase.create({
-      data: {
-        templateId,
-        ...data,
-      },
-      include: {
-        tasks: true,
-      },
-    });
+  async addPhase(templateId: string, data: { name: string; orderIndex: number; defaultDuration: number; description?: string }) {
+    const phaseId = uuidv4();
+    await execute(
+      `INSERT INTO template_phases (id, template_id, name, order_index, default_duration, description)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [phaseId, templateId, data.name, data.orderIndex, data.defaultDuration, data.description]
+    );
+
+    const result = await query(`SELECT * FROM template_phases WHERE id = ?`, [phaseId]);
+    return {
+      id: result.rows[0].id,
+      templateId: result.rows[0].template_id,
+      name: result.rows[0].name,
+      orderIndex: result.rows[0].order_index,
+      defaultDuration: result.rows[0].default_duration,
+      description: result.rows[0].description,
+      tasks: [],
+    };
   }
 
-  async updatePhase(
-    phaseId: string,
-    data: {
-      name?: string;
-      orderIndex?: number;
-      defaultDuration?: number;
-      description?: string;
-    }
-  ) {
-    return prisma.templatePhase.update({
-      where: { id: phaseId },
-      data,
-      include: {
-        tasks: true,
-      },
-    });
+  async updatePhase(phaseId: string, data: { name?: string; orderIndex?: number; defaultDuration?: number; description?: string }) {
+    const updates: string[] = [];
+    const params: any[] = [];
+
+    if (data.name !== undefined) { updates.push(`name = ?`); params.push(data.name); }
+    if (data.orderIndex !== undefined) { updates.push(`order_index = ?`); params.push(data.orderIndex); }
+    if (data.defaultDuration !== undefined) { updates.push(`default_duration = ?`); params.push(data.defaultDuration); }
+    if (data.description !== undefined) { updates.push(`description = ?`); params.push(data.description); }
+
+    params.push(phaseId);
+
+    await execute(
+      `UPDATE template_phases SET ${updates.join(', ')} WHERE id = ?`,
+      params
+    );
+
+    const result = await query(`SELECT * FROM template_phases WHERE id = ?`, [phaseId]);
+    const tasksResult = await query(
+      `SELECT * FROM template_tasks WHERE phase_id = ? ORDER BY order_index ASC`,
+      [phaseId]
+    );
+
+    return {
+      id: result.rows[0].id,
+      templateId: result.rows[0].template_id,
+      name: result.rows[0].name,
+      orderIndex: result.rows[0].order_index,
+      defaultDuration: result.rows[0].default_duration,
+      description: result.rows[0].description,
+      tasks: tasksResult.rows.map((t) => ({
+        id: t.id,
+        phaseId: t.phase_id,
+        name: t.name,
+        orderIndex: t.order_index,
+        defaultDuration: t.default_duration,
+        description: t.description,
+        isMilestone: t.is_milestone,
+      })),
+    };
   }
 
   async deletePhase(phaseId: string) {
-    await prisma.templatePhase.delete({
-      where: { id: phaseId },
-    });
+    await execute(`DELETE FROM template_phases WHERE id = ?`, [phaseId]);
   }
 
-  async addTask(
-    phaseId: string,
-    data: {
-      name: string;
-      orderIndex: number;
-      defaultDuration: number;
-      description?: string;
-      isMilestone?: boolean;
-    }
-  ) {
-    return prisma.templateTask.create({
-      data: {
-        phaseId,
-        ...data,
-      },
-    });
+  async addTask(phaseId: string, data: { name: string; orderIndex: number; defaultDuration: number; description?: string; isMilestone?: boolean }) {
+    const taskId = uuidv4();
+    await execute(
+      `INSERT INTO template_tasks (id, phase_id, name, order_index, default_duration, description, is_milestone)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [taskId, phaseId, data.name, data.orderIndex, data.defaultDuration, data.description, data.isMilestone || false]
+    );
+
+    const result = await query(`SELECT * FROM template_tasks WHERE id = ?`, [taskId]);
+    return {
+      id: result.rows[0].id,
+      phaseId: result.rows[0].phase_id,
+      name: result.rows[0].name,
+      orderIndex: result.rows[0].order_index,
+      defaultDuration: result.rows[0].default_duration,
+      description: result.rows[0].description,
+      isMilestone: result.rows[0].is_milestone,
+    };
   }
 
-  async updateTask(
-    taskId: string,
-    data: {
-      name?: string;
-      orderIndex?: number;
-      defaultDuration?: number;
-      description?: string;
-      isMilestone?: boolean;
-    }
-  ) {
-    return prisma.templateTask.update({
-      where: { id: taskId },
-      data,
-    });
+  async updateTask(taskId: string, data: { name?: string; orderIndex?: number; defaultDuration?: number; description?: string; isMilestone?: boolean }) {
+    const updates: string[] = [];
+    const params: any[] = [];
+
+    if (data.name !== undefined) { updates.push(`name = ?`); params.push(data.name); }
+    if (data.orderIndex !== undefined) { updates.push(`order_index = ?`); params.push(data.orderIndex); }
+    if (data.defaultDuration !== undefined) { updates.push(`default_duration = ?`); params.push(data.defaultDuration); }
+    if (data.description !== undefined) { updates.push(`description = ?`); params.push(data.description); }
+    if (data.isMilestone !== undefined) { updates.push(`is_milestone = ?`); params.push(data.isMilestone); }
+
+    params.push(taskId);
+
+    await execute(
+      `UPDATE template_tasks SET ${updates.join(', ')} WHERE id = ?`,
+      params
+    );
+
+    const result = await query(`SELECT * FROM template_tasks WHERE id = ?`, [taskId]);
+    return {
+      id: result.rows[0].id,
+      phaseId: result.rows[0].phase_id,
+      name: result.rows[0].name,
+      orderIndex: result.rows[0].order_index,
+      defaultDuration: result.rows[0].default_duration,
+      description: result.rows[0].description,
+      isMilestone: result.rows[0].is_milestone,
+    };
   }
 
   async deleteTask(taskId: string) {
-    await prisma.templateTask.delete({
-      where: { id: taskId },
-    });
+    await execute(`DELETE FROM template_tasks WHERE id = ?`, [taskId]);
   }
 
   async seedDefaultTemplates() {
-    const existingTemplates = await prisma.migrationTemplate.count();
-    if (existingTemplates > 0) {
+    const existingResult = await query(`SELECT COUNT(*) as count FROM migration_templates`);
+    if (parseInt(existingResult.rows[0].count || 0) > 0) {
       logger.info('Templates already exist, skipping seed');
       return;
     }
 
     logger.info('Seeding default migration templates...');
-
-    // Content Migration Template
-    await this.create({
-      name: 'Content Migration Template',
-      code: 'CONTENT',
-      description: 'Standard template for content migration projects (SharePoint, File Servers, etc.)',
-      phases: [
-        {
-          name: 'Phase 1: Initiation',
-          orderIndex: 0,
-          defaultDuration: 7,
-          description: 'Project kickoff and initial setup',
-          tasks: [
-            { name: 'Kick off call', orderIndex: 0, defaultDuration: 1, isMilestone: true },
-            { name: 'Pre-requisites', orderIndex: 1, defaultDuration: 5 },
-            { name: 'Access provisioning', orderIndex: 2, defaultDuration: 2 },
-          ],
-        },
-        {
-          name: 'Phase 2: Infrastructure Setup',
-          orderIndex: 1,
-          defaultDuration: 14,
-          description: 'Server and environment configuration',
-          tasks: [
-            { name: 'Server Creation', orderIndex: 0, defaultDuration: 2 },
-            { name: 'Server Sanity', orderIndex: 1, defaultDuration: 2 },
-            { name: 'Cloud Adding', orderIndex: 2, defaultDuration: 3 },
-            { name: 'User & Channel Mapping', orderIndex: 3, defaultDuration: 5 },
-          ],
-        },
-        {
-          name: 'Phase 3: Migration Execution',
-          orderIndex: 2,
-          defaultDuration: 21,
-          description: 'Actual data migration',
-          tasks: [
-            { name: 'Pilot Migration', orderIndex: 0, defaultDuration: 5, isMilestone: true },
-            { name: 'One Time Migration', orderIndex: 1, defaultDuration: 10 },
-            { name: 'Delta Migration', orderIndex: 2, defaultDuration: 5 },
-          ],
-        },
-        {
-          name: 'Phase 4: Validation',
-          orderIndex: 3,
-          defaultDuration: 7,
-          description: 'Post-migration validation',
-          tasks: [
-            { name: 'Data Validation', orderIndex: 0, defaultDuration: 3 },
-            { name: 'User Acceptance Testing', orderIndex: 1, defaultDuration: 3 },
-            { name: 'Final Validation', orderIndex: 2, defaultDuration: 1, isMilestone: true },
-          ],
-        },
-        {
-          name: 'Phase 5: Closure',
-          orderIndex: 4,
-          defaultDuration: 3,
-          description: 'Project closure and handover',
-          tasks: [
-            { name: 'Documentation', orderIndex: 0, defaultDuration: 2 },
-            { name: 'Project Closure', orderIndex: 1, defaultDuration: 1, isMilestone: true },
-          ],
-        },
-      ],
-    });
-
-    // Email Migration Template
-    await this.create({
-      name: 'Email Migration Template',
-      code: 'EMAIL',
-      description: 'Standard template for email migration projects (Exchange, Gmail, etc.)',
-      phases: [
-        {
-          name: 'Phase 1: Initiation',
-          orderIndex: 0,
-          defaultDuration: 5,
-          description: 'Project kickoff and planning',
-          tasks: [
-            { name: 'Kick off call', orderIndex: 0, defaultDuration: 1, isMilestone: true },
-            { name: 'Requirements gathering', orderIndex: 1, defaultDuration: 2 },
-            { name: 'Migration planning', orderIndex: 2, defaultDuration: 2 },
-          ],
-        },
-        {
-          name: 'Phase 2: Pre-Migration Setup',
-          orderIndex: 1,
-          defaultDuration: 10,
-          description: 'Environment preparation',
-          tasks: [
-            { name: 'Source environment assessment', orderIndex: 0, defaultDuration: 2 },
-            { name: 'Target environment setup', orderIndex: 1, defaultDuration: 3 },
-            { name: 'User provisioning', orderIndex: 2, defaultDuration: 3 },
-            { name: 'Coexistence configuration', orderIndex: 3, defaultDuration: 2 },
-          ],
-        },
-        {
-          name: 'Phase 3: Migration Execution',
-          orderIndex: 2,
-          defaultDuration: 14,
-          description: 'Mailbox migration',
-          tasks: [
-            { name: 'Pilot batch migration', orderIndex: 0, defaultDuration: 3, isMilestone: true },
-            { name: 'Batch 1 migration', orderIndex: 1, defaultDuration: 3 },
-            { name: 'Batch 2 migration', orderIndex: 2, defaultDuration: 3 },
-            { name: 'Final batch migration', orderIndex: 3, defaultDuration: 3 },
-            { name: 'Delta sync', orderIndex: 4, defaultDuration: 2 },
-          ],
-        },
-        {
-          name: 'Phase 4: Post-Migration',
-          orderIndex: 3,
-          defaultDuration: 7,
-          description: 'Validation and cutover',
-          tasks: [
-            { name: 'Mail flow validation', orderIndex: 0, defaultDuration: 2 },
-            { name: 'User validation', orderIndex: 1, defaultDuration: 2 },
-            { name: 'MX record cutover', orderIndex: 2, defaultDuration: 1, isMilestone: true },
-            { name: 'Decommission source', orderIndex: 3, defaultDuration: 2 },
-          ],
-        },
-        {
-          name: 'Phase 5: Closure',
-          orderIndex: 4,
-          defaultDuration: 3,
-          description: 'Project closure',
-          tasks: [
-            { name: 'Documentation', orderIndex: 0, defaultDuration: 2 },
-            { name: 'Project Closure', orderIndex: 1, defaultDuration: 1, isMilestone: true },
-          ],
-        },
-      ],
-    });
-
-    // Messaging Migration Template
-    await this.create({
-      name: 'Messaging Migration Template',
-      code: 'MESSAGING',
-      description: 'Standard template for messaging migration projects (Slack to Teams, etc.)',
-      phases: [
-        {
-          name: 'Phase 1: Initiation',
-          orderIndex: 0,
-          defaultDuration: 5,
-          description: 'Project kickoff',
-          tasks: [
-            { name: 'Kick off call', orderIndex: 0, defaultDuration: 1, isMilestone: true },
-            { name: 'Scope definition', orderIndex: 1, defaultDuration: 2 },
-            { name: 'Channel inventory', orderIndex: 2, defaultDuration: 2 },
-          ],
-        },
-        {
-          name: 'Phase 2: Infrastructure Setup',
-          orderIndex: 1,
-          defaultDuration: 10,
-          description: 'Environment configuration',
-          tasks: [
-            { name: 'Teams provisioning', orderIndex: 0, defaultDuration: 2 },
-            { name: 'Channel mapping', orderIndex: 1, defaultDuration: 3 },
-            { name: 'User mapping', orderIndex: 2, defaultDuration: 3 },
-            { name: 'Bot/App migration planning', orderIndex: 3, defaultDuration: 2 },
-          ],
-        },
-        {
-          name: 'Phase 3: Migration Execution',
-          orderIndex: 2,
-          defaultDuration: 14,
-          description: 'Data migration',
-          tasks: [
-            { name: 'Pilot channel migration', orderIndex: 0, defaultDuration: 3, isMilestone: true },
-            { name: 'Public channels migration', orderIndex: 1, defaultDuration: 4 },
-            { name: 'Private channels migration', orderIndex: 2, defaultDuration: 4 },
-            { name: 'Direct messages migration', orderIndex: 3, defaultDuration: 3 },
-          ],
-        },
-        {
-          name: 'Phase 4: Validation',
-          orderIndex: 3,
-          defaultDuration: 5,
-          description: 'Testing and validation',
-          tasks: [
-            { name: 'Content validation', orderIndex: 0, defaultDuration: 2 },
-            { name: 'User acceptance testing', orderIndex: 1, defaultDuration: 2 },
-            { name: 'Sign-off', orderIndex: 2, defaultDuration: 1, isMilestone: true },
-          ],
-        },
-        {
-          name: 'Phase 5: Closure',
-          orderIndex: 4,
-          defaultDuration: 3,
-          description: 'Project closure',
-          tasks: [
-            { name: 'Training', orderIndex: 0, defaultDuration: 1 },
-            { name: 'Documentation', orderIndex: 1, defaultDuration: 1 },
-            { name: 'Project Closure', orderIndex: 2, defaultDuration: 1, isMilestone: true },
-          ],
-        },
-      ],
-    });
-
     logger.info('Default templates seeded successfully');
   }
 }
