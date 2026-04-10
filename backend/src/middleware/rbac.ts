@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
-import { UserRole } from '@prisma/client';
 import { AppError } from './errorHandler';
+
+type UserRole = 'ADMIN' | 'MANAGER' | 'VIEWER';
 
 // Define permissions for each role
 const rolePermissions: Record<UserRole, string[]> = {

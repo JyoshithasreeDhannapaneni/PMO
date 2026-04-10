@@ -1,6 +1,8 @@
-import { prisma } from '../config/database';
-import { ActivityType } from '@prisma/client';
+import { query, execute } from '../config/database';
 import { logger } from '../utils/logger';
+import { v4 as uuidv4 } from 'uuid';
+
+type ActivityType = 'PROJECT_CREATED' | 'PROJECT_UPDATED' | 'PROJECT_COMPLETED' | 'TASK_CREATED' | 'TASK_COMPLETED' | 'TASK_ASSIGNED' | 'COMMENT_ADDED' | 'DOCUMENT_UPLOADED' | 'RISK_IDENTIFIED' | 'RISK_RESOLVED' | 'TEAM_MEMBER_ADDED' | 'STATUS_REPORT_GENERATED' | 'CHANGE_REQUEST_SUBMITTED' | 'CHANGE_REQUEST_APPROVED' | 'MILESTONE_REACHED';
 
 interface CreateActivityInput {
   userId?: string;
@@ -15,93 +17,180 @@ interface CreateActivityInput {
 class ActivityService {
   async create(data: CreateActivityInput) {
     try {
-      const activity = await prisma.activity.create({
-        data: {
-          userId: data.userId,
-          type: data.type,
-          entityType: data.entityType,
-          entityId: data.entityId,
-          entityName: data.entityName,
-          description: data.description,
-          metadata: data.metadata ? JSON.stringify(data.metadata) : null,
-        },
-        include: {
-          user: { select: { id: true, name: true, email: true, avatar: true } },
-        },
-      });
-      return activity;
+      const activityId = uuidv4();
+      await execute(
+        `INSERT INTO activities (id, user_id, type, entity_type, entity_id, entity_name, description, metadata)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          activityId,
+          data.userId,
+          data.type,
+          data.entityType,
+          data.entityId,
+          data.entityName,
+          data.description,
+          data.metadata ? JSON.stringify(data.metadata) : null,
+        ]
+      );
+
+      const result = await query(`SELECT * FROM activities WHERE id = ?`, [activityId]);
+      const row = result.rows[0];
+
+      if (data.userId) {
+        const userResult = await query(
+          `SELECT id, name, email, avatar FROM users WHERE id = $1`,
+          [data.userId]
+        );
+
+        return {
+          id: row.id,
+          userId: row.user_id,
+          type: row.type,
+          entityType: row.entity_type,
+          entityId: row.entity_id,
+          entityName: row.entity_name,
+          description: row.description,
+          metadata: row.metadata ? JSON.parse(row.metadata) : null,
+          createdAt: row.created_at,
+          user: userResult.rows[0] || null,
+        };
+      }
+
+      return {
+        id: row.id,
+        userId: row.user_id,
+        type: row.type,
+        entityType: row.entity_type,
+        entityId: row.entity_id,
+        entityName: row.entity_name,
+        description: row.description,
+        metadata: row.metadata ? JSON.parse(row.metadata) : null,
+        createdAt: row.created_at,
+        user: null,
+      };
     } catch (error) {
       logger.error('Failed to create activity:', error);
     }
   }
 
-  async getAll(options: {
-    page?: number;
-    limit?: number;
-    entityType?: string;
-    entityId?: string;
-  } = {}) {
+  async getAll(options: { page?: number; limit?: number; entityType?: string; entityId?: string } = {}) {
     const { page = 1, limit = 50, entityType, entityId } = options;
-    const skip = (page - 1) * limit;
+    const safeLimit = Math.max(1, Math.min(200, Math.floor(limit)));
+    const safeOffset = Math.max(0, Math.floor((page - 1) * safeLimit));
 
-    const where: any = {};
-    if (entityType) where.entityType = entityType;
-    if (entityId) where.entityId = entityId;
+    const conditions: string[] = [];
+    const params: any[] = [];
 
-    const [activities, total] = await Promise.all([
-      prisma.activity.findMany({
-        where,
-        include: {
-          user: { select: { id: true, name: true, email: true, avatar: true } },
-        },
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take: limit,
-      }),
-      prisma.activity.count({ where }),
+    if (entityType) { conditions.push(`a.entity_type = ?`); params.push(entityType); }
+    if (entityId) { conditions.push(`a.entity_id = ?`); params.push(entityId); }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const [activitiesResult, countResult] = await Promise.all([
+      query(
+        `SELECT a.*, u.id as u_id, u.name as u_name, u.email as u_email, u.avatar as u_avatar
+         FROM activities a
+         LEFT JOIN users u ON a.user_id = u.id
+         ${whereClause}
+         ORDER BY a.created_at DESC
+         LIMIT ${safeLimit} OFFSET ${safeOffset}`,
+        params
+      ),
+      query(`SELECT COUNT(*) as count FROM activities a ${whereClause}`, params),
     ]);
 
     return {
-      data: activities,
+      data: activitiesResult.rows.map((row) => ({
+        id: row.id,
+        userId: row.user_id,
+        type: row.type,
+        entityType: row.entity_type,
+        entityId: row.entity_id,
+        entityName: row.entity_name,
+        description: row.description,
+        metadata: row.metadata ? JSON.parse(row.metadata) : null,
+        createdAt: row.created_at,
+        user: row.u_id ? { id: row.u_id, name: row.u_name, email: row.u_email, avatar: row.u_avatar } : null,
+      })),
       pagination: {
         page,
-        limit,
-        total,
-        totalPages: Math.ceil(total / limit),
+        limit: safeLimit,
+        total: parseInt(countResult.rows[0].count || countResult.rows[0]['COUNT(*)'] || 0),
+        totalPages: Math.ceil(parseInt(countResult.rows[0].count || countResult.rows[0]['COUNT(*)'] || 0) / safeLimit),
       },
     };
   }
 
   async getByEntity(entityType: string, entityId: string, limit = 20) {
-    return prisma.activity.findMany({
-      where: { entityType, entityId },
-      include: {
-        user: { select: { id: true, name: true, email: true, avatar: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-      take: limit,
-    });
+    const safeLimit = Math.max(1, Math.min(100, Math.floor(limit)));
+    const result = await query(
+      `SELECT a.*, u.id as u_id, u.name as u_name, u.email as u_email, u.avatar as u_avatar
+       FROM activities a
+       LEFT JOIN users u ON a.user_id = u.id
+       WHERE a.entity_type = $1 AND a.entity_id = $2
+       ORDER BY a.created_at DESC
+       LIMIT ${safeLimit}`,
+      [entityType, entityId]
+    );
+
+    return result.rows.map((row) => ({
+      id: row.id,
+      userId: row.user_id,
+      type: row.type,
+      entityType: row.entity_type,
+      entityId: row.entity_id,
+      entityName: row.entity_name,
+      description: row.description,
+      metadata: row.metadata ? JSON.parse(row.metadata) : null,
+      createdAt: row.created_at,
+      user: row.u_id ? { id: row.u_id, name: row.u_name, email: row.u_email, avatar: row.u_avatar } : null,
+    }));
   }
 
   async getRecentGlobal(limit = 30) {
-    return prisma.activity.findMany({
-      include: {
-        user: { select: { id: true, name: true, email: true, avatar: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-      take: limit,
-    });
+    const safeLimit = Math.max(1, Math.min(100, Math.floor(limit)));
+    const result = await query(
+      `SELECT a.*, u.id as u_id, u.name as u_name, u.email as u_email, u.avatar as u_avatar
+       FROM activities a
+       LEFT JOIN users u ON a.user_id = u.id
+       ORDER BY a.created_at DESC
+       LIMIT ${safeLimit}`
+    );
+
+    return result.rows.map((row) => ({
+      id: row.id,
+      userId: row.user_id,
+      type: row.type,
+      entityType: row.entity_type,
+      entityId: row.entity_id,
+      entityName: row.entity_name,
+      description: row.description,
+      metadata: row.metadata ? JSON.parse(row.metadata) : null,
+      createdAt: row.created_at,
+      user: row.u_id ? { id: row.u_id, name: row.u_name, email: row.u_email, avatar: row.u_avatar } : null,
+    }));
   }
 
   async getByUser(userId: string, limit = 30) {
-    return prisma.activity.findMany({
-      where: { userId },
-      orderBy: { createdAt: 'desc' },
-      take: limit,
-    });
+    const safeLimit = Math.max(1, Math.min(100, Math.floor(limit)));
+    const result = await query(
+      `SELECT * FROM activities WHERE user_id = $1 ORDER BY created_at DESC LIMIT ${safeLimit}`,
+      [userId]
+    );
+
+    return result.rows.map((row) => ({
+      id: row.id,
+      userId: row.user_id,
+      type: row.type,
+      entityType: row.entity_type,
+      entityId: row.entity_id,
+      entityName: row.entity_name,
+      description: row.description,
+      metadata: row.metadata ? JSON.parse(row.metadata) : null,
+      createdAt: row.created_at,
+    }));
   }
 
-  // Helper methods for common activities
   async logProjectCreated(userId: string, projectId: string, projectName: string) {
     return this.create({
       userId,

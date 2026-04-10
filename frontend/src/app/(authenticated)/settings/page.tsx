@@ -1,18 +1,18 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Textarea } from '@/components/ui/Textarea';
 import { Select } from '@/components/ui/Select';
-import { 
-  Settings, 
-  FileText, 
-  Save, 
-  RotateCcw, 
-  Plus, 
-  Trash2, 
+import {
+  Settings,
+  FileText,
+  Save,
+  RotateCcw,
+  Plus,
+  Trash2,
   GripVertical,
   ChevronDown,
   ChevronUp,
@@ -35,9 +35,20 @@ import {
   X,
   FileDown,
   FileUp,
-  Loader2
+  Loader2,
+  UserPlus,
+  UserX,
+  UserCheck,
+  Search,
+  AlertCircle,
+  CheckCircle,
+  Copy,
+  Info
 } from 'lucide-react';
 import { exportToPDF, exportToWord } from '@/utils/exportCaseStudy';
+import { authApi, templatesApi } from '@/services/api';
+import { useAuth } from '@/context/AuthContext';
+import { formatDistanceToNow } from 'date-fns';
 
 // Types
 interface TemplateSection {
@@ -873,68 +884,458 @@ export default function SettingsPage() {
     </div>
   );
 
+  // ── User Management State ───────────────────────────────────────
+  const { user: currentUser } = useAuth();
+  const [dbUsers, setDbUsers] = useState<any[]>([]);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [usersError, setUsersError] = useState<string | null>(null);
+  const [userActionMsg, setUserActionMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [showInviteForm, setShowInviteForm] = useState(false);
+  const [inviteForm, setInviteForm] = useState({ name: '', email: '', role: 'VIEWER', department: '' });
+  const [inviteLoading, setInviteLoading] = useState(false);
+  const [tempPassword, setTempPassword] = useState<string | null>(null);
+  const [userSearchQuery, setUserSearchQuery] = useState('');
+  const [userRoleFilter, setUserRoleFilter] = useState('ALL');
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+
+  const fetchUsers = useCallback(async () => {
+    setUsersLoading(true);
+    setUsersError(null);
+    try {
+      const res = await authApi.getUsers();
+      if (res.success) setDbUsers(res.data);
+    } catch (err: any) {
+      setUsersError(err?.response?.data?.error?.message || 'Failed to load users');
+    } finally {
+      setUsersLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'team') fetchUsers();
+  }, [activeTab, fetchUsers]);
+
+  const handleInviteUser = async () => {
+    if (!inviteForm.name.trim() || !inviteForm.email.trim()) {
+      setUserActionMsg({ type: 'error', text: 'Name and email are required' });
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(inviteForm.email)) {
+      setUserActionMsg({ type: 'error', text: 'Please enter a valid email address' });
+      return;
+    }
+    setInviteLoading(true);
+    try {
+      const res = await authApi.createUser({
+        name: inviteForm.name,
+        email: inviteForm.email,
+        role: inviteForm.role,
+        department: inviteForm.department || undefined,
+      });
+      if (res.success) {
+        const pw = res.message?.match(/Temporary password: (.+)/)?.[1] || inviteForm.email.split('@')[0] + '@2026';
+        setTempPassword(pw);
+        setUserActionMsg({ type: 'success', text: `User "${inviteForm.name}" created successfully!` });
+        setInviteForm({ name: '', email: '', role: 'VIEWER', department: '' });
+        fetchUsers();
+      }
+    } catch (err: any) {
+      setUserActionMsg({ type: 'error', text: err?.response?.data?.error?.message || 'Failed to create user' });
+    } finally {
+      setInviteLoading(false);
+    }
+  };
+
+  const handleRoleChange = async (userId: string, newRole: string) => {
+    try {
+      await authApi.updateUserRole(userId, newRole);
+      setDbUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, role: newRole } : u)));
+      setUserActionMsg({ type: 'success', text: 'Role updated successfully' });
+    } catch (err: any) {
+      setUserActionMsg({ type: 'error', text: err?.response?.data?.error?.message || 'Failed to update role' });
+    }
+    setTimeout(() => setUserActionMsg(null), 3000);
+  };
+
+  const handleToggleActive = async (userId: string, currentlyActive: boolean) => {
+    try {
+      await authApi.toggleUserActive(userId, !currentlyActive);
+      setDbUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, is_active: !currentlyActive ? 1 : 0 } : u)));
+      setUserActionMsg({ type: 'success', text: currentlyActive ? 'User deactivated' : 'User activated' });
+    } catch (err: any) {
+      setUserActionMsg({ type: 'error', text: err?.response?.data?.error?.message || 'Failed to update user' });
+    }
+    setTimeout(() => setUserActionMsg(null), 3000);
+  };
+
+  const handleDeleteUser = async (userId: string) => {
+    try {
+      await authApi.deleteUser(userId);
+      setDbUsers((prev) => prev.filter((u) => u.id !== userId));
+      setConfirmDelete(null);
+      setUserActionMsg({ type: 'success', text: 'User removed' });
+    } catch (err: any) {
+      setUserActionMsg({ type: 'error', text: err?.response?.data?.error?.message || 'Failed to delete user' });
+    }
+    setTimeout(() => setUserActionMsg(null), 3000);
+  };
+
+  const filteredUsers = dbUsers.filter((u) => {
+    if (userRoleFilter !== 'ALL' && u.role !== userRoleFilter) return false;
+    if (userSearchQuery) {
+      const q = userSearchQuery.toLowerCase();
+      return (
+        u.name?.toLowerCase().includes(q) ||
+        u.email?.toLowerCase().includes(q) ||
+        u.department?.toLowerCase().includes(q)
+      );
+    }
+    return true;
+  });
+
+  const getRoleBadgeClass = (role: string) => {
+    switch (role) {
+      case 'ADMIN': return 'bg-red-100 text-red-700 border-red-200';
+      case 'MANAGER': return 'bg-blue-100 text-blue-700 border-blue-200';
+      default: return 'bg-gray-100 text-gray-700 border-gray-200';
+    }
+  };
+
+  const getRoleIcon = (role: string) => {
+    switch (role) {
+      case 'ADMIN': return Shield;
+      case 'MANAGER': return Users;
+      default: return Eye;
+    }
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setUserActionMsg({ type: 'success', text: 'Copied to clipboard!' });
+    setTimeout(() => setUserActionMsg(null), 2000);
+  };
+
   const renderTeamTab = () => (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h3 className="text-lg font-semibold text-gray-900">Team Members</h3>
-          <p className="text-sm text-gray-500">Manage project managers and account managers</p>
+          <h3 className="text-lg font-semibold text-gray-900">Team Management</h3>
+          <p className="text-sm text-gray-500">
+            Add users by email to give them access. Assign roles to control permissions.
+          </p>
         </div>
-        <Button variant="outline" size="sm" onClick={addTeamMember}>
-          <Plus size={16} className="mr-1" /> Add Member
-        </Button>
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-gray-500">{dbUsers.length} user{dbUsers.length !== 1 ? 's' : ''}</span>
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => { setShowInviteForm(true); setTempPassword(null); setUserActionMsg(null); }}
+          >
+            <UserPlus size={16} className="mr-1.5" /> Add User
+          </Button>
+        </div>
       </div>
 
-      <div className="space-y-3">
-        {teamMembers.map((member) => (
-          <div key={member.id} className="flex items-center gap-4 p-4 border border-gray-200 rounded-lg">
-            <div className="w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center">
-              <Users className="text-primary-600" size={20} />
-            </div>
-            <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-3">
-              <Input placeholder="Name" value={member.name} onChange={(e) => updateTeamMember(member.id, 'name', e.target.value)} />
-              <Input placeholder="Email" value={member.email} onChange={(e) => updateTeamMember(member.id, 'email', e.target.value)} />
-              <Select
-                value={member.role}
-                onChange={(e) => updateTeamMember(member.id, 'role', e.target.value)}
-                options={[
-                  { value: 'Project Manager', label: 'Project Manager' },
-                  { value: 'Account Manager', label: 'Account Manager' },
-                  { value: 'Team Lead', label: 'Team Lead' },
-                  { value: 'Developer', label: 'Developer' },
-                ]}
-              />
-            </div>
-            <button onClick={() => removeTeamMember(member.id)} className="p-2 text-red-400 hover:text-red-600">
-              <Trash2 size={16} />
+      {/* Status Message */}
+      {userActionMsg && (
+        <div className={`flex items-center gap-2 px-4 py-3 rounded-lg text-sm font-medium ${
+          userActionMsg.type === 'success'
+            ? 'bg-green-50 text-green-700 border border-green-200'
+            : 'bg-red-50 text-red-700 border border-red-200'
+        }`}>
+          {userActionMsg.type === 'success' ? <CheckCircle size={16} /> : <AlertCircle size={16} />}
+          {userActionMsg.text}
+        </div>
+      )}
+
+      {/* ── Add User Form ─────────────────────────────────────────── */}
+      {showInviteForm && (
+        <div className="border-2 border-primary-200 bg-primary-50/30 rounded-xl p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <h4 className="font-semibold text-gray-900 flex items-center gap-2">
+              <UserPlus size={18} className="text-primary-600" />
+              Add New User
+            </h4>
+            <button
+              onClick={() => { setShowInviteForm(false); setTempPassword(null); }}
+              className="text-gray-400 hover:text-gray-600"
+            >
+              <X size={18} />
             </button>
           </div>
-        ))}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Input
+              label="Full Name *"
+              placeholder="e.g. John Smith"
+              value={inviteForm.name}
+              onChange={(e) => setInviteForm({ ...inviteForm, name: e.target.value })}
+            />
+            <Input
+              label="Email Address *"
+              placeholder="e.g. john.smith@company.com"
+              type="email"
+              value={inviteForm.email}
+              onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
+            />
+            <Select
+              label="Role"
+              value={inviteForm.role}
+              onChange={(e) => setInviteForm({ ...inviteForm, role: e.target.value })}
+              options={[
+                { value: 'VIEWER', label: 'Viewer — Can view projects and reports' },
+                { value: 'MANAGER', label: 'Manager — Can create/edit projects and manage teams' },
+                { value: 'ADMIN', label: 'Admin — Full access to all features and settings' },
+              ]}
+            />
+            <Input
+              label="Department (optional)"
+              placeholder="e.g. IT, Engineering, PMO"
+              value={inviteForm.department}
+              onChange={(e) => setInviteForm({ ...inviteForm, department: e.target.value })}
+            />
+          </div>
+
+          {/* Temp password display */}
+          {tempPassword && (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+              <p className="text-sm font-semibold text-yellow-800 mb-1">Temporary Password Created</p>
+              <p className="text-xs text-yellow-700 mb-2">
+                Share this password with the user. They should change it after first login.
+              </p>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 px-3 py-2 bg-white border border-yellow-300 rounded-md text-sm font-mono text-yellow-900">
+                  {tempPassword}
+                </code>
+                <button
+                  onClick={() => copyToClipboard(tempPassword)}
+                  className="px-3 py-2 bg-yellow-100 hover:bg-yellow-200 text-yellow-800 rounded-md text-sm font-medium flex items-center gap-1 transition-colors"
+                >
+                  <Copy size={14} /> Copy
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-center gap-3 pt-2">
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={handleInviteUser}
+              disabled={inviteLoading}
+            >
+              {inviteLoading ? <Loader2 size={16} className="animate-spin mr-1.5" /> : <Mail size={16} className="mr-1.5" />}
+              Create User
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => { setShowInviteForm(false); setTempPassword(null); }}
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Filters ───────────────────────────────────────────────── */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+        <div className="relative flex-1 max-w-xs">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Search users..."
+            value={userSearchQuery}
+            onChange={(e) => setUserSearchQuery(e.target.value)}
+            className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+          />
+        </div>
+        <div className="flex gap-1 bg-gray-100 rounded-lg p-0.5">
+          {['ALL', 'ADMIN', 'MANAGER', 'VIEWER'].map((role) => (
+            <button
+              key={role}
+              onClick={() => setUserRoleFilter(role)}
+              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                userRoleFilter === role
+                  ? 'bg-white text-primary-700 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              {role === 'ALL' ? 'All' : role.charAt(0) + role.slice(1).toLowerCase()}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* User Roles */}
+      {/* ── User List ─────────────────────────────────────────────── */}
+      {usersLoading ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="w-6 h-6 animate-spin text-primary-600" />
+          <span className="ml-2 text-sm text-gray-500">Loading users...</span>
+        </div>
+      ) : usersError ? (
+        <div className="text-center py-8">
+          <p className="text-red-600 text-sm">{usersError}</p>
+          <button onClick={fetchUsers} className="mt-2 text-primary-600 text-sm hover:underline">Retry</button>
+        </div>
+      ) : filteredUsers.length === 0 ? (
+        <div className="text-center py-12 text-gray-400">
+          <Users size={40} className="mx-auto mb-3 text-gray-300" />
+          <p className="font-medium text-gray-500">No users found</p>
+          <p className="text-sm">{userSearchQuery ? 'Try a different search' : 'Click "Add User" to get started'}</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {filteredUsers.map((u) => {
+            const RoleIcon = getRoleIcon(u.role);
+            const isActive = u.is_active === 1 || u.is_active === true;
+            const isCurrentUser = u.id === currentUser?.id;
+
+            return (
+              <div
+                key={u.id}
+                className={`flex items-center gap-4 p-4 border rounded-xl transition-all ${
+                  !isActive ? 'bg-gray-50 border-gray-200 opacity-60' : 'bg-white border-gray-200 hover:border-gray-300 hover:shadow-sm'
+                }`}
+              >
+                {/* Avatar */}
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold ${
+                  u.role === 'ADMIN' ? 'bg-red-100 text-red-700'
+                  : u.role === 'MANAGER' ? 'bg-blue-100 text-blue-700'
+                  : 'bg-gray-100 text-gray-700'
+                }`}>
+                  {u.name?.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase() || '?'}
+                </div>
+
+                {/* Info */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-medium text-gray-900 text-sm">{u.name}</span>
+                    {isCurrentUser && (
+                      <span className="text-xs px-1.5 py-0.5 bg-primary-100 text-primary-700 rounded-full font-medium">You</span>
+                    )}
+                    {!isActive && (
+                      <span className="text-xs px-1.5 py-0.5 bg-red-100 text-red-600 rounded-full font-medium">Inactive</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+                    <span className="text-xs text-gray-500 flex items-center gap-1">
+                      <Mail size={11} /> {u.email}
+                    </span>
+                    {u.department && (
+                      <span className="text-xs text-gray-400">
+                        {u.department}
+                      </span>
+                    )}
+                    {u.created_at && (
+                      <span className="text-xs text-gray-400">
+                        Joined {formatDistanceToNow(new Date(u.created_at), { addSuffix: true })}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Role Badge */}
+                <span className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-full border ${getRoleBadgeClass(u.role)}`}>
+                  <RoleIcon size={12} />
+                  {u.role}
+                </span>
+
+                {/* Actions */}
+                {currentUser?.role === 'ADMIN' && !isCurrentUser && (
+                  <div className="flex items-center gap-1">
+                    {/* Role selector */}
+                    <select
+                      value={u.role}
+                      onChange={(e) => handleRoleChange(u.id, e.target.value)}
+                      className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:ring-2 focus:ring-primary-500 outline-none"
+                    >
+                      <option value="VIEWER">Viewer</option>
+                      <option value="MANAGER">Manager</option>
+                      <option value="ADMIN">Admin</option>
+                    </select>
+
+                    {/* Toggle active */}
+                    <button
+                      onClick={() => handleToggleActive(u.id, isActive)}
+                      className={`p-1.5 rounded-lg transition-colors ${
+                        isActive
+                          ? 'text-yellow-600 hover:bg-yellow-50'
+                          : 'text-green-600 hover:bg-green-50'
+                      }`}
+                      title={isActive ? 'Deactivate user' : 'Activate user'}
+                    >
+                      {isActive ? <UserX size={16} /> : <UserCheck size={16} />}
+                    </button>
+
+                    {/* Delete */}
+                    {confirmDelete === u.id ? (
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => handleDeleteUser(u.id)}
+                          className="px-2 py-1 bg-red-600 text-white text-xs rounded-md hover:bg-red-700 transition-colors"
+                        >
+                          Confirm
+                        </button>
+                        <button
+                          onClick={() => setConfirmDelete(null)}
+                          className="px-2 py-1 bg-gray-200 text-gray-700 text-xs rounded-md hover:bg-gray-300 transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setConfirmDelete(u.id)}
+                        className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        title="Remove user"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── Role Permissions Reference ────────────────────────────── */}
       <div className="mt-8">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Role Permissions</h3>
+        <p className="text-sm text-gray-500 mb-3">
+          Assign roles to control what each team member can do in the application.
+        </p>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-200">
                 <th className="text-left py-3 px-4 font-medium text-gray-700">Permission</th>
-                <th className="text-center py-3 px-4 font-medium text-gray-700">Admin</th>
-                <th className="text-center py-3 px-4 font-medium text-gray-700">Manager</th>
-                <th className="text-center py-3 px-4 font-medium text-gray-700">Viewer</th>
+                <th className="text-center py-3 px-4 font-medium text-gray-700">
+                  <span className="inline-flex items-center gap-1"><Shield size={14} className="text-red-500" /> Admin</span>
+                </th>
+                <th className="text-center py-3 px-4 font-medium text-gray-700">
+                  <span className="inline-flex items-center gap-1"><Users size={14} className="text-blue-500" /> Manager</span>
+                </th>
+                <th className="text-center py-3 px-4 font-medium text-gray-700">
+                  <span className="inline-flex items-center gap-1"><Eye size={14} className="text-gray-500" /> Viewer</span>
+                </th>
               </tr>
             </thead>
             <tbody>
               {[
-                { name: 'View Projects', admin: true, manager: true, viewer: true },
-                { name: 'Create Projects', admin: true, manager: true, viewer: false },
-                { name: 'Edit Projects', admin: true, manager: true, viewer: false },
+                { name: 'View Projects & Reports', admin: true, manager: true, viewer: true },
+                { name: 'Create & Edit Projects', admin: true, manager: true, viewer: false },
                 { name: 'Delete Projects', admin: true, manager: false, viewer: false },
-                { name: 'Manage Users', admin: true, manager: false, viewer: false },
-                { name: 'View Reports', admin: true, manager: true, viewer: true },
-                { name: 'Export Data', admin: true, manager: true, viewer: false },
+                { name: 'Manage Team Members', admin: true, manager: false, viewer: false },
+                { name: 'Add / Remove Users', admin: true, manager: false, viewer: false },
+                { name: 'Change User Roles', admin: true, manager: false, viewer: false },
+                { name: 'Export Data (PDF / Excel)', admin: true, manager: true, viewer: false },
                 { name: 'System Settings', admin: true, manager: false, viewer: false },
+                { name: 'View Notifications', admin: true, manager: true, viewer: true },
+                { name: 'View Case Studies', admin: true, manager: true, viewer: true },
               ].map((perm) => (
                 <tr key={perm.name} className="border-b border-gray-100">
                   <td className="py-3 px-4 text-gray-900">{perm.name}</td>
@@ -1346,32 +1747,84 @@ export default function SettingsPage() {
             >
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-3">
-                  <div
-                    className="w-12 h-12 rounded-lg flex items-center justify-center text-2xl"
-                    style={{ backgroundColor: type.color + '20' }}
-                  >
-                    {type.icon}
+                  <div className="relative">
+                    <div
+                      className="w-12 h-12 rounded-lg flex items-center justify-center text-2xl cursor-pointer"
+                      style={{ backgroundColor: type.color + '20' }}
+                    >
+                      {type.icon}
+                    </div>
+                    <input
+                      type="text"
+                      value={type.icon}
+                      onChange={(e) => {
+                        setMigrationTypes(migrationTypes.map((t) =>
+                          t.id === type.id ? { ...t, icon: e.target.value } : t
+                        ));
+                      }}
+                      className="absolute inset-0 w-12 h-12 opacity-0 cursor-pointer"
+                      title="Click to change icon (use emoji)"
+                    />
                   </div>
-                  <div>
-                    <p className="font-semibold text-gray-900">{type.name}</p>
-                    <p className="text-xs text-gray-500 uppercase tracking-wide">{type.code}</p>
+                  <div className="flex-1">
+                    <input
+                      type="text"
+                      value={type.name}
+                      onChange={(e) => {
+                        setMigrationTypes(migrationTypes.map((t) =>
+                          t.id === type.id ? { ...t, name: e.target.value } : t
+                        ));
+                      }}
+                      className="font-semibold text-gray-900 bg-transparent border-b border-transparent hover:border-gray-300 focus:border-primary-500 focus:outline-none w-full"
+                    />
+                    <input
+                      type="text"
+                      value={type.code}
+                      onChange={(e) => {
+                        setMigrationTypes(migrationTypes.map((t) =>
+                          t.id === type.id ? { ...t, code: e.target.value.toUpperCase() } : t
+                        ));
+                      }}
+                      className="text-xs text-gray-500 uppercase tracking-wide bg-transparent border-b border-transparent hover:border-gray-300 focus:border-primary-500 focus:outline-none w-full mt-1"
+                    />
                   </div>
                 </div>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={type.enabled}
-                    onChange={() => {
-                      setMigrationTypes(migrationTypes.map((t) =>
-                        t.id === type.id ? { ...t, enabled: !t.enabled } : t
-                      ));
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      setMigrationTypes(migrationTypes.filter((t) => t.id !== type.id));
                     }}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
-                </label>
+                    className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                    title="Delete migration type"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={type.enabled}
+                      onChange={() => {
+                        setMigrationTypes(migrationTypes.map((t) =>
+                          t.id === type.id ? { ...t, enabled: !t.enabled } : t
+                        ));
+                      }}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
+                  </label>
+                </div>
               </div>
-              <p className="mt-3 text-sm text-gray-600">{type.description}</p>
+              <textarea
+                value={type.description}
+                onChange={(e) => {
+                  setMigrationTypes(migrationTypes.map((t) =>
+                    t.id === type.id ? { ...t, description: e.target.value } : t
+                  ));
+                }}
+                className="mt-3 text-sm text-gray-600 bg-transparent border border-transparent hover:border-gray-300 focus:border-primary-500 focus:outline-none w-full rounded p-1 resize-none"
+                rows={2}
+                placeholder="Description of the migration type"
+              />
               <div className="mt-3 flex items-center gap-2">
                 <input
                   type="color"
@@ -1457,7 +1910,7 @@ export default function SettingsPage() {
           </Button>
         </div>
 
-        <div className="space-y-2">
+        <div className="space-y-3">
           {['Email', 'Content', 'Messaging', 'Other'].map((category) => {
             const platformsInCategory = sourcePlatforms.filter((p) => p.category === category);
             if (platformsInCategory.length === 0 && category !== 'Other') return null;
@@ -1466,23 +1919,46 @@ export default function SettingsPage() {
                 <div className="px-4 py-2 bg-gray-50 font-medium text-gray-700 text-sm">
                   {category} Platforms ({platformsInCategory.length})
                 </div>
-                <div className="p-2 flex flex-wrap gap-2">
+                <div className="p-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
                   {platformsInCategory.map((platform) => (
                     <div
                       key={platform.id}
-                      className="flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 rounded-full text-sm group"
+                      className="flex items-center gap-2 p-2 bg-white border border-gray-200 rounded-lg text-sm group hover:border-primary-300 transition-colors"
                     >
-                      <span>{platform.name}</span>
+                      <input
+                        type="text"
+                        value={platform.name}
+                        onChange={(e) => {
+                          setSourcePlatforms(sourcePlatforms.map((p) =>
+                            p.id === platform.id ? { ...p, name: e.target.value } : p
+                          ));
+                        }}
+                        className="flex-1 bg-transparent border-b border-transparent hover:border-gray-300 focus:border-primary-500 focus:outline-none text-gray-900"
+                      />
+                      <select
+                        value={platform.category}
+                        onChange={(e) => {
+                          setSourcePlatforms(sourcePlatforms.map((p) =>
+                            p.id === platform.id ? { ...p, category: e.target.value } : p
+                          ));
+                        }}
+                        className="text-xs text-gray-500 bg-gray-100 border-0 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                      >
+                        <option value="Email">Email</option>
+                        <option value="Content">Content</option>
+                        <option value="Messaging">Messaging</option>
+                        <option value="Other">Other</option>
+                      </select>
                       <button
                         onClick={() => setSourcePlatforms(sourcePlatforms.filter((p) => p.id !== platform.id))}
-                        className="text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="text-gray-400 hover:text-red-500 transition-colors"
                       >
                         <X size={14} />
                       </button>
                     </div>
                   ))}
                   {platformsInCategory.length === 0 && (
-                    <span className="text-sm text-gray-400 italic">No platforms configured</span>
+                    <span className="text-sm text-gray-400 italic col-span-full">No platforms configured</span>
                   )}
                 </div>
               </div>
@@ -1496,7 +1972,7 @@ export default function SettingsPage() {
         <div className="flex items-center justify-between mb-4">
           <div>
             <h3 className="text-lg font-semibold text-gray-900">Target Platforms</h3>
-            <p className="text-sm text-gray-500">Platforms you migrate data to</p>
+            <p className="text-sm text-gray-500">Platforms you migrate data to (destination)</p>
           </div>
           <Button
             variant="outline"
@@ -1514,20 +1990,44 @@ export default function SettingsPage() {
           </Button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
           {targetPlatforms.map((platform) => (
             <div
               key={platform.id}
               className="p-3 border border-gray-200 rounded-lg bg-white hover:border-primary-300 transition-colors group"
             >
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium text-gray-900">{platform.name}</p>
-                  <p className="text-xs text-gray-500">{platform.category}</p>
+              <div className="flex items-center gap-2">
+                <div className="flex-1">
+                  <input
+                    type="text"
+                    value={platform.name}
+                    onChange={(e) => {
+                      setTargetPlatforms(targetPlatforms.map((p) =>
+                        p.id === platform.id ? { ...p, name: e.target.value } : p
+                      ));
+                    }}
+                    className="w-full font-medium text-gray-900 bg-transparent border-b border-transparent hover:border-gray-300 focus:border-primary-500 focus:outline-none"
+                  />
+                  <select
+                    value={platform.category}
+                    onChange={(e) => {
+                      setTargetPlatforms(targetPlatforms.map((p) =>
+                        p.id === platform.id ? { ...p, category: e.target.value } : p
+                      ));
+                    }}
+                    className="mt-1 text-xs text-gray-500 bg-gray-100 border-0 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                  >
+                    <option value="Suite">Suite</option>
+                    <option value="Email">Email</option>
+                    <option value="Content">Content</option>
+                    <option value="Messaging">Messaging</option>
+                    <option value="Cloud">Cloud</option>
+                    <option value="Other">Other</option>
+                  </select>
                 </div>
                 <button
                   onClick={() => setTargetPlatforms(targetPlatforms.filter((p) => p.id !== platform.id))}
-                  className="text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                  className="text-gray-400 hover:text-red-500 transition-colors"
                 >
                   <Trash2 size={16} />
                 </button>
@@ -1617,61 +2117,465 @@ export default function SettingsPage() {
     </div>
   );
 
+  // ── Template Editor State ───────────────────────────────────────
+  const [dbTemplates, setDbTemplates] = useState<any[]>([]);
+  const [templatesLoading, setTemplatesLoading] = useState(false);
+  const [templatesError, setTemplatesError] = useState<string | null>(null);
+  const [templateActionMsg, setTemplateActionMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [expandedTemplate, setExpandedTemplate] = useState<string | null>(null);
+  const [expandedPhases, setExpandedPhases] = useState<Set<string>>(new Set());
+  const [editingPhase, setEditingPhase] = useState<string | null>(null);
+  const [editingTask, setEditingTask] = useState<string | null>(null);
+  const [showNewTemplate, setShowNewTemplate] = useState(false);
+  const [newTemplateForm, setNewTemplateForm] = useState({ name: '', code: '', description: '' });
+  const [newPhaseForm, setNewPhaseForm] = useState<{ [templateId: string]: boolean }>({});
+  const [newTaskForm, setNewTaskForm] = useState<{ [phaseId: string]: boolean }>({});
+  const [templateSaving, setTemplateSaving] = useState(false);
+
+  const TEMPLATE_COLORS: Record<string, { border: string; bg: string; icon: string; text: string }> = {
+    CONTENT: { border: 'border-blue-200', bg: 'bg-blue-50', icon: '📁', text: 'text-blue-700' },
+    EMAIL: { border: 'border-green-200', bg: 'bg-green-50', icon: '📧', text: 'text-green-700' },
+    MESSAGING: { border: 'border-purple-200', bg: 'bg-purple-50', icon: '💬', text: 'text-purple-700' },
+    IDENTITY: { border: 'border-yellow-200', bg: 'bg-yellow-50', icon: '👤', text: 'text-yellow-700' },
+    APPLICATION: { border: 'border-red-200', bg: 'bg-red-50', icon: '🖥️', text: 'text-red-700' },
+    DATABASE: { border: 'border-indigo-200', bg: 'bg-indigo-50', icon: '🗄️', text: 'text-indigo-700' },
+  };
+  const getTemplateColor = (code: string) => TEMPLATE_COLORS[code] || { border: 'border-gray-200', bg: 'bg-gray-50', icon: '📋', text: 'text-gray-700' };
+
+  const fetchTemplates = useCallback(async () => {
+    setTemplatesLoading(true);
+    setTemplatesError(null);
+    try {
+      const res = await templatesApi.getAll();
+      if (res.success) setDbTemplates(res.data);
+    } catch (err: any) {
+      setTemplatesError(err?.response?.data?.error?.message || 'Failed to load templates');
+    } finally {
+      setTemplatesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'templates') fetchTemplates();
+  }, [activeTab, fetchTemplates]);
+
+  const showTplMsg = (type: 'success' | 'error', text: string) => {
+    setTemplateActionMsg({ type, text });
+    setTimeout(() => setTemplateActionMsg(null), 3000);
+  };
+
+  const handleCreateTemplate = async () => {
+    if (!newTemplateForm.name || !newTemplateForm.code) {
+      showTplMsg('error', 'Name and code are required'); return;
+    }
+    setTemplateSaving(true);
+    try {
+      await templatesApi.create({
+        name: newTemplateForm.name,
+        code: newTemplateForm.code.toUpperCase(),
+        description: newTemplateForm.description,
+        phases: [],
+      });
+      showTplMsg('success', 'Template created');
+      setNewTemplateForm({ name: '', code: '', description: '' });
+      setShowNewTemplate(false);
+      fetchTemplates();
+    } catch (err: any) {
+      showTplMsg('error', err?.response?.data?.error?.message || 'Failed to create template');
+    } finally {
+      setTemplateSaving(false);
+    }
+  };
+
+  const handleDeleteTemplate = async (id: string) => {
+    if (!window.confirm('Delete this template and all its phases/tasks?')) return;
+    try {
+      await templatesApi.delete(id);
+      showTplMsg('success', 'Template deleted');
+      fetchTemplates();
+    } catch (err: any) {
+      showTplMsg('error', err?.response?.data?.error?.message || 'Failed to delete');
+    }
+  };
+
+  const handleAddPhase = async (templateId: string, name: string, duration: number) => {
+    const template = dbTemplates.find(t => t.id === templateId);
+    const nextOrder = template?.phases?.length || 0;
+    try {
+      await templatesApi.addPhase(templateId, { name, orderIndex: nextOrder, defaultDuration: duration });
+      showTplMsg('success', 'Phase added');
+      fetchTemplates();
+    } catch (err: any) {
+      showTplMsg('error', err?.response?.data?.error?.message || 'Failed to add phase');
+    }
+  };
+
+  const handleUpdatePhase = async (phaseId: string, updates: any) => {
+    try {
+      await templatesApi.updatePhase(phaseId, updates);
+      showTplMsg('success', 'Phase updated');
+      setEditingPhase(null);
+      fetchTemplates();
+    } catch (err: any) {
+      showTplMsg('error', err?.response?.data?.error?.message || 'Failed to update phase');
+    }
+  };
+
+  const handleDeletePhase = async (phaseId: string) => {
+    if (!window.confirm('Delete this phase and all its tasks?')) return;
+    try {
+      await templatesApi.deletePhase(phaseId);
+      showTplMsg('success', 'Phase deleted');
+      fetchTemplates();
+    } catch (err: any) {
+      showTplMsg('error', err?.response?.data?.error?.message || 'Failed');
+    }
+  };
+
+  const handleAddTask = async (phaseId: string, name: string, duration: number, isMilestone: boolean) => {
+    const phase = dbTemplates.flatMap((t: any) => t.phases).find((p: any) => p.id === phaseId);
+    const nextOrder = phase?.tasks?.length || 0;
+    try {
+      await templatesApi.addTask(phaseId, { name, orderIndex: nextOrder, defaultDuration: duration, isMilestone });
+      showTplMsg('success', 'Task added');
+      fetchTemplates();
+    } catch (err: any) {
+      showTplMsg('error', err?.response?.data?.error?.message || 'Failed to add task');
+    }
+  };
+
+  const handleUpdateTask = async (taskId: string, updates: any) => {
+    try {
+      await templatesApi.updateTask(taskId, updates);
+      showTplMsg('success', 'Task updated');
+      setEditingTask(null);
+      fetchTemplates();
+    } catch (err: any) {
+      showTplMsg('error', err?.response?.data?.error?.message || 'Failed');
+    }
+  };
+
+  const handleDeleteTask = async (taskId: string) => {
+    try {
+      await templatesApi.deleteTask(taskId);
+      showTplMsg('success', 'Task removed');
+      fetchTemplates();
+    } catch (err: any) {
+      showTplMsg('error', err?.response?.data?.error?.message || 'Failed');
+    }
+  };
+
+  const togglePhaseExpand = (phaseId: string) => {
+    const next = new Set(expandedPhases);
+    next.has(phaseId) ? next.delete(phaseId) : next.add(phaseId);
+    setExpandedPhases(next);
+  };
+
   const renderTemplatesTab = () => (
     <div className="space-y-6">
-      <Card>
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900">Project Templates</h3>
-            <p className="text-sm text-gray-500">
-              Define phase and task templates for each migration type. When you create a project, tasks will be auto-generated from the template.
-            </p>
-          </div>
-          <a 
-            href="/settings/templates" 
-            className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
-          >
-            Open Template Editor
-          </a>
-        </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
-          <div className="p-4 border border-blue-200 bg-blue-50 rounded-lg">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-2xl">📁</span>
-              <span className="font-semibold text-gray-900">Content Migration</span>
-            </div>
-            <p className="text-sm text-gray-600 mb-2">5 phases, 15 tasks</p>
-            <p className="text-xs text-gray-500">SharePoint, File Servers, OneDrive</p>
-          </div>
-          
-          <div className="p-4 border border-green-200 bg-green-50 rounded-lg">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-2xl">📧</span>
-              <span className="font-semibold text-gray-900">Email Migration</span>
-            </div>
-            <p className="text-sm text-gray-600 mb-2">5 phases, 17 tasks</p>
-            <p className="text-xs text-gray-500">Exchange, Gmail, Mailbox</p>
-          </div>
-          
-          <div className="p-4 border border-purple-200 bg-purple-50 rounded-lg">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-2xl">💬</span>
-              <span className="font-semibold text-gray-900">Messaging Migration</span>
-            </div>
-            <p className="text-sm text-gray-600 mb-2">5 phases, 14 tasks</p>
-            <p className="text-xs text-gray-500">Slack, Teams, Chat</p>
-          </div>
-        </div>
-        
-        <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-          <p className="text-sm text-yellow-800">
-            <strong>How it works:</strong> When you create a new project and select a migration type, 
-            the system automatically generates all phases and tasks based on the template. 
-            You can then track progress on each task with the Gantt view.
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900">Project Templates</h3>
+          <p className="text-sm text-gray-500">
+            Define phases and tasks for each migration type. Projects auto-generate from these templates.
           </p>
         </div>
-      </Card>
+        <Button variant="primary" size="sm" onClick={() => setShowNewTemplate(true)}>
+          <Plus size={16} className="mr-1.5" /> New Template
+        </Button>
+      </div>
+
+      {/* Status */}
+      {templateActionMsg && (
+        <div className={`flex items-center gap-2 px-4 py-3 rounded-lg text-sm font-medium ${
+          templateActionMsg.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'
+        }`}>
+          {templateActionMsg.type === 'success' ? <CheckCircle size={16} /> : <AlertCircle size={16} />}
+          {templateActionMsg.text}
+        </div>
+      )}
+
+      {/* Create Template Form */}
+      {showNewTemplate && (
+        <div className="border-2 border-primary-200 bg-primary-50/30 rounded-xl p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <h4 className="font-semibold text-gray-900">Create New Template</h4>
+            <button onClick={() => setShowNewTemplate(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Input label="Template Name *" placeholder="e.g. Database Migration" value={newTemplateForm.name} onChange={(e) => setNewTemplateForm({ ...newTemplateForm, name: e.target.value })} />
+            <Input label="Code *" placeholder="e.g. DATABASE" value={newTemplateForm.code} onChange={(e) => setNewTemplateForm({ ...newTemplateForm, code: e.target.value.toUpperCase() })} />
+            <Input label="Description" placeholder="Brief description" value={newTemplateForm.description} onChange={(e) => setNewTemplateForm({ ...newTemplateForm, description: e.target.value })} />
+          </div>
+          <div className="flex gap-2">
+            <Button variant="primary" size="sm" onClick={handleCreateTemplate} disabled={templateSaving}>
+              {templateSaving ? <Loader2 size={16} className="animate-spin mr-1" /> : <Plus size={16} className="mr-1" />} Create
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setShowNewTemplate(false)}>Cancel</Button>
+          </div>
+        </div>
+      )}
+
+      {/* Loading */}
+      {templatesLoading && dbTemplates.length === 0 && (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="w-6 h-6 animate-spin text-primary-600 mr-2" />
+          <span className="text-sm text-gray-500">Loading templates...</span>
+        </div>
+      )}
+
+      {/* Error */}
+      {templatesError && (
+        <div className="text-center py-8">
+          <p className="text-red-600 text-sm">{templatesError}</p>
+          <button onClick={fetchTemplates} className="mt-2 text-primary-600 text-sm hover:underline">Retry</button>
+        </div>
+      )}
+
+      {/* Template Cards */}
+      {dbTemplates.map((tpl) => {
+        const color = getTemplateColor(tpl.code);
+        const totalTasks = tpl.phases?.reduce((sum: number, p: any) => sum + (p.tasks?.length || 0), 0) || 0;
+        const totalMilestones = tpl.phases?.reduce((sum: number, p: any) => sum + (p.tasks?.filter((t: any) => t.isMilestone).length || 0), 0) || 0;
+        const isExpanded = expandedTemplate === tpl.id;
+
+        return (
+          <div key={tpl.id} className={`border rounded-xl overflow-hidden transition-all ${isExpanded ? 'border-primary-300 shadow-md' : 'border-gray-200'}`}>
+            {/* Template Header */}
+            <div
+              className={`flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50 transition-colors ${isExpanded ? 'bg-gray-50 border-b border-gray-200' : ''}`}
+              onClick={() => setExpandedTemplate(isExpanded ? null : tpl.id)}
+            >
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-xl ${color.bg} border ${color.border}`}>
+                  {color.icon}
+                </div>
+                <div>
+                  <h4 className="font-semibold text-gray-900">{tpl.name}</h4>
+                  <div className="flex items-center gap-3 mt-0.5">
+                    <span className={`text-xs font-mono font-semibold px-2 py-0.5 rounded ${color.bg} ${color.text} border ${color.border}`}>{tpl.code}</span>
+                    <span className="text-xs text-gray-500">{tpl.phases?.length || 0} phases</span>
+                    <span className="text-xs text-gray-500">{totalTasks} tasks</span>
+                    {totalMilestones > 0 && <span className="text-xs text-yellow-600">{totalMilestones} milestones</span>}
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleDeleteTemplate(tpl.id); }}
+                  className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                  title="Delete template"
+                >
+                  <Trash2 size={16} />
+                </button>
+                {isExpanded ? <ChevronUp size={20} className="text-gray-400" /> : <ChevronDown size={20} className="text-gray-400" />}
+              </div>
+            </div>
+
+            {/* Expanded: Phases & Tasks */}
+            {isExpanded && (
+              <div className="p-4 space-y-3">
+                {tpl.description && <p className="text-sm text-gray-500 mb-3">{tpl.description}</p>}
+
+                {/* Phases */}
+                {tpl.phases?.map((phase: any, pi: number) => {
+                  const phaseExpanded = expandedPhases.has(phase.id);
+                  const isEditingPhase = editingPhase === phase.id;
+
+                  return (
+                    <div key={phase.id} className="border border-gray-200 rounded-lg overflow-hidden">
+                      {/* Phase Header */}
+                      <div
+                        className="flex items-center justify-between p-3 bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors"
+                        onClick={() => togglePhaseExpand(phase.id)}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="w-6 h-6 bg-primary-100 text-primary-700 rounded-full text-xs font-bold flex items-center justify-center">{pi + 1}</span>
+                          {isEditingPhase ? (
+                            <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                              <input
+                                className="text-sm font-medium border border-gray-300 rounded px-2 py-1 w-48 focus:ring-2 focus:ring-primary-500 outline-none"
+                                defaultValue={phase.name}
+                                onBlur={(e) => handleUpdatePhase(phase.id, { name: e.target.value })}
+                                onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                                autoFocus
+                              />
+                              <input
+                                className="text-sm border border-gray-300 rounded px-2 py-1 w-20 focus:ring-2 focus:ring-primary-500 outline-none"
+                                type="number"
+                                defaultValue={phase.defaultDuration}
+                                onBlur={(e) => handleUpdatePhase(phase.id, { defaultDuration: parseInt(e.target.value) || 7 })}
+                                onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                              />
+                              <span className="text-xs text-gray-400">days</span>
+                            </div>
+                          ) : (
+                            <>
+                              <span className="text-sm font-medium text-gray-900">{phase.name}</span>
+                              <span className="text-xs text-gray-400 ml-1">({phase.defaultDuration}d)</span>
+                              <span className="text-xs text-gray-400">· {phase.tasks?.length || 0} tasks</span>
+                            </>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                          <button onClick={() => setEditingPhase(isEditingPhase ? null : phase.id)} className="p-1 text-gray-400 hover:text-primary-600 rounded" title="Edit phase">
+                            <Settings size={14} />
+                          </button>
+                          <button onClick={() => handleDeletePhase(phase.id)} className="p-1 text-gray-400 hover:text-red-600 rounded" title="Delete phase">
+                            <Trash2 size={14} />
+                          </button>
+                          {phaseExpanded ? <ChevronUp size={16} className="text-gray-400 ml-1" /> : <ChevronDown size={16} className="text-gray-400 ml-1" />}
+                        </div>
+                      </div>
+
+                      {/* Tasks */}
+                      {phaseExpanded && (
+                        <div className="p-3 space-y-1.5 bg-white">
+                          {phase.tasks?.length === 0 && (
+                            <p className="text-xs text-gray-400 italic py-2 text-center">No tasks yet. Add one below.</p>
+                          )}
+                          {phase.tasks?.map((task: any, ti: number) => {
+                            const isEditingThisTask = editingTask === task.id;
+                            return (
+                              <div key={task.id} className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${task.isMilestone ? 'bg-yellow-50 border border-yellow-200' : 'bg-gray-50 border border-gray-100'}`}>
+                                <span className="w-5 h-5 bg-gray-200 text-gray-600 rounded text-xs font-medium flex items-center justify-center flex-shrink-0">
+                                  {ti + 1}
+                                </span>
+                                {isEditingThisTask ? (
+                                  <div className="flex items-center gap-2 flex-1" onClick={(e) => e.stopPropagation()}>
+                                    <input
+                                      className="text-sm border border-gray-300 rounded px-2 py-1 flex-1 focus:ring-2 focus:ring-primary-500 outline-none"
+                                      defaultValue={task.name}
+                                      onBlur={(e) => handleUpdateTask(task.id, { name: e.target.value })}
+                                      onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                                      autoFocus
+                                    />
+                                    <input
+                                      className="text-sm border border-gray-300 rounded px-2 py-1 w-16 focus:ring-2 focus:ring-primary-500 outline-none"
+                                      type="number"
+                                      defaultValue={task.defaultDuration}
+                                      onBlur={(e) => handleUpdateTask(task.id, { defaultDuration: parseInt(e.target.value) || 1 })}
+                                      onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                                    />
+                                    <label className="flex items-center gap-1 text-xs text-gray-500">
+                                      <input
+                                        type="checkbox"
+                                        defaultChecked={!!task.isMilestone}
+                                        onChange={(e) => handleUpdateTask(task.id, { isMilestone: e.target.checked })}
+                                        className="rounded"
+                                      />
+                                      Milestone
+                                    </label>
+                                  </div>
+                                ) : (
+                                  <>
+                                    <span className="flex-1 text-gray-700">{task.name}</span>
+                                    <span className="text-xs text-gray-400">{task.defaultDuration}d</span>
+                                    {task.isMilestone ? (
+                                      <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-700 rounded font-medium">Milestone</span>
+                                    ) : null}
+                                  </>
+                                )}
+                                <div className="flex items-center gap-0.5 flex-shrink-0">
+                                  <button onClick={() => setEditingTask(isEditingThisTask ? null : task.id)} className="p-1 text-gray-400 hover:text-primary-600 rounded">
+                                    <Settings size={12} />
+                                  </button>
+                                  <button onClick={() => handleDeleteTask(task.id)} className="p-1 text-gray-400 hover:text-red-500 rounded">
+                                    <Trash2 size={12} />
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+
+                          {/* Add Task inline */}
+                          {newTaskForm[phase.id] ? (
+                            <div className="flex items-center gap-2 px-3 py-2 bg-primary-50 border border-primary-200 rounded-lg">
+                              <input id={`new-task-name-${phase.id}`} className="text-sm border border-gray-300 rounded px-2 py-1 flex-1 focus:ring-2 focus:ring-primary-500 outline-none" placeholder="Task name" autoFocus />
+                              <input id={`new-task-dur-${phase.id}`} className="text-sm border border-gray-300 rounded px-2 py-1 w-16 focus:ring-2 focus:ring-primary-500 outline-none" type="number" defaultValue="2" placeholder="Days" />
+                              <label className="flex items-center gap-1 text-xs text-gray-500">
+                                <input id={`new-task-ms-${phase.id}`} type="checkbox" className="rounded" />MS
+                              </label>
+                              <button
+                                onClick={() => {
+                                  const nameEl = document.getElementById(`new-task-name-${phase.id}`) as HTMLInputElement;
+                                  const durEl = document.getElementById(`new-task-dur-${phase.id}`) as HTMLInputElement;
+                                  const msEl = document.getElementById(`new-task-ms-${phase.id}`) as HTMLInputElement;
+                                  if (nameEl?.value) {
+                                    handleAddTask(phase.id, nameEl.value, parseInt(durEl?.value) || 2, msEl?.checked || false);
+                                    setNewTaskForm({ ...newTaskForm, [phase.id]: false });
+                                  }
+                                }}
+                                className="px-2 py-1 bg-primary-600 text-white text-xs rounded hover:bg-primary-700"
+                              >
+                                Add
+                              </button>
+                              <button onClick={() => setNewTaskForm({ ...newTaskForm, [phase.id]: false })} className="text-gray-400 hover:text-gray-600">
+                                <X size={14} />
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => setNewTaskForm({ ...newTaskForm, [phase.id]: true })}
+                              className="flex items-center gap-1 px-3 py-1.5 text-xs text-primary-600 hover:text-primary-700 hover:bg-primary-50 rounded-lg transition-colors w-full"
+                            >
+                              <Plus size={14} /> Add Task
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {/* Add Phase */}
+                {newPhaseForm[tpl.id] ? (
+                  <div className="flex items-center gap-2 p-3 bg-primary-50 border-2 border-dashed border-primary-200 rounded-lg">
+                    <input id={`new-phase-name-${tpl.id}`} className="text-sm border border-gray-300 rounded px-2 py-1.5 flex-1 focus:ring-2 focus:ring-primary-500 outline-none" placeholder="Phase name (e.g. Phase 6: Post-Migration)" autoFocus />
+                    <input id={`new-phase-dur-${tpl.id}`} className="text-sm border border-gray-300 rounded px-2 py-1.5 w-20 focus:ring-2 focus:ring-primary-500 outline-none" type="number" defaultValue="7" placeholder="Days" />
+                    <button
+                      onClick={() => {
+                        const nameEl = document.getElementById(`new-phase-name-${tpl.id}`) as HTMLInputElement;
+                        const durEl = document.getElementById(`new-phase-dur-${tpl.id}`) as HTMLInputElement;
+                        if (nameEl?.value) {
+                          handleAddPhase(tpl.id, nameEl.value, parseInt(durEl?.value) || 7);
+                          setNewPhaseForm({ ...newPhaseForm, [tpl.id]: false });
+                        }
+                      }}
+                      className="px-3 py-1.5 bg-primary-600 text-white text-sm rounded-lg hover:bg-primary-700"
+                    >
+                      Add Phase
+                    </button>
+                    <button onClick={() => setNewPhaseForm({ ...newPhaseForm, [tpl.id]: false })} className="text-gray-400 hover:text-gray-600"><X size={16} /></button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setNewPhaseForm({ ...newPhaseForm, [tpl.id]: true })}
+                    className="flex items-center gap-2 w-full p-3 border-2 border-dashed border-gray-200 rounded-lg text-sm text-gray-500 hover:border-primary-300 hover:text-primary-600 hover:bg-primary-50/30 transition-colors"
+                  >
+                    <Plus size={16} /> Add New Phase
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {/* How it works */}
+      <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+        <div className="flex gap-3">
+          <Info size={20} className="text-blue-600 flex-shrink-0 mt-0.5" />
+          <div>
+            <h4 className="text-sm font-semibold text-blue-900">How Templates Work</h4>
+            <p className="text-sm text-blue-700 mt-0.5">
+              When you create a new project and select a migration type, the system automatically generates all phases and tasks from the matching template.
+              You can then track progress on each task. Click a template above to expand and edit its phases and tasks inline.
+            </p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 

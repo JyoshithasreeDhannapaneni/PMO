@@ -1,122 +1,144 @@
-import { prisma } from '../config/database';
-import { ProjectPhaseRecord, PhaseStatus, ProjectPhase } from '@prisma/client';
+import { query, execute } from '../config/database';
 import { AppError } from '../middleware/errorHandler';
 import { logger } from '../utils/logger';
 
+type PhaseStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'SKIPPED';
+type ProjectPhase = 'KICKOFF' | 'MIGRATION' | 'VALIDATION' | 'CLOSURE' | 'COMPLETED';
+
 export interface UpdatePhaseDTO {
-  actualDate?: Date | string | null;
+  actualStart?: Date | string | null;
+  actualEnd?: Date | string | null;
   status?: PhaseStatus;
+  progress?: number;
   notes?: string;
 }
 
+function mapPhaseRow(row: any) {
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    phaseName: row.phase_name,
+    orderIndex: row.order_index,
+    plannedStart: row.planned_start,
+    plannedEnd: row.planned_end,
+    actualStart: row.actual_start,
+    actualEnd: row.actual_end,
+    status: row.status,
+    progress: row.progress,
+    notes: row.notes,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
 class PhaseService {
-  /**
-   * Get all phases for a project
-   */
-  async getByProjectId(projectId: string): Promise<ProjectPhaseRecord[]> {
-    return prisma.projectPhaseRecord.findMany({
-      where: { projectId },
-      orderBy: { plannedDate: 'asc' },
-    });
+  async getByProjectId(projectId: string) {
+    const result = await query(
+      `SELECT * FROM project_phases WHERE project_id = $1 ORDER BY order_index ASC`,
+      [projectId]
+    );
+    return result.rows.map(mapPhaseRow);
   }
 
-  /**
-   * Update a phase record
-   */
-  async update(id: string, data: UpdatePhaseDTO): Promise<ProjectPhaseRecord> {
-    const existing = await prisma.projectPhaseRecord.findUnique({
-      where: { id },
-      include: { project: true },
-    });
+  async update(id: string, data: UpdatePhaseDTO) {
+    const existingResult = await query(
+      `SELECT pp.*, p.id as p_id FROM project_phases pp 
+       JOIN projects p ON pp.project_id = p.id 
+       WHERE pp.id = $1`,
+      [id]
+    );
 
-    if (!existing) {
+    if (existingResult.rows.length === 0) {
       throw new AppError('Phase record not found', 404);
     }
 
-    const updateData: any = {};
+    const existing = existingResult.rows[0];
+    const updates: string[] = [];
+    const params: any[] = [];
+    let paramIndex = 1;
 
-    if (data.actualDate !== undefined) {
-      updateData.actualDate = data.actualDate ? new Date(data.actualDate) : null;
+    if (data.actualStart !== undefined) {
+      updates.push(`actual_start = $${paramIndex++}`);
+      params.push(data.actualStart ? new Date(data.actualStart) : null);
+    }
+    if (data.actualEnd !== undefined) {
+      updates.push(`actual_end = $${paramIndex++}`);
+      params.push(data.actualEnd ? new Date(data.actualEnd) : null);
     }
     if (data.status !== undefined) {
-      updateData.status = data.status;
+      updates.push(`status = $${paramIndex++}`);
+      params.push(data.status);
+    }
+    if (data.progress !== undefined) {
+      updates.push(`progress = $${paramIndex++}`);
+      params.push(data.progress);
     }
     if (data.notes !== undefined) {
-      updateData.notes = data.notes;
+      updates.push(`notes = $${paramIndex++}`);
+      params.push(data.notes);
     }
 
-    const phase = await prisma.projectPhaseRecord.update({
-      where: { id },
-      data: updateData,
-    });
+    params.push(id);
 
-    // Auto-update project phase if this phase is completed
+    await execute(
+      `UPDATE project_phases SET ${updates.join(', ')} WHERE id = ?`,
+      params
+    );
+
+    const result = await query(`SELECT * FROM project_phases WHERE id = ?`, [id]);
+    const phase = mapPhaseRow(result.rows[0]);
+
     if (data.status === 'COMPLETED') {
-      await this.updateProjectPhase(existing.projectId, existing.phaseName);
+      await this.updateProjectPhase(existing.project_id, existing.phase_name);
     }
 
-    logger.info(`Phase updated: ${id} - ${existing.phaseName}`);
+    logger.info(`Phase updated: ${id} - ${existing.phase_name}`);
     return phase;
   }
 
-  /**
-   * Complete a phase and move to next
-   */
   async completePhase(projectId: string, phaseName: ProjectPhase): Promise<void> {
-    // Mark current phase as completed
-    await prisma.projectPhaseRecord.updateMany({
-      where: { projectId, phaseName },
-      data: { status: 'COMPLETED', actualDate: new Date() },
-    });
+    await query(
+      `UPDATE project_phases SET status = 'COMPLETED', actual_end = NOW() 
+       WHERE project_id = $1 AND phase_name = $2`,
+      [projectId, phaseName]
+    );
 
-    // Update project's current phase
     await this.updateProjectPhase(projectId, phaseName);
   }
 
-  /**
-   * Update project's current phase based on completed phases
-   */
-  private async updateProjectPhase(
-    projectId: string,
-    completedPhase: ProjectPhase
-  ): Promise<void> {
+  private async updateProjectPhase(projectId: string, completedPhase: string): Promise<void> {
     const phaseOrder: ProjectPhase[] = ['KICKOFF', 'MIGRATION', 'VALIDATION', 'CLOSURE', 'COMPLETED'];
-    const currentIndex = phaseOrder.indexOf(completedPhase);
-    
+    const currentIndex = phaseOrder.indexOf(completedPhase as ProjectPhase);
+
     if (currentIndex < phaseOrder.length - 1) {
       const nextPhase = phaseOrder[currentIndex + 1];
-      
-      await prisma.project.update({
-        where: { id: projectId },
-        data: { 
-          phase: nextPhase,
-          // Auto-complete project if all phases done
-          ...(nextPhase === 'COMPLETED' && { 
-            status: 'COMPLETED',
-            actualEnd: new Date(),
-          }),
-        },
-      });
 
-      // Mark next phase as in progress
-      if (nextPhase !== 'COMPLETED') {
-        await prisma.projectPhaseRecord.updateMany({
-          where: { projectId, phaseName: nextPhase },
-          data: { status: 'IN_PROGRESS' },
-        });
+      if (nextPhase === 'COMPLETED') {
+        await query(
+          `UPDATE projects SET phase = $1, status = 'COMPLETED', actual_end = NOW() WHERE id = $2`,
+          [nextPhase, projectId]
+        );
+      } else {
+        await query(
+          `UPDATE projects SET phase = $1 WHERE id = $2`,
+          [nextPhase, projectId]
+        );
+
+        await query(
+          `UPDATE project_phases SET status = 'IN_PROGRESS', actual_start = NOW() 
+           WHERE project_id = $1 AND phase_name = $2`,
+          [projectId, nextPhase]
+        );
       }
     }
   }
 
-  /**
-   * Get phase statistics for dashboard
-   */
   async getPhaseStats(): Promise<Record<ProjectPhase, number>> {
-    const phases = await prisma.project.groupBy({
-      by: ['phase'],
-      _count: { phase: true },
-      where: { status: { in: ['ACTIVE', 'ON_HOLD'] } },
-    });
+    const result = await query(
+      `SELECT phase, COUNT(*) as count FROM projects 
+       WHERE status IN ('ACTIVE', 'ON_HOLD') 
+       GROUP BY phase`
+    );
 
     const stats: Record<string, number> = {
       KICKOFF: 0,
@@ -126,8 +148,8 @@ class PhaseService {
       COMPLETED: 0,
     };
 
-    phases.forEach((p) => {
-      stats[p.phase] = p._count.phase;
+    result.rows.forEach((row) => {
+      stats[row.phase] = parseInt(row.count);
     });
 
     return stats as Record<ProjectPhase, number>;

@@ -1,7 +1,33 @@
-import { prisma } from '../config/database';
-import { TaskStatus } from '@prisma/client';
+import { query, execute } from '../config/database';
 import { logger } from '../utils/logger';
 import { caseStudyService } from './caseStudyService';
+import { v4 as uuidv4 } from 'uuid';
+
+type TaskStatus = 'TODO' | 'IN_PROGRESS' | 'DONE' | 'BLOCKED' | 'SKIPPED';
+
+function calculateTaskStatusFromDates(plannedStart: Date, plannedEnd: Date, currentStatus: TaskStatus): { status: TaskStatus; progress: number } {
+  if (currentStatus === 'DONE' || currentStatus === 'BLOCKED' || currentStatus === 'SKIPPED') {
+    return { status: currentStatus, progress: currentStatus === 'DONE' ? 100 : 0 };
+  }
+
+  const now = new Date();
+  const start = new Date(plannedStart);
+  const end = new Date(plannedEnd);
+  
+  if (now < start) {
+    return { status: 'TODO', progress: 0 };
+  }
+  
+  if (now > end) {
+    return { status: 'DONE', progress: 100 };
+  }
+  
+  const totalDuration = end.getTime() - start.getTime();
+  const elapsed = now.getTime() - start.getTime();
+  const progress = Math.min(99, Math.max(1, Math.round((elapsed / totalDuration) * 100)));
+  
+  return { status: 'IN_PROGRESS', progress };
+}
 
 interface UpdateTaskInput {
   name?: string;
@@ -15,68 +41,145 @@ interface UpdateTaskInput {
   notes?: string | null;
 }
 
+function mapTaskRow(row: any) {
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    phaseRecordId: row.phase_record_id,
+    name: row.name,
+    orderIndex: row.order_index,
+    status: row.status,
+    plannedStart: row.planned_start,
+    plannedEnd: row.planned_end,
+    actualStart: row.actual_start,
+    actualEnd: row.actual_end,
+    duration: row.duration,
+    progress: row.progress,
+    assignee: row.assignee,
+    isMilestone: row.is_milestone,
+    notes: row.notes,
+    priority: row.priority,
+    estimatedHours: row.estimated_hours,
+    actualHours: row.actual_hours,
+  };
+}
+
+function mapPhaseRow(row: any) {
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    phaseName: row.phase_name,
+    orderIndex: row.order_index,
+    plannedStart: row.planned_start,
+    plannedEnd: row.planned_end,
+    actualStart: row.actual_start,
+    actualEnd: row.actual_end,
+    status: row.status,
+    progress: row.progress,
+    notes: row.notes,
+  };
+}
+
 class TaskService {
   async getProjectTasks(projectId: string) {
-    const phases = await prisma.projectPhaseRecord.findMany({
-      where: { projectId },
-      orderBy: { orderIndex: 'asc' },
-      include: {
-        tasks: {
-          orderBy: { orderIndex: 'asc' },
-        },
-      },
-    });
+    const phasesResult = await query(
+      `SELECT * FROM project_phases WHERE project_id = $1 ORDER BY order_index ASC`,
+      [projectId]
+    );
+
+    const phases = [];
+    for (const phaseRow of phasesResult.rows) {
+      const tasksResult = await query(
+        `SELECT * FROM project_tasks WHERE phase_record_id = $1 ORDER BY order_index ASC`,
+        [phaseRow.id]
+      );
+      
+      phases.push({
+        ...mapPhaseRow(phaseRow),
+        tasks: tasksResult.rows.map(mapTaskRow),
+      });
+    }
 
     return phases;
   }
 
   async getTaskById(taskId: string) {
-    return prisma.projectTask.findUnique({
-      where: { id: taskId },
-      include: {
-        phaseRecord: true,
-        project: true,
-      },
-    });
+    const result = await query(
+      `SELECT t.*, p.name as project_name, ph.phase_name 
+       FROM project_tasks t
+       JOIN projects p ON t.project_id = p.id
+       JOIN project_phases ph ON t.phase_record_id = ph.id
+       WHERE t.id = $1`,
+      [taskId]
+    );
+
+    if (result.rows.length === 0) return null;
+    
+    const row = result.rows[0];
+    return {
+      ...mapTaskRow(row),
+      project: { name: row.project_name },
+      phaseRecord: { phaseName: row.phase_name },
+    };
   }
 
   async updateTask(taskId: string, data: UpdateTaskInput) {
-    const task = await prisma.projectTask.update({
-      where: { id: taskId },
-      data: {
-        ...data,
-        progress: data.status === 'DONE' ? 100 : data.progress,
-      },
-    });
+    const updates: string[] = [];
+    const params: any[] = [];
+    let paramIndex = 1;
 
-    // Update phase progress
+    if (data.name !== undefined) { updates.push(`name = $${paramIndex++}`); params.push(data.name); }
+    if (data.status !== undefined) { updates.push(`status = $${paramIndex++}`); params.push(data.status); }
+    if (data.plannedStart !== undefined) { updates.push(`planned_start = $${paramIndex++}`); params.push(data.plannedStart); }
+    if (data.plannedEnd !== undefined) { updates.push(`planned_end = $${paramIndex++}`); params.push(data.plannedEnd); }
+    if (data.actualStart !== undefined) { updates.push(`actual_start = $${paramIndex++}`); params.push(data.actualStart); }
+    if (data.actualEnd !== undefined) { updates.push(`actual_end = $${paramIndex++}`); params.push(data.actualEnd); }
+    if (data.assignee !== undefined) { updates.push(`assignee = $${paramIndex++}`); params.push(data.assignee); }
+    if (data.notes !== undefined) { updates.push(`notes = $${paramIndex++}`); params.push(data.notes); }
+    
+    const progress = data.status === 'DONE' ? 100 : data.progress;
+    if (progress !== undefined) { updates.push(`progress = $${paramIndex++}`); params.push(progress); }
+
+    params.push(taskId);
+
+    await execute(
+      `UPDATE project_tasks SET ${updates.join(', ')} WHERE id = ?`,
+      params
+    );
+
+    const result = await query(`SELECT * FROM project_tasks WHERE id = ?`, [taskId]);
+    const task = mapTaskRow(result.rows[0]);
     await this.updatePhaseProgress(task.phaseRecordId);
 
     return task;
   }
 
   async updateTaskStatus(taskId: string, status: TaskStatus) {
-    const task = await prisma.projectTask.update({
-      where: { id: taskId },
-      data: {
-        status,
-        progress: status === 'DONE' ? 100 : status === 'IN_PROGRESS' ? 50 : 0,
-        actualStart: status === 'IN_PROGRESS' ? new Date() : undefined,
-        actualEnd: status === 'DONE' ? new Date() : undefined,
-      },
-    });
+    const progress = status === 'DONE' ? 100 : status === 'IN_PROGRESS' ? 50 : 0;
+    const actualStart = status === 'IN_PROGRESS' ? new Date() : null;
+    const actualEnd = status === 'DONE' ? new Date() : null;
 
-    // Update phase progress
+    await execute(
+      `UPDATE project_tasks 
+       SET status = ?, progress = ?, actual_start = COALESCE(?, actual_start), actual_end = ? 
+       WHERE id = ?`,
+      [status, progress, actualStart, actualEnd, taskId]
+    );
+
+    const result = await query(`SELECT * FROM project_tasks WHERE id = ?`, [taskId]);
+    const task = mapTaskRow(result.rows[0]);
     await this.updatePhaseProgress(task.phaseRecordId);
 
     return task;
   }
 
   async updatePhaseProgress(phaseRecordId: string) {
-    const tasks = await prisma.projectTask.findMany({
-      where: { phaseRecordId },
-    });
+    const tasksResult = await query(
+      `SELECT * FROM project_tasks WHERE phase_record_id = $1`,
+      [phaseRecordId]
+    );
 
+    const tasks = tasksResult.rows;
     if (tasks.length === 0) return;
 
     const totalProgress = tasks.reduce((sum, task) => sum + task.progress, 0);
@@ -92,58 +195,56 @@ class TaskService {
       status = 'IN_PROGRESS';
     }
 
-    const phaseRecord = await prisma.projectPhaseRecord.update({
-      where: { id: phaseRecordId },
-      data: {
-        progress: avgProgress,
-        status,
-        actualStart: status !== 'PENDING' ? new Date() : undefined,
-        actualEnd: status === 'COMPLETED' ? new Date() : undefined,
-      },
-    });
+    await execute(
+      `UPDATE project_phases 
+       SET progress = ?, status = ?, 
+           actual_start = CASE WHEN ? != 'PENDING' THEN COALESCE(actual_start, NOW()) ELSE actual_start END,
+           actual_end = CASE WHEN ? = 'COMPLETED' THEN NOW() ELSE actual_end END
+       WHERE id = ?`,
+      [avgProgress, status, status, status, phaseRecordId]
+    );
 
-    // Check if all phases are completed - auto-create case study
-    if (status === 'COMPLETED') {
-      await this.checkProjectCompletion(phaseRecord.projectId);
+    const phaseResult = await query(`SELECT project_id FROM project_phases WHERE id = ?`, [phaseRecordId]);
+    if (status === 'COMPLETED' && phaseResult.rows.length > 0) {
+      await this.checkProjectCompletion(phaseResult.rows[0].project_id);
     }
   }
 
   async checkProjectCompletion(projectId: string) {
-    const allPhases = await prisma.projectPhaseRecord.findMany({
-      where: { projectId },
-    });
+    const phasesResult = await query(
+      `SELECT * FROM project_phases WHERE project_id = $1`,
+      [projectId]
+    );
 
+    const allPhases = phasesResult.rows;
     const allPhasesCompleted = allPhases.length > 0 && allPhases.every((p) => p.status === 'COMPLETED');
 
     if (allPhasesCompleted) {
-      // Check if case study already exists
-      const existingCaseStudy = await prisma.caseStudy.findUnique({
-        where: { projectId },
-      });
+      const existingCaseStudy = await query(
+        `SELECT id FROM case_studies WHERE project_id = $1`,
+        [projectId]
+      );
 
-      if (!existingCaseStudy) {
+      if (existingCaseStudy.rows.length === 0) {
         try {
-          const project = await prisma.project.findUnique({
-            where: { id: projectId },
-          });
+          const projectResult = await query(
+            `SELECT * FROM projects WHERE id = $1`,
+            [projectId]
+          );
 
+          const project = projectResult.rows[0];
           if (project) {
             await caseStudyService.create({
               projectId,
-              title: `${project.customerName} - ${project.name} Case Study`,
+              title: `${project.customer_name} - ${project.name} Case Study`,
               status: 'PENDING',
             });
             logger.info(`Auto-created case study for project with all phases completed: ${projectId}`);
 
-            // Also update project status to COMPLETED
-            await prisma.project.update({
-              where: { id: projectId },
-              data: { 
-                status: 'COMPLETED',
-                phase: 'COMPLETED',
-                actualEnd: new Date(),
-              },
-            });
+            await query(
+              `UPDATE projects SET status = 'COMPLETED', phase = 'COMPLETED', actual_end = NOW() WHERE id = $1`,
+              [projectId]
+            );
             logger.info(`Project ${projectId} marked as COMPLETED`);
           }
         } catch (error) {
@@ -153,58 +254,107 @@ class TaskService {
     }
   }
 
+  async autoUpdateTaskStatuses(projectId: string) {
+    const tasksResult = await query(
+      `SELECT t.*, ph.id as phase_id FROM project_tasks t 
+       JOIN project_phases ph ON t.phase_record_id = ph.id 
+       WHERE t.project_id = $1 AND t.status NOT IN ('DONE', 'BLOCKED', 'SKIPPED')`,
+      [projectId]
+    );
+
+    const updatedPhases = new Set<string>();
+
+    for (const task of tasksResult.rows) {
+      const { status, progress } = calculateTaskStatusFromDates(
+        task.planned_start,
+        task.planned_end,
+        task.status
+      );
+
+      if (status !== task.status || progress !== task.progress) {
+        const actualStart = status === 'IN_PROGRESS' && !task.actual_start ? new Date() : null;
+        const actualEnd = status === 'DONE' ? new Date() : null;
+
+        await execute(
+          `UPDATE project_tasks 
+           SET status = ?, progress = ?, 
+               actual_start = COALESCE(?, actual_start), 
+               actual_end = COALESCE(?, actual_end)
+           WHERE id = ?`,
+          [status, progress, actualStart, actualEnd, task.id]
+        );
+
+        updatedPhases.add(task.phase_id);
+        logger.debug(`Auto-updated task ${task.name}: ${task.status} -> ${status} (${progress}%)`);
+      }
+    }
+
+    for (const phaseId of updatedPhases) {
+      await this.updatePhaseProgress(phaseId);
+    }
+
+    return updatedPhases.size;
+  }
+
   async getGanttData(projectId: string) {
-    const project = await prisma.project.findUnique({
-      where: { id: projectId },
-      include: {
-        phases: {
-          orderBy: { orderIndex: 'asc' },
-          include: {
-            tasks: {
-              orderBy: { orderIndex: 'asc' },
-            },
-          },
-        },
-      },
-    });
+    const projectResult = await query(`SELECT * FROM projects WHERE id = $1`, [projectId]);
+    if (projectResult.rows.length === 0) return null;
 
-    if (!project) return null;
+    await this.autoUpdateTaskStatuses(projectId);
 
-    const ganttData = {
-      project: {
-        id: project.id,
-        name: project.name,
-        plannedStart: project.plannedStart,
-        plannedEnd: project.plannedEnd,
-      },
-      phases: project.phases.map((phase) => ({
-        id: phase.id,
-        name: phase.phaseName,
-        orderIndex: phase.orderIndex,
-        plannedStart: phase.plannedStart,
-        plannedEnd: phase.plannedEnd,
-        actualStart: phase.actualStart,
-        actualEnd: phase.actualEnd,
-        status: phase.status,
-        progress: phase.progress,
-        tasks: phase.tasks.map((task) => ({
+    const project = projectResult.rows[0];
+    const phasesResult = await query(
+      `SELECT * FROM project_phases WHERE project_id = $1 ORDER BY order_index ASC`,
+      [projectId]
+    );
+
+    const phases = [];
+    for (const phaseRow of phasesResult.rows) {
+      const tasksResult = await query(
+        `SELECT * FROM project_tasks WHERE phase_record_id = $1 ORDER BY order_index ASC`,
+        [phaseRow.id]
+      );
+
+      const phaseRefresh = await query(`SELECT * FROM project_phases WHERE id = ?`, [phaseRow.id]);
+      const refreshedPhase = phaseRefresh.rows[0] || phaseRow;
+
+      phases.push({
+        id: refreshedPhase.id,
+        phaseName: refreshedPhase.phase_name,
+        orderIndex: refreshedPhase.order_index,
+        plannedStart: refreshedPhase.planned_start,
+        plannedEnd: refreshedPhase.planned_end,
+        actualStart: refreshedPhase.actual_start,
+        actualEnd: refreshedPhase.actual_end,
+        status: refreshedPhase.status,
+        progress: refreshedPhase.progress,
+        tasks: tasksResult.rows.map((task) => ({
           id: task.id,
           name: task.name,
-          orderIndex: task.orderIndex,
+          orderIndex: task.order_index,
           status: task.status,
-          plannedStart: task.plannedStart,
-          plannedEnd: task.plannedEnd,
-          actualStart: task.actualStart,
-          actualEnd: task.actualEnd,
+          plannedStart: task.planned_start,
+          plannedEnd: task.planned_end,
+          actualStart: task.actual_start,
+          actualEnd: task.actual_end,
           duration: task.duration,
           progress: task.progress,
           assignee: task.assignee,
-          isMilestone: task.isMilestone,
+          isMilestone: task.is_milestone,
         })),
-      })),
-    };
+      });
+    }
 
-    return ganttData;
+    return {
+      project: {
+        id: project.id,
+        name: project.name,
+        customerName: project.customer_name,
+        plannedStart: project.planned_start,
+        plannedEnd: project.planned_end,
+      },
+      phases,
+    };
   }
 
   async createProjectTasksFromTemplate(
@@ -212,65 +362,53 @@ class TaskService {
     templateCode: string,
     projectStartDate: Date
   ) {
-    const template = await prisma.migrationTemplate.findUnique({
-      where: { code: templateCode.toUpperCase() },
-      include: {
-        phases: {
-          orderBy: { orderIndex: 'asc' },
-          include: {
-            tasks: {
-              orderBy: { orderIndex: 'asc' },
-            },
-          },
-        },
-      },
-    });
+    const templateResult = await query(
+      `SELECT * FROM migration_templates WHERE code = $1`,
+      [templateCode.toUpperCase()]
+    );
 
-    if (!template) {
+    if (templateResult.rows.length === 0) {
       logger.warn(`Template not found: ${templateCode}`);
       return null;
     }
 
+    const template = templateResult.rows[0];
+    const phasesResult = await query(
+      `SELECT * FROM template_phases WHERE template_id = $1 ORDER BY order_index ASC`,
+      [template.id]
+    );
+
     let currentDate = new Date(projectStartDate);
 
-    for (const templatePhase of template.phases) {
+    for (const templatePhase of phasesResult.rows) {
       const phaseStart = new Date(currentDate);
       const phaseEnd = new Date(currentDate);
-      phaseEnd.setDate(phaseEnd.getDate() + templatePhase.defaultDuration);
+      phaseEnd.setDate(phaseEnd.getDate() + templatePhase.default_duration);
 
-      const phaseRecord = await prisma.projectPhaseRecord.create({
-        data: {
-          projectId,
-          phaseName: templatePhase.name,
-          orderIndex: templatePhase.orderIndex,
-          plannedStart: phaseStart,
-          plannedEnd: phaseEnd,
-          status: 'PENDING',
-          progress: 0,
-        },
-      });
+      const phaseRecordId = uuidv4();
+      await execute(
+        `INSERT INTO project_phases (id, project_id, phase_name, order_index, planned_start, planned_end, status, progress)
+         VALUES (?, ?, ?, ?, ?, ?, 'PENDING', 0)`,
+        [phaseRecordId, projectId, templatePhase.name, templatePhase.order_index, phaseStart, phaseEnd]
+      );
+
+      const tasksResult = await query(
+        `SELECT * FROM template_tasks WHERE phase_id = $1 ORDER BY order_index ASC`,
+        [templatePhase.id]
+      );
 
       let taskDate = new Date(phaseStart);
 
-      for (const templateTask of templatePhase.tasks) {
+      for (const templateTask of tasksResult.rows) {
         const taskStart = new Date(taskDate);
         const taskEnd = new Date(taskDate);
-        taskEnd.setDate(taskEnd.getDate() + templateTask.defaultDuration);
+        taskEnd.setDate(taskEnd.getDate() + templateTask.default_duration);
 
-        await prisma.projectTask.create({
-          data: {
-            projectId,
-            phaseRecordId: phaseRecord.id,
-            name: templateTask.name,
-            orderIndex: templateTask.orderIndex,
-            status: 'TODO',
-            plannedStart: taskStart,
-            plannedEnd: taskEnd,
-            duration: templateTask.defaultDuration,
-            progress: 0,
-            isMilestone: templateTask.isMilestone,
-          },
-        });
+        await execute(
+          `INSERT INTO project_tasks (id, project_id, phase_record_id, name, order_index, status, planned_start, planned_end, duration, progress, is_milestone)
+           VALUES (?, ?, ?, ?, ?, 'TODO', ?, ?, ?, 0, ?)`,
+          [uuidv4(), projectId, phaseRecordId, templateTask.name, templateTask.order_index, taskStart, taskEnd, templateTask.default_duration, templateTask.is_milestone]
+        );
 
         taskDate = new Date(taskEnd);
       }
@@ -278,11 +416,10 @@ class TaskService {
       currentDate = new Date(phaseEnd);
     }
 
-    // Update project with template reference
-    await prisma.project.update({
-      where: { id: projectId },
-      data: { templateId: template.id },
-    });
+    await query(
+      `UPDATE projects SET template_id = $1 WHERE id = $2`,
+      [template.id, projectId]
+    );
 
     logger.info(`Created tasks for project ${projectId} from template ${templateCode}`);
     return true;

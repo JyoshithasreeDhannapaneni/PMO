@@ -1,4 +1,4 @@
-import { prisma } from '../config/database';
+import { query } from '../config/database';
 
 export interface DashboardStats {
   totalProjects: number;
@@ -12,221 +12,160 @@ export interface DashboardStats {
 }
 
 class DashboardService {
-  /**
-   * Get main dashboard statistics
-   */
   async getStats(): Promise<DashboardStats> {
     const [
-      totalProjects,
-      activeProjects,
-      completedProjects,
-      onHoldProjects,
-      delayedProjects,
-      atRiskProjects,
-      pendingCaseStudies,
+      totalResult,
+      activeResult,
+      completedResult,
+      onHoldResult,
+      delayedResult,
+      atRiskResult,
+      pendingCaseStudiesResult,
       avgDelayResult,
     ] = await Promise.all([
-      prisma.project.count(),
-      prisma.project.count({ where: { status: 'ACTIVE' } }),
-      prisma.project.count({ where: { status: 'COMPLETED' } }),
-      prisma.project.count({ where: { status: 'ON_HOLD' } }),
-      prisma.project.count({ where: { delayStatus: 'DELAYED' } }),
-      prisma.project.count({ where: { delayStatus: 'AT_RISK' } }),
-      prisma.caseStudy.count({ where: { status: 'PENDING' } }),
-      prisma.project.aggregate({
-        _avg: { delayDays: true },
-        where: { delayDays: { gt: 0 } },
-      }),
+      query(`SELECT COUNT(*) as count FROM projects`),
+      query(`SELECT COUNT(*) as count FROM projects WHERE status = 'ACTIVE'`),
+      query(`SELECT COUNT(*) as count FROM projects WHERE status = 'COMPLETED'`),
+      query(`SELECT COUNT(*) as count FROM projects WHERE status = 'ON_HOLD'`),
+      query(`SELECT COUNT(*) as count FROM projects WHERE delay_status = 'DELAYED'`),
+      query(`SELECT COUNT(*) as count FROM projects WHERE delay_status = 'AT_RISK'`),
+      query(`SELECT COUNT(*) as count FROM case_studies WHERE status = 'PENDING'`),
+      query(`SELECT AVG(delay_days) as avg FROM projects WHERE delay_days > 0`),
     ]);
 
     return {
-      totalProjects,
-      activeProjects,
-      completedProjects,
-      onHoldProjects,
-      delayedProjects,
-      atRiskProjects,
-      pendingCaseStudies,
-      avgDelayDays: Math.round(avgDelayResult._avg.delayDays || 0),
+      totalProjects: parseInt(totalResult.rows[0].count || 0),
+      activeProjects: parseInt(activeResult.rows[0].count || 0),
+      completedProjects: parseInt(completedResult.rows[0].count || 0),
+      onHoldProjects: parseInt(onHoldResult.rows[0].count || 0),
+      delayedProjects: parseInt(delayedResult.rows[0].count || 0),
+      atRiskProjects: parseInt(atRiskResult.rows[0].count || 0),
+      pendingCaseStudies: parseInt(pendingCaseStudiesResult.rows[0].count || 0),
+      avgDelayDays: Math.round(parseFloat(avgDelayResult.rows[0].avg) || 0),
     };
   }
 
-  /**
-   * Get projects grouped by status
-   */
   async getProjectsByStatus() {
-    const results = await prisma.project.groupBy({
-      by: ['status'],
-      _count: { status: true },
-    });
-
-    return results.map((r) => ({
+    const result = await query(
+      `SELECT status, COUNT(*) as count FROM projects GROUP BY status`
+    );
+    return result.rows.map((r) => ({
       status: r.status,
-      count: r._count.status,
+      count: parseInt(r.count),
     }));
   }
 
-  /**
-   * Get projects grouped by phase
-   */
   async getProjectsByPhase() {
-    const results = await prisma.project.groupBy({
-      by: ['phase'],
-      _count: { phase: true },
-    });
-
-    return results.map((r) => ({
+    const result = await query(
+      `SELECT phase, COUNT(*) as count FROM projects GROUP BY phase`
+    );
+    return result.rows.map((r) => ({
       phase: r.phase,
-      count: r._count.phase,
+      count: parseInt(r.count),
     }));
   }
 
-  /**
-   * Get projects grouped by plan type
-   */
   async getProjectsByPlan() {
-    const results = await prisma.project.groupBy({
-      by: ['planType'],
-      _count: { planType: true },
-    });
-
-    return results.map((r) => ({
-      planType: r.planType,
-      count: r._count.planType,
+    const result = await query(
+      `SELECT plan_type, COUNT(*) as count FROM projects GROUP BY plan_type`
+    );
+    return result.rows.map((r) => ({
+      planType: r.plan_type,
+      count: parseInt(r.count),
     }));
   }
 
-  /**
-   * Get recent activity feed
-   */
   async getRecentActivity(limit: number = 10) {
-    const recentProjects = await prisma.project.findMany({
-      orderBy: { updatedAt: 'desc' },
-      take: limit,
-      select: {
-        id: true,
-        name: true,
-        status: true,
-        phase: true,
-        updatedAt: true,
-      },
-    });
+    const safeLimit = Math.max(1, Math.min(100, Math.floor(limit)));
+    const result = await query(
+      `SELECT id, name, status, phase, updated_at 
+       FROM projects ORDER BY updated_at DESC LIMIT ${safeLimit}`
+    );
 
-    return recentProjects.map((p) => ({
+    return result.rows.map((p) => ({
       id: p.id,
       type: 'project_update',
       message: `Project "${p.name}" updated`,
       projectId: p.id,
       projectName: p.name,
-      timestamp: p.updatedAt,
+      timestamp: p.updated_at,
     }));
   }
 
-  /**
-   * Get delay summary
-   */
   async getDelaySummary() {
     const [statusResults, topDelayed] = await Promise.all([
-      prisma.project.groupBy({
-        by: ['delayStatus'],
-        _count: { delayStatus: true },
-        _avg: { delayDays: true },
-      }),
-      prisma.project.findMany({
-        where: { delayStatus: 'DELAYED' },
-        orderBy: { delayDays: 'desc' },
-        take: 5,
-        select: {
-          id: true,
-          name: true,
-          customerName: true,
-          delayDays: true,
-          delayStatus: true,
-        },
-      }),
+      query(
+        `SELECT delay_status, COUNT(*) as count, AVG(delay_days) as avg_days 
+         FROM projects GROUP BY delay_status`
+      ),
+      query(
+        `SELECT id, name, customer_name, delay_days, delay_status 
+         FROM projects WHERE delay_status = 'DELAYED' 
+         ORDER BY delay_days DESC LIMIT 5`
+      ),
     ]);
 
     return {
-      byStatus: statusResults.map((r) => ({
-        delayStatus: r.delayStatus,
-        count: r._count.delayStatus,
-        avgDays: Math.round(r._avg.delayDays || 0),
+      byStatus: statusResults.rows.map((r) => ({
+        delayStatus: r.delay_status,
+        count: parseInt(r.count),
+        avgDays: Math.round(parseFloat(r.avg_days) || 0),
       })),
-      topDelayed,
+      topDelayed: topDelayed.rows.map((r) => ({
+        id: r.id,
+        name: r.name,
+        customerName: r.customer_name,
+        delayDays: r.delay_days,
+        delayStatus: r.delay_status,
+      })),
     };
   }
 
-  /**
-   * Get upcoming deadlines
-   */
   async getUpcomingDeadlines(days: number = 14) {
-    const futureDate = new Date();
-    futureDate.setDate(futureDate.getDate() + days);
+    const safeDays = Math.max(1, Math.min(365, Math.floor(days)));
+    const result = await query(
+      `SELECT id, name, customer_name, planned_end, phase, delay_status 
+       FROM projects 
+       WHERE status = 'ACTIVE' AND planned_end >= NOW() AND planned_end <= DATE_ADD(NOW(), INTERVAL ${safeDays} DAY)
+       ORDER BY planned_end ASC`
+    );
 
-    const projects = await prisma.project.findMany({
-      where: {
-        status: 'ACTIVE',
-        plannedEnd: {
-          gte: new Date(),
-          lte: futureDate,
-        },
-      },
-      orderBy: { plannedEnd: 'asc' },
-      select: {
-        id: true,
-        name: true,
-        customerName: true,
-        plannedEnd: true,
-        phase: true,
-        delayStatus: true,
-      },
-    });
-
-    return projects.map((p) => ({
+    return result.rows.map((p) => ({
       id: p.id,
       name: p.name,
-      customerName: p.customerName,
-      deadline: p.plannedEnd,
+      customerName: p.customer_name,
+      deadline: p.planned_end,
       phase: p.phase,
-      delayStatus: p.delayStatus,
+      delayStatus: p.delay_status,
     }));
   }
 
-  /**
-   * Get statistics by migration type for PM Dashboard
-   */
   async getMigrationTypeStats() {
-    const allProjects = await prisma.project.findMany({
-      select: {
-        id: true,
-        migrationTypes: true,
-        status: true,
-        delayStatus: true,
-        plannedEnd: true,
-        createdAt: true,
-      },
-    });
+    const result = await query(
+      `SELECT id, migration_types, status, delay_status, planned_end, created_at FROM projects`
+    );
 
+    const allProjects = result.rows;
     const now = new Date();
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
     const migrationTypes = ['CONTENT', 'EMAIL', 'MESSAGING'];
-    
+
     const stats = migrationTypes.map((type) => {
-      const projectsOfType = allProjects.filter((p) => 
-        p.migrationTypes?.toUpperCase().includes(type)
+      const projectsOfType = allProjects.filter((p) =>
+        p.migration_types?.toUpperCase().includes(type)
       );
 
       const active = projectsOfType.filter((p) => p.status === 'ACTIVE').length;
       const inactive = projectsOfType.filter((p) => p.status === 'ON_HOLD').length;
       const completed = projectsOfType.filter((p) => p.status === 'COMPLETED').length;
       const cancelled = projectsOfType.filter((p) => p.status === 'CANCELLED').length;
-      const newProjects = projectsOfType.filter((p) => p.createdAt >= thirtyDaysAgo).length;
-      const overaged = projectsOfType.filter((p) => 
-        p.status === 'ACTIVE' && p.plannedEnd < now
+      const newProjects = projectsOfType.filter((p) => new Date(p.created_at) >= thirtyDaysAgo).length;
+      const overaged = projectsOfType.filter((p) =>
+        p.status === 'ACTIVE' && new Date(p.planned_end) < now
       ).length;
-      const delayed = projectsOfType.filter((p) => p.delayStatus === 'DELAYED').length;
-      const atRisk = projectsOfType.filter((p) => p.delayStatus === 'AT_RISK').length;
+      const delayed = projectsOfType.filter((p) => p.delay_status === 'DELAYED').length;
+      const atRisk = projectsOfType.filter((p) => p.delay_status === 'AT_RISK').length;
 
       return {
         type,
@@ -242,17 +181,16 @@ class DashboardService {
       };
     });
 
-    // Calculate totals
     const allActive = allProjects.filter((p) => p.status === 'ACTIVE').length;
     const allInactive = allProjects.filter((p) => p.status === 'ON_HOLD').length;
     const allCompleted = allProjects.filter((p) => p.status === 'COMPLETED').length;
     const allCancelled = allProjects.filter((p) => p.status === 'CANCELLED').length;
-    const allNew = allProjects.filter((p) => p.createdAt >= thirtyDaysAgo).length;
-    const allOveraged = allProjects.filter((p) => 
-      p.status === 'ACTIVE' && p.plannedEnd < now
+    const allNew = allProjects.filter((p) => new Date(p.created_at) >= thirtyDaysAgo).length;
+    const allOveraged = allProjects.filter((p) =>
+      p.status === 'ACTIVE' && new Date(p.planned_end) < now
     ).length;
-    const allDelayed = allProjects.filter((p) => p.delayStatus === 'DELAYED').length;
-    const allAtRisk = allProjects.filter((p) => p.delayStatus === 'AT_RISK').length;
+    const allDelayed = allProjects.filter((p) => p.delay_status === 'DELAYED').length;
+    const allAtRisk = allProjects.filter((p) => p.delay_status === 'AT_RISK').length;
 
     return {
       byType: stats,
@@ -270,32 +208,27 @@ class DashboardService {
     };
   }
 
-  /**
-   * Get projects list by migration type
-   */
   async getProjectsByMigrationType(type: string) {
-    const projects = await prisma.project.findMany({
-      where: {
-        migrationTypes: {
-          contains: type.toUpperCase(),
-        },
-      },
-      orderBy: { updatedAt: 'desc' },
-      select: {
-        id: true,
-        name: true,
-        customerName: true,
-        projectManager: true,
-        status: true,
-        phase: true,
-        delayStatus: true,
-        delayDays: true,
-        plannedEnd: true,
-        migrationTypes: true,
-      },
-    });
+    const result = await query(
+      `SELECT id, name, customer_name, project_manager, status, phase, delay_status, delay_days, planned_end, migration_types
+       FROM projects 
+       WHERE migration_types LIKE ?
+       ORDER BY updated_at DESC`,
+      [`%${type.toUpperCase()}%`]
+    );
 
-    return projects;
+    return result.rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      customerName: r.customer_name,
+      projectManager: r.project_manager,
+      status: r.status,
+      phase: r.phase,
+      delayStatus: r.delay_status,
+      delayDays: r.delay_days,
+      plannedEnd: r.planned_end,
+      migrationTypes: r.migration_types,
+    }));
   }
 }
 

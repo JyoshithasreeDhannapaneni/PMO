@@ -24,4 +24,20 @@ router.post('/reset-password', authController.resetPassword);
 // POST /api/auth/change-password - Change password (authenticated)
 router.post('/change-password', authController.changePassword);
 
+// ── User Management (Admin) ─────────────────────────────────────────
+// GET /api/auth/users - List all users
+router.get('/users', authController.getAllUsers);
+
+// POST /api/auth/users - Create/invite a new user by email
+router.post('/users', authController.createUser);
+
+// PUT /api/auth/users/:id/role - Update a user's role
+router.put('/users/:id/role', authController.updateUserRole);
+
+// PUT /api/auth/users/:id/toggle-active - Activate/deactivate a user
+router.put('/users/:id/toggle-active', authController.toggleUserActive);
+
+// DELETE /api/auth/users/:id - Remove a user
+router.delete('/users/:id', authController.deleteUser);
+
 export default router;

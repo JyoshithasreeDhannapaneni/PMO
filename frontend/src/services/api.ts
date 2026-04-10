@@ -50,6 +50,8 @@ export const projectsApi = {
     limit?: number;
     status?: string;
     phase?: string;
+    delayStatus?: string;
+    planType?: string;
     search?: string;
     sortBy?: string;
     sortOrder?: 'asc' | 'desc';
@@ -125,6 +127,56 @@ export const phasesApi = {
   },
 };
 
+// Templates API
+export const templatesApi = {
+  getAll: async (): Promise<{ success: boolean; data: any[] }> => {
+    const { data } = await api.get('/templates');
+    return data;
+  },
+  getById: async (id: string): Promise<{ success: boolean; data: any }> => {
+    const { data } = await api.get(`/templates/${id}`);
+    return data;
+  },
+  create: async (template: any): Promise<{ success: boolean; data: any }> => {
+    const { data } = await api.post('/templates', template);
+    return data;
+  },
+  update: async (id: string, updates: any): Promise<{ success: boolean; data: any }> => {
+    const { data } = await api.put(`/templates/${id}`, updates);
+    return data;
+  },
+  delete: async (id: string): Promise<{ success: boolean }> => {
+    const { data } = await api.delete(`/templates/${id}`);
+    return data;
+  },
+  // Phases
+  addPhase: async (templateId: string, phase: any): Promise<{ success: boolean; data: any }> => {
+    const { data } = await api.post(`/templates/${templateId}/phases`, phase);
+    return data;
+  },
+  updatePhase: async (phaseId: string, updates: any): Promise<{ success: boolean; data: any }> => {
+    const { data } = await api.put(`/templates/phases/${phaseId}`, updates);
+    return data;
+  },
+  deletePhase: async (phaseId: string): Promise<{ success: boolean }> => {
+    const { data } = await api.delete(`/templates/phases/${phaseId}`);
+    return data;
+  },
+  // Tasks
+  addTask: async (phaseId: string, task: any): Promise<{ success: boolean; data: any }> => {
+    const { data } = await api.post(`/templates/phases/${phaseId}/tasks`, task);
+    return data;
+  },
+  updateTask: async (taskId: string, updates: any): Promise<{ success: boolean; data: any }> => {
+    const { data } = await api.put(`/templates/tasks/${taskId}`, updates);
+    return data;
+  },
+  deleteTask: async (taskId: string): Promise<{ success: boolean }> => {
+    const { data } = await api.delete(`/templates/tasks/${taskId}`);
+    return data;
+  },
+};
+
 // Case Studies API
 export const caseStudiesApi = {
   getAll: async (status?: string): Promise<ApiResponse<CaseStudy[]>> => {
@@ -161,6 +213,16 @@ export const notificationsApi = {
     pagination: { page: number; total: number; totalPages: number };
   }> => {
     const { data } = await api.get('/notifications', { params });
+    return data;
+  },
+
+  markAsRead: async (id: string): Promise<{ success: boolean; message: string }> => {
+    const { data } = await api.put(`/notifications/${id}/read`);
+    return data;
+  },
+
+  markAllAsRead: async (): Promise<{ success: boolean; message: string }> => {
+    const { data } = await api.put('/notifications/mark-all-read');
     return data;
   },
 };
@@ -212,6 +274,43 @@ export const authApi = {
 
   logout: async (): Promise<void> => {
     await api.post('/auth/logout');
+  },
+
+  // ── User Management ──────────────────────────────────────────────
+  getUsers: async (): Promise<{ success: boolean; data: any[] }> => {
+    const { data } = await api.get('/auth/users');
+    return data;
+  },
+
+  createUser: async (user: {
+    name: string;
+    email: string;
+    role: string;
+    department?: string;
+  }): Promise<{ success: boolean; data: any; message: string }> => {
+    const { data } = await api.post('/auth/users', user);
+    return data;
+  },
+
+  updateUserRole: async (
+    userId: string,
+    role: string
+  ): Promise<{ success: boolean; message: string }> => {
+    const { data } = await api.put(`/auth/users/${userId}/role`, { role });
+    return data;
+  },
+
+  toggleUserActive: async (
+    userId: string,
+    isActive: boolean
+  ): Promise<{ success: boolean; message: string }> => {
+    const { data } = await api.put(`/auth/users/${userId}/toggle-active`, { isActive });
+    return data;
+  },
+
+  deleteUser: async (userId: string): Promise<{ success: boolean; message: string }> => {
+    const { data } = await api.delete(`/auth/users/${userId}`);
+    return data;
   },
 };
 
