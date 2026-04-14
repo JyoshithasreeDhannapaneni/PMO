@@ -82,8 +82,8 @@ class DocumentService {
     const docId = uuidv4();
     await execute(
       `INSERT INTO project_documents (id, project_id, name, description, category, file_url, file_size, mime_type, version, uploaded_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+     [
         docId,
         data.projectId,
         data.name,
@@ -97,7 +97,7 @@ class DocumentService {
       ]
     );
 
-    const result = await query(`SELECT * FROM project_documents WHERE id = ?`, [docId]);
+    const result = await query(`SELECT * FROM project_documents WHERE id = $1`, [docId]);
     const doc = mapDocumentRow(result.rows[0]);
     logger.info(`Document created: ${doc.id} for project ${data.projectId}`);
     return doc;
@@ -119,11 +119,11 @@ class DocumentService {
     params.push(id);
 
     await execute(
-      `UPDATE project_documents SET ${updates.join(', ')} WHERE id = ?`,
+      `UPDATE project_documents SET ${updates.join(', ')} WHERE id = $${paramIndex}`,
       params
     );
 
-    const result = await query(`SELECT * FROM project_documents WHERE id = ?`, [id]);
+    const result = await query(`SELECT * FROM project_documents WHERE id = $1`, [id]);
     const doc = mapDocumentRow(result.rows[0]);
     logger.info(`Document updated: ${doc.id}`);
     return doc;

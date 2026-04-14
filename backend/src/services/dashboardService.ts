@@ -146,25 +146,29 @@ class DashboardService {
   }
 
   async getUpcomingDeadlines(days: number = 14, managerName?: string) {
-    const safeDays = Math.max(1, Math.min(365, Math.floor(days)));
-    const { clause: aw, params: ap } = this.andManagerWhere(managerName);
-    const result = await query(
-      `SELECT id, name, customer_name, planned_end, phase, delay_status
-       FROM projects
-       WHERE status = 'ACTIVE' AND planned_end >= NOW() AND planned_end <= DATE_ADD(NOW(), INTERVAL ${safeDays} DAY) ${aw}
-       ORDER BY planned_end ASC`, ap
-    );
+  const safeDays = Math.max(1, Math.min(365, Math.floor(days)));
+  const { clause: aw, params: ap } = this.andManagerWhere(managerName);
 
-    return result.rows.map((p) => ({
-      id: p.id,
-      name: p.name,
-      customerName: p.customer_name,
-      deadline: p.planned_end,
-      phase: p.phase,
-      delayStatus: p.delay_status,
-    }));
-  }
+  const result = await query(
+    `SELECT id, name, customer_name, planned_end, phase, delay_status
+     FROM projects
+     WHERE status = 'ACTIVE'
+       AND planned_end >= NOW()
+       AND planned_end <= NOW() + INTERVAL '${safeDays} days'
+       ${aw}
+     ORDER BY planned_end ASC`,
+    ap
+  );
 
+  return result.rows.map((p) => ({
+    id: p.id,
+    name: p.name,
+    customerName: p.customer_name,
+    deadline: p.planned_end,
+    phase: p.phase,
+    delayStatus: p.delay_status,
+  }));
+}
   async getMigrationTypeStats(managerName?: string) {
     const { clause: w, params: p } = this.managerWhere(managerName);
     const result = await query(
@@ -179,8 +183,7 @@ class DashboardService {
 
     const stats = migrationTypes.map((type) => {
       const projectsOfType = allProjects.filter((p) =>
-        p.migration_types?.toUpperCase().includes(type)
-      );
+        p.migration_types?.toUpperCase().includes(type)      );
 
       const active = projectsOfType.filter((p) => p.status === 'ACTIVE').length;
       const inactive = projectsOfType.filter((p) => p.status === 'ON_HOLD').length;
