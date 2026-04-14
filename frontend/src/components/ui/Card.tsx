@@ -7,9 +7,10 @@ interface CardProps {
   children: ReactNode;
   className?: string;
   padding?: 'none' | 'sm' | 'md' | 'lg';
+  id?: string;
 }
 
-export function Card({ children, className, padding = 'md' }: CardProps) {
+export function Card({ children, className, padding = 'md', id }: CardProps) {
   const paddingClasses = {
     none: '',
     sm: 'p-3',
@@ -19,6 +20,7 @@ export function Card({ children, className, padding = 'md' }: CardProps) {
 
   return (
     <div
+      id={id}
       className={cn(
         'bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm transition-colors',
         paddingClasses[padding],
