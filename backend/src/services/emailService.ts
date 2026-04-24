@@ -1,13 +1,6 @@
 import nodemailer from 'nodemailer';
 import { logger } from '../utils/logger';
 
-interface EmailOptions {
-  to: string | string[];
-  subject: string;
-  html: string;
-  text?: string;
-}
-
 class EmailService {
   private transporter: nodemailer.Transporter | null = null;
 
@@ -84,6 +77,32 @@ class EmailService {
       `,
     });
   }
+
+  async sendNewUserCredentialsEmail(name: string, email: string, tempPassword: string): Promise<void> {
+    await this.sendEmail({
+      to: email,
+      subject: 'Your PMO Tracker Account Has Been Created',
+      html: `
+        <h2>Welcome to PMO Tracker!</h2>
+        <p>Hello ${name},</p>
+        <p>Your account has been created by an administrator.</p>
+        <p><strong>Login Credentials:</strong></p>
+        <ul>
+          <li>Email: ${email}</li>
+          <li>Temporary Password: <code>${tempPassword}</code></li>
+        </ul>
+        <p>Please log in and change your password immediately for security.</p>
+        <p>Best regards,<br>PMO Tracker Team</p>
+      `,
+    });
+  }
+}
+
+interface EmailOptions {
+  to: string | string[];
+  subject: string;
+  html: string;
+  text?: string;
 }
 
 export const emailService = new EmailService();

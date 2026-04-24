@@ -46,8 +46,9 @@ import {
   Info
 } from 'lucide-react';
 import { exportToPDF, exportToWord } from '@/utils/exportCaseStudy';
-import { authApi, templatesApi } from '@/services/api';
+import { authApi, templatesApi, projectsApi } from '@/services/api';
 import { useAuth } from '@/context/AuthContext';
+import { useSettings } from '@/context/SettingsContext';
 import { formatDistanceToNow } from 'date-fns';
 
 // Types
@@ -106,7 +107,7 @@ interface BrandingSettings {
   companyName: string;
   primaryColor: string;
   secondaryColor: string;
-  theme: string;
+  theme: 'light' | 'dark';
 }
 
 interface TeamMember {
@@ -297,21 +298,22 @@ const tabs = [
 ];
 
 export default function SettingsPage() {
+  const { settings: ctxSettings, updateSettings } = useSettings();
   const [activeTab, setActiveTab] = useState('templates');
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
 
-  // State for all settings
+  // State for all settings — initialised from context (which already read localStorage)
   const [template, setTemplate] = useState<CaseStudyTemplate>(defaultTemplate);
-  const [planTypes, setPlanTypes] = useState<PlanType[]>(defaultPlanTypes);
-  const [phases, setPhases] = useState<ProjectPhase[]>(defaultPhases);
-  const [migrationTypes, setMigrationTypes] = useState<MigrationType[]>(defaultMigrationTypes);
-  const [sourcePlatforms, setSourcePlatforms] = useState<SourcePlatform[]>(defaultSourcePlatforms);
-  const [targetPlatforms, setTargetPlatforms] = useState<TargetPlatform[]>(defaultTargetPlatforms);
-  const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>(defaultNotificationSettings);
-  const [alertThresholds, setAlertThresholds] = useState<AlertThresholds>(defaultAlertThresholds);
-  const [dashboardSettings, setDashboardSettings] = useState<DashboardSettings>(defaultDashboardSettings);
-  const [brandingSettings, setBrandingSettings] = useState<BrandingSettings>(defaultBrandingSettings);
+  const [planTypes, setPlanTypes] = useState<PlanType[]>(ctxSettings.planTypes.length ? ctxSettings.planTypes as any : defaultPlanTypes);
+  const [phases, setPhases] = useState<ProjectPhase[]>(ctxSettings.phases.length ? ctxSettings.phases as any : defaultPhases);
+  const [migrationTypes, setMigrationTypes] = useState<MigrationType[]>(ctxSettings.migrationTypes.length ? ctxSettings.migrationTypes as any : defaultMigrationTypes);
+  const [sourcePlatforms, setSourcePlatforms] = useState<SourcePlatform[]>(ctxSettings.sourcePlatforms.length ? ctxSettings.sourcePlatforms as any : defaultSourcePlatforms);
+  const [targetPlatforms, setTargetPlatforms] = useState<TargetPlatform[]>(ctxSettings.targetPlatforms.length ? ctxSettings.targetPlatforms as any : defaultTargetPlatforms);
+  const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>({ ...defaultNotificationSettings, ...ctxSettings.notificationSettings });
+  const [alertThresholds, setAlertThresholds] = useState<AlertThresholds>({ ...defaultAlertThresholds, ...ctxSettings.alertThresholds });
+  const [dashboardSettings, setDashboardSettings] = useState<DashboardSettings>({ ...defaultDashboardSettings, ...ctxSettings.dashboardSettings });
+  const [brandingSettings, setBrandingSettings] = useState<BrandingSettings>({ ...defaultBrandingSettings, ...ctxSettings.brandingSettings });
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>(defaultTeamMembers);
   const [automationRules, setAutomationRules] = useState<AutomationRule[]>(defaultAutomationRules);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['1']));
@@ -343,58 +345,99 @@ export default function SettingsPage() {
     calendarSync: false,
   });
 
-  // Load settings from localStorage
+  // Branding logo
+  const [companyLogo, setCompanyLogo] = useState<string | null>(null);
+
+  // Notification test email state
+  const [testEmailStatus, setTestEmailStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+  const [testEmailRecipient, setTestEmailRecipient] = useState('');
+
+  // Data export state
+  const [exportStatus, setExportStatus] = useState<{ projects: string; reports: string }>({ projects: '', reports: '' });
+
+  // Load all settings from localStorage once on mount
   useEffect(() => {
-    const loadSettings = () => {
-      try {
-        const saved = localStorage.getItem('pmoSettings');
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (parsed.template) setTemplate(parsed.template);
-          if (parsed.planTypes) setPlanTypes(parsed.planTypes);
-          if (parsed.phases) setPhases(parsed.phases);
-          if (parsed.notificationSettings) setNotificationSettings(parsed.notificationSettings);
-          if (parsed.alertThresholds) setAlertThresholds(parsed.alertThresholds);
-          if (parsed.dashboardSettings) setDashboardSettings(parsed.dashboardSettings);
-          if (parsed.brandingSettings) setBrandingSettings(parsed.brandingSettings);
-          if (parsed.teamMembers) setTeamMembers(parsed.teamMembers);
-          if (parsed.automationRules) setAutomationRules(parsed.automationRules);
-          if (parsed.smtpSettings) setSmtpSettings(parsed.smtpSettings);
-          if (parsed.auditSettings) setAuditSettings(parsed.auditSettings);
-          if (parsed.integrationSettings) setIntegrationSettings(parsed.integrationSettings);
-          if (parsed.migrationTypes) setMigrationTypes(parsed.migrationTypes);
-          if (parsed.sourcePlatforms) setSourcePlatforms(parsed.sourcePlatforms);
-          if (parsed.targetPlatforms) setTargetPlatforms(parsed.targetPlatforms);
-        }
-      } catch (e) {
-        console.error('Failed to load settings');
+    try {
+      const saved = localStorage.getItem('pmoSettings');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.migrationTypes?.length) setMigrationTypes(parsed.migrationTypes);
+        if (parsed.planTypes?.length) setPlanTypes(parsed.planTypes);
+        if (parsed.phases?.length) setPhases(parsed.phases);
+        if (parsed.sourcePlatforms?.length) setSourcePlatforms(parsed.sourcePlatforms);
+        if (parsed.targetPlatforms?.length) setTargetPlatforms(parsed.targetPlatforms);
+        if (parsed.notificationSettings) setNotificationSettings((p) => ({ ...p, ...parsed.notificationSettings }));
+        if (parsed.alertThresholds) setAlertThresholds((p) => ({ ...p, ...parsed.alertThresholds }));
+        if (parsed.dashboardSettings) setDashboardSettings((p) => ({ ...p, ...parsed.dashboardSettings }));
+        if (parsed.brandingSettings) setBrandingSettings((p) => ({ ...p, ...parsed.brandingSettings }));
+        if (parsed.template) setTemplate(parsed.template);
+        if (parsed.teamMembers) setTeamMembers(parsed.teamMembers);
+        if (parsed.automationRules) setAutomationRules(parsed.automationRules);
+        if (parsed.smtpSettings) setSmtpSettings(parsed.smtpSettings);
+        if (parsed.auditSettings) setAuditSettings(parsed.auditSettings);
+        if (parsed.integrationSettings) setIntegrationSettings(parsed.integrationSettings);
+        if (parsed.templateUploads) setTemplateUploads(parsed.templateUploads);
+        if (parsed.combinationDocs) setCombinationDocs(parsed.combinationDocs);
+        if (parsed.companyLogo) setCompanyLogo(parsed.companyLogo);
+        if (parsed.testEmailRecipient) setTestEmailRecipient(parsed.testEmailRecipient);
       }
-    };
-    loadSettings();
+    } catch (e) {
+      console.error('Failed to load settings');
+    }
   }, []);
 
-  // Save all settings
+  // Live-sync platform & migration type changes to context so New Project dropdown updates instantly
+  useEffect(() => {
+    updateSettings({
+      sourcePlatforms: sourcePlatforms as any,
+      targetPlatforms: targetPlatforms as any,
+      migrationTypes: migrationTypes as any,
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sourcePlatforms, targetPlatforms, migrationTypes]);
+
+  // Save all settings — single atomic write so no race between context and extras
   const handleSaveAll = async () => {
     setIsSaving(true);
     try {
-      const allSettings = {
-        template,
+      // Write EVERYTHING to localStorage in one go (PMOSettings + extras)
+      const fullData = {
+        migrationTypes,
+        sourcePlatforms,
+        targetPlatforms,
         planTypes,
         phases,
         notificationSettings,
         alertThresholds,
         dashboardSettings,
         brandingSettings,
+        // extras (not tracked by context)
+        template,
         teamMembers,
         automationRules,
         smtpSettings,
         auditSettings,
         integrationSettings,
-        migrationTypes,
-        sourcePlatforms,
-        targetPlatforms,
+        templateUploads,
+        combinationDocs,
+        companyLogo,
+        testEmailRecipient,
       };
-      localStorage.setItem('pmoSettings', JSON.stringify(allSettings));
+      localStorage.setItem('pmoSettings', JSON.stringify(fullData));
+
+      // Update in-memory context so all consumers (ProjectForm, Header, Sidebar, Dashboard) reflect changes instantly
+      updateSettings({
+        migrationTypes: migrationTypes as any,
+        sourcePlatforms: sourcePlatforms as any,
+        targetPlatforms: targetPlatforms as any,
+        planTypes: planTypes as any,
+        phases: phases as any,
+        notificationSettings,
+        alertThresholds,
+        dashboardSettings,
+        brandingSettings,
+      });
+
       setSaveMessage('All settings saved successfully!');
       setTimeout(() => setSaveMessage(null), 3000);
     } catch (error) {
@@ -822,67 +865,211 @@ export default function SettingsPage() {
     </div>
   );
 
-  const renderNotificationsTab = () => (
-    <div className="space-y-8">
-      {/* Email Settings */}
-      <div>
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Email Configuration</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Input label="SMTP Host" value={smtpSettings.host} onChange={(e) => setSmtpSettings({ ...smtpSettings, host: e.target.value })} />
-          <Input label="SMTP Port" value={smtpSettings.port} onChange={(e) => setSmtpSettings({ ...smtpSettings, port: e.target.value })} />
-          <Input label="SMTP User" value={smtpSettings.user} onChange={(e) => setSmtpSettings({ ...smtpSettings, user: e.target.value })} />
-          <Input label="SMTP Password" type="password" value={smtpSettings.password} onChange={(e) => setSmtpSettings({ ...smtpSettings, password: e.target.value })} />
-          <Input label="From Email" value={smtpSettings.fromEmail} onChange={(e) => setSmtpSettings({ ...smtpSettings, fromEmail: e.target.value })} className="md:col-span-2" />
-        </div>
-      </div>
+  const renderNotificationsTab = () => {
+    const handleTestEmail = async () => {
+      if (!testEmailRecipient) {
+        alert('Please enter a recipient email address first.');
+        return;
+      }
+      setTestEmailStatus('sending');
+      try {
+        await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/notifications/test-email`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
+          },
+          body: JSON.stringify({ to: testEmailRecipient, smtpSettings }),
+        });
+        setTestEmailStatus('sent');
+        setTimeout(() => setTestEmailStatus('idle'), 4000);
+      } catch {
+        setTestEmailStatus('error');
+        setTimeout(() => setTestEmailStatus('idle'), 4000);
+      }
+    };
 
-      {/* Notification Toggles */}
-      <div>
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Notification Types</h3>
-        <div className="space-y-3">
-          {[
-            { key: 'emailEnabled', label: 'Enable Email Notifications', desc: 'Master toggle for all email notifications' },
-            { key: 'delayAlerts', label: 'Delay Alerts', desc: 'Notify when projects become delayed' },
-            { key: 'phaseCompletion', label: 'Phase Completion', desc: 'Notify when a project phase is completed' },
-            { key: 'projectCompletion', label: 'Project Completion', desc: 'Notify when a project is marked as completed' },
-            { key: 'caseStudyReminders', label: 'Case Study Reminders', desc: 'Remind about pending case studies' },
-          ].map((item) => (
-            <label key={item.key} className="flex items-center justify-between p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50">
-              <div>
-                <p className="font-medium text-gray-900">{item.label}</p>
-                <p className="text-sm text-gray-500">{item.desc}</p>
-              </div>
+    return (
+      <div className="space-y-8">
+        {/* Master Toggle Banner */}
+        <div className={`flex items-center justify-between p-4 rounded-xl border-2 ${
+          notificationSettings.emailEnabled ? 'border-green-300 bg-green-50' : 'border-gray-200 bg-gray-50'
+        }`}>
+          <div className="flex items-center gap-3">
+            <div className={`p-2 rounded-lg ${notificationSettings.emailEnabled ? 'bg-green-100' : 'bg-gray-200'}`}>
+              <Mail className={notificationSettings.emailEnabled ? 'text-green-600' : 'text-gray-400'} size={20} />
+            </div>
+            <div>
+              <p className="font-semibold text-gray-900">Email Notifications</p>
+              <p className="text-sm text-gray-500">Master toggle — disabling this stops all notification emails</p>
+            </div>
+          </div>
+          <label className="relative inline-flex items-center cursor-pointer">
+            <input
+              type="checkbox"
+              checked={notificationSettings.emailEnabled}
+              onChange={(e) => setNotificationSettings({ ...notificationSettings, emailEnabled: e.target.checked })}
+              className="sr-only peer"
+            />
+            <div className="w-12 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[3px] after:left-[3px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-500"></div>
+          </label>
+        </div>
+
+        {/* SMTP Configuration */}
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-1">SMTP Configuration</h3>
+          <p className="text-sm text-gray-500 mb-4">Configure your email server to send notifications.</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Input label="SMTP Host" value={smtpSettings.host} onChange={(e) => setSmtpSettings({ ...smtpSettings, host: e.target.value })} placeholder="smtp.gmail.com" />
+            <Input label="SMTP Port" value={smtpSettings.port} onChange={(e) => setSmtpSettings({ ...smtpSettings, port: e.target.value })} placeholder="587" />
+            <Input label="SMTP Username" value={smtpSettings.user} onChange={(e) => setSmtpSettings({ ...smtpSettings, user: e.target.value })} placeholder="your@email.com" />
+            <Input label="SMTP Password" type="password" value={smtpSettings.password} onChange={(e) => setSmtpSettings({ ...smtpSettings, password: e.target.value })} placeholder="••••••••" />
+            <Input label="From Email Address" value={smtpSettings.fromEmail} onChange={(e) => setSmtpSettings({ ...smtpSettings, fromEmail: e.target.value })} className="md:col-span-2" placeholder="noreply@company.com" />
+          </div>
+
+          {/* Test Email */}
+          <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-xl">
+            <h4 className="text-sm font-semibold text-blue-900 mb-3">Test Email Connection</h4>
+            <div className="flex gap-3">
               <input
-                type="checkbox"
-                checked={notificationSettings[item.key as keyof NotificationSettings] as boolean}
-                onChange={(e) => setNotificationSettings({ ...notificationSettings, [item.key]: e.target.checked })}
-                className="w-5 h-5 text-primary-600 rounded"
+                type="email"
+                value={testEmailRecipient}
+                onChange={(e) => setTestEmailRecipient(e.target.value)}
+                placeholder="Recipient email address"
+                className="flex-1 px-3 py-2 border border-blue-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
               />
-            </label>
-          ))}
+              <button
+                onClick={handleTestEmail}
+                disabled={testEmailStatus === 'sending'}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
+                  testEmailStatus === 'sent' ? 'bg-green-500 text-white' :
+                  testEmailStatus === 'error' ? 'bg-red-500 text-white' :
+                  'bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60'
+                }`}
+              >
+                {testEmailStatus === 'sending' && <Loader2 size={14} className="animate-spin" />}
+                {testEmailStatus === 'sent' && <Check size={14} />}
+                {testEmailStatus === 'error' && <X size={14} />}
+                {testEmailStatus === 'idle' && <Mail size={14} />}
+                {testEmailStatus === 'sending' ? 'Sending…' : testEmailStatus === 'sent' ? 'Sent!' : testEmailStatus === 'error' ? 'Failed' : 'Send Test'}
+              </button>
+            </div>
+            {testEmailStatus === 'error' && (
+              <p className="mt-2 text-xs text-red-600">Test email failed. Please check your SMTP settings and ensure the backend email service is configured.</p>
+            )}
+          </div>
         </div>
-      </div>
 
-      {/* Alert Thresholds */}
-      <div>
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Alert Thresholds</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">At Risk Threshold (days before deadline)</label>
-            <Input type="number" value={alertThresholds.atRiskDays} onChange={(e) => setAlertThresholds({ ...alertThresholds, atRiskDays: parseInt(e.target.value) })} />
+        {/* Notification Types */}
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Notification Types</h3>
+          <div className="space-y-3">
+            {[
+              { key: 'delayAlerts', label: 'Delay Alerts', desc: 'Notify when projects become delayed or at-risk', icon: '⚠️' },
+              { key: 'phaseCompletion', label: 'Phase Completion', desc: 'Notify when a project phase is marked complete', icon: '✅' },
+              { key: 'projectCompletion', label: 'Project Completion', desc: 'Notify when a project is fully completed', icon: '🏁' },
+              { key: 'caseStudyReminders', label: 'Case Study Reminders', desc: 'Remind team to create case studies for completed projects', icon: '📋' },
+            ].map((item) => (
+              <label
+                key={item.key}
+                className={`flex items-center justify-between p-4 border rounded-xl cursor-pointer transition-all ${
+                  notificationSettings[item.key as keyof NotificationSettings]
+                    ? 'border-primary-300 bg-primary-50'
+                    : 'border-gray-200 hover:bg-gray-50'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-xl">{item.icon}</span>
+                  <div>
+                    <p className="font-medium text-gray-900">{item.label}</p>
+                    <p className="text-sm text-gray-500">{item.desc}</p>
+                  </div>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
+                  <input
+                    type="checkbox"
+                    checked={notificationSettings[item.key as keyof NotificationSettings] as boolean}
+                    onChange={(e) => setNotificationSettings({ ...notificationSettings, [item.key]: e.target.checked })}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
+                </label>
+              </label>
+            ))}
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Delayed Threshold (days past deadline)</label>
-            <Input type="number" value={alertThresholds.delayedDays} onChange={(e) => setAlertThresholds({ ...alertThresholds, delayedDays: parseInt(e.target.value) })} />
+        </div>
+
+        {/* Reminder Frequency */}
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Reminder Frequency</h3>
+          <div className="flex gap-3 flex-wrap">
+            {[
+              { value: 'daily', label: 'Daily' },
+              { value: 'weekly', label: 'Weekly' },
+              { value: 'biweekly', label: 'Bi-weekly' },
+              { value: 'monthly', label: 'Monthly' },
+            ].map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => setNotificationSettings({ ...notificationSettings, reminderFrequency: opt.value })}
+                className={`px-4 py-2 rounded-lg border-2 text-sm font-medium transition-all ${
+                  notificationSettings.reminderFrequency === opt.value
+                    ? 'border-primary-500 bg-primary-50 text-primary-700'
+                    : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                }`}
+              >
+                {opt.label}
+                {notificationSettings.reminderFrequency === opt.value && <span className="ml-1.5">✓</span>}
+              </button>
+            ))}
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Case Study Reminder (days after completion)</label>
-            <Input type="number" value={alertThresholds.caseStudyReminderDays} onChange={(e) => setAlertThresholds({ ...alertThresholds, caseStudyReminderDays: parseInt(e.target.value) })} />
+        </div>
+
+        {/* Alert Thresholds */}
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Alert Thresholds</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="p-4 border border-gray-200 rounded-xl">
+              <label className="block text-sm font-medium text-gray-700 mb-2">⚠️ At Risk — days before deadline</label>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="number"
+                  value={alertThresholds.atRiskDays}
+                  onChange={(e) => setAlertThresholds({ ...alertThresholds, atRiskDays: Math.max(0, parseInt(e.target.value) || 0) })}
+                  className="flex-1"
+                />
+                <span className="text-sm text-gray-500 whitespace-nowrap">days</span>
+              </div>
+            </div>
+            <div className="p-4 border border-gray-200 rounded-xl">
+              <label className="block text-sm font-medium text-gray-700 mb-2">🔴 Delayed — days past deadline</label>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="number"
+                  value={alertThresholds.delayedDays}
+                  onChange={(e) => setAlertThresholds({ ...alertThresholds, delayedDays: Math.max(0, parseInt(e.target.value) || 0) })}
+                  className="flex-1"
+                />
+                <span className="text-sm text-gray-500 whitespace-nowrap">days</span>
+              </div>
+            </div>
+            <div className="p-4 border border-gray-200 rounded-xl">
+              <label className="block text-sm font-medium text-gray-700 mb-2">📋 Case Study — days after completion</label>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="number"
+                  value={alertThresholds.caseStudyReminderDays}
+                  onChange={(e) => setAlertThresholds({ ...alertThresholds, caseStudyReminderDays: Math.max(0, parseInt(e.target.value) || 0) })}
+                  className="flex-1"
+                />
+                <span className="text-sm text-gray-500 whitespace-nowrap">days</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   // ── User Management State ───────────────────────────────────────
   const { user: currentUser } = useAuth();
@@ -1506,157 +1693,381 @@ export default function SettingsPage() {
     </div>
   );
 
-  const renderDataTab = () => (
-    <div className="space-y-6">
-      {/* Export Settings */}
-      <div>
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Export Data</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="p-4 border border-gray-200 rounded-lg text-center hover:border-primary-400 cursor-pointer">
-            <Download className="mx-auto text-primary-600 mb-2" size={32} />
-            <p className="font-medium text-gray-900">Export Projects</p>
-            <p className="text-sm text-gray-500">CSV or Excel format</p>
-          </div>
-          <div className="p-4 border border-gray-200 rounded-lg text-center hover:border-primary-400 cursor-pointer">
-            <Download className="mx-auto text-primary-600 mb-2" size={32} />
-            <p className="font-medium text-gray-900">Export Case Studies</p>
-            <p className="text-sm text-gray-500">PDF or Word format</p>
-          </div>
-          <div className="p-4 border border-gray-200 rounded-lg text-center hover:border-primary-400 cursor-pointer">
-            <Download className="mx-auto text-primary-600 mb-2" size={32} />
-            <p className="font-medium text-gray-900">Export Reports</p>
-            <p className="text-sm text-gray-500">Full analytics report</p>
-          </div>
-        </div>
-      </div>
+  const renderDataTab = () => {
+    const handleExportProjects = async () => {
+      setExportStatus((p) => ({ ...p, projects: 'loading' }));
+      try {
+        const res = await projectsApi.getAll({ limit: 1000 });
+        const projects = res.data || [];
+        const headers = ['Name', 'Status', 'Phase', 'Plan Type', 'Migration Type', 'Start Date', 'Target End Date', 'Delay Status', 'Source Platform', 'Destination Platform'];
+        const rows = projects.map((p: any) => [
+          p.name || '',
+          p.status || '',
+          p.currentPhase || '',
+          p.planType || '',
+          p.migrationType || '',
+          p.startDate ? new Date(p.startDate).toLocaleDateString() : '',
+          p.targetEndDate ? new Date(p.targetEndDate).toLocaleDateString() : '',
+          p.delayStatus || '',
+          p.sourcePlatform || '',
+          p.destinationPlatform || '',
+        ]);
+        const csv = [headers, ...rows].map((r) => r.map((v: any) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `projects-export-${new Date().toISOString().slice(0, 10)}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+        setExportStatus((p) => ({ ...p, projects: 'done' }));
+        setTimeout(() => setExportStatus((p) => ({ ...p, projects: '' })), 3000);
+      } catch {
+        setExportStatus((p) => ({ ...p, projects: 'error' }));
+        setTimeout(() => setExportStatus((p) => ({ ...p, projects: '' })), 3000);
+      }
+    };
 
-      {/* Import Settings */}
-      <div>
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Import Data</h3>
-        <div className="p-6 border-2 border-dashed border-gray-300 rounded-lg text-center">
-          <Upload className="mx-auto text-gray-400 mb-2" size={32} />
-          <p className="font-medium text-gray-900">Drop files here or click to upload</p>
-          <p className="text-sm text-gray-500">Supports CSV, Excel (.xlsx), and JSON formats</p>
-          <Button variant="outline" className="mt-4">Select Files</Button>
-        </div>
-      </div>
+    const handleExportSettings = () => {
+      try {
+        const data = localStorage.getItem('pmoSettings') || '{}';
+        const blob = new Blob([data], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `pmo-settings-${new Date().toISOString().slice(0, 10)}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        setExportStatus((p) => ({ ...p, reports: 'done' }));
+        setTimeout(() => setExportStatus((p) => ({ ...p, reports: '' })), 3000);
+      } catch {
+        setExportStatus((p) => ({ ...p, reports: 'error' }));
+      }
+    };
 
-      {/* Data Retention */}
-      <div>
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Data Retention</h3>
-        <div className="space-y-4">
-          <Select
-            label="Archive completed projects after"
-            value="365"
-            options={[
-              { value: '90', label: '90 days' },
-              { value: '180', label: '180 days' },
-              { value: '365', label: '1 year' },
-              { value: 'never', label: 'Never' },
-            ]}
-          />
-          <Select
-            label="Delete archived data after"
-            value="never"
-            options={[
-              { value: '365', label: '1 year' },
-              { value: '730', label: '2 years' },
-              { value: '1825', label: '5 years' },
-              { value: 'never', label: 'Never' },
-            ]}
-          />
+    return (
+      <div className="space-y-6">
+        {/* Export Data */}
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-1">Export Data</h3>
+          <p className="text-sm text-gray-500 mb-4">Download your data for backup or external reporting.</p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Export Projects */}
+            <button
+              onClick={handleExportProjects}
+              disabled={exportStatus.projects === 'loading'}
+              className="p-5 border-2 border-gray-200 rounded-xl text-center hover:border-primary-400 hover:bg-primary-50 transition-all group disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {exportStatus.projects === 'loading'
+                ? <Loader2 className="mx-auto text-primary-600 mb-3 animate-spin" size={32} />
+                : exportStatus.projects === 'done'
+                  ? <CheckCircle className="mx-auto text-green-500 mb-3" size={32} />
+                  : exportStatus.projects === 'error'
+                    ? <AlertCircle className="mx-auto text-red-500 mb-3" size={32} />
+                    : <Download className="mx-auto text-primary-600 mb-3 group-hover:scale-110 transition-transform" size={32} />
+              }
+              <p className="font-semibold text-gray-900">Export Projects</p>
+              <p className="text-xs text-gray-500 mt-1">All projects as CSV</p>
+              {exportStatus.projects === 'done' && <p className="text-xs text-green-600 mt-1 font-medium">Downloaded!</p>}
+              {exportStatus.projects === 'error' && <p className="text-xs text-red-600 mt-1">Export failed</p>}
+            </button>
+
+            {/* Export Settings/Config */}
+            <button
+              onClick={handleExportSettings}
+              className="p-5 border-2 border-gray-200 rounded-xl text-center hover:border-primary-400 hover:bg-primary-50 transition-all group"
+            >
+              {exportStatus.reports === 'done'
+                ? <CheckCircle className="mx-auto text-green-500 mb-3" size={32} />
+                : <FileDown className="mx-auto text-primary-600 mb-3 group-hover:scale-110 transition-transform" size={32} />
+              }
+              <p className="font-semibold text-gray-900">Export Configuration</p>
+              <p className="text-xs text-gray-500 mt-1">All settings as JSON</p>
+              {exportStatus.reports === 'done' && <p className="text-xs text-green-600 mt-1 font-medium">Downloaded!</p>}
+            </button>
+
+            {/* Export Migration Types */}
+            <button
+              onClick={() => {
+                const data = JSON.stringify({ migrationTypes, sourcePlatforms, targetPlatforms }, null, 2);
+                const blob = new Blob([data], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `migration-config-${new Date().toISOString().slice(0, 10)}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+              }}
+              className="p-5 border-2 border-gray-200 rounded-xl text-center hover:border-primary-400 hover:bg-primary-50 transition-all group"
+            >
+              <FileText className="mx-auto text-primary-600 mb-3 group-hover:scale-110 transition-transform" size={32} />
+              <p className="font-semibold text-gray-900">Export Migration Config</p>
+              <p className="text-xs text-gray-500 mt-1">Migration types & platforms</p>
+            </button>
+          </div>
+        </div>
+
+        {/* Import Data */}
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-1">Import Data</h3>
+          <p className="text-sm text-gray-500 mb-4">Restore settings or import configuration from a JSON file.</p>
+          <div className="p-6 border-2 border-dashed border-gray-300 rounded-xl text-center hover:border-primary-400 transition-colors">
+            <Upload className="mx-auto text-gray-400 mb-3" size={36} />
+            <p className="font-semibold text-gray-900 mb-1">Import Configuration</p>
+            <p className="text-sm text-gray-500 mb-4">Upload a previously exported settings JSON file</p>
+            <input
+              type="file"
+              accept=".json"
+              id="settings-import"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                  try {
+                    const parsed = JSON.parse(ev.target?.result as string);
+                    const existing = JSON.parse(localStorage.getItem('pmoSettings') || '{}');
+                    localStorage.setItem('pmoSettings', JSON.stringify({ ...existing, ...parsed }));
+                    alert('Configuration imported successfully! Refresh the page to apply all settings.');
+                  } catch {
+                    alert('Invalid JSON file. Please upload a valid configuration export.');
+                  }
+                };
+                reader.readAsText(file);
+                e.target.value = '';
+              }}
+            />
+            <label htmlFor="settings-import">
+              <span className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 cursor-pointer transition-colors">
+                <FileUp size={16} /> Select JSON File
+              </span>
+            </label>
+          </div>
+        </div>
+
+        {/* Data Retention */}
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Data Retention</h3>
+          <div className="space-y-4">
+            <Select
+              label="Archive completed projects after"
+              value="365"
+              onChange={() => {}}
+              options={[
+                { value: '90', label: '90 days' },
+                { value: '180', label: '180 days' },
+                { value: '365', label: '1 year' },
+                { value: 'never', label: 'Never' },
+              ]}
+            />
+            <Select
+              label="Delete archived data after"
+              value="never"
+              onChange={() => {}}
+              options={[
+                { value: '365', label: '1 year' },
+                { value: '730', label: '2 years' },
+                { value: '1825', label: '5 years' },
+                { value: 'never', label: 'Never' },
+              ]}
+            />
+          </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const renderBrandingTab = () => (
     <div className="space-y-6">
+      {/* Company Identity */}
       <div>
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Company Branding</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Input
-            label="Company Name"
-            value={brandingSettings.companyName}
-            onChange={(e) => setBrandingSettings({ ...brandingSettings, companyName: e.target.value })}
-          />
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Company Identity</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="space-y-4">
+            <Input
+              label="Company Name"
+              value={brandingSettings.companyName}
+              onChange={(e) => setBrandingSettings({ ...brandingSettings, companyName: e.target.value })}
+              placeholder="e.g. CloudFuze"
+            />
+            <p className="text-xs text-gray-400">This name appears in the sidebar and page titles.</p>
+          </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Company Logo</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Company Logo</label>
             <div className="flex items-center gap-4">
-              <div className="w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center">
-                <FolderKanban className="text-gray-400" size={32} />
+              <div className="w-20 h-20 bg-gray-100 rounded-xl flex items-center justify-center overflow-hidden border border-gray-200">
+                {companyLogo
+                  ? <img src={companyLogo} alt="Logo" className="w-full h-full object-contain" />
+                  : <FolderKanban className="text-gray-400" size={36} />
+                }
               </div>
-              <Button variant="outline" size="sm">Upload Logo</Button>
+              <div className="flex flex-col gap-2">
+                <input
+                  type="file"
+                  accept="image/*"
+                  id="logo-upload"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = (ev) => {
+                      const dataUrl = ev.target?.result as string;
+                      setCompanyLogo(dataUrl);
+                    };
+                    reader.readAsDataURL(file);
+                  }}
+                />
+                <label htmlFor="logo-upload">
+                  <span className="inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 cursor-pointer transition-colors">
+                    <Upload size={14} /> Upload Logo
+                  </span>
+                </label>
+                {companyLogo && (
+                  <button
+                    onClick={() => setCompanyLogo(null)}
+                    className="text-xs text-red-500 hover:text-red-700 text-left"
+                  >
+                    Remove logo
+                  </button>
+                )}
+                <p className="text-xs text-gray-400">PNG, JPG, SVG up to 2MB</p>
+              </div>
             </div>
           </div>
         </div>
       </div>
 
+      {/* Theme Colors */}
       <div>
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Theme Colors</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Primary Color</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Primary Color</label>
             <div className="flex items-center gap-3">
               <input
                 type="color"
                 value={brandingSettings.primaryColor}
-                onChange={(e) => setBrandingSettings({ ...brandingSettings, primaryColor: e.target.value })}
-                className="w-12 h-12 rounded cursor-pointer"
+                onChange={(e) => {
+                  const color = e.target.value;
+                  setBrandingSettings((prev) => ({ ...prev, primaryColor: color }));
+                  document.documentElement.style.setProperty('--color-primary', color);
+                }}
+                className="w-12 h-12 rounded-lg cursor-pointer border border-gray-200"
               />
               <Input
                 value={brandingSettings.primaryColor}
-                onChange={(e) => setBrandingSettings({ ...brandingSettings, primaryColor: e.target.value })}
-                className="flex-1"
+                onChange={(e) => {
+                  const color = e.target.value;
+                  setBrandingSettings((prev) => ({ ...prev, primaryColor: color }));
+                  if (/^#[0-9A-Fa-f]{6}$/.test(color)) {
+                    document.documentElement.style.setProperty('--color-primary', color);
+                  }
+                }}
+                className="flex-1 font-mono"
+                placeholder="#4F46E5"
               />
+            </div>
+            <div className="mt-2 flex gap-2 flex-wrap">
+              {['#4F46E5','#2563EB','#7C3AED','#DC2626','#059669','#D97706','#0891B2','#374151'].map((c) => (
+                <button
+                  key={c}
+                  title={c}
+                  onClick={() => {
+                    setBrandingSettings((prev) => ({ ...prev, primaryColor: c }));
+                    document.documentElement.style.setProperty('--color-primary', c);
+                  }}
+                  className="w-7 h-7 rounded-full border-2 transition-transform hover:scale-110"
+                  style={{ backgroundColor: c, borderColor: brandingSettings.primaryColor === c ? '#111' : 'transparent' }}
+                />
+              ))}
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Secondary Color</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Secondary Color</label>
             <div className="flex items-center gap-3">
               <input
                 type="color"
                 value={brandingSettings.secondaryColor}
-                onChange={(e) => setBrandingSettings({ ...brandingSettings, secondaryColor: e.target.value })}
-                className="w-12 h-12 rounded cursor-pointer"
+                onChange={(e) => setBrandingSettings((prev) => ({ ...prev, secondaryColor: e.target.value }))}
+                className="w-12 h-12 rounded-lg cursor-pointer border border-gray-200"
               />
               <Input
                 value={brandingSettings.secondaryColor}
-                onChange={(e) => setBrandingSettings({ ...brandingSettings, secondaryColor: e.target.value })}
-                className="flex-1"
+                onChange={(e) => setBrandingSettings((prev) => ({ ...prev, secondaryColor: e.target.value }))}
+                className="flex-1 font-mono"
+                placeholder="#10B981"
               />
+            </div>
+            <div className="mt-2 flex gap-2 flex-wrap">
+              {['#10B981','#3B82F6','#8B5CF6','#F59E0B','#EF4444','#06B6D4','#84CC16','#6B7280'].map((c) => (
+                <button
+                  key={c}
+                  title={c}
+                  onClick={() => setBrandingSettings((prev) => ({ ...prev, secondaryColor: c }))}
+                  className="w-7 h-7 rounded-full border-2 transition-transform hover:scale-110"
+                  style={{ backgroundColor: c, borderColor: brandingSettings.secondaryColor === c ? '#111' : 'transparent' }}
+                />
+              ))}
             </div>
           </div>
         </div>
       </div>
 
+      {/* Preview */}
+      <div>
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Preview</h3>
+        <div className="p-4 border border-gray-200 rounded-xl bg-gray-50 space-y-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: brandingSettings.primaryColor }}>
+              {companyLogo
+                ? <img src={companyLogo} alt="Logo" className="w-8 h-8 object-contain rounded" />
+                : <FolderKanban className="text-white" size={20} />
+              }
+            </div>
+            <span className="text-lg font-bold text-gray-900">{brandingSettings.companyName || 'PMO Tracker'}</span>
+          </div>
+          <div className="flex gap-2">
+            <span className="px-3 py-1 rounded-full text-white text-sm font-medium" style={{ backgroundColor: brandingSettings.primaryColor }}>Primary Button</span>
+            <span className="px-3 py-1 rounded-full text-white text-sm font-medium" style={{ backgroundColor: brandingSettings.secondaryColor }}>Secondary</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Theme Mode */}
       <div>
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Theme Mode</h3>
         <div className="flex gap-4">
-          {['light', 'dark', 'system'].map((theme) => (
+          {([['light', 'Light Mode'], ['dark', 'Dark Mode']] as const).map(([val, label]) => (
             <label
-              key={theme}
-              className={`flex-1 p-4 border rounded-lg cursor-pointer text-center ${
-                brandingSettings.theme === theme ? 'border-primary-500 bg-primary-50' : 'border-gray-200'
+              key={val}
+              className={`flex-1 p-4 border-2 rounded-xl cursor-pointer text-center transition-all ${
+                brandingSettings.theme === val ? 'border-primary-500 bg-primary-50' : 'border-gray-200 hover:border-gray-300'
               }`}
             >
               <input
                 type="radio"
                 name="theme"
-                value={theme}
-                checked={brandingSettings.theme === theme}
-                onChange={(e) => setBrandingSettings({ ...brandingSettings, theme: e.target.value })}
+                value={val}
+                checked={brandingSettings.theme === val}
+                onChange={() => setBrandingSettings((prev) => ({ ...prev, theme: val }))}
                 className="sr-only"
               />
               <div className="mb-2">
-                {theme === 'light' && <Eye className="mx-auto text-yellow-500" size={24} />}
-                {theme === 'dark' && <EyeOff className="mx-auto text-gray-700" size={24} />}
-                {theme === 'system' && <Settings className="mx-auto text-gray-500" size={24} />}
+                {val === 'light' && <Eye className="mx-auto text-yellow-500" size={28} />}
+                {val === 'dark' && <EyeOff className="mx-auto text-gray-700" size={28} />}
               </div>
-              <p className="font-medium text-gray-900 capitalize">{theme}</p>
+              <p className="font-medium text-gray-900">{label}</p>
+              {brandingSettings.theme === val && (
+                <span className="inline-flex items-center gap-1 mt-1 text-xs text-primary-600 font-medium">
+                  <Check size={12} /> Active
+                </span>
+              )}
             </label>
           ))}
         </div>
+        <p className="mt-2 text-xs text-gray-400">Theme is applied immediately when you click. Save to persist.</p>
       </div>
     </div>
   );
@@ -1741,121 +2152,126 @@ export default function SettingsPage() {
           {migrationTypes.map((type) => (
             <div
               key={type.id}
-              className={`p-4 border-2 rounded-lg transition-all ${
-                type.enabled ? 'border-primary-300 bg-primary-50' : 'border-gray-200 bg-gray-50'
+              className={`p-4 border-2 rounded-xl transition-all ${
+                type.enabled ? 'border-primary-300 bg-primary-50' : 'border-gray-200 bg-gray-50 opacity-70'
               }`}
             >
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="relative">
-                    <div
-                      className="w-12 h-12 rounded-lg flex items-center justify-center text-2xl cursor-pointer"
-                      style={{ backgroundColor: type.color + '20' }}
-                    >
-                      {type.icon}
-                    </div>
-                    <input
-                      type="text"
-                      value={type.icon}
-                      onChange={(e) => {
-                        setMigrationTypes(migrationTypes.map((t) =>
-                          t.id === type.id ? { ...t, icon: e.target.value } : t
-                        ));
-                      }}
-                      className="absolute inset-0 w-12 h-12 opacity-0 cursor-pointer"
-                      title="Click to change icon (use emoji)"
-                    />
+              {/* Header row */}
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                  {/* Emoji icon */}
+                  <div
+                    className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl flex-shrink-0"
+                    style={{ backgroundColor: (type.color || '#6B7280') + '25' }}
+                  >
+                    {type.icon || '📦'}
                   </div>
-                  <div className="flex-1">
+                  <div className="flex-1 min-w-0">
                     <input
                       type="text"
-                      value={type.name}
-                      onChange={(e) => {
-                        setMigrationTypes(migrationTypes.map((t) =>
-                          t.id === type.id ? { ...t, name: e.target.value } : t
-                        ));
-                      }}
-                      className="font-semibold text-gray-900 bg-transparent border-b border-transparent hover:border-gray-300 focus:border-primary-500 focus:outline-none w-full"
+                      value={type.name || ''}
+                      onChange={(e) => setMigrationTypes(migrationTypes.map((t) =>
+                        t.id === type.id ? { ...t, name: e.target.value } : t
+                      ))}
+                      className="font-semibold text-gray-900 bg-transparent border-b border-transparent hover:border-gray-300 focus:border-primary-500 focus:outline-none w-full text-sm"
+                      placeholder="Migration type name"
                     />
                     <input
                       type="text"
-                      value={type.code}
-                      onChange={(e) => {
-                        setMigrationTypes(migrationTypes.map((t) =>
-                          t.id === type.id ? { ...t, code: e.target.value.toUpperCase() } : t
-                        ));
-                      }}
-                      className="text-xs text-gray-500 uppercase tracking-wide bg-transparent border-b border-transparent hover:border-gray-300 focus:border-primary-500 focus:outline-none w-full mt-1"
+                      value={type.code || ''}
+                      onChange={(e) => setMigrationTypes(migrationTypes.map((t) =>
+                        t.id === type.id ? { ...t, code: e.target.value.toUpperCase() } : t
+                      ))}
+                      className="text-xs text-gray-400 uppercase tracking-wide bg-transparent border-b border-transparent hover:border-gray-300 focus:border-primary-500 focus:outline-none w-full mt-0.5"
+                      placeholder="CODE"
                     />
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
+                {/* Toggle + Delete */}
+                <div className="flex items-center gap-2 flex-shrink-0 ml-2">
                   <button
-                    onClick={() => {
-                      setMigrationTypes(migrationTypes.filter((t) => t.id !== type.id));
-                    }}
-                    className="p-1 text-gray-400 hover:text-red-500 transition-colors"
-                    title="Delete migration type"
+                    type="button"
+                    onClick={() => setMigrationTypes(migrationTypes.map((t) =>
+                      t.id === type.id ? { ...t, enabled: !t.enabled } : t
+                    ))}
+                    className={`px-2.5 py-1 rounded-full text-xs font-semibold transition-colors ${
+                      type.enabled
+                        ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                        : 'bg-gray-200 text-gray-500 hover:bg-gray-300'
+                    }`}
                   >
-                    <Trash2 size={16} />
+                    {type.enabled ? 'Enabled' : 'Disabled'}
                   </button>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={type.enabled}
-                      onChange={() => {
-                        setMigrationTypes(migrationTypes.map((t) =>
-                          t.id === type.id ? { ...t, enabled: !t.enabled } : t
-                        ));
-                      }}
-                      className="sr-only peer"
-                    />
-                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
-                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setMigrationTypes(migrationTypes.filter((t) => t.id !== type.id))}
+                    className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                    title="Delete"
+                  >
+                    <Trash2 size={15} />
+                  </button>
                 </div>
               </div>
+
+              {/* Description */}
               <textarea
-                value={type.description}
-                onChange={(e) => {
-                  setMigrationTypes(migrationTypes.map((t) =>
-                    t.id === type.id ? { ...t, description: e.target.value } : t
-                  ));
-                }}
-                className="mt-3 text-sm text-gray-600 bg-transparent border border-transparent hover:border-gray-300 focus:border-primary-500 focus:outline-none w-full rounded p-1 resize-none"
+                value={type.description || ''}
+                onChange={(e) => setMigrationTypes(migrationTypes.map((t) =>
+                  t.id === type.id ? { ...t, description: e.target.value } : t
+                ))}
+                className="w-full text-sm text-gray-600 bg-white border border-gray-200 hover:border-gray-300 focus:border-primary-500 focus:outline-none rounded-lg p-2 resize-none"
                 rows={2}
-                placeholder="Description of the migration type"
+                placeholder="Description of this migration type…"
               />
-              <div className="mt-3 flex items-center gap-2">
-                <input
-                  type="color"
-                  value={type.color}
-                  onChange={(e) => {
-                    setMigrationTypes(migrationTypes.map((t) =>
-                      t.id === type.id ? { ...t, color: e.target.value } : t
-                    ));
-                  }}
-                  className="w-8 h-8 rounded cursor-pointer"
-                />
-                <span className="text-xs text-gray-500">Badge color</span>
+
+              {/* Icon + Color row */}
+              <div className="mt-3 flex items-center gap-3">
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">Emoji icon</label>
+                  <input
+                    type="text"
+                    value={type.icon || ''}
+                    onChange={(e) => setMigrationTypes(migrationTypes.map((t) =>
+                      t.id === type.id ? { ...t, icon: e.target.value } : t
+                    ))}
+                    className="w-14 text-center text-xl border border-gray-200 rounded-lg p-1 focus:outline-none focus:border-primary-500"
+                    maxLength={4}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">Badge color</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={type.color || '#6B7280'}
+                      onChange={(e) => setMigrationTypes(migrationTypes.map((t) =>
+                        t.id === type.id ? { ...t, color: e.target.value } : t
+                      ))}
+                      className="w-9 h-9 rounded-lg cursor-pointer border border-gray-200"
+                    />
+                    <span className="text-xs text-gray-500 font-mono">{type.color || '#6B7280'}</span>
+                  </div>
+                </div>
               </div>
             </div>
           ))}
         </div>
 
         <button
+          type="button"
           onClick={() => {
             const newType: MigrationType = {
               id: Date.now().toString(),
               name: 'New Migration Type',
               code: 'NEW',
-              description: 'Description of the migration type',
+              description: '',
               icon: '📦',
               color: '#6B7280',
               enabled: true,
             };
             setMigrationTypes([...migrationTypes, newType]);
           }}
-          className="mt-4 w-full p-3 border-2 border-dashed border-gray-300 rounded-lg text-gray-500 hover:border-primary-400 hover:text-primary-600 flex items-center justify-center gap-2"
+          className="mt-4 w-full p-3 border-2 border-dashed border-gray-300 rounded-xl text-gray-500 hover:border-primary-400 hover:text-primary-600 hover:bg-primary-50 flex items-center justify-center gap-2 transition-colors"
         >
           <Plus size={18} /> Add Migration Type
         </button>
@@ -2131,6 +2547,10 @@ export default function SettingsPage() {
   const [newPhaseForm, setNewPhaseForm] = useState<{ [templateId: string]: boolean }>({});
   const [newTaskForm, setNewTaskForm] = useState<{ [phaseId: string]: boolean }>({});
   const [templateSaving, setTemplateSaving] = useState(false);
+  const [templateUploads, setTemplateUploads] = useState<Record<string, { id: string; name: string; size: string; type: string; uploadedAt: string }[]>>({});
+  const [templateSubTab, setTemplateSubTab] = useState<'content' | 'messaging' | 'email'>('content');
+  const [selectedCombination, setSelectedCombination] = useState<string | null>(null);
+  const [combinationDocs, setCombinationDocs] = useState<Record<string, { id: string; name: string; size: string; ext: string; docType: string; uploadedAt: string }[]>>({});
 
   const TEMPLATE_COLORS: Record<string, { border: string; bg: string; icon: string; text: string }> = {
     CONTENT: { border: 'border-blue-200', bg: 'bg-blue-50', icon: '📁', text: 'text-blue-700' },
@@ -2529,6 +2949,69 @@ export default function SettingsPage() {
                   );
                 })}
 
+                {/* Uploaded Documents */}
+                <div className="border border-gray-200 rounded-lg overflow-hidden mt-2">
+                  <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-200">
+                    <div className="flex items-center gap-2">
+                      <Upload size={15} className="text-gray-500" />
+                      <span className="text-sm font-medium text-gray-700">Uploaded Documents</span>
+                      {(templateUploads[tpl.id]?.length || 0) > 0 && (
+                        <span className="text-xs bg-primary-100 text-primary-700 px-1.5 py-0.5 rounded-full font-medium">{templateUploads[tpl.id].length}</span>
+                      )}
+                    </div>
+                    <label className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-primary-600 border border-primary-300 rounded-lg hover:bg-primary-50 cursor-pointer transition-colors">
+                      <Plus size={13} /> Upload File
+                      <input
+                        type="file"
+                        className="hidden"
+                        multiple
+                        accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.png,.jpg,.jpeg"
+                        onChange={(e) => {
+                          const files = Array.from(e.target.files || []);
+                          const newDocs = files.map((f) => ({
+                            id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+                            name: f.name,
+                            size: f.size > 1024 * 1024 ? `${(f.size / 1024 / 1024).toFixed(1)} MB` : `${(f.size / 1024).toFixed(0)} KB`,
+                            type: f.name.split('.').pop()?.toUpperCase() || 'FILE',
+                            uploadedAt: new Date().toISOString(),
+                          }));
+                          setTemplateUploads((prev) => ({
+                            ...prev,
+                            [tpl.id]: [...(prev[tpl.id] || []), ...newDocs],
+                          }));
+                          e.target.value = '';
+                        }}
+                      />
+                    </label>
+                  </div>
+                  <div className="p-3">
+                    {(!templateUploads[tpl.id] || templateUploads[tpl.id].length === 0) ? (
+                      <p className="text-xs text-gray-400 italic text-center py-3">No documents uploaded. Upload kickoff decks, runbooks, or template files.</p>
+                    ) : (
+                      <div className="space-y-1.5">
+                        {templateUploads[tpl.id].map((doc) => (
+                          <div key={doc.id} className="flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-100 rounded-lg text-sm">
+                            <FileText size={14} className="text-gray-400 flex-shrink-0" />
+                            <span className="flex-1 text-gray-700 truncate">{doc.name}</span>
+                            <span className="text-xs text-gray-400 flex-shrink-0">{doc.type}</span>
+                            <span className="text-xs text-gray-400 flex-shrink-0">{doc.size}</span>
+                            <button
+                              onClick={() => setTemplateUploads((prev) => ({
+                                ...prev,
+                                [tpl.id]: prev[tpl.id].filter((d) => d.id !== doc.id),
+                              }))}
+                              className="p-0.5 text-gray-400 hover:text-red-500 rounded flex-shrink-0"
+                              title="Remove"
+                            >
+                              <X size={13} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
                 {/* Add Phase */}
                 {newPhaseForm[tpl.id] ? (
                   <div className="flex items-center gap-2 p-3 bg-primary-50 border-2 border-dashed border-primary-200 rounded-lg">
@@ -2580,20 +3063,37 @@ export default function SettingsPage() {
   );
 
   const renderTabContent = () => {
-    switch (activeTab) {
-      case 'templates': return renderTemplatesTab();
-      case 'migration': return renderMigrationTab();
-      case 'case-study': return renderCaseStudyTab();
-      case 'project': return renderProjectConfigTab();
-      case 'notifications': return renderNotificationsTab();
-      case 'team': return renderTeamTab();
-      case 'dashboard': return renderDashboardTab();
-      case 'automation': return renderAutomationTab();
-      case 'integrations': return renderIntegrationsTab();
-      case 'data': return renderDataTab();
-      case 'branding': return renderBrandingTab();
-      case 'audit': return renderAuditTab();
-      default: return null;
+    try {
+      switch (activeTab) {
+        case 'templates': return renderTemplatesTab();
+        case 'migration': return renderMigrationTab();
+        case 'case-study': return renderCaseStudyTab();
+        case 'project': return renderProjectConfigTab();
+        case 'notifications': return renderNotificationsTab();
+        case 'team': return renderTeamTab();
+        case 'dashboard': return renderDashboardTab();
+        case 'automation': return renderAutomationTab();
+        case 'integrations': return renderIntegrationsTab();
+        case 'data': return renderDataTab();
+        case 'branding': return renderBrandingTab();
+        case 'audit': return renderAuditTab();
+        default: return null;
+      }
+    } catch (err) {
+      console.error('Tab render error:', err);
+      return (
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <AlertCircle size={40} className="text-red-400 mb-4" />
+          <h3 className="text-lg font-semibold text-gray-800 mb-2">Tab failed to load</h3>
+          <p className="text-sm text-gray-500 mb-4">There was an error rendering this tab. Check the browser console for details.</p>
+          <button
+            onClick={() => setActiveTab('templates')}
+            className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm hover:bg-primary-700 transition-colors"
+          >
+            Go to Project Templates
+          </button>
+        </div>
+      );
     }
   };
 

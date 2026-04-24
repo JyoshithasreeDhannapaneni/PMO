@@ -12,7 +12,25 @@ export interface DashboardStats {
 }
 
 class DashboardService {
-  async getStats(): Promise<DashboardStats> {
+  // Build a WHERE clause fragment for manager filtering
+  private managerWhere(managerName?: string): { clause: string; params: string[] } {
+    if (managerName) {
+      return { clause: `WHERE project_manager = ?`, params: [managerName] };
+    }
+    return { clause: '', params: [] };
+  }
+
+  private andManagerWhere(managerName?: string): { clause: string; params: string[] } {
+    if (managerName) {
+      return { clause: `AND project_manager = ?`, params: [managerName] };
+    }
+    return { clause: '', params: [] };
+  }
+
+  async getStats(managerName?: string): Promise<DashboardStats> {
+    const { clause: w, params: p } = this.managerWhere(managerName);
+    const { clause: aw, params: ap } = this.andManagerWhere(managerName);
+
     const [
       totalResult,
       activeResult,
@@ -23,14 +41,14 @@ class DashboardService {
       pendingCaseStudiesResult,
       avgDelayResult,
     ] = await Promise.all([
-      query(`SELECT COUNT(*) as count FROM projects`),
-      query(`SELECT COUNT(*) as count FROM projects WHERE status = 'ACTIVE'`),
-      query(`SELECT COUNT(*) as count FROM projects WHERE status = 'COMPLETED'`),
-      query(`SELECT COUNT(*) as count FROM projects WHERE status = 'ON_HOLD'`),
-      query(`SELECT COUNT(*) as count FROM projects WHERE delay_status = 'DELAYED'`),
-      query(`SELECT COUNT(*) as count FROM projects WHERE delay_status = 'AT_RISK'`),
-      query(`SELECT COUNT(*) as count FROM case_studies WHERE status = 'PENDING'`),
-      query(`SELECT AVG(delay_days) as avg FROM projects WHERE delay_days > 0`),
+      query(`SELECT COUNT(*) as count FROM projects ${w}`, p),
+      query(`SELECT COUNT(*) as count FROM projects WHERE status = 'ACTIVE' ${aw}`, ap),
+      query(`SELECT COUNT(*) as count FROM projects WHERE status = 'COMPLETED' ${aw}`, ap),
+      query(`SELECT COUNT(*) as count FROM projects WHERE status = 'ON_HOLD' ${aw}`, ap),
+      query(`SELECT COUNT(*) as count FROM projects WHERE delay_status = 'DELAYED' ${aw}`, ap),
+      query(`SELECT COUNT(*) as count FROM projects WHERE delay_status = 'AT_RISK' ${aw}`, ap),
+      query(`SELECT COUNT(*) as count FROM case_studies cs JOIN projects p ON cs.project_id = p.id WHERE cs.status = 'PENDING' ${aw.replace(/^AND /, 'AND p.')}`, ap),
+      query(`SELECT AVG(delay_days) as avg FROM projects WHERE delay_days > 0 ${aw}`, ap),
     ]);
 
     return {
@@ -45,9 +63,10 @@ class DashboardService {
     };
   }
 
-  async getProjectsByStatus() {
+  async getProjectsByStatus(managerName?: string) {
+    const { clause: w, params: p } = this.managerWhere(managerName);
     const result = await query(
-      `SELECT status, COUNT(*) as count FROM projects GROUP BY status`
+      `SELECT status, COUNT(*) as count FROM projects ${w} GROUP BY status`, p
     );
     return result.rows.map((r) => ({
       status: r.status,
@@ -55,9 +74,10 @@ class DashboardService {
     }));
   }
 
-  async getProjectsByPhase() {
+  async getProjectsByPhase(managerName?: string) {
+    const { clause: w, params: p } = this.managerWhere(managerName);
     const result = await query(
-      `SELECT phase, COUNT(*) as count FROM projects GROUP BY phase`
+      `SELECT phase, COUNT(*) as count FROM projects ${w} GROUP BY phase`, p
     );
     return result.rows.map((r) => ({
       phase: r.phase,
@@ -65,9 +85,10 @@ class DashboardService {
     }));
   }
 
-  async getProjectsByPlan() {
+  async getProjectsByPlan(managerName?: string) {
+    const { clause: w, params: p } = this.managerWhere(managerName);
     const result = await query(
-      `SELECT plan_type, COUNT(*) as count FROM projects GROUP BY plan_type`
+      `SELECT plan_type, COUNT(*) as count FROM projects ${w} GROUP BY plan_type`, p
     );
     return result.rows.map((r) => ({
       planType: r.plan_type,
@@ -75,11 +96,12 @@ class DashboardService {
     }));
   }
 
-  async getRecentActivity(limit: number = 10) {
+  async getRecentActivity(limit: number = 10, managerName?: string) {
     const safeLimit = Math.max(1, Math.min(100, Math.floor(limit)));
+    const { clause: w, params: p } = this.managerWhere(managerName);
     const result = await query(
-      `SELECT id, name, status, phase, updated_at 
-       FROM projects ORDER BY updated_at DESC LIMIT ${safeLimit}`
+      `SELECT id, name, status, phase, updated_at
+       FROM projects ${w} ORDER BY updated_at DESC LIMIT ${safeLimit}`, p
     );
 
     return result.rows.map((p) => ({
@@ -92,16 +114,18 @@ class DashboardService {
     }));
   }
 
-  async getDelaySummary() {
+  async getDelaySummary(managerName?: string) {
+    const { clause: w, params: p } = this.managerWhere(managerName);
+    const { clause: aw, params: ap } = this.andManagerWhere(managerName);
     const [statusResults, topDelayed] = await Promise.all([
       query(
-        `SELECT delay_status, COUNT(*) as count, AVG(delay_days) as avg_days 
-         FROM projects GROUP BY delay_status`
+        `SELECT delay_status, COUNT(*) as count, AVG(delay_days) as avg_days
+         FROM projects ${w} GROUP BY delay_status`, p
       ),
       query(
-        `SELECT id, name, customer_name, delay_days, delay_status 
-         FROM projects WHERE delay_status = 'DELAYED' 
-         ORDER BY delay_days DESC LIMIT 5`
+        `SELECT id, name, customer_name, delay_days, delay_status
+         FROM projects WHERE delay_status = 'DELAYED' ${aw}
+         ORDER BY delay_days DESC LIMIT 5`, ap
       ),
     ]);
 
@@ -121,13 +145,14 @@ class DashboardService {
     };
   }
 
-  async getUpcomingDeadlines(days: number = 14) {
+  async getUpcomingDeadlines(days: number = 14, managerName?: string) {
     const safeDays = Math.max(1, Math.min(365, Math.floor(days)));
+    const { clause: aw, params: ap } = this.andManagerWhere(managerName);
     const result = await query(
-      `SELECT id, name, customer_name, planned_end, phase, delay_status 
-       FROM projects 
-       WHERE status = 'ACTIVE' AND planned_end >= NOW() AND planned_end <= DATE_ADD(NOW(), INTERVAL ${safeDays} DAY)
-       ORDER BY planned_end ASC`
+      `SELECT id, name, customer_name, planned_end, phase, delay_status
+       FROM projects
+       WHERE status = 'ACTIVE' AND planned_end >= NOW() AND planned_end <= DATE_ADD(NOW(), INTERVAL ${safeDays} DAY) ${aw}
+       ORDER BY planned_end ASC`, ap
     );
 
     return result.rows.map((p) => ({
@@ -140,9 +165,10 @@ class DashboardService {
     }));
   }
 
-  async getMigrationTypeStats() {
+  async getMigrationTypeStats(managerName?: string) {
+    const { clause: w, params: p } = this.managerWhere(managerName);
     const result = await query(
-      `SELECT id, migration_types, status, delay_status, planned_end, created_at FROM projects`
+      `SELECT id, migration_types, status, delay_status, planned_end, created_at FROM projects ${w}`, p
     );
 
     const allProjects = result.rows;

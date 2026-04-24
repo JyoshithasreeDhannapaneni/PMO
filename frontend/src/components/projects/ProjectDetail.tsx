@@ -6,11 +6,11 @@ import { DelayIndicator } from '@/components/ui/DelayIndicator';
 import { Button } from '@/components/ui/Button';
 import { formatDate, formatCurrency } from '@/lib/utils';
 import type { Project, ProjectPhaseRecord } from '@/types';
-import { 
-  Calendar, 
-  User, 
-  Building2, 
-  DollarSign, 
+import {
+  Calendar,
+  User,
+  Building2,
+  DollarSign,
   ArrowRight,
   CheckCircle,
   Clock,
@@ -21,6 +21,7 @@ import {
   FileText
 } from 'lucide-react';
 import Link from 'next/link';
+import { WeeklyReport } from './WeeklyReport';
 
 interface ProjectDetailProps {
   project: Project;
@@ -114,6 +115,9 @@ export function ProjectDetail({ project }: ProjectDetailProps) {
               <p className="text-gray-700 whitespace-pre-wrap">{project.notes}</p>
             </Card>
           )}
+
+          {/* Weekly Reports */}
+          <WeeklyReport projectId={project.id} />
         </div>
 
         {/* Sidebar */}
