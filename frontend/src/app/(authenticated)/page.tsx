@@ -310,11 +310,11 @@ export default function DashboardPage() {
               </Link>
             </div>
 
-            {migrationTypeStats?.byType?.length ? (
+            {migrationTypeStats?.byType?.filter((s: any) => s.total > 0).length ? (
               <div className="space-y-4">
-                {/* Type cards */}
+                {/* Type cards — only show types that have at least one project */}
                 <div className="grid grid-cols-3 gap-3">
-                  {migrationTypeStats.byType.map((stat: any) => {
+                  {migrationTypeStats.byType.filter((s: any) => s.total > 0).map((stat: any) => {
                     const cfg: Record<string, { emoji: string; label: string; cardCls: string; textCls: string }> = {
                       CONTENT: { emoji: '📁', label: 'Content', cardCls: 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800', textCls: 'text-blue-700 dark:text-blue-300' },
                       EMAIL: { emoji: '📧', label: 'Email', cardCls: 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800', textCls: 'text-green-700 dark:text-green-300' },
@@ -353,7 +353,7 @@ export default function DashboardPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {migrationTypeStats.byType.map((stat: any) => (
+                      {migrationTypeStats.byType.filter((s: any) => s.total > 0).map((stat: any) => (
                         <tr key={stat.type} className="border-t border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/30 cursor-pointer" onClick={() => window.location.href = `/projects?planType=${stat.type}`}>
                           <td className="py-2 px-3 font-medium text-gray-800 dark:text-gray-200">{stat.type}</td>
                           <td className="text-center py-2 px-3 font-bold text-gray-900 dark:text-white">{stat.total}</td>
