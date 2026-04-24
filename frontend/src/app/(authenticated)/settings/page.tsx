@@ -69,7 +69,7 @@ interface PlanType {
   id: string;
   name: string;
   color: string;
-  slaHours: number;
+  amount :number;
 }
 
 interface ProjectPhase {
@@ -827,7 +827,7 @@ export default function SettingsPage() {
               <Input className="flex-1" value={plan.name} onChange={(e) => updatePlanType(plan.id, 'name', e.target.value)} placeholder="Plan name" />
               <div className="flex items-center gap-2">
                 <Input type="number" className="w-24" value={plan.slaHours} onChange={(e) => updatePlanType(plan.id, 'slaHours', parseInt(e.target.value))} />
-                <span className="text-sm text-gray-500">hrs SLA</span>
+                <span className="text-sm text-gray-500">Amount ($)</span>
               </div>
               <button onClick={() => removePlanType(plan.id)} className="p-2 text-red-400 hover:text-red-600">
                 <Trash2 size={16} />
