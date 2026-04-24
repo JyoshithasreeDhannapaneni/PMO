@@ -84,7 +84,7 @@ class RiskService {
     const riskId = uuidv4();
     await execute(
       `INSERT INTO project_risks (id, project_id, title, description, category, probability, impact, mitigation, contingency, owner, due_date, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN')`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'OPEN')`,
       [
         riskId,
         data.projectId,
@@ -100,7 +100,7 @@ class RiskService {
       ]
     );
 
-    const result = await query(`SELECT * FROM project_risks WHERE id = ?`, [riskId]);
+    const result = await query(`SELECT * FROM project_risks WHERE id = $1`, [riskId]);
     const risk = mapRiskRow(result.rows[0]);
     logger.info(`Risk created: ${risk.id} for project ${data.projectId}`);
     return risk;
@@ -130,11 +130,11 @@ class RiskService {
     params.push(id);
 
     await execute(
-      `UPDATE project_risks SET ${updates.join(', ')} WHERE id = ?`,
+      `UPDATE project_risks SET ${updates.join(', ')} WHERE id = $${paramIndex}`,
       params
     );
 
-    const result = await query(`SELECT * FROM project_risks WHERE id = ?`, [id]);
+    const result = await query(`SELECT * FROM project_risks WHERE id = $1`, [id]);
     const risk = mapRiskRow(result.rows[0]);
     logger.info(`Risk updated: ${risk.id}`);
     return risk;
