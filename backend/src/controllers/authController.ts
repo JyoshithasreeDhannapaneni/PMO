@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { authService } from '../services/authService';
+import { emailService } from '../services/emailService';
 import { passwordResetService } from '../services/passwordResetService';
 import { asyncHandler, AppError } from '../middleware/errorHandler';
 import { createHash } from 'crypto';
@@ -227,6 +228,14 @@ export const authController = {
       nums[Math.floor(Math.random() * 10)];
     
     const result = await authService.createUserByAdmin(name, email, role || 'VIEWER', tempPassword, department);
+
+    // Send email with temporary password to new user
+    try {
+      await emailService.sendNewUserCredentialsEmail(name, email, tempPassword);
+    } catch (error) {
+      console.error(`Failed to send credentials email to ${email}:`, error);
+      // Don't throw - user is already created, just log the error
+    }
 
     res.status(201).json({
       success: true,

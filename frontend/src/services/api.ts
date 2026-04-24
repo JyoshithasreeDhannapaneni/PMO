@@ -88,8 +88,8 @@ export const projectsApi = {
 
 // Dashboard API
 export const dashboardApi = {
-  getOverview: async (): Promise<ApiResponse<DashboardOverview>> => {
-    const { data } = await api.get('/dashboard/overview');
+  getOverview: async (manager?: string): Promise<ApiResponse<DashboardOverview>> => {
+    const { data } = await api.get('/dashboard/overview', { params: manager ? { manager } : undefined });
     return data;
   },
 
@@ -310,6 +310,39 @@ export const authApi = {
 
   deleteUser: async (userId: string): Promise<{ success: boolean; message: string }> => {
     const { data } = await api.delete(`/auth/users/${userId}`);
+    return data;
+  },
+};
+
+// Status Reports API
+export const statusReportsApi = {
+  getByProject: async (projectId: string): Promise<{ success: boolean; data: any[] }> => {
+    const { data } = await api.get(`/reports/project/${projectId}`);
+    return data;
+  },
+
+  getLatest: async (projectId: string): Promise<{ success: boolean; data: any }> => {
+    const { data } = await api.get(`/reports/project/${projectId}/latest`);
+    return data;
+  },
+
+  generateWeekly: async (projectId: string, createdBy: string): Promise<{ success: boolean; data: any }> => {
+    const { data } = await api.post(`/reports/project/${projectId}/generate`, { createdBy });
+    return data;
+  },
+
+  create: async (report: any): Promise<{ success: boolean; data: any }> => {
+    const { data } = await api.post('/reports', report);
+    return data;
+  },
+
+  update: async (id: string, updates: any): Promise<{ success: boolean; data: any }> => {
+    const { data } = await api.put(`/reports/${id}`, updates);
+    return data;
+  },
+
+  delete: async (id: string): Promise<{ success: boolean }> => {
+    const { data } = await api.delete(`/reports/${id}`);
     return data;
   },
 };

@@ -36,7 +36,7 @@ const typeLabels: Record<string, string> = {
 };
 
 export function GlobalSearch() {
-  const [isOpen, setIsOpen] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
@@ -44,27 +44,32 @@ export function GlobalSearch() {
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  const showDropdown = isFocused && (query.length >= 2 || results.length > 0);
+
+  // Ctrl+K / Cmd+K shortcut focuses the input
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
-        setIsOpen(true);
-      }
-      if (e.key === 'Escape') {
-        setIsOpen(false);
+        inputRef.current?.focus();
       }
     };
-
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  // Close dropdown when clicking outside
   useEffect(() => {
-    if (isOpen && inputRef.current) {
-      inputRef.current.focus();
-    }
-  }, [isOpen]);
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsFocused(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
+  // Debounced search
   useEffect(() => {
     if (!query || query.length < 2) {
       setResults([]);
@@ -98,180 +103,102 @@ export function GlobalSearch() {
       setSelectedIndex((prev) => Math.max(prev - 1, 0));
     } else if (e.key === 'Enter' && results[selectedIndex]) {
       window.location.href = results[selectedIndex].url;
-      setIsOpen(false);
+      handleClear();
+    } else if (e.key === 'Escape') {
+      setIsFocused(false);
     }
   };
 
-  const handleClose = () => {
-    setIsOpen(false);
+  const handleClear = () => {
     setQuery('');
     setResults([]);
+    setIsFocused(false);
   };
 
-  if (!isOpen) {
-    return (
-      <button
-        onClick={() => setIsOpen(true)}
-        className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-500 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
-      >
-        <Search size={16} />
-        <span className="hidden sm:inline">Search...</span>
-        <kbd className="hidden sm:inline-flex items-center px-1.5 py-0.5 text-xs bg-white rounded border border-gray-300">
-          ⌘K
-        </kbd>
-      </button>
-    );
-  }
-
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto">
-      <div className="fixed inset-0 bg-black/50" onClick={handleClose} />
-      
-      <div className="relative min-h-screen flex items-start justify-center pt-[15vh] px-4">
-        <div
-          ref={containerRef}
-          className="relative w-full max-w-2xl bg-white rounded-xl shadow-2xl overflow-hidden"
-        >
-          {/* Search Input */}
-          <div className="flex items-center px-4 border-b border-gray-200">
-            <Search size={20} className="text-gray-400" />
-            <input
-              ref={inputRef}
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={handleKeyNavigation}
-              placeholder="Search projects, tasks, risks, documents..."
-              className="flex-1 px-4 py-4 text-lg outline-none"
-            />
-            {query && (
-              <button onClick={() => setQuery('')} className="p-1 text-gray-400 hover:text-gray-600">
-                <X size={18} />
-              </button>
-            )}
-            <button
-              onClick={handleClose}
-              className="ml-2 px-2 py-1 text-xs text-gray-500 bg-gray-100 rounded"
-            >
-              ESC
-            </button>
-          </div>
+    <div ref={containerRef} className="relative w-full">
+      {/* Inline search input */}
+      <div className={`flex items-center gap-2 px-3 py-2 bg-white dark:bg-gray-700 border rounded-lg transition-colors ${
+        isFocused
+          ? 'border-primary-500 ring-2 ring-primary-100 dark:ring-primary-900'
+          : 'border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500'
+      }`}>
+        <Search size={15} className="flex-shrink-0 text-gray-400" />
+        <input
+          ref={inputRef}
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onFocus={() => setIsFocused(true)}
+          onKeyDown={handleKeyNavigation}
+          placeholder="Search projects, tasks, managers..."
+          className="flex-1 text-sm text-gray-700 dark:text-gray-200 placeholder-gray-400 bg-transparent outline-none min-w-0"
+        />
+        {query ? (
+          <button onClick={handleClear} className="flex-shrink-0 p-0.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+            <X size={14} />
+          </button>
+        ) : (
+          <kbd className="hidden sm:inline-flex flex-shrink-0 items-center justify-center px-1.5 h-5 text-xs font-medium text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-600 rounded border border-gray-200 dark:border-gray-500 leading-none">
+            ⌘K
+          </kbd>
+        )}
+      </div>
 
-          {/* Results */}
-          <div className="max-h-[60vh] overflow-y-auto">
+      {/* Dropdown results */}
+      {showDropdown && (
+        <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 overflow-hidden">
+          <div className="max-h-80 overflow-y-auto">
             {loading && (
-              <div className="p-8 text-center text-gray-500">
-                <div className="animate-spin w-6 h-6 border-2 border-primary-500 border-t-transparent rounded-full mx-auto" />
-                <p className="mt-2 text-sm">Searching...</p>
+              <div className="flex items-center gap-2 px-4 py-3 text-sm text-gray-500">
+                <div className="w-4 h-4 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
+                Searching...
               </div>
             )}
 
             {!loading && query.length >= 2 && results.length === 0 && (
-              <div className="p-8 text-center text-gray-500">
-                <Search size={40} className="mx-auto mb-4 text-gray-300" />
-                <p>No results found for "{query}"</p>
-                <p className="text-sm mt-1">Try different keywords</p>
+              <div className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">
+                No results for <span className="font-medium text-gray-700 dark:text-gray-300">"{query}"</span>
               </div>
             )}
 
             {!loading && results.length > 0 && (
-              <div className="py-2">
+              <div className="py-1">
                 {results.map((result, index) => {
                   const Icon = typeIcons[result.type] || FileText;
                   return (
                     <Link
                       key={`${result.type}-${result.id}`}
                       href={result.url}
-                      onClick={handleClose}
-                      className={`flex items-center gap-3 px-4 py-3 hover:bg-gray-50 ${
-                        index === selectedIndex ? 'bg-primary-50' : ''
+                      onClick={handleClear}
+                      className={`flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-700 ${
+                        index === selectedIndex ? 'bg-primary-50 dark:bg-primary-900/30' : ''
                       }`}
                     >
-                      <div className={`p-2 rounded-lg ${
-                        index === selectedIndex ? 'bg-primary-100 text-primary-600' : 'bg-gray-100 text-gray-500'
+                      <div className={`p-1.5 rounded-md flex-shrink-0 ${
+                        index === selectedIndex
+                          ? 'bg-primary-100 text-primary-600 dark:bg-primary-900 dark:text-primary-400'
+                          : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400'
                       }`}>
-                        <Icon size={18} />
+                        <Icon size={14} />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="font-medium text-gray-900 truncate">{result.title}</p>
+                        <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{result.title}</p>
                         {result.subtitle && (
-                          <p className="text-sm text-gray-500 truncate">{result.subtitle}</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{result.subtitle}</p>
                         )}
                       </div>
-                      <div className="flex items-center gap-2">
-                        {result.highlight && (
-                          <span className="px-2 py-0.5 text-xs bg-gray-100 text-gray-600 rounded">
-                            {result.highlight}
-                          </span>
-                        )}
-                        <span className="text-xs text-gray-400">
-                          {typeLabels[result.type] || result.type}
-                        </span>
-                      </div>
+                      <span className="flex-shrink-0 text-xs text-gray-400 dark:text-gray-500">
+                        {typeLabels[result.type] || result.type}
+                      </span>
                     </Link>
                   );
                 })}
               </div>
             )}
-
-            {!loading && query.length < 2 && (
-              <div className="p-6">
-                <p className="text-sm text-gray-500 mb-4">Quick Links</p>
-                <div className="grid grid-cols-2 gap-2">
-                  <Link
-                    href="/projects"
-                    onClick={handleClose}
-                    className="flex items-center gap-2 p-3 rounded-lg hover:bg-gray-50"
-                  >
-                    <FolderKanban size={18} className="text-gray-400" />
-                    <span className="text-sm">All Projects</span>
-                  </Link>
-                  <Link
-                    href="/portfolio"
-                    onClick={handleClose}
-                    className="flex items-center gap-2 p-3 rounded-lg hover:bg-gray-50"
-                  >
-                    <FileText size={18} className="text-gray-400" />
-                    <span className="text-sm">Portfolio</span>
-                  </Link>
-                  <Link
-                    href="/projects/new"
-                    onClick={handleClose}
-                    className="flex items-center gap-2 p-3 rounded-lg hover:bg-gray-50"
-                  >
-                    <FolderKanban size={18} className="text-gray-400" />
-                    <span className="text-sm">New Project</span>
-                  </Link>
-                  <Link
-                    href="/case-studies"
-                    onClick={handleClose}
-                    className="flex items-center gap-2 p-3 rounded-lg hover:bg-gray-50"
-                  >
-                    <BookOpen size={18} className="text-gray-400" />
-                    <span className="text-sm">Case Studies</span>
-                  </Link>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Footer */}
-          <div className="px-4 py-3 bg-gray-50 border-t border-gray-200 text-xs text-gray-500 flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <span className="flex items-center gap-1">
-                <kbd className="px-1.5 py-0.5 bg-white rounded border">↑</kbd>
-                <kbd className="px-1.5 py-0.5 bg-white rounded border">↓</kbd>
-                to navigate
-              </span>
-              <span className="flex items-center gap-1">
-                <kbd className="px-1.5 py-0.5 bg-white rounded border">↵</kbd>
-                to select
-              </span>
-            </div>
-            <span>Powered by PMO Tracker</span>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

@@ -1,7 +1,19 @@
 {
   "permissions": {
     "allow": [
-      "Bash(netstat -tlnp)"
+      "Bash(netstat -tlnp)",
+      "Bash(npm run:*)",
+      "Bash(netstat -ano)",
+      "Bash(findstr \":3001\")",
+      "Bash(findstr \"LISTENING\")",
+      "Bash(taskkill /PID 17432 /F)",
+      "Bash(cmd /c \"taskkill /PID 17432 /F\")",
+      "Bash(echo \"exit: $?\")",
+      "Bash(cmd /c \"taskkill /F /PID 17432\")",
+      "Bash(cmd /c \"tasklist /FI \\\\\"PID eq 17432\\\\\"\")",
+      "Bash(cmd /c \"tasklist /FI \\\\\"PID eq 17432\\\\\" 2>&1\")",
+      "Bash(powershell -Command \"Stop-Process -Id 17432 -Force; Write-Host 'Killed'\")",
+      "Bash(powershell -Command \"netstat -ano | Select-String ':3001 '\")"
     ]
   }
 }

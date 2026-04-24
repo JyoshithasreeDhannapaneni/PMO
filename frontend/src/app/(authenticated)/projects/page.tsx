@@ -198,9 +198,9 @@ export default function ProjectsPage() {
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Projects</h1>
           <p className="text-gray-500 dark:text-gray-400 mt-1">
             Manage and track all migration projects
-            {data?.total !== undefined && (
+            {data?.pagination?.total !== undefined && (
               <span className="ml-2 text-primary-600 dark:text-primary-400 font-medium">
-                ({data.total} total)
+                ({data.pagination.total} total)
               </span>
             )}
           </p>

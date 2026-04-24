@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Bell, User, LogOut, Settings, ChevronDown } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import { useSettings } from '@/context/SettingsContext';
 import Link from 'next/link';
 import { GlobalSearch } from './GlobalSearch';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
@@ -10,8 +11,18 @@ import { NotificationCenter } from '@/components/notifications/NotificationCente
 
 export function Header() {
   const { user, logout } = useAuth();
+  const { settings } = useSettings();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const companyName = settings.brandingSettings?.companyName || 'PMO Tracker';
+
+  // Apply branding primary color as CSS variable so Tailwind primary-* classes update
+  useEffect(() => {
+    const color = settings.brandingSettings?.primaryColor;
+    if (color) {
+      document.documentElement.style.setProperty('--color-primary', color);
+    }
+  }, [settings.brandingSettings?.primaryColor]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -26,7 +37,7 @@ export function Header() {
   return (
     <header className="h-16 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between px-6 transition-colors">
       {/* Search */}
-      <div className="flex-1 max-w-lg">
+      <div className="flex-1 max-w-sm">
         <GlobalSearch />
       </div>
 

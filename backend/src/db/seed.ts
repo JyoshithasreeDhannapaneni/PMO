@@ -22,9 +22,9 @@ async function seed() {
       await execute(
         `INSERT INTO users (id, name, username, email, password, role) 
          VALUES (?, ?, ?, ?, ?, ?)`,
-        [adminId, 'Administrator', 'admin', 'admin@company.com', hashPassword('admin2026'), 'ADMIN']
+        [adminId, 'Administrator', 'admin', 'admin@company.com', hashPassword('admin123'), 'ADMIN']
       );
-      logger.info('✅ Default admin user created (admin / admin2026)');
+      logger.info('✅ Default admin user created (admin / admin123)');
     } else {
       logger.info('Admin user already exists');
     }

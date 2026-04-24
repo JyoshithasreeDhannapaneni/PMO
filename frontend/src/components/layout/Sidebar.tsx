@@ -3,16 +3,17 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { 
-  LayoutDashboard, 
-  FolderKanban, 
-  Plus, 
+import { useSettings } from '@/context/SettingsContext';
+import {
+  LayoutDashboard,
+  FolderKanban,
+  Plus,
   AlertTriangle,
   FileText,
   Bell,
   Settings,
   Briefcase,
-  Layers
+  Layers,
 } from 'lucide-react';
 
 const navigation = [
@@ -21,12 +22,15 @@ const navigation = [
   { name: 'All Projects', href: '/projects', icon: FolderKanban },
   { name: 'New Project', href: '/projects/new', icon: Plus },
   { name: 'Delayed Projects', href: '/projects?delayStatus=DELAYED', icon: AlertTriangle },
+  { name: 'Templates', href: '/templates', icon: Layers },
   { name: 'Case Studies', href: '/case-studies', icon: FileText },
   { name: 'Notifications', href: '/notifications', icon: Bell },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { settings } = useSettings();
+  const companyName = settings.brandingSettings?.companyName || 'PMO Tracker';
 
   return (
     <aside className="hidden md:flex md:w-64 md:flex-col bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 transition-colors">
@@ -36,7 +40,7 @@ export function Sidebar() {
           <div className="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center">
             <FolderKanban className="text-white" size={20} />
           </div>
-          <span className="text-xl font-bold text-gray-900 dark:text-white">PMO Tracker</span>
+          <span className="text-xl font-bold text-gray-900 dark:text-white">{companyName}</span>
         </Link>
       </div>
 

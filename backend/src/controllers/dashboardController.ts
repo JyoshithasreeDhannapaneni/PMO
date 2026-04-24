@@ -101,6 +101,9 @@ export const dashboardController = {
    * Get complete dashboard overview (all data in one call)
    */
   getOverview: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    // Optional ?manager=Name filter — used for My View (manager sees only their projects)
+    const managerName = req.query.manager as string | undefined;
+
     const [
       stats,
       projectsByStatus,
@@ -111,14 +114,14 @@ export const dashboardController = {
       upcomingDeadlines,
       migrationTypeStats,
     ] = await Promise.all([
-      dashboardService.getStats(),
-      dashboardService.getProjectsByStatus(),
-      dashboardService.getProjectsByPhase(),
-      dashboardService.getProjectsByPlan(),
-      dashboardService.getRecentActivity(5),
-      dashboardService.getDelaySummary(),
-      dashboardService.getUpcomingDeadlines(14),
-      dashboardService.getMigrationTypeStats(),
+      dashboardService.getStats(managerName),
+      dashboardService.getProjectsByStatus(managerName),
+      dashboardService.getProjectsByPhase(managerName),
+      dashboardService.getProjectsByPlan(managerName),
+      dashboardService.getRecentActivity(5, managerName),
+      dashboardService.getDelaySummary(managerName),
+      dashboardService.getUpcomingDeadlines(14, managerName),
+      dashboardService.getMigrationTypeStats(managerName),
     ]);
 
     res.json({
