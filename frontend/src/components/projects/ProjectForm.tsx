@@ -21,7 +21,7 @@ const projectSchema = z.object({
   planType: z.enum(['BRONZE', 'SILVER', 'GOLD', 'PLATINUM'], { required_error: 'Plan type is required' }),
   plannedStart: z.string().min(1, 'SOW start date is required'),
   plannedEnd: z.string().min(1, 'SOW end date is required'),
-  actualStart: z.string().min(1, 'Actual start date is required'),
+  actualStart: z.string().optional(),
   actualEnd: z.string().optional(),
   estimatedCost: z.coerce.number({ invalid_type_error: 'Estimated cost must be a number' }).positive('Must be positive').or(z.literal('')),
   actualCost: z.coerce.number().positive().optional().or(z.literal('')),
@@ -37,9 +37,10 @@ interface ProjectFormProps {
   project?: Project;
   onSubmit: (data: CreateProjectInput) => void;
   isLoading?: boolean;
+  defaultManagerName?: string;
 }
 
-export function ProjectForm({ project, onSubmit, isLoading }: ProjectFormProps) {
+export function ProjectForm({ project, onSubmit, isLoading, defaultManagerName }: ProjectFormProps) {
   const { settings } = useSettings();
 
   const enabledMigrationTypes = settings.migrationTypes.filter((t) => t.enabled);
@@ -116,6 +117,7 @@ export function ProjectForm({ project, onSubmit, isLoading }: ProjectFormProps) 
           planType: 'SILVER',
           phase: 'KICKOFF',
           status: 'ACTIVE',
+          projectManager: defaultManagerName || '',
         },
   });
 
@@ -224,11 +226,21 @@ export function ProjectForm({ project, onSubmit, isLoading }: ProjectFormProps) 
             {...register('name')}
             error={errors.name?.message}
           />
-          <Input
-            label="Project Manager *"
-            {...register('projectManager')}
-            error={errors.projectManager?.message}
-          />
+          <div>
+            <Input
+              label="Project Manager *"
+              {...register('projectManager')}
+              error={errors.projectManager?.message}
+              disabled={!!defaultManagerName}
+              className={defaultManagerName ? 'bg-gray-50 dark:bg-gray-700/50 cursor-not-allowed' : ''}
+            />
+            {defaultManagerName && (
+              <p className="mt-1 text-xs text-blue-600 dark:text-blue-400 flex items-center gap-1">
+                <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><path d="M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0Zm.93 6.588-2.29.287-.082.38.45.083c.294.07.352.176.288.469l-.738 3.468c-.194.897.105 1.319.808 1.319.545 0 1.178-.252 1.465-.598l.088-.416c-.2.176-.492.246-.686.246-.275 0-.375-.193-.304-.533L8.93 6.588ZM8 5.5a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z"/></svg>
+                Auto-assigned to you as the project manager
+              </p>
+            )}
+          </div>
           <Select
             label="Plan Type *"
             options={planOptions}

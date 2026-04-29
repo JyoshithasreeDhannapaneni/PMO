@@ -3,18 +3,31 @@
 import { useRouter } from 'next/navigation';
 import { useCreateProject } from '@/hooks/useProjects';
 import { ProjectForm } from '@/components/projects/ProjectForm';
+import { useToast } from '@/context/ToastContext';
+import { useAuth } from '@/context/AuthContext';
 import type { CreateProjectInput } from '@/types';
 
 export default function NewProjectPage() {
   const router = useRouter();
+  const { user } = useAuth();
   const createProject = useCreateProject();
+  const { showToast } = useToast();
+
+  // Pre-fill and lock projectManager for MANAGER role
+  const defaultManagerName = user?.role === 'MANAGER' ? user.name : undefined;
 
   const handleSubmit = async (data: CreateProjectInput) => {
     try {
-      await createProject.mutateAsync(data);
+      // Ensure manager's name is always set even if form is bypassed
+      const submitData = defaultManagerName
+        ? { ...data, projectManager: defaultManagerName }
+        : data;
+      await createProject.mutateAsync(submitData);
+      showToast('success', 'Project created!', `"${data.name}" has been added successfully.`);
       router.push('/projects');
     } catch (error) {
       console.error('Failed to create project:', error);
+      showToast('error', 'Failed to create project', 'Please check all required fields and try again.');
     }
   };
 
@@ -27,9 +40,10 @@ export default function NewProjectPage() {
       </div>
 
       {/* Form */}
-      <ProjectForm 
-        onSubmit={handleSubmit} 
+      <ProjectForm
+        onSubmit={handleSubmit}
         isLoading={createProject.isPending}
+        defaultManagerName={defaultManagerName}
       />
     </div>
   );

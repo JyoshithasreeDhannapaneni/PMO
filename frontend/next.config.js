@@ -1,4 +1,7 @@
 /** @type {import('next').NextConfig} */
+const path = require('path');
+const os = require('os');
+
 const nextConfig = {
   reactStrictMode: true,
   output: 'standalone',
@@ -8,17 +11,33 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
-  // Redirect webpack cache to TEMP to avoid OneDrive file-lock rename errors
-  webpack(config, { dev }) {
+  webpack(config, { dev, isServer, webpack }) {
+    // Redirect webpack cache outside OneDrive to prevent rename/lock errors
     if (dev) {
       config.cache = {
-        ...config.cache,
-        cacheDirectory: require('path').join(
-          require('os').tmpdir(),
-          'pmo-tracker-next-cache'
-        ),
+        type: 'filesystem',
+        cacheDirectory: path.join(os.homedir(), 'pmo-webpack-cache'),
+        buildDependencies: { config: [__filename] },
       };
     }
+
+    // Stub Node built-ins used by jsPDF and similar libs on the client bundle
+    if (!isServer) {
+      config.plugins.push(
+        new webpack.NormalModuleReplacementPlugin(/^node:/, (resource) => {
+          resource.request = resource.request.replace(/^node:/, '');
+        })
+      );
+      config.resolve = config.resolve || {};
+      config.resolve.fallback = {
+        ...(config.resolve.fallback || {}),
+        fs: false, path: false, os: false, crypto: false,
+        stream: false, buffer: false, util: false, assert: false,
+        url: false, zlib: false, http: false, https: false,
+        net: false, tls: false, process: false, events: false,
+      };
+    }
+
     return config;
   },
   async rewrites() {

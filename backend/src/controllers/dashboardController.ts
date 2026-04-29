@@ -140,6 +140,27 @@ export const dashboardController = {
   }),
 
   /**
+   * GET /api/dashboard/manager-stats
+   */
+  getManagerStats: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const managerName = req.query.manager as string | undefined;
+    const data = await dashboardService.getManagerStats(managerName);
+    res.json({ success: true, data });
+  }),
+
+  /**
+   * GET /api/dashboard/weekly-report
+   * Get weekly report data (newly added, closed, changes by managers)
+   */
+  getWeeklyReport: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const managerName = req.query.manager as string | undefined;
+    const startDate = req.query.startDate as string | undefined;
+    const endDate = req.query.endDate as string | undefined;
+    const data = await dashboardService.getWeeklyReport(managerName, startDate, endDate);
+    res.json({ success: true, data });
+  }),
+
+  /**
    * GET /api/dashboard/migration-type-stats
    * Get statistics by migration type for PM Dashboard
    */
