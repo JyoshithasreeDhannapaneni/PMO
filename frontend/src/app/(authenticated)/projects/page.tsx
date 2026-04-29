@@ -6,16 +6,18 @@ import { useProjects, useDeleteProject } from '@/hooks/useProjects';
 import { ProjectsTable } from '@/components/projects/ProjectsTable';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
-import { 
-  Loader2, 
-  Plus, 
-  Filter, 
-  X, 
+import { useAuth } from '@/context/AuthContext';
+import {
+  Loader2,
+  Plus,
+  Filter,
+  X,
   ChevronDown,
   Search,
   RefreshCw,
   Download,
-  SlidersHorizontal
+  SlidersHorizontal,
+  User,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -30,6 +32,8 @@ interface FilterState {
 export default function ProjectsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { user } = useAuth();
+  const isManager = user?.role === 'MANAGER';
   
   // Initialize filters from URL params
   const [filters, setFilters] = useState<FilterState>({
@@ -70,6 +74,8 @@ export default function ProjectsPage() {
     delayStatus: filters.delayStatus || undefined,
     planType: filters.planType || undefined,
     search: filters.search || undefined,
+    // MANAGER role always sees only their own projects
+    projectManager: isManager ? (user?.name ?? undefined) : undefined,
   });
 
   const deleteProject = useDeleteProject();
@@ -197,7 +203,7 @@ export default function ProjectsPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Projects</h1>
           <p className="text-gray-500 dark:text-gray-400 mt-1">
-            Manage and track all migration projects
+            {isManager ? `Your projects as ${user?.name}` : 'Manage and track all migration projects'}
             {data?.pagination?.total !== undefined && (
               <span className="ml-2 text-primary-600 dark:text-primary-400 font-medium">
                 ({data.pagination.total} total)
@@ -223,6 +229,17 @@ export default function ProjectsPage() {
           </Link>
         </div>
       </div>
+
+      {/* Manager View Banner */}
+      {isManager && (
+        <div className="flex items-center gap-3 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl text-xs text-blue-700 dark:text-blue-300">
+          <User size={14} className="flex-shrink-0" />
+          <span>
+            <strong>Manager View</strong> — Showing only projects where you ({user?.name}) are the Project Manager.
+            Projects you create will automatically be assigned to you.
+          </span>
+        </div>
+      )}
 
       {/* Filters Section */}
       <Card padding="sm" className="dark:bg-gray-800">

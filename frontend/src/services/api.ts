@@ -55,6 +55,7 @@ export const projectsApi = {
     search?: string;
     sortBy?: string;
     sortOrder?: 'asc' | 'desc';
+    projectManager?: string;
   }): Promise<PaginatedResponse<Project>> => {
     const { data } = await api.get('/projects', { params });
     return data;
@@ -105,6 +106,20 @@ export const dashboardApi = {
 
   getUpcomingDeadlines: async (days?: number) => {
     const { data } = await api.get('/dashboard/upcoming-deadlines', { params: { days } });
+    return data;
+  },
+
+  getManagerStats: async (manager?: string) => {
+    const { data } = await api.get('/dashboard/manager-stats', { params: manager ? { manager } : undefined });
+    return data;
+  },
+
+  getWeeklyReport: async (manager?: string, startDate?: string, endDate?: string) => {
+    const params: Record<string, string> = {};
+    if (manager) params.manager = manager;
+    if (startDate) params.startDate = startDate;
+    if (endDate) params.endDate = endDate;
+    const { data } = await api.get('/dashboard/weekly-report', { params: Object.keys(params).length ? params : undefined });
     return data;
   },
 };
@@ -343,6 +358,50 @@ export const statusReportsApi = {
 
   delete: async (id: string): Promise<{ success: boolean }> => {
     const { data } = await api.delete(`/reports/${id}`);
+    return data;
+  },
+};
+
+// Manager Goals API
+export const managerGoalsApi = {
+  getAll: async () => {
+    const { data } = await api.get('/manager-goals');
+    return data;
+  },
+  getWithStats: async (manager?: string) => {
+    const { data } = await api.get('/manager-goals/with-stats', { params: manager ? { manager } : undefined });
+    return data;
+  },
+  upsert: async (managerName: string, goalPct: number) => {
+    const { data } = await api.post('/manager-goals', { managerName, goalPct });
+    return data;
+  },
+  delete: async (id: string) => {
+    const { data } = await api.delete(`/manager-goals/${id}`);
+    return data;
+  },
+};
+
+// SMTP API
+export const smtpApi = {
+  get: async () => {
+    const { data } = await api.get('/smtp');
+    return data;
+  },
+  save: async (settings: { host: string; port: number; email: string; password: string; security: string }) => {
+    const { data } = await api.post('/smtp/save', settings);
+    return data;
+  },
+  test: async (settings: { host: string; port: number; email: string; password: string; security: string }) => {
+    const { data } = await api.post('/smtp/test', settings);
+    return data;
+  },
+};
+
+// Projects by migration type
+export const migrationTypeApi = {
+  getProjectsByType: async (type: string) => {
+    const { data } = await api.get(`/dashboard/projects-by-migration-type/${type}`);
     return data;
   },
 };

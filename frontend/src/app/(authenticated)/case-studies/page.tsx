@@ -5,17 +5,19 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import Link from 'next/link';
-import { 
-  FileText, 
-  Plus, 
-  Loader2, 
+import { useAuth } from '@/context/AuthContext';
+import {
+  FileText,
+  Plus,
+  Loader2,
   Search,
   Filter,
   Eye,
   Edit,
   CheckCircle,
   Clock,
-  AlertCircle
+  AlertCircle,
+  Settings,
 } from 'lucide-react';
 
 interface CaseStudy {
@@ -53,6 +55,9 @@ const statusConfig = {
 };
 
 export default function CaseStudiesPage() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'ADMIN';
+  const isManager = user?.role === 'MANAGER';
   const [caseStudies, setCaseStudies] = useState<CaseStudy[]>([]);
   const [completedProjects, setCompletedProjects] = useState<Project[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -64,18 +69,26 @@ export default function CaseStudiesPage() {
   }, []);
 
   const fetchData = async () => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
     try {
       setIsLoading(true);
-      
+
       // Fetch case studies
-      const csResponse = await fetch(`${API_URL}/api/case-studies`);
+      const csResponse = await fetch(`${API_URL}/api/case-studies`, { headers });
       const csData = await csResponse.json();
       if (csData.success) {
-        setCaseStudies(csData.data || []);
+        const all: CaseStudy[] = csData.data || [];
+        // Manager: show only case studies for their projects
+        setCaseStudies(isManager && user?.name
+          ? all.filter((cs) => cs.project?.projectManager === user.name)
+          : all);
       }
 
       // Fetch completed projects without case studies
-      const projResponse = await fetch(`${API_URL}/api/projects?status=COMPLETED`);
+      const projParams = new URLSearchParams({ status: 'COMPLETED' });
+      if (isManager && user?.name) projParams.set('projectManager', user.name);
+      const projResponse = await fetch(`${API_URL}/api/projects?${projParams}`, { headers });
       const projData = await projResponse.json();
       if (projData.success) {
         const projectsWithoutCS = (projData.data || []).filter(
@@ -130,7 +143,24 @@ export default function CaseStudiesPage() {
           <h1 className="text-2xl font-bold text-gray-900">Case Studies</h1>
           <p className="text-gray-500">Document and showcase successful project migrations</p>
         </div>
+        {isAdmin && (
+          <Link
+            href="/case-studies/template"
+            className="flex items-center gap-2 px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+          >
+            <Settings size={14} />
+            Manage Template
+          </Link>
+        )}
       </div>
+
+      {/* Manager scope banner */}
+      {isManager && (
+        <div className="flex items-center gap-3 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl text-xs text-blue-700 dark:text-blue-300">
+          <AlertCircle size={14} className="flex-shrink-0" />
+          <span><strong>Manager View</strong> — Showing case studies for your projects (<strong>{user?.name}</strong>).</span>
+        </div>
+      )}
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">

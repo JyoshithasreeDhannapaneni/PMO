@@ -1,40 +1,240 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Card } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
-import { Textarea } from '@/components/ui/Textarea';
 import Link from 'next/link';
-import { 
-  ArrowLeft, 
-  Save, 
-  Loader2, 
-  CheckCircle,
-  AlertCircle,
-  Eye,
-  FileText,
-  ChevronDown,
-  ChevronUp,
-  Download,
-  FileDown
+import {
+  ArrowLeft, Save, Loader2, CheckCircle, AlertCircle, Eye,
+  FileDown, Download, ChevronDown, ChevronUp, Bold, Italic, Underline,
+  List, ListOrdered, AlignLeft, AlignCenter, AlignRight, Link2, Image,
+  Table, Undo, Redo, Edit, MoreVertical,
 } from 'lucide-react';
 import { exportToPDF, exportToWord } from '@/utils/exportCaseStudy';
+import { useCaseStudyTemplate } from '@/hooks/useCaseStudyTemplate';
 
-interface TemplateSection {
-  id: string;
-  title: string;
-  description: string;
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+
+// ── Legacy fallback sections (used only if hook returns nothing) ─────────────
+const FALLBACK_SECTIONS = [
+  {
+    id: 'executive_summary',
+    title: 'Executive Summary',
+    description: 'Brief overview of the project and its outcomes',
+    placeholder: 'Provide a 2-3 paragraph summary of the project including the key objectives, approach and outcomes. Highlight the value delivered to the client.',
+    required: true,
+    icon: '📄',
+  },
+  {
+    id: 'client_background',
+    title: 'Client Background',
+    description: 'Information about the client and their business',
+    placeholder: 'Describe the client\'s business, industry, size, and the context behind their need for this project.',
+    required: true,
+    icon: '👤',
+  },
+  {
+    id: 'challenge',
+    title: 'Challenge',
+    description: 'The problems or challenges the client faced',
+    placeholder: 'Describe the specific challenges or pain points the client was experiencing before this project.',
+    required: true,
+    icon: '⚠️',
+  },
+  {
+    id: 'solution',
+    title: 'Solution',
+    description: 'The solution provided and how it addressed the challenges',
+    placeholder: 'Explain the solution that was implemented, why it was chosen, and how it addressed the client\'s challenges.',
+    required: true,
+    icon: '💡',
+  },
+  {
+    id: 'implementation_process',
+    title: 'Implementation Process',
+    description: 'Steps and approach followed during implementation',
+    placeholder: 'Describe the step-by-step process used to implement the solution, including key phases and milestones.',
+    required: false,
+    icon: '⚙️',
+  },
+  {
+    id: 'results_benefits',
+    title: 'Results & Benefits',
+    description: 'Key results achieved and benefits delivered to the client',
+    placeholder: 'Quantify the results achieved and describe the tangible benefits delivered to the client.',
+    required: true,
+    icon: '📊',
+  },
+  {
+    id: 'lessons_learned',
+    title: 'Lessons Learned',
+    description: 'Key learnings from the project',
+    placeholder: 'Share insights, lessons learned, and best practices discovered during this project.',
+    required: false,
+    icon: '📖',
+  },
+  {
+    id: 'client_testimonial',
+    title: 'Client Testimonial',
+    description: 'Quote or feedback from the client',
+    placeholder: '"[Insert client testimonial or feedback quote here]"\n\n— Client Name, Title, Company',
+    required: false,
+    icon: '💬',
+  },
+];
+
+// ── Rich Text Editor ─────────────────────────────────────────────────────────
+// TEMPLATE_SECTIONS is now loaded dynamically from useCaseStudyTemplate hook
+function RichTextEditor({
+  value,
+  onChange,
+  placeholder,
+  disabled,
+}: {
+  value: string;
+  onChange: (html: string) => void;
   placeholder: string;
-  required: boolean;
+  disabled?: boolean;
+}) {
+  const editorRef = useRef<HTMLDivElement>(null);
+  const isInitialized = useRef(false);
+
+  useEffect(() => {
+    if (editorRef.current && !isInitialized.current) {
+      editorRef.current.innerHTML = value || '';
+      isInitialized.current = true;
+    }
+  }, []);
+
+  const exec = (command: string, value?: string) => {
+    document.execCommand(command, false, value);
+    editorRef.current?.focus();
+    handleInput();
+  };
+
+  const handleInput = () => {
+    if (editorRef.current) {
+      onChange(editorRef.current.innerHTML);
+    }
+  };
+
+  const countWords = (html: string): number => {
+    const text = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    return text ? text.split(' ').length : 0;
+  };
+
+  const wordCount = countWords(value);
+
+  const toolbarBtn = (icon: React.ReactNode, cmd: string, val?: string, title?: string) => (
+    <button
+      type="button"
+      onMouseDown={(e) => { e.preventDefault(); exec(cmd, val); }}
+      title={title}
+      disabled={disabled}
+      className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400 disabled:opacity-40 transition-colors"
+    >
+      {icon}
+    </button>
+  );
+
+  return (
+    <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+      {/* Toolbar */}
+      <div className="flex items-center gap-0.5 px-2 py-1.5 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 flex-wrap">
+        {/* Paragraph style */}
+        <select
+          onMouseDown={(e) => e.stopPropagation()}
+          onChange={(e) => exec('formatBlock', e.target.value)}
+          disabled={disabled}
+          className="text-xs border border-gray-200 dark:border-gray-600 rounded px-1.5 py-1 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 mr-1 focus:outline-none"
+        >
+          <option value="p">Paragraph</option>
+          <option value="h1">Heading 1</option>
+          <option value="h2">Heading 2</option>
+          <option value="h3">Heading 3</option>
+        </select>
+        <div className="w-px h-5 bg-gray-200 dark:bg-gray-600 mx-1" />
+        {toolbarBtn(<Bold size={14} />, 'bold', undefined, 'Bold')}
+        {toolbarBtn(<Italic size={14} />, 'italic', undefined, 'Italic')}
+        {toolbarBtn(<Underline size={14} />, 'underline', undefined, 'Underline')}
+        <div className="w-px h-5 bg-gray-200 dark:bg-gray-600 mx-1" />
+        {toolbarBtn(<List size={14} />, 'insertUnorderedList', undefined, 'Bullet List')}
+        {toolbarBtn(<ListOrdered size={14} />, 'insertOrderedList', undefined, 'Numbered List')}
+        <div className="w-px h-5 bg-gray-200 dark:bg-gray-600 mx-1" />
+        {toolbarBtn(<AlignLeft size={14} />, 'justifyLeft', undefined, 'Align Left')}
+        {toolbarBtn(<AlignCenter size={14} />, 'justifyCenter', undefined, 'Align Center')}
+        {toolbarBtn(<AlignRight size={14} />, 'justifyRight', undefined, 'Align Right')}
+        <div className="w-px h-5 bg-gray-200 dark:bg-gray-600 mx-1" />
+        <button
+          type="button"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            const url = prompt('Enter URL:');
+            if (url) exec('createLink', url);
+          }}
+          title="Link"
+          disabled={disabled}
+          className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400 disabled:opacity-40 transition-colors"
+        >
+          <Link2 size={14} />
+        </button>
+        <button
+          type="button"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            const url = prompt('Enter image URL:');
+            if (url) exec('insertImage', url);
+          }}
+          title="Image"
+          disabled={disabled}
+          className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400 disabled:opacity-40 transition-colors"
+        >
+          <Image size={14} />
+        </button>
+        <button
+          type="button"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            exec('insertHTML', '<table border="1" style="border-collapse:collapse;width:100%"><tr><td style="padding:4px 8px">&nbsp;</td><td style="padding:4px 8px">&nbsp;</td></tr><tr><td style="padding:4px 8px">&nbsp;</td><td style="padding:4px 8px">&nbsp;</td></tr></table>');
+          }}
+          title="Table"
+          disabled={disabled}
+          className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400 disabled:opacity-40 transition-colors"
+        >
+          <Table size={14} />
+        </button>
+        <div className="w-px h-5 bg-gray-200 dark:bg-gray-600 mx-1" />
+        {toolbarBtn(<Undo size={14} />, 'undo', undefined, 'Undo')}
+        {toolbarBtn(<Redo size={14} />, 'redo', undefined, 'Redo')}
+      </div>
+
+      {/* Editable area */}
+      <div className="relative">
+        <div
+          ref={editorRef}
+          contentEditable={!disabled}
+          suppressContentEditableWarning
+          onInput={handleInput}
+          onBlur={handleInput}
+          className="min-h-[160px] px-4 py-3 text-sm text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-900 focus:outline-none prose prose-sm max-w-none"
+          style={{ wordBreak: 'break-word' }}
+          data-placeholder={placeholder}
+        />
+        {!value && (
+          <div className="absolute top-3 left-4 text-sm text-gray-400 pointer-events-none">
+            {placeholder}
+          </div>
+        )}
+      </div>
+
+      {/* Word count */}
+      <div className="px-4 py-1.5 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 flex justify-end">
+        <span className="text-xs text-gray-400">{wordCount} words</span>
+      </div>
+    </div>
+  );
 }
 
-interface CaseStudyTemplate {
-  name: string;
-  sections: TemplateSection[];
-}
-
+// ── Main page ────────────────────────────────────────────────────────────────
 interface CaseStudy {
   id: string;
   projectId: string;
@@ -42,6 +242,7 @@ interface CaseStudy {
   title: string | null;
   content: string | null;
   publishedAt: string | null;
+  createdAt?: string;
   project?: {
     id: string;
     name: string;
@@ -54,158 +255,126 @@ interface CaseStudy {
     actualEnd: string;
     sourcePlatform: string;
     targetPlatform: string;
+    migrationTypes: string | null;
   };
 }
 
-interface SectionContent {
-  [sectionId: string]: string;
-}
+type SectionContent = Record<string, string>;
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-
-const defaultTemplate: CaseStudyTemplate = {
-  name: 'Closed Project — Migration Case Study',
-  sections: [
-    { id: '1', title: '1. Project Identification', description: 'Basic project information and stakeholders', placeholder: 'Project Name:\nCustomer Name:\nProject Manager:\nAccount Manager:\nProject Start Date:\nProject End Date:\nMigration Type:\nProject Status:', required: true },
-    { id: '2', title: '2. Migration Overview & Scope', description: 'Source and target environment details', placeholder: 'Source Environment:\n- Platform/System:\n- Data Volume:\n- User Count:\n- Mailbox Count:\n\nTarget Environment:\n- Platform/System:\n- Region/Tenant:\n\nScope Summary:\n- In Scope Items:\n- Out of Scope Items:', required: true },
-    { id: '3', title: '3. Pre-Migration Assessment', description: 'Infrastructure and data inventory assessment', placeholder: 'Infrastructure Assessment:\n- Source system health check results\n- Network bandwidth assessment\n- Security compliance review\n\nData Inventory:\n- Total data size (GB/TB)\n- Number of users/mailboxes\n- Special data types identified\n- Data cleanup requirements:', required: true },
-    { id: '4', title: '4. Migration Strategy & Execution', description: 'Methodology, phases, and tools used', placeholder: 'Migration Methodology:\n- Approach (Big Bang/Phased/Hybrid)\n- Cutover strategy\n\nPhase Breakdown:\n- Phase 1: Planning & Assessment\n- Phase 2: Pilot Migration\n- Phase 3: Production Migration\n- Phase 4: Validation & Closure\n\nTools & Technologies Used:\n- Migration tool(s)\n- Monitoring tools\n- Communication tools:', required: true },
-    { id: '5', title: '5. Success Metrics & KPIs', description: 'Performance metrics with targets and actuals', placeholder: 'Key Performance Indicators:\n\n| Metric | Target | Actual | Status |\n|--------|--------|--------|--------|\n| Data Migration Success Rate | 99.5% | | |\n| User Migration Success Rate | 100% | | |\n| Downtime (hours) | <4 | | |\n| Post-Migration Issues | <5 | | |\n| Customer Satisfaction | >4.5/5 | | |\n| On-Time Delivery | Yes | | |', required: true },
-    { id: '6', title: '6. Risks, Challenges & Mitigations', description: 'Risk tracking with status and mitigation steps', placeholder: 'Risk Register:\n\n| Risk ID | Risk Description | Impact | Probability | Mitigation Strategy | Status |\n|---------|------------------|--------|-------------|---------------------|--------|\n| R001 | | High/Med/Low | High/Med/Low | | Open/Closed |\n\nChallenges Encountered:\n1. Challenge:\n   - Impact:\n   - Resolution:', required: true },
-    { id: '7', title: '7. Key Issues & Resolution Log', description: 'Issue tracking and resolution details', placeholder: 'Issue Log:\n\n| Issue ID | Date Reported | Description | Root Cause | Resolution | Date Resolved | Owner |\n|----------|---------------|-------------|------------|------------|---------------|-------|\n| ISS001 | | | | | | |\n\nEscalations:\n- Any escalations to management\n- Resolution timeline', required: false },
-    { id: '8', title: '8. Validation, UAT & Communication', description: 'Testing results and stakeholder communication', placeholder: 'Validation Results:\n- Pre-migration validation: Pass/Fail\n- Post-migration validation: Pass/Fail\n- Data integrity check: Pass/Fail\n\nUAT Summary:\n- UAT Start Date:\n- UAT End Date:\n- Test Cases Executed:\n- Pass Rate:\n- Sign-off obtained: Yes/No\n\nStakeholder Communication:\n- Kick-off meeting date:\n- Status update frequency:\n- Final closure meeting date:', required: true },
-    { id: '9', title: '9. Knowledge Transfer & Documentation', description: 'Training and handover details', placeholder: 'Knowledge Transfer:\n- Training sessions conducted:\n- Training materials provided:\n- Admin handover completed: Yes/No\n\nDocumentation Delivered:\n- [ ] Migration runbook\n- [ ] Configuration documentation\n- [ ] User guides\n- [ ] Admin guides\n- [ ] Troubleshooting guide\n- [ ] Rollback procedures', required: false },
-    { id: '10', title: '10. Valuable Insights & Final Deliverables', description: 'Lessons learned and recommendations', placeholder: 'Lessons Learned:\n1. What went well:\n2. What could be improved:\n3. Recommendations for future projects:\n\nFinal Deliverables:\n- [ ] Migration completion report\n- [ ] Data validation report\n- [ ] UAT sign-off document\n- [ ] Knowledge transfer completion\n- [ ] Project closure document', required: true },
-    { id: '11', title: '11. Final Assessment & Project Sign-off', description: 'Project closure and approval details', placeholder: 'Overall Project Assessment:\n- Project delivered on time: Yes/No\n- Project delivered within budget: Yes/No\n- All success criteria met: Yes/No\n- Customer satisfaction rating: /5\n\nSign-off Details:\n- Customer Sign-off Date:\n- Customer Representative:\n- Internal Sign-off Date:\n- Project Manager:\n\nProject Closure Status: CLOSED', required: true },
-    { id: '12', title: '12. Client Testimonial', description: 'Quote or feedback from the client', placeholder: 'Client Feedback:\n"[Insert client testimonial or feedback quote here]"\n\n- Client Name:\n- Title:\n- Company:\n- Date:', required: false },
-  ],
+const STATUS_BADGE: Record<string, string> = {
+  PENDING: 'bg-yellow-100 text-yellow-700 border-yellow-200',
+  IN_PROGRESS: 'bg-blue-100 text-blue-700 border-blue-200',
+  COMPLETED: 'bg-green-100 text-green-700 border-green-200',
+  PUBLISHED: 'bg-purple-100 text-purple-700 border-purple-200',
 };
+
+function getMigrationBadge(types: string | null) {
+  if (!types) return null;
+  const t = types.toUpperCase();
+  if (t.includes('CONTENT')) return { label: 'Content', cls: 'bg-blue-100 text-blue-700' };
+  if (t.includes('EMAIL')) return { label: 'Email', cls: 'bg-green-100 text-green-700' };
+  if (t.includes('MESSAGING')) return { label: 'Messaging', cls: 'bg-purple-100 text-purple-700' };
+  return { label: types, cls: 'bg-gray-100 text-gray-700' };
+}
 
 export default function CaseStudyEditorPage() {
   const params = useParams();
   const router = useRouter();
   const caseStudyId = params.id as string;
-  
+
+  // ── Load template sections from admin-configured template (localStorage) ──
+  const { sections: templateSections } = useCaseStudyTemplate();
+  // Use template sections if loaded, else fall back to FALLBACK_SECTIONS
+  const TEMPLATE_SECTIONS = templateSections.length > 0 ? templateSections : FALLBACK_SECTIONS;
+
   const [caseStudy, setCaseStudy] = useState<CaseStudy | null>(null);
-  const [template, setTemplate] = useState<CaseStudyTemplate>(defaultTemplate);
   const [title, setTitle] = useState('');
   const [sectionContent, setSectionContent] = useState<SectionContent>({});
-  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['1']));
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set([TEMPLATE_SECTIONS[0]?.id || 'executive_summary']));
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const [saveError, setSaveError] = useState(false);
 
   useEffect(() => {
-    loadTemplate();
     fetchCaseStudy();
   }, [caseStudyId]);
-
-  const loadTemplate = () => {
-    try {
-      const saved = localStorage.getItem('pmoSettings');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed.template && parsed.template.sections) {
-          setTemplate(parsed.template);
-        }
-      }
-    } catch (e) {
-      console.error('Failed to load template from settings');
-    }
-  };
 
   const fetchCaseStudy = async () => {
     try {
       setIsLoading(true);
-      const response = await fetch(`${API_URL}/api/case-studies/${caseStudyId}`);
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      const response = await fetch(`${API_URL}/api/case-studies/${caseStudyId}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
       const data = await response.json();
-      
       if (data.success && data.data) {
         setCaseStudy(data.data);
         setTitle(data.data.title || data.data.project?.name || '');
-        
-        // Parse existing content into sections
         if (data.data.content) {
           try {
-            const parsed = JSON.parse(data.data.content);
-            setSectionContent(parsed);
+            setSectionContent(JSON.parse(data.data.content));
           } catch {
-            // If content is not JSON, put it in the first section
-            setSectionContent({ '1': data.data.content });
+            setSectionContent({ executive_summary: data.data.content });
           }
         }
-        
-        // Expand all sections that have content
-        const sectionsWithContent = new Set(
-          Object.keys(sectionContent).filter((k) => sectionContent[k])
-        );
-        sectionsWithContent.add('1');
-        setExpandedSections(sectionsWithContent);
       }
-    } catch (error) {
-      console.error('Failed to fetch case study:', error);
-      setMessage({ type: 'error', text: 'Failed to load case study' });
+    } catch (err) {
+      console.error('Failed to fetch case study:', err);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const toggleSection = (sectionId: string) => {
+  const getCompletion = () => {
+    const required = TEMPLATE_SECTIONS.filter((s) => s.required);
+    const done = required.filter((s) => {
+      const raw = sectionContent[s.id] || '';
+      return raw.replace(/<[^>]+>/g, '').trim().length > 0;
+    });
+    return Math.round((done.length / required.length) * 100);
+  };
+
+  const toggleSection = (id: string) => {
     setExpandedSections((prev) => {
       const next = new Set(prev);
-      if (next.has(sectionId)) {
-        next.delete(sectionId);
-      } else {
-        next.add(sectionId);
-      }
+      next.has(id) ? next.delete(id) : next.add(id);
       return next;
     });
   };
 
-  const updateSectionContent = (sectionId: string, content: string) => {
-    setSectionContent((prev) => ({
-      ...prev,
-      [sectionId]: content,
-    }));
-  };
-
-  const getCompletionPercentage = () => {
-    const requiredSections = template.sections.filter((s) => s.required);
-    const completedRequired = requiredSections.filter(
-      (s) => sectionContent[s.id] && sectionContent[s.id].trim().length > 0
-    );
-    return Math.round((completedRequired.length / requiredSections.length) * 100);
+  const updateSection = (id: string, html: string) => {
+    setSectionContent((prev) => ({ ...prev, [id]: html }));
   };
 
   const handleSave = async (newStatus?: string) => {
     try {
       setIsSaving(true);
-      
-      const content = JSON.stringify(sectionContent);
-      const status = newStatus || caseStudy?.status || 'IN_PROGRESS';
-      
+      setSaveError(false);
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
       const response = await fetch(`${API_URL}/api/case-studies/${caseStudyId}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
           title,
-          content,
-          status,
-          publishedAt: status === 'PUBLISHED' ? new Date().toISOString() : null,
+          content: JSON.stringify(sectionContent),
+          status: newStatus || caseStudy?.status || 'IN_PROGRESS',
+          publishedAt: newStatus === 'PUBLISHED' ? new Date().toISOString() : null,
         }),
       });
-
       const data = await response.json();
-      
       if (data.success) {
         setCaseStudy(data.data);
-        setMessage({ type: 'success', text: `Case study ${newStatus === 'PUBLISHED' ? 'published' : 'saved'} successfully` });
+        setLastSaved(new Date());
       } else {
-        setMessage({ type: 'error', text: 'Failed to save case study' });
+        setSaveError(true);
       }
-    } catch (error) {
-      setMessage({ type: 'error', text: 'Failed to save case study' });
+    } catch {
+      setSaveError(true);
     } finally {
       setIsSaving(false);
     }
@@ -213,7 +382,6 @@ export default function CaseStudyEditorPage() {
 
   const handleExport = async (format: 'pdf' | 'word') => {
     if (!caseStudy) return;
-    
     setIsExporting(true);
     try {
       const exportData = {
@@ -228,20 +396,16 @@ export default function CaseStudyEditorPage() {
         plannedEnd: caseStudy.project?.plannedEnd ? new Date(caseStudy.project.plannedEnd).toLocaleDateString() : undefined,
         actualStart: caseStudy.project?.actualStart ? new Date(caseStudy.project.actualStart).toLocaleDateString() : undefined,
         actualEnd: caseStudy.project?.actualEnd ? new Date(caseStudy.project.actualEnd).toLocaleDateString() : undefined,
-        sections: template.sections,
+        sections: TEMPLATE_SECTIONS,
         sectionContent,
       };
-
       if (format === 'pdf') {
         exportToPDF(exportData);
-        setMessage({ type: 'success', text: 'PDF exported successfully' });
       } else {
         await exportToWord(exportData);
-        setMessage({ type: 'success', text: 'Word document exported successfully' });
       }
-    } catch (error) {
-      console.error('Export failed:', error);
-      setMessage({ type: 'error', text: `Failed to export ${format.toUpperCase()}` });
+    } catch (err) {
+      console.error('Export failed:', err);
     } finally {
       setIsExporting(false);
     }
@@ -259,273 +423,293 @@ export default function CaseStudyEditorPage() {
     return (
       <div className="text-center py-12">
         <p className="text-gray-500">Case study not found</p>
-        <Link href="/case-studies">
-          <Button className="mt-4">Back to Case Studies</Button>
-        </Link>
+        <Link href="/case-studies" className="mt-4 inline-block text-primary-600 hover:underline">Back to Case Studies</Link>
       </div>
     );
   }
 
-  const completion = getCompletionPercentage();
+  const completion = getCompletion();
+  const isPublished = caseStudy.status === 'PUBLISHED';
+  const migrationBadge = getMigrationBadge(caseStudy.project?.migrationTypes || null);
+  const createdDate = caseStudy.createdAt ? new Date(caseStudy.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
 
   return (
     <div className="animate-fadeIn">
-      {/* Header */}
-      <div className="mb-6">
-        <Link 
-          href="/case-studies"
-          className="inline-flex items-center text-gray-600 hover:text-gray-900 mb-4"
-        >
-          <ArrowLeft size={16} className="mr-2" />
-          Back to Case Studies
-        </Link>
-        
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">
-              {caseStudy.status === 'PUBLISHED' ? 'View' : 'Edit'} Case Study
-            </h1>
-            <p className="text-gray-500">
-              {caseStudy.project?.name} · {caseStudy.project?.customerName}
-            </p>
-          </div>
-          
-          <div className="flex items-center gap-3">
-            {/* Export Buttons */}
-            <div className="flex items-center gap-2 border-r border-gray-200 pr-3">
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={() => handleExport('pdf')}
-                disabled={isExporting}
-              >
-                {isExporting ? (
-                  <Loader2 size={14} className="mr-2 animate-spin" />
-                ) : (
-                  <FileDown size={14} className="mr-2" />
-                )}
-                PDF
-              </Button>
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={() => handleExport('word')}
-                disabled={isExporting}
-              >
-                {isExporting ? (
-                  <Loader2 size={14} className="mr-2 animate-spin" />
-                ) : (
-                  <Download size={14} className="mr-2" />
-                )}
-                Word
-              </Button>
+      {/* Breadcrumb + Header */}
+      <div className="mb-5">
+        <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 mb-3">
+          <Link href="/case-studies" className="hover:text-primary-600 transition-colors">Case Studies</Link>
+          <span>›</span>
+          <span className="text-gray-700 dark:text-gray-300">{isPublished ? 'View Case Study' : 'Edit Case Study'}</span>
+        </div>
+
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <button
+              onClick={() => router.back()}
+              className="p-1.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 flex-shrink-0"
+            >
+              <ArrowLeft size={16} className="text-gray-600 dark:text-gray-400" />
+            </button>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="text-xl font-bold text-gray-900 dark:text-white truncate">{title || 'Untitled Case Study'}</h1>
+                <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${STATUS_BADGE[caseStudy.status] || STATUS_BADGE.PENDING}`}>
+                  {caseStudy.status.charAt(0) + caseStudy.status.slice(1).toLowerCase().replace('_', ' ')}
+                </span>
+              </div>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+                {caseStudy.project?.customerName} · Created on {createdDate} by {caseStudy.project?.projectManager}
+              </p>
             </div>
-            
-            {caseStudy.status !== 'PUBLISHED' && (
-              <>
-                <Button variant="outline" onClick={() => handleSave()} isLoading={isSaving}>
-                  <Save size={16} className="mr-2" />
-                  Save Draft
-                </Button>
-                {completion === 100 && (
-                  <Button onClick={() => handleSave('PUBLISHED')} isLoading={isSaving}>
-                    <Eye size={16} className="mr-2" />
-                    Publish
-                  </Button>
-                )}
-              </>
+          </div>
+
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {/* Last saved indicator */}
+            <div className="flex items-center gap-1.5 mr-1">
+              {saveError ? (
+                <span className="text-xs text-red-500 flex items-center gap-1"><AlertCircle size={12} />Save failed</span>
+              ) : lastSaved ? (
+                <span className="text-xs text-green-600 flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-green-500 inline-block" />
+                  Last saved: a few seconds ago
+                </span>
+              ) : null}
+            </div>
+
+            <Link
+              href={`/case-studies/${caseStudyId}/preview`}
+              className="flex items-center gap-1.5 px-3 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+            >
+              <Eye size={14} />
+              Preview
+            </Link>
+            <button
+              onClick={() => handleExport('pdf')}
+              disabled={isExporting}
+              className="flex items-center gap-1.5 px-3 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
+            >
+              {isExporting ? <Loader2 size={14} className="animate-spin" /> : <FileDown size={14} />}
+              PDF
+            </button>
+            <button
+              onClick={() => handleExport('word')}
+              disabled={isExporting}
+              className="flex items-center gap-1.5 px-3 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
+            >
+              {isExporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+              Word
+            </button>
+            {!isPublished && (
+              <button
+                onClick={() => handleSave()}
+                disabled={isSaving}
+                className="flex items-center gap-1.5 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm hover:bg-primary-700 transition-colors disabled:opacity-50"
+              >
+                {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                Save Case Study
+              </button>
             )}
           </div>
         </div>
       </div>
 
-      {/* Message */}
-      {message && (
-        <div className={`mb-4 p-3 rounded-lg flex items-center gap-2 ${
-          message.type === 'success' 
-            ? 'bg-green-50 text-green-700 border border-green-200' 
-            : 'bg-red-50 text-red-700 border border-red-200'
-        }`}>
-          {message.type === 'success' ? <CheckCircle size={16} /> : <AlertCircle size={16} />}
-          {message.text}
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {/* Sidebar - Progress & Project Info */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-5">
+        {/* ── Left Sidebar ────────────────────────────────────────────────── */}
         <div className="lg:col-span-1 space-y-4">
-          {/* Progress Card */}
-          <Card>
-            <h3 className="font-semibold text-gray-900 mb-3">Completion</h3>
-            <div className="flex items-center gap-3 mb-2">
-              <div className="flex-1 bg-gray-200 rounded-full h-3">
+          {/* Progress */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Case Study Progress</h3>
+            <div className="flex items-center gap-3 mb-1.5">
+              <div className="flex-1 bg-gray-100 dark:bg-gray-700 rounded-full h-2.5 overflow-hidden">
                 <div
-                  className={`h-3 rounded-full transition-all ${
-                    completion === 100 ? 'bg-green-500' : 'bg-blue-500'
-                  }`}
-                  style={{ width: `${completion}%` }}
+                  className="h-full rounded-full transition-all duration-500"
+                  style={{
+                    width: `${completion}%`,
+                    background: completion === 100 ? '#22c55e' : '#3b82f6',
+                  }}
                 />
               </div>
-              <span className="text-sm font-medium text-gray-700">{completion}%</span>
+              <span className="text-sm font-bold text-gray-700 dark:text-gray-300">{completion}%</span>
             </div>
-            <p className="text-xs text-gray-500">
-              {completion === 100 
-                ? 'All required sections completed!' 
-                : 'Complete all required sections to publish'}
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              {completion === 100 ? 'All required sections completed!' : 'Complete all required sections to publish'}
             </p>
-          </Card>
+          </div>
 
-          {/* Project Info Card */}
-          <Card>
-            <h3 className="font-semibold text-gray-900 mb-3">Project Details</h3>
-            <div className="space-y-2 text-sm">
-              <div>
-                <span className="text-gray-500">Customer:</span>
-                <p className="font-medium">{caseStudy.project?.customerName}</p>
-              </div>
-              <div>
-                <span className="text-gray-500">Project Manager:</span>
-                <p className="font-medium">{caseStudy.project?.projectManager}</p>
-              </div>
-              <div>
-                <span className="text-gray-500">Source:</span>
-                <p className="font-medium">{caseStudy.project?.sourcePlatform || 'N/A'}</p>
-              </div>
-              <div>
-                <span className="text-gray-500">Target:</span>
-                <p className="font-medium">{caseStudy.project?.targetPlatform || 'N/A'}</p>
-              </div>
+          {/* Case Study Details */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Case Study Details</h3>
+              <button className="text-xs text-primary-600 hover:text-primary-700 flex items-center gap-1">
+                <Edit size={12} />
+                Edit
+              </button>
             </div>
-          </Card>
+            <div className="space-y-2.5 text-sm">
+              <div>
+                <span className="text-xs text-gray-500 dark:text-gray-400 block">Customer</span>
+                <span className="font-semibold text-gray-900 dark:text-white">{caseStudy.project?.customerName || 'N/A'}</span>
+              </div>
+              <div>
+                <span className="text-xs text-gray-500 dark:text-gray-400 block">Project Manager</span>
+                <span className="font-semibold text-gray-900 dark:text-white">{caseStudy.project?.projectManager || 'N/A'}</span>
+              </div>
+              <div>
+                <span className="text-xs text-gray-500 dark:text-gray-400 block">Source</span>
+                <span className="font-semibold text-gray-900 dark:text-white">{caseStudy.project?.sourcePlatform || 'N/A'}</span>
+              </div>
+              <div>
+                <span className="text-xs text-gray-500 dark:text-gray-400 block">Target</span>
+                <span className="font-semibold text-gray-900 dark:text-white">{caseStudy.project?.targetPlatform || 'N/A'}</span>
+              </div>
+              {migrationBadge && (
+                <div>
+                  <span className="text-xs text-gray-500 dark:text-gray-400 block mb-1">Migration Type</span>
+                  <span className={`text-xs px-2 py-0.5 rounded font-medium ${migrationBadge.cls}`}>{migrationBadge.label}</span>
+                </div>
+              )}
+            </div>
+          </div>
 
-          {/* Section Navigation */}
-          <Card>
-            <h3 className="font-semibold text-gray-900 mb-3">Sections</h3>
+          {/* Template Sections nav */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Template Sections</h3>
             <div className="space-y-1">
-              {template.sections.map((section) => {
-                const hasContent = sectionContent[section.id]?.trim().length > 0;
+              {TEMPLATE_SECTIONS.map((section) => {
+                const raw = sectionContent[section.id] || '';
+                const hasContent = raw.replace(/<[^>]+>/g, '').trim().length > 0;
                 return (
                   <button
                     key={section.id}
                     onClick={() => {
                       setExpandedSections((prev) => new Set([...prev, section.id]));
-                      document.getElementById(`section-${section.id}`)?.scrollIntoView({ behavior: 'smooth' });
+                      document.getElementById(`section-${section.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                     }}
-                    className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center gap-2 ${
-                      hasContent ? 'bg-green-50 text-green-700' : 'hover:bg-gray-50'
-                    }`}
+                    className="w-full text-left px-2 py-1.5 rounded-lg text-xs flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
                   >
-                    {hasContent ? (
-                      <CheckCircle size={14} className="text-green-500" />
-                    ) : section.required ? (
-                      <AlertCircle size={14} className="text-orange-400" />
-                    ) : (
-                      <FileText size={14} className="text-gray-400" />
-                    )}
-                    <span className="truncate">{section.title}</span>
-                    {section.required && !hasContent && (
-                      <span className="text-xs text-orange-500">*</span>
-                    )}
+                    <span className={`w-2 h-2 rounded-full flex-shrink-0 border-2 ${
+                      hasContent
+                        ? 'bg-primary-500 border-primary-500'
+                        : section.required
+                          ? 'bg-transparent border-orange-400'
+                          : 'bg-transparent border-gray-300 dark:border-gray-600'
+                    }`} />
+                    <span className={`truncate ${hasContent ? 'text-gray-900 dark:text-white font-medium' : 'text-gray-500 dark:text-gray-400'}`}>
+                      {section.title}
+                    </span>
                   </button>
                 );
               })}
             </div>
-          </Card>
+            <div className="flex items-center gap-4 mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
+              <span className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+                <span className="w-2 h-2 rounded-full bg-orange-400 border-2 border-orange-400 inline-block" />
+                Required
+              </span>
+              <span className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+                <span className="w-2 h-2 rounded-full border-2 border-gray-300 inline-block" />
+                Optional
+              </span>
+            </div>
+          </div>
         </div>
 
-        {/* Main Content - Editor */}
+        {/* ── Main Editor ──────────────────────────────────────────────────── */}
         <div className="lg:col-span-3 space-y-4">
           {/* Title */}
-          <Card>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Case Study Title
+          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+              Case Study Title <span className="text-red-500">*</span>
             </label>
-            <Input
+            <input
+              type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="Enter a compelling title for this case study"
-              disabled={caseStudy.status === 'PUBLISHED'}
+              disabled={isPublished}
+              className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-60"
             />
-          </Card>
+          </div>
 
-          {/* Template Sections */}
-          {template.sections.map((section) => {
+          {/* Sections */}
+          {TEMPLATE_SECTIONS.map((section) => {
             const isExpanded = expandedSections.has(section.id);
-            const hasContent = sectionContent[section.id]?.trim().length > 0;
+            const raw = sectionContent[section.id] || '';
+            const hasContent = raw.replace(/<[^>]+>/g, '').trim().length > 0;
 
             return (
-              <Card key={section.id} id={`section-${section.id}`}>
+              <div
+                key={section.id}
+                id={`section-${section.id}`}
+                className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden"
+              >
                 <button
                   onClick={() => toggleSection(section.id)}
-                  className="w-full flex items-center justify-between"
+                  className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors"
                 >
-                  <div className="flex items-center gap-3">
-                    {hasContent ? (
-                      <CheckCircle size={20} className="text-green-500" />
-                    ) : (
-                      <FileText size={20} className="text-gray-400" />
-                    )}
-                    <div className="text-left">
-                      <h3 className="font-semibold text-gray-900">
-                        {section.title}
-                        {section.required && <span className="text-red-500 ml-1">*</span>}
-                      </h3>
-                      <p className="text-sm text-gray-500">{section.description}</p>
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="text-base">{section.icon}</span>
+                    <div className="text-left min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                          {section.title}
+                          {section.required && <span className="text-red-500 ml-1">*</span>}
+                        </span>
+                        {hasContent && <CheckCircle size={14} className="text-green-500 flex-shrink-0" />}
+                        {section.required && !hasContent && <span className="text-xs text-orange-500 bg-orange-50 dark:bg-orange-900/20 px-1.5 py-0.5 rounded">Required</span>}
+                      </div>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">{section.description}</p>
                     </div>
                   </div>
-                  {isExpanded ? (
-                    <ChevronUp size={20} className="text-gray-400" />
-                  ) : (
-                    <ChevronDown size={20} className="text-gray-400" />
-                  )}
+                  {isExpanded
+                    ? <ChevronUp size={16} className="text-gray-400 flex-shrink-0" />
+                    : <ChevronDown size={16} className="text-gray-400 flex-shrink-0" />
+                  }
                 </button>
 
                 {isExpanded && (
-                  <div className="mt-4">
-                    <Textarea
+                  <div className="px-4 pb-4">
+                    <RichTextEditor
                       value={sectionContent[section.id] || ''}
-                      onChange={(e) => updateSectionContent(section.id, e.target.value)}
+                      onChange={(html) => updateSection(section.id, html)}
                       placeholder={section.placeholder}
-                      rows={6}
-                      disabled={caseStudy.status === 'PUBLISHED'}
-                      className="w-full"
+                      disabled={isPublished}
                     />
-                    {section.required && !hasContent && (
-                      <p className="mt-2 text-sm text-orange-500 flex items-center gap-1">
-                        <AlertCircle size={14} />
-                        This section is required
-                      </p>
-                    )}
                   </div>
                 )}
-              </Card>
+              </div>
             );
           })}
 
-          {/* Action Buttons */}
-          {caseStudy.status !== 'PUBLISHED' && (
-            <div className="flex justify-end gap-3 pt-4">
-              <Button variant="outline" onClick={() => handleSave()} isLoading={isSaving}>
-                <Save size={16} className="mr-2" />
-                Save Draft
-              </Button>
-              <Button 
-                onClick={() => handleSave('COMPLETED')} 
-                isLoading={isSaving}
-                disabled={completion < 100}
+          {/* Action buttons */}
+          {!isPublished && (
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                onClick={() => handleSave()}
+                disabled={isSaving}
+                className="flex items-center gap-2 px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
               >
-                <CheckCircle size={16} className="mr-2" />
+                {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                Save Draft
+              </button>
+              <button
+                onClick={() => handleSave('COMPLETED')}
+                disabled={isSaving || completion < 100}
+                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 transition-colors disabled:opacity-50"
+              >
+                <CheckCircle size={14} />
                 Mark Complete
-              </Button>
+              </button>
               {completion === 100 && (
-                <Button 
-                  onClick={() => handleSave('PUBLISHED')} 
-                  isLoading={isSaving}
-                  className="bg-purple-600 hover:bg-purple-700"
+                <button
+                  onClick={() => handleSave('PUBLISHED')}
+                  disabled={isSaving}
+                  className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg text-sm hover:bg-purple-700 transition-colors disabled:opacity-50"
                 >
-                  <Eye size={16} className="mr-2" />
+                  <Eye size={14} />
                   Publish
-                </Button>
+                </button>
               )}
             </div>
           )}

@@ -27,6 +27,12 @@ router.get('/delay-summary', dashboardController.getDelaySummary);
 // GET /api/dashboard/upcoming-deadlines - Get upcoming deadlines
 router.get('/upcoming-deadlines', dashboardController.getUpcomingDeadlines);
 
+// GET /api/dashboard/manager-stats - Get per-manager project stats
+router.get('/manager-stats', dashboardController.getManagerStats);
+
+// GET /api/dashboard/weekly-report - Get weekly report data
+router.get('/weekly-report', dashboardController.getWeeklyReport);
+
 // GET /api/dashboard/migration-type-stats - Get stats by migration type
 router.get('/migration-type-stats', dashboardController.getMigrationTypeStats);
 
