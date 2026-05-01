@@ -1,7 +1,7 @@
 // Project Types
 export type PlanType = 'BRONZE' | 'SILVER' | 'GOLD' | 'PLATINUM';
 export type ProjectPhase = 'KICKOFF' | 'MIGRATION' | 'VALIDATION' | 'CLOSURE' | 'COMPLETED';
-export type ProjectStatus = 'ACTIVE' | 'ON_HOLD' | 'COMPLETED' | 'CANCELLED';
+export type ProjectStatus = 'ACTIVE' | 'INACTIVE' | 'ON_HOLD' | 'COMPLETED' | 'CANCELLED';
 export type DelayStatus = 'NOT_DELAYED' | 'AT_RISK' | 'DELAYED';
 export type PhaseStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'SKIPPED';
 export type CaseStudyStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'PUBLISHED';
@@ -26,8 +26,14 @@ export interface Project {
   targetPlatform: string | null;
   estimatedCost: number | null;
   actualCost: number | null;
+  numberOfServers: number | null;
+  projectMemory: string | null;
   description: string | null;
   notes: string | null;
+  isOveraged?: boolean;
+  isEscalated?: boolean;
+  escalationPriority?: string | null;
+  overageAmount?: number | null;
   createdAt: string;
   updatedAt: string;
   phases?: ProjectPhaseRecord[];
@@ -188,11 +194,17 @@ export interface CreateProjectInput {
   targetPlatform?: string;
   estimatedCost?: number;
   actualCost?: number;
+  numberOfServers?: number;
+  projectMemory?: string;
   description?: string;
   notes?: string;
   phase?: ProjectPhase;
   status?: ProjectStatus;
   delayStatus?: DelayStatus;
+  isOveraged?: boolean;
+  isEscalated?: boolean;
+  escalationPriority?: string;
+  overageAmount?: number;
 }
 
 export interface UpdateProjectInput extends Partial<CreateProjectInput> {}

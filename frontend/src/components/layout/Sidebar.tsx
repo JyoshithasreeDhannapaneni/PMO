@@ -34,7 +34,7 @@ const allNavigation = [
   { name: 'New Project', href: '/projects/new', icon: Plus, adminOnly: false },
   { name: 'Managers & Goals', href: '/managers', icon: Users, badge: 'goals', adminOnly: true },
   { name: 'Account Managers', href: '/managers', icon: UserCheck, badge: 'managers', adminOnly: true },
-  { name: 'Migration Types', href: '/settings?tab=migration', icon: Shuffle, badge: 'types', adminOnly: true },
+  { name: 'Migration Types', href: '/migration-types', icon: Shuffle, adminOnly: true },
   { name: 'Templates', href: '/templates', icon: Layers, adminOnly: false },
   { name: 'Case Studies', href: '/case-studies', icon: FileText, adminOnly: false },
   { name: 'CS Template', href: '/case-studies/template', icon: Layers, badge: 'cstemplate', adminOnly: true },
@@ -142,11 +142,6 @@ export function Sidebar() {
             >
               <item.icon size={18} />
               <span className="flex-1">{item.name}</span>
-              {item.badge && (
-                <span className={cn('text-xs font-semibold px-1.5 py-0.5 rounded-full', badgeColors[item.badge])}>
-                  {item.badge === 'goals' ? '1' : item.badge === 'managers' ? '2' : item.badge === 'types' ? '3' : item.badge === 'smtp' ? '8' : '7'}
-                </span>
-              )}
             </Link>
           );
         })}

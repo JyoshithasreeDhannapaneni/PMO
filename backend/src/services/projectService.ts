@@ -21,11 +21,17 @@ export interface CreateProjectDTO {
   targetPlatform?: string | null;
   estimatedCost?: number | null;
   actualCost?: number | null;
+  numberOfServers?: number | null;
+  projectMemory?: string | null;
   description?: string | null;
   notes?: string | null;
   phase?: string;
   status?: string;
   delayStatus?: string;
+  isOveraged?: boolean | null;
+  isEscalated?: boolean | null;
+  escalationPriority?: string | null;
+  overageAmount?: number | null;
 }
 
 export interface UpdateProjectDTO extends Partial<CreateProjectDTO> {}
@@ -68,9 +74,15 @@ function mapProjectRow(row: any) {
     targetPlatform: row.target_platform,
     estimatedCost: row.estimated_cost,
     actualCost: row.actual_cost,
+    numberOfServers: row.number_of_servers ?? null,
+    projectMemory: row.project_memory ?? null,
     description: row.description,
     notes: row.notes,
     templateId: row.template_id,
+    isOveraged: !!row.is_overaged,
+    isEscalated: !!row.is_escalated,
+    escalationPriority: row.escalation_priority ?? null,
+    overageAmount: row.overage_amount ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -139,8 +151,8 @@ class ProjectService {
   }
 
   async getById(id: string) {
-    const projectResult = await query(`SELECT * FROM projects WHERE id = $1`, [id]);
-    
+    const projectResult = await query(`SELECT * FROM projects WHERE id = ?`, [id]);
+
     if (projectResult.rows.length === 0) {
       throw new AppError('Project not found', 404);
     }
@@ -149,16 +161,16 @@ class ProjectService {
 
     const [phasesResult, tasksResult, caseStudyResult, notificationsResult] = await Promise.all([
       query(
-        `SELECT * FROM project_phases WHERE project_id = $1 ORDER BY order_index ASC`,
+        `SELECT * FROM project_phases WHERE project_id = ? ORDER BY order_index ASC`,
         [id]
       ),
       query(
-        `SELECT * FROM project_tasks WHERE project_id = $1 ORDER BY order_index ASC`,
+        `SELECT * FROM project_tasks WHERE project_id = ? ORDER BY order_index ASC`,
         [id]
       ),
-      query(`SELECT * FROM case_studies WHERE project_id = $1`, [id]),
+      query(`SELECT * FROM case_studies WHERE project_id = ?`, [id]),
       query(
-        `SELECT * FROM notifications WHERE project_id = $1 ORDER BY created_at DESC LIMIT 10`,
+        `SELECT * FROM notifications WHERE project_id = ? ORDER BY created_at DESC LIMIT 10`,
         [id]
       ),
     ]);
@@ -217,22 +229,32 @@ class ProjectService {
     const migrationTypes = data.migrationTypes?.toUpperCase().split(',').map(t => t.trim()) || [];
     const primaryMigrationType = migrationTypes[0] || null;
 
+    // Sanitise phase/planType — if column is still ENUM, only pass known values
+    const safePhase = ['KICKOFF','MIGRATION','VALIDATION','CLOSURE','COMPLETED'].includes((data.phase || '').toUpperCase())
+      ? (data.phase || 'KICKOFF').toUpperCase()
+      : 'KICKOFF';
+    const safePlanType = ['BRONZE','SILVER','GOLD','PLATINUM'].includes((data.planType || '').toUpperCase())
+      ? (data.planType || 'SILVER').toUpperCase()
+      : 'SILVER';
+
     const projectId = uuidv4();
+    // Core INSERT — only columns guaranteed to exist in the original schema
     await execute(
       `INSERT INTO projects (
         id, name, customer_name, project_manager, account_manager, plan_type,
         planned_start, planned_end, actual_start, actual_end,
         migration_types, source_platform, target_platform,
-        estimated_cost, actual_cost, description, notes,
-        phase, status, delay_days, delay_status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        estimated_cost, actual_cost,
+        description, notes, phase, status, delay_days, delay_status,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
       [
         projectId,
         data.name,
         data.customerName,
         data.projectManager,
         data.accountManager,
-        data.planType || 'SILVER',
+        safePlanType,
         plannedStart,
         plannedEnd,
         data.actualStart ? new Date(data.actualStart) : null,
@@ -240,16 +262,41 @@ class ProjectService {
         data.migrationTypes,
         data.sourcePlatform,
         data.targetPlatform,
-        data.estimatedCost,
-        data.actualCost,
+        data.estimatedCost ?? null,
+        data.actualCost ?? null,
         data.description,
         data.notes,
-        data.phase || 'KICKOFF',
+        safePhase,
         data.status || 'ACTIVE',
         delayDays,
         delayStatus,
       ]
     );
+
+    // Set new optional columns if they were provided (columns added via migration)
+    if (data.numberOfServers != null || data.projectMemory != null) {
+      try {
+        await execute(
+          `UPDATE projects SET number_of_servers = ?, project_memory = ? WHERE id = ?`,
+          [data.numberOfServers ?? null, data.projectMemory ?? null, projectId]
+        );
+      } catch {
+        // Columns not yet migrated — non-fatal, project is still created
+      }
+    }
+    if (data.isOveraged != null || data.isEscalated != null || data.overageAmount != null) {
+      try {
+        const isOveraged = data.isOveraged ? 1 : 0;
+        const isEscalated = data.isEscalated ? 1 : 0;
+        const escalationPriority = data.isEscalated ? (data.escalationPriority || 'MEDIUM') : null;
+        await execute(
+          `UPDATE projects SET is_overaged = ?, is_escalated = ?, escalation_priority = ?, escalated_at = ?, overage_amount = ? WHERE id = ?`,
+          [isOveraged, isEscalated, escalationPriority, data.isEscalated ? new Date() : null, data.overageAmount ?? null, projectId]
+        );
+      } catch {
+        // Columns not yet migrated — non-fatal
+      }
+    }
 
     const result = await query(`SELECT * FROM projects WHERE id = ?`, [projectId]);
     const project = mapProjectRow(result.rows[0]);
@@ -272,7 +319,7 @@ class ProjectService {
   }
 
   async update(id: string, data: UpdateProjectDTO) {
-    const existingResult = await query(`SELECT * FROM projects WHERE id = $1`, [id]);
+    const existingResult = await query(`SELECT * FROM projects WHERE id = ?`, [id]);
     if (existingResult.rows.length === 0) {
       throw new AppError('Project not found', 404);
     }
@@ -283,34 +330,48 @@ class ProjectService {
       ? (data.actualEnd ? new Date(data.actualEnd) : null)
       : existing.actual_end;
 
-    // Calculate delay based on dates, but allow manual override
     const calculated = calculateDelay(plannedEnd, actualEnd);
     const delayDays = calculated.delayDays;
-    // Use manual delay status if provided, otherwise use calculated
     const delayStatus = data.delayStatus || calculated.delayStatus;
 
-    const updates: string[] = ['delay_days = $1', 'delay_status = $2'];
+    const updates: string[] = ['delay_days = ?', 'delay_status = ?'];
     const params: any[] = [delayDays, delayStatus];
-    let paramIndex = 3;
 
-    if (data.name !== undefined) { updates.push(`name = $${paramIndex++}`); params.push(data.name); }
-    if (data.customerName !== undefined) { updates.push(`customer_name = $${paramIndex++}`); params.push(data.customerName); }
-    if (data.projectManager !== undefined) { updates.push(`project_manager = $${paramIndex++}`); params.push(data.projectManager); }
-    if (data.accountManager !== undefined) { updates.push(`account_manager = $${paramIndex++}`); params.push(data.accountManager); }
-    if (data.planType !== undefined) { updates.push(`plan_type = $${paramIndex++}`); params.push(data.planType); }
-    if (data.migrationTypes !== undefined) { updates.push(`migration_types = $${paramIndex++}`); params.push(data.migrationTypes); }
-    if (data.sourcePlatform !== undefined) { updates.push(`source_platform = $${paramIndex++}`); params.push(data.sourcePlatform); }
-    if (data.targetPlatform !== undefined) { updates.push(`target_platform = $${paramIndex++}`); params.push(data.targetPlatform); }
-    if (data.estimatedCost !== undefined) { updates.push(`estimated_cost = $${paramIndex++}`); params.push(data.estimatedCost); }
-    if (data.actualCost !== undefined) { updates.push(`actual_cost = $${paramIndex++}`); params.push(data.actualCost); }
-    if (data.description !== undefined) { updates.push(`description = $${paramIndex++}`); params.push(data.description); }
-    if (data.notes !== undefined) { updates.push(`notes = $${paramIndex++}`); params.push(data.notes); }
-    if (data.phase !== undefined) { updates.push(`phase = $${paramIndex++}`); params.push(data.phase); }
-    if (data.status !== undefined) { updates.push(`status = $${paramIndex++}`); params.push(data.status); }
-    if (data.plannedStart !== undefined) { updates.push(`planned_start = $${paramIndex++}`); params.push(new Date(data.plannedStart)); }
-    if (data.plannedEnd !== undefined) { updates.push(`planned_end = $${paramIndex++}`); params.push(new Date(data.plannedEnd)); }
-    if (data.actualStart !== undefined) { updates.push(`actual_start = $${paramIndex++}`); params.push(data.actualStart ? new Date(data.actualStart) : null); }
-    if (data.actualEnd !== undefined) { updates.push(`actual_end = $${paramIndex++}`); params.push(actualEnd); }
+    if (data.name !== undefined) { updates.push(`name = ?`); params.push(data.name); }
+    if (data.customerName !== undefined) { updates.push(`customer_name = ?`); params.push(data.customerName); }
+    if (data.projectManager !== undefined) { updates.push(`project_manager = ?`); params.push(data.projectManager); }
+    if (data.accountManager !== undefined) { updates.push(`account_manager = ?`); params.push(data.accountManager); }
+    if (data.planType !== undefined) {
+      const sp = ['BRONZE','SILVER','GOLD','PLATINUM'].includes((data.planType||'').toUpperCase())
+        ? data.planType.toUpperCase() : data.planType;
+      updates.push(`plan_type = ?`); params.push(sp);
+    }
+    if (data.migrationTypes !== undefined) { updates.push(`migration_types = ?`); params.push(data.migrationTypes); }
+    if (data.sourcePlatform !== undefined) { updates.push(`source_platform = ?`); params.push(data.sourcePlatform); }
+    if (data.targetPlatform !== undefined) { updates.push(`target_platform = ?`); params.push(data.targetPlatform); }
+    if (data.estimatedCost !== undefined) { updates.push(`estimated_cost = ?`); params.push(data.estimatedCost); }
+    if (data.actualCost !== undefined) { updates.push(`actual_cost = ?`); params.push(data.actualCost); }
+    if (data.numberOfServers !== undefined) { updates.push(`number_of_servers = ?`); params.push(data.numberOfServers); }
+    if (data.projectMemory !== undefined) { updates.push(`project_memory = ?`); params.push(data.projectMemory); }
+    if (data.description !== undefined) { updates.push(`description = ?`); params.push(data.description); }
+    if (data.notes !== undefined) { updates.push(`notes = ?`); params.push(data.notes); }
+    if (data.phase !== undefined) {
+      const sp = ['KICKOFF','MIGRATION','VALIDATION','CLOSURE','COMPLETED'].includes((data.phase||'').toUpperCase())
+        ? data.phase.toUpperCase() : data.phase;
+      updates.push(`phase = ?`); params.push(sp);
+    }
+    if (data.status !== undefined) { updates.push(`status = ?`); params.push(data.status); }
+    if (data.plannedStart !== undefined) { updates.push(`planned_start = ?`); params.push(new Date(data.plannedStart)); }
+    if (data.plannedEnd !== undefined) { updates.push(`planned_end = ?`); params.push(new Date(data.plannedEnd)); }
+    if (data.actualStart !== undefined) { updates.push(`actual_start = ?`); params.push(data.actualStart ? new Date(data.actualStart) : null); }
+    if (data.actualEnd !== undefined) { updates.push(`actual_end = ?`); params.push(actualEnd); }
+    if (data.isOveraged !== undefined) { updates.push(`is_overaged = ?`); params.push(data.isOveraged ? 1 : 0); }
+    if (data.isEscalated !== undefined) {
+      updates.push(`is_escalated = ?`); params.push(data.isEscalated ? 1 : 0);
+      updates.push(`escalation_priority = ?`); params.push(data.isEscalated ? (data.escalationPriority || existing.escalation_priority || 'MEDIUM') : null);
+      updates.push(`escalated_at = ?`); params.push(data.isEscalated ? new Date() : null);
+    }
+    if (data.overageAmount !== undefined) { try { updates.push(`overage_amount = ?`); params.push(data.overageAmount ?? null); } catch {} }
 
     params.push(id);
 
@@ -326,7 +387,7 @@ class ProjectService {
     const isNowClosed = data.phase === 'CLOSURE' && existing.phase !== 'CLOSURE';
     const isNowInCompletedPhase = data.phase === 'COMPLETED' && existing.phase !== 'COMPLETED';
 
-    const caseStudyResult = await query(`SELECT id FROM case_studies WHERE project_id = $1`, [id]);
+    const caseStudyResult = await query(`SELECT id FROM case_studies WHERE project_id = ?`, [id]);
 
     if ((isNowCompleted || isNowClosed || isNowInCompletedPhase) && caseStudyResult.rows.length === 0) {
       try {
@@ -346,12 +407,12 @@ class ProjectService {
   }
 
   async delete(id: string): Promise<void> {
-    const existing = await query(`SELECT id FROM projects WHERE id = $1`, [id]);
+    const existing = await query(`SELECT id FROM projects WHERE id = ?`, [id]);
     if (existing.rows.length === 0) {
       throw new AppError('Project not found', 404);
     }
 
-    await query(`DELETE FROM projects WHERE id = $1`, [id]);
+    await query(`DELETE FROM projects WHERE id = ?`, [id]);
     logger.info(`Project deleted: ${id}`);
   }
 
@@ -374,7 +435,7 @@ class ProjectService {
 
       if (delayDays !== row.delay_days || delayStatus !== row.delay_status) {
         await query(
-          `UPDATE projects SET delay_days = $1, delay_status = $2 WHERE id = $3`,
+          `UPDATE projects SET delay_days = ?, delay_status = ? WHERE id = ?`,
           [delayDays, delayStatus, row.id]
         );
         updatedCount++;

@@ -1,4 +1,4 @@
-import { query } from '../config/database';
+import { query, execute } from '../config/database';
 
 export interface DashboardStats {
   totalProjects: number;
@@ -171,68 +171,69 @@ class DashboardService {
 }
   async getMigrationTypeStats(managerName?: string) {
     const { clause: w, params: p } = this.managerWhere(managerName);
-    const result = await query(
-      `SELECT id, migration_types, status, delay_status, planned_end, created_at FROM projects ${w}`, p
-    );
+    const [projectsResult, templatesResult] = await Promise.all([
+      query(`SELECT id, migration_types, status, delay_status, planned_end, created_at FROM projects ${w}`, p),
+      query(`SELECT id, code, name FROM migration_templates WHERE is_active = 1 ORDER BY name ASC`, []),
+    ]);
 
-    const allProjects = result.rows;
+    const allProjects = projectsResult.rows;
+    const templates: { id: string; code: string; name: string }[] = templatesResult.rows;
     const now = new Date();
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-    const migrationTypes = ['CONTENT', 'EMAIL', 'MESSAGING'];
+    // Normalise a stored migration_types value to a set of UPPERCASE codes.
+    // Handles: "CONTENT", "content", "CONTENT,EMAIL", and legacy numeric IDs like "1","2".
+    const resolveToCode = (raw: string): string => {
+      const up = raw.trim().toUpperCase();
+      // Direct code match
+      if (templates.some(t => t.code.toUpperCase() === up)) return up;
+      // Lowercase id match (settings context stores e.g. 'content')
+      const byId = templates.find(t => t.code.toUpperCase() === up || t.name.toUpperCase().replace(/\s+/g, '') === up.replace(/\s+/g, ''));
+      if (byId) return byId.code.toUpperCase();
+      // Legacy numeric index (1-based position in templates list)
+      const idx = parseInt(up, 10);
+      if (!isNaN(idx) && idx >= 1 && idx <= templates.length) return templates[idx - 1].code.toUpperCase();
+      return up; // return as-is, may still match by includes below
+    };
 
-    const stats = migrationTypes.map((type) => {
-      const projectsOfType = allProjects.filter((p) =>
-        p.migration_types?.toUpperCase().includes(type)      );
+    const projectTypeCodes = (migTypes: string): string[] => {
+      if (!migTypes) return [];
+      return migTypes.split(',').map(s => resolveToCode(s.trim())).filter(Boolean);
+    };
 
-      const active = projectsOfType.filter((p) => p.status === 'ACTIVE').length;
-      const inactive = projectsOfType.filter((p) => p.status === 'ON_HOLD').length;
-      const completed = projectsOfType.filter((p) => p.status === 'COMPLETED').length;
-      const cancelled = projectsOfType.filter((p) => p.status === 'CANCELLED').length;
-      const newProjects = projectsOfType.filter((p) => new Date(p.created_at) >= thirtyDaysAgo).length;
-      const overaged = projectsOfType.filter((p) =>
-        p.status === 'ACTIVE' && new Date(p.planned_end) < now
-      ).length;
-      const delayed = projectsOfType.filter((p) => p.delay_status === 'DELAYED').length;
-      const atRisk = projectsOfType.filter((p) => p.delay_status === 'AT_RISK').length;
+    const stats = templates.map((tpl) => {
+      const code = tpl.code.toUpperCase();
+      const projectsOfType = allProjects.filter((proj) =>
+        projectTypeCodes(proj.migration_types || '').includes(code)
+      );
 
       return {
-        type,
+        type: code,
+        name: tpl.name,
         total: projectsOfType.length,
-        active,
-        inactive,
-        completed,
-        cancelled,
-        newProjects,
-        overaged,
-        delayed,
-        atRisk,
+        active:       projectsOfType.filter(proj => proj.status === 'ACTIVE').length,
+        inactive:     projectsOfType.filter(proj => proj.status === 'ON_HOLD').length,
+        completed:    projectsOfType.filter(proj => proj.status === 'COMPLETED').length,
+        cancelled:    projectsOfType.filter(proj => proj.status === 'CANCELLED').length,
+        newProjects:  projectsOfType.filter(proj => new Date(proj.created_at) >= thirtyDaysAgo).length,
+        overaged:     projectsOfType.filter(proj => proj.status === 'ACTIVE' && new Date(proj.planned_end) < now).length,
+        delayed:      projectsOfType.filter(proj => proj.delay_status === 'DELAYED').length,
+        atRisk:       projectsOfType.filter(proj => proj.delay_status === 'AT_RISK').length,
       };
     });
-
-    const allActive = allProjects.filter((p) => p.status === 'ACTIVE').length;
-    const allInactive = allProjects.filter((p) => p.status === 'ON_HOLD').length;
-    const allCompleted = allProjects.filter((p) => p.status === 'COMPLETED').length;
-    const allCancelled = allProjects.filter((p) => p.status === 'CANCELLED').length;
-    const allNew = allProjects.filter((p) => new Date(p.created_at) >= thirtyDaysAgo).length;
-    const allOveraged = allProjects.filter((p) =>
-      p.status === 'ACTIVE' && new Date(p.planned_end) < now
-    ).length;
-    const allDelayed = allProjects.filter((p) => p.delay_status === 'DELAYED').length;
-    const allAtRisk = allProjects.filter((p) => p.delay_status === 'AT_RISK').length;
 
     return {
       byType: stats,
       totals: {
-        total: allProjects.length,
-        active: allActive,
-        inactive: allInactive,
-        completed: allCompleted,
-        cancelled: allCancelled,
-        newProjects: allNew,
-        overaged: allOveraged,
-        delayed: allDelayed,
-        atRisk: allAtRisk,
+        total:       allProjects.length,
+        active:      allProjects.filter(proj => proj.status === 'ACTIVE').length,
+        inactive:    allProjects.filter(proj => proj.status === 'ON_HOLD').length,
+        completed:   allProjects.filter(proj => proj.status === 'COMPLETED').length,
+        cancelled:   allProjects.filter(proj => proj.status === 'CANCELLED').length,
+        newProjects: allProjects.filter(proj => new Date(proj.created_at) >= thirtyDaysAgo).length,
+        overaged:    allProjects.filter(proj => proj.status === 'ACTIVE' && new Date(proj.planned_end) < now).length,
+        delayed:     allProjects.filter(proj => proj.delay_status === 'DELAYED').length,
+        atRisk:      allProjects.filter(proj => proj.delay_status === 'AT_RISK').length,
       },
     };
   }
@@ -380,16 +381,106 @@ class DashboardService {
     };
   }
 
-  async getProjectsByMigrationType(type: string) {
+  async getOveragedProjects(managerName?: string) {
+    const { clause: aw, params: ap } = this.andManagerWhere(managerName);
     const result = await query(
-      `SELECT id, name, customer_name, project_manager, status, phase, delay_status, delay_days, planned_end, migration_types
-       FROM projects 
-       WHERE migration_types LIKE ?
-       ORDER BY updated_at DESC`,
-      [`%${type.toUpperCase()}%`]
+      `SELECT id, name, customer_name, project_manager, account_manager, status, phase,
+              planned_end, delay_days, delay_status, migration_types, is_overaged
+       FROM projects
+       WHERE status NOT IN ('COMPLETED','CANCELLED') AND (planned_end < NOW() OR is_overaged = 1) ${aw}
+       ORDER BY planned_end ASC`,
+      ap
     );
+    const now = new Date();
+    return result.rows.map((r: any) => ({
+      id: r.id,
+      name: r.name,
+      customerName: r.customer_name,
+      projectManager: r.project_manager,
+      accountManager: r.account_manager,
+      status: r.status,
+      phase: r.phase,
+      plannedEnd: r.planned_end,
+      daysOverdue: Math.max(0, Math.floor((now.getTime() - new Date(r.planned_end).getTime()) / 86400000)),
+      delayDays: r.delay_days,
+      migrationTypes: r.migration_types,
+      isOveraged: !!r.is_overaged,
+    }));
+  }
 
-    return result.rows.map((r) => ({
+  async getEscalatedProjects(managerName?: string) {
+    const { clause: aw, params: ap } = this.andManagerWhere(managerName);
+    const result = await query(
+      `SELECT id, name, customer_name, project_manager, account_manager, status, phase,
+              planned_end, delay_days, delay_status, migration_types,
+              is_escalated, escalation_priority, escalated_at, escalation_notes
+       FROM projects
+       WHERE (is_escalated = 1 OR delay_status = 'DELAYED') AND status NOT IN ('COMPLETED','CANCELLED') ${aw}
+       ORDER BY FIELD(escalation_priority,'HIGH','MEDIUM','LOW'), delay_days DESC`,
+      ap
+    );
+    return result.rows.map((r: any) => ({
+      id: r.id,
+      name: r.name,
+      customerName: r.customer_name,
+      projectManager: r.project_manager,
+      accountManager: r.account_manager,
+      status: r.status,
+      phase: r.phase,
+      plannedEnd: r.planned_end,
+      delayDays: r.delay_days,
+      delayStatus: r.delay_status,
+      migrationTypes: r.migration_types,
+      isEscalated: !!r.is_escalated,
+      escalationPriority: r.escalation_priority || (r.delay_days >= 14 ? 'HIGH' : r.delay_days >= 7 ? 'MEDIUM' : 'LOW'),
+      escalatedAt: r.escalated_at,
+      escalationNotes: r.escalation_notes,
+    }));
+  }
+
+  async escalateProject(projectId: string, priority: 'LOW' | 'MEDIUM' | 'HIGH', notes?: string) {
+    await execute(
+      `UPDATE projects SET is_escalated = 1, escalation_priority = ?, escalated_at = NOW(), escalation_notes = ? WHERE id = ?`,
+      [priority, notes || null, projectId]
+    );
+  }
+
+  async deescalateProject(projectId: string) {
+    await execute(
+      `UPDATE projects SET is_escalated = 0, escalation_priority = NULL, escalated_at = NULL, escalation_notes = NULL WHERE id = ?`,
+      [projectId]
+    );
+  }
+
+  async getProjectsByMigrationType(type: string) {
+    const code = type.toUpperCase();
+
+    // Find the 1-based index of this type in the templates table (for legacy numeric IDs)
+    const tplResult = await query(
+      `SELECT code FROM migration_templates WHERE is_active = 1 ORDER BY name ASC`, []
+    );
+    const tplCodes: string[] = tplResult.rows.map((r: any) => r.code.toUpperCase());
+    const legacyIdx = tplCodes.indexOf(code) + 1; // 1-based; 0 means not found
+
+    let sql = `SELECT id, name, customer_name, project_manager, status, phase, delay_status, delay_days, planned_end, migration_types
+               FROM projects
+               WHERE migration_types LIKE ?`;
+    const params: any[] = [`%${code}%`];
+
+    // Also match legacy numeric ID
+    if (legacyIdx > 0) {
+      sql += ` OR migration_types = ? OR migration_types LIKE ? OR migration_types LIKE ?`;
+      params.push(
+        String(legacyIdx),
+        `${legacyIdx},%`,
+        `%,${legacyIdx}`,
+      );
+    }
+
+    sql += ` ORDER BY updated_at DESC`;
+    const result = await query(sql, params);
+
+    return result.rows.map((r: any) => ({
       id: r.id,
       name: r.name,
       customerName: r.customer_name,

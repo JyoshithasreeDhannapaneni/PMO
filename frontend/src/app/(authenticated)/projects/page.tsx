@@ -18,6 +18,7 @@ import {
   Download,
   SlidersHorizontal,
   User,
+  CheckCircle,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -46,6 +47,7 @@ export default function ProjectsPage() {
 
   const [searchInput, setSearchInput] = useState(filters.search);
   const [showFilters, setShowFilters] = useState(true);
+  const [showRefreshToast, setShowRefreshToast] = useState(false);
 
   // Update URL when filters change
   useEffect(() => {
@@ -108,9 +110,10 @@ export default function ProjectsPage() {
   const statusOptions = [
     { value: '', label: 'All Statuses', color: 'gray' },
     { value: 'ACTIVE', label: 'Active', color: 'green' },
+    { value: 'INACTIVE', label: 'Inactive', color: 'gray' },
     { value: 'ON_HOLD', label: 'On Hold', color: 'yellow' },
-    { value: 'COMPLETED', label: 'Completed', color: 'blue' },
     { value: 'CANCELLED', label: 'Cancelled', color: 'red' },
+    { value: 'COMPLETED', label: 'Completed', color: 'blue' },
   ];
 
   const phaseOptions = [
@@ -196,8 +199,21 @@ export default function ProjectsPage() {
     );
   };
 
+  const handleRefresh = async () => {
+    await refetch();
+    setShowRefreshToast(true);
+    setTimeout(() => setShowRefreshToast(false), 3000);
+  };
+
   return (
     <div className="space-y-6 animate-fadeIn">
+      {/* Refresh Toast */}
+      {showRefreshToast && (
+        <div className="fixed top-5 right-5 z-50 flex items-center gap-2 px-4 py-3 bg-green-600 text-white rounded-xl shadow-lg animate-fadeIn">
+          <CheckCircle size={16} />
+          <span className="text-sm font-medium">Data refreshed successfully</span>
+        </div>
+      )}
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -215,7 +231,7 @@ export default function ProjectsPage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => refetch()}
+            onClick={handleRefresh}
             className="hidden sm:flex"
           >
             <RefreshCw size={16} className="mr-1" />

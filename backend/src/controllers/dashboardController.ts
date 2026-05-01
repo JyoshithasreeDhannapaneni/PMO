@@ -180,10 +180,31 @@ export const dashboardController = {
   getProjectsByMigrationType: asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const { type } = req.params;
     const data = await dashboardService.getProjectsByMigrationType(type);
+    res.json({ success: true, data });
+  }),
 
-    res.json({
-      success: true,
-      data,
-    });
+  getOveragedProjects: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const managerName = req.query.manager as string | undefined;
+    const data = await dashboardService.getOveragedProjects(managerName);
+    res.json({ success: true, data });
+  }),
+
+  getEscalatedProjects: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const managerName = req.query.manager as string | undefined;
+    const data = await dashboardService.getEscalatedProjects(managerName);
+    res.json({ success: true, data });
+  }),
+
+  escalateProject: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const { id } = req.params;
+    const { priority = 'MEDIUM', notes } = req.body;
+    await dashboardService.escalateProject(id, priority, notes);
+    res.json({ success: true, message: 'Project escalated' });
+  }),
+
+  deescalateProject: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const { id } = req.params;
+    await dashboardService.deescalateProject(id);
+    res.json({ success: true, message: 'Escalation removed' });
   }),
 };

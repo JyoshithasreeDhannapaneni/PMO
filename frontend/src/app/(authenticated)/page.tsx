@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { useDashboard, useWeeklyReport, useManagerStats, useProjectsByMigrationType, useUpsertManagerGoal } from '@/hooks/useProjects';
+import { useDashboard, useWeeklyReport, useManagerStats, useProjectsByMigrationType, useUpsertManagerGoal, useOveragedProjects, useEscalatedProjects } from '@/hooks/useProjects';
 import { useSettings } from '@/context/SettingsContext';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
@@ -200,25 +200,57 @@ function BarChart({ bars }: { bars: { label: string; value: number; color: strin
   );
 }
 
+/* ── Escalate Control (inline priority picker + button) ─────────── */
+function EscalateControl({ projectId, isEscalated, defaultPriority, busy, onEscalate, onDeescalate }: {
+  projectId: string; isEscalated: boolean; defaultPriority: 'LOW' | 'MEDIUM' | 'HIGH';
+  busy: boolean; onEscalate: (p: 'LOW'|'MEDIUM'|'HIGH') => Promise<void>; onDeescalate: () => Promise<void>;
+}) {
+  const [priority, setPriority] = useState<'LOW'|'MEDIUM'|'HIGH'>(defaultPriority);
+  if (isEscalated) return null; // already escalated rows handled differently
+  return (
+    <div className="flex items-center gap-1.5 justify-center">
+      <select
+        value={priority}
+        onChange={e => setPriority(e.target.value as any)}
+        disabled={busy}
+        onClick={e => e.stopPropagation()}
+        className="text-xs px-1.5 py-1 border border-gray-200 rounded-lg bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none cursor-pointer"
+      >
+        <option value="LOW">🟢 Low</option>
+        <option value="MEDIUM">🟡 Medium</option>
+        <option value="HIGH">🔴 High</option>
+      </select>
+      <button
+        disabled={busy}
+        onClick={e => { e.stopPropagation(); onEscalate(priority); }}
+        className="text-xs text-white bg-red-500 hover:bg-red-600 px-2 py-1 rounded-lg transition-colors disabled:opacity-40 flex items-center gap-1 whitespace-nowrap"
+      >
+        {busy ? <Loader2 size={11} className="animate-spin"/> : <AlertTriangle size={11}/>} Escalate
+      </button>
+    </div>
+  );
+}
+
 /* ── Migration Type Projects Modal ──────────────────────────────── */
 function MigrationTypeModal({ type, onClose }: { type: string; onClose: () => void }) {
   const { data, isLoading } = useProjectsByMigrationType(type);
+  const { settings } = useSettings();
   const projects: any[] = data?.data || [];
-  const typeColors: Record<string, { border: string; bg: string; text: string; emoji: string }> = {
-    CONTENT: { border: 'border-blue-400', bg: 'bg-blue-600', text: 'text-blue-700', emoji: '📁' },
-    EMAIL: { border: 'border-green-400', bg: 'bg-green-600', text: 'text-green-700', emoji: '📧' },
-    MESSAGING: { border: 'border-purple-400', bg: 'bg-purple-600', text: 'text-purple-700', emoji: '💬' },
-  };
-  const c = typeColors[type] || { border: 'border-gray-400', bg: 'bg-gray-600', text: 'text-gray-700', emoji: '📦' };
+  const settingType = settings.migrationTypes.find(t => t.code.toUpperCase() === type.toUpperCase());
+  const bgPalette = ['bg-blue-600','bg-green-600','bg-purple-600','bg-orange-500','bg-pink-600'];
+  const idx = settings.migrationTypes.findIndex(t => t.code.toUpperCase() === type.toUpperCase());
+  const bg = bgPalette[idx >= 0 ? idx % bgPalette.length : 0];
+  const emoji = settingType?.icon || '📦';
+  const label = settingType?.name || (type.charAt(0) + type.slice(1).toLowerCase());
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={onClose}>
       <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
-        <div className={`flex items-center justify-between p-5 ${c.bg} text-white`}>
+        <div className={`flex items-center justify-between p-5 ${bg} text-white`}>
           <div className="flex items-center gap-2">
-            <span className="text-2xl">{c.emoji}</span>
+            <span className="text-2xl">{emoji}</span>
             <div>
-              <h2 className="text-lg font-bold">{type.charAt(0) + type.slice(1).toLowerCase()} Projects</h2>
+              <h2 className="text-lg font-bold">{label} Projects</h2>
               <p className="text-xs opacity-80">{projects.length} project{projects.length !== 1 ? 's' : ''} found</p>
             </div>
           </div>
@@ -345,6 +377,41 @@ function AddManagerGoalModal({ managers, onClose }: { managers: string[]; onClos
 }
 
 /* ── Main Dashboard ─────────────────────────────────────────────── */
+function downloadProjectsCSV(projects: any[], filename: string) {
+  const headers = [
+    'Project Name', 'Customer', 'Project Manager', 'Account Manager', 'Status', 'Phase',
+    'Plan Type', 'Migration Types', 'Source Platform', 'Target Platform',
+    'SOW Start Date', 'SOW End Date', 'Kickoff Start Date', 'Project End Date',
+    'Delay Status', 'Delay Days', 'Days Overdue',
+    'Budget ($)', 'Actual Cost ($)', 'Overage Amount ($)',
+    'Number of Servers', 'Project Memory', 'Is Overaged', 'Is Escalated',
+    'Escalation Priority', 'Description', 'Notes', 'Created At',
+  ];
+  const rows = projects.map((p) => [
+    p.name, p.customerName, p.projectManager, p.accountManager || '',
+    p.status, p.phase, p.planType || '', p.migrationTypes || '',
+    p.sourcePlatform || '', p.targetPlatform || '',
+    p.plannedStart ? new Date(p.plannedStart).toLocaleDateString() : '',
+    p.plannedEnd ? new Date(p.plannedEnd).toLocaleDateString() : '',
+    p.actualStart ? new Date(p.actualStart).toLocaleDateString() : '',
+    p.actualEnd ? new Date(p.actualEnd).toLocaleDateString() : '',
+    p.delayStatus || '', p.delayDays ?? '', p.daysOverdue ?? '',
+    p.estimatedCost ?? '', p.actualCost ?? '', p.overageAmount ?? '',
+    p.numberOfServers ?? '', p.projectMemory || '',
+    p.isOveraged ? 'Yes' : 'No', p.isEscalated ? 'Yes' : 'No',
+    p.escalationPriority || '', p.description || '', p.notes || '',
+    p.createdAt ? new Date(p.createdAt).toLocaleDateString() : '',
+  ]);
+  const csv = [headers, ...rows].map((r) => r.map((v: any) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export default function DashboardPage() {
   const { user } = useAuth();
   const { settings } = useSettings();
@@ -359,19 +426,19 @@ export default function DashboardPage() {
   const [showChat, setShowChat] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [selectedMigrationType, setSelectedMigrationType] = useState<string | null>(null);
+  const [showOveragedPanel, setShowOveragedPanel] = useState(false);
+  const [showEscalatedPanel, setShowEscalatedPanel] = useState(false);
+  const [escalatingId, setEscalatingId] = useState<string | null>(null);
   const [showManagerGoalModal, setShowManagerGoalModal] = useState(false);
   const [reportStartDate, setReportStartDate] = useState('');
   const [reportEndDate, setReportEndDate] = useState('');
   const [showDownloadMenu, setShowDownloadMenu] = useState(false);
   const { showToast } = useToast();
 
-  // MANAGER: always filter to their projects regardless of My/Overview toggle
-  // ADMIN in 'my': filter to admin's projects; ADMIN in 'overall': no filter (all projects)
-  const managerFilter = isManager
-    ? (user?.name ?? '')
-    : viewMode === 'my'
-      ? (user?.name ?? '')
-      : undefined;
+  // MANAGER 'my': filter to their own projects
+  // MANAGER 'overall': no filter — show full portfolio health across all managers
+  // ADMIN 'my': filter to their own; ADMIN 'overall': no filter
+  const managerFilter = viewMode === 'my' ? (user?.name ?? '') : undefined;
   const { data, isLoading, error, refetch } = useDashboard(managerFilter);
   const { data: weeklyData, isLoading: weeklyLoading, error: weeklyError } = useWeeklyReport(
     managerFilter,
@@ -379,10 +446,14 @@ export default function DashboardPage() {
     reportEndDate || undefined,
   );
   const { data: managerData } = useManagerStats(managerFilter);
+  const { data: overagedData, refetch: refetchOveraged } = useOveragedProjects(managerFilter);
+  const { data: escalatedData, refetch: refetchEscalated } = useEscalatedProjects(managerFilter);
+  const overagedProjects: any[] = overagedData?.data || [];
+  const escalatedProjects: any[] = escalatedData?.data || [];
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    await refetch();
+    await Promise.all([refetch(), refetchOveraged(), refetchEscalated()]);
     setTimeout(() => setIsRefreshing(false), 600);
   };
 
@@ -478,8 +549,8 @@ export default function DashboardPage() {
           <User size={14} className="flex-shrink-0" />
           <span>
             {viewMode === 'my'
-              ? <><strong>My View</strong> — Showing your assigned projects. <strong>{user?.name}</strong>.</>
-              : <><strong>Overview</strong> — Summary stats for all your projects. <strong>{user?.name}</strong>.</>
+              ? <><strong>My View</strong> — Showing projects assigned to <strong>{user?.name}</strong>.</>
+              : <><strong>Overview</strong> — Showing full portfolio health across all managers.</>
             }
             {' '}Projects you create are automatically assigned to you.
           </span>
@@ -560,24 +631,299 @@ export default function DashboardPage() {
       </div>
 
       {/* ── Quick Stats ─────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {[
-          { label: 'New (30d)', value: migrationTypeStats?.totals?.newProjects ?? 0, icon: Plus, bg: 'bg-purple-100 dark:bg-purple-900/40', color: 'text-purple-600', href: '/projects?sortBy=createdAt&sortOrder=desc' },
-          { label: 'Overaged', value: migrationTypeStats?.totals?.overaged ?? 0, icon: Clock, bg: 'bg-orange-100 dark:bg-orange-900/40', color: 'text-orange-600', href: '/projects?delayStatus=OVERDUE' },
-          { label: 'Pending Cases', value: stats.pendingCaseStudies, icon: FileText, bg: 'bg-indigo-100 dark:bg-indigo-900/40', color: 'text-indigo-600', href: '/case-studies' },
-          { label: 'Avg Delay (d)', value: stats.avgDelayDays, icon: TrendingUp, bg: 'bg-gray-100 dark:bg-gray-700', color: 'text-gray-600', href: '/projects?delayStatus=DELAYED' },
-        ].map((item) => (
-          <Link key={item.label} href={item.href} className="block group">
-            <Card className="text-center py-3 h-full transition-transform group-hover:scale-[1.02] group-hover:shadow-lg">
-              <div className={`w-10 h-10 rounded-lg ${item.bg} flex items-center justify-center mx-auto mb-2`}>
-                <item.icon size={18} className={item.color} />
-              </div>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white">{item.value}</p>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{item.label}</p>
-            </Card>
-          </Link>
-        ))}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <Link href="/projects?sortBy=createdAt&sortOrder=desc" className="block group">
+          <Card className="text-center py-3 h-full transition-transform group-hover:scale-[1.02] group-hover:shadow-lg">
+            <div className="w-10 h-10 rounded-lg bg-purple-100 dark:bg-purple-900/40 flex items-center justify-center mx-auto mb-2">
+              <Plus size={18} className="text-purple-600" />
+            </div>
+            <p className="text-2xl font-bold text-gray-900 dark:text-white">{migrationTypeStats?.totals?.newProjects ?? 0}</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">New (30d)</p>
+          </Card>
+        </Link>
+
+        <button type="button" onClick={() => setShowOveragedPanel(true)}
+          className="block w-full text-left group focus:outline-none">
+          <Card className="text-center py-3 h-full group-hover:shadow-lg group-hover:border-orange-300 transition-all">
+            <div className="w-10 h-10 rounded-lg bg-orange-100 dark:bg-orange-900/40 flex items-center justify-center mx-auto mb-2">
+              <Clock size={18} className="text-orange-600" />
+            </div>
+            <p className="text-2xl font-bold text-orange-600">{overagedProjects.length}</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Overaged</p>
+            <p className="text-[10px] text-orange-500 font-medium mt-1">View Overaged →</p>
+          </Card>
+        </button>
+
+        <button type="button" onClick={() => setShowEscalatedPanel(true)}
+          className="block w-full text-left group focus:outline-none">
+          <Card className="text-center py-3 h-full group-hover:shadow-lg group-hover:border-red-300 transition-all">
+            <div className="w-10 h-10 rounded-lg bg-red-100 dark:bg-red-900/40 flex items-center justify-center mx-auto mb-2">
+              <AlertTriangle size={18} className="text-red-600" />
+            </div>
+            <p className="text-2xl font-bold text-red-600">{escalatedProjects.length}</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Escalated</p>
+            <p className="text-[10px] text-red-500 font-medium mt-1">View Escalated →</p>
+          </Card>
+        </button>
+
+        <Link href="/case-studies" className="block group">
+          <Card className="text-center py-3 h-full transition-transform group-hover:scale-[1.02] group-hover:shadow-lg">
+            <div className="w-10 h-10 rounded-lg bg-indigo-100 dark:bg-indigo-900/40 flex items-center justify-center mx-auto mb-2">
+              <FileText size={18} className="text-indigo-600" />
+            </div>
+            <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.pendingCaseStudies}</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Pending Cases</p>
+          </Card>
+        </Link>
+
+        <Link href="/projects?delayStatus=DELAYED" className="block group">
+          <Card className="text-center py-3 h-full transition-transform group-hover:scale-[1.02] group-hover:shadow-lg">
+            <div className="w-10 h-10 rounded-lg bg-gray-100 dark:bg-gray-700 flex items-center justify-center mx-auto mb-2">
+              <TrendingUp size={18} className="text-gray-600" />
+            </div>
+            <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.avgDelayDays}</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Avg Delay (d)</p>
+          </Card>
+        </Link>
       </div>
+
+      {/* ── Overaged Projects Panel ──────────────────────────────────── */}
+      {showOveragedPanel && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setShowOveragedPanel(false)}>
+          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 bg-orange-500 text-white">
+              <div className="flex items-center gap-2">
+                <Clock size={20} />
+                <div>
+                  <h2 className="text-base font-bold">Overaged Projects</h2>
+                  <p className="text-xs opacity-80">{overagedProjects.length} projects past their due date — click a row to open, or escalate directly</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button onClick={() => downloadProjectsCSV(overagedProjects, 'overaged-projects.csv')}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-xs font-medium transition-colors">
+                  <Download size={13}/> Download All
+                </button>
+                <button onClick={() => setShowOveragedPanel(false)} className="p-1.5 rounded-lg hover:bg-white/20"><X size={16}/></button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              {overagedProjects.length === 0 ? (
+                <div className="text-center py-16 text-gray-400"><CheckCircle size={40} className="mx-auto mb-3 text-green-400"/><p className="font-medium">No overaged projects 🎉</p></div>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 dark:bg-gray-800 sticky top-0 z-10">
+                    <tr>
+                      {['Project Name','Manager','Due Date','Days Overdue','Status','Escalate','Download'].map(h => (
+                        <th key={h} className={`py-2.5 px-3 font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wide ${h==='Project Name'?'text-left':'text-center'}`}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {overagedProjects.map((p: any) => (
+                      <tr key={p.id} className="border-t border-gray-100 dark:border-gray-700 hover:bg-orange-50 dark:hover:bg-orange-900/10 group">
+                        {/* Project name — click to navigate */}
+                        <td className="py-3 px-3">
+                          <Link href={`/projects/${p.id}`} onClick={() => setShowOveragedPanel(false)}
+                            className="font-semibold text-gray-900 dark:text-white hover:text-orange-600 dark:hover:text-orange-400 flex items-center gap-1.5 group-hover:underline">
+                            {p.name}
+                            <ChevronRight size={13} className="opacity-0 group-hover:opacity-100 text-orange-500 transition-opacity"/>
+                          </Link>
+                          <p className="text-[11px] text-gray-400 mt-0.5">{p.customerName}</p>
+                        </td>
+                        <td className="text-center py-3 px-3 text-gray-600 dark:text-gray-400 text-xs">{p.projectManager}</td>
+                        <td className="text-center py-3 px-3 text-gray-500 text-xs">{new Date(p.plannedEnd).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</td>
+                        <td className="text-center py-3 px-3">
+                          <span className={`font-bold text-sm ${p.daysOverdue >= 14 ? 'text-red-600' : 'text-orange-600'}`}>{p.daysOverdue}d</span>
+                        </td>
+                        <td className="text-center py-3 px-3">
+                          <span className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full text-xs font-semibold">Overaged</span>
+                        </td>
+                        {/* Escalate action with inline priority selector */}
+                        <td className="text-center py-3 px-3" onClick={e => e.stopPropagation()}>
+                          <EscalateControl
+                            projectId={p.id}
+                            isEscalated={false}
+                            defaultPriority={p.daysOverdue >= 14 ? 'HIGH' : p.daysOverdue >= 7 ? 'MEDIUM' : 'LOW'}
+                            busy={escalatingId === p.id}
+                            onEscalate={async (priority) => {
+                              setEscalatingId(p.id);
+                              const token = localStorage.getItem('token');
+                              await fetch(`${process.env.NEXT_PUBLIC_API_URL||'http://localhost:3001'}/api/dashboard/escalate/${p.id}`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                                body: JSON.stringify({ priority }),
+                              });
+                              setEscalatingId(null);
+                              await Promise.all([refetchOveraged(), refetchEscalated()]);
+                            }}
+                            onDeescalate={async () => {}}
+                          />
+                        </td>
+                        <td className="text-center py-3 px-3">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); downloadProjectsCSV([p], `${p.name.replace(/[^a-z0-9]/gi,'_')}.csv`); }}
+                            className="text-xs text-orange-600 hover:text-orange-800 border border-orange-200 hover:border-orange-400 px-2 py-1 rounded-lg transition-colors flex items-center gap-1 mx-auto"
+                            title="Download project data"
+                          >
+                            <Download size={11}/> CSV
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+            <div className="px-5 py-3 border-t border-gray-200 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-800/50">
+              <p className="text-xs text-gray-400">Click project name to open · Set priority and escalate in one click</p>
+              <Link href="/projects" onClick={() => setShowOveragedPanel(false)} className="text-xs text-orange-600 font-semibold hover:underline">View All Projects →</Link>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Escalated Projects Panel ─────────────────────────────────── */}
+      {showEscalatedPanel && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setShowEscalatedPanel(false)}>
+          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 bg-red-600 text-white">
+              <div className="flex items-center gap-2">
+                <AlertTriangle size={20} />
+                <div>
+                  <h2 className="text-base font-bold">Escalated Projects</h2>
+                  <p className="text-xs opacity-80">{escalatedProjects.length} projects requiring immediate attention — change priority or remove escalation inline</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button onClick={() => downloadProjectsCSV(escalatedProjects, 'escalated-projects.csv')}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-xs font-medium transition-colors">
+                  <Download size={13}/> Download All
+                </button>
+                <button onClick={() => setShowEscalatedPanel(false)} className="p-1.5 rounded-lg hover:bg-white/20"><X size={16}/></button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              {escalatedProjects.length === 0 ? (
+                <div className="text-center py-16 text-gray-400"><CheckCircle size={40} className="mx-auto mb-3 text-green-400"/><p className="font-medium">No escalated projects 🎉</p></div>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 dark:bg-gray-800 sticky top-0 z-10">
+                    <tr>
+                      {['Project Name','Manager','Days Delayed','Change Priority','Status','Action','Download'].map(h => (
+                        <th key={h} className={`py-2.5 px-3 font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wide ${h==='Project Name'?'text-left':'text-center'}`}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {escalatedProjects.map((p: any) => (
+                      <tr key={p.id} className="border-t border-gray-100 dark:border-gray-700 hover:bg-red-50 dark:hover:bg-red-900/10 group">
+                        {/* Project name — click to navigate */}
+                        <td className="py-3 px-3">
+                          <Link href={`/projects/${p.id}`} onClick={() => setShowEscalatedPanel(false)}
+                            className="font-semibold text-gray-900 dark:text-white hover:text-red-600 dark:hover:text-red-400 flex items-center gap-1.5 group-hover:underline">
+                            {p.name}
+                            <ChevronRight size={13} className="opacity-0 group-hover:opacity-100 text-red-500 transition-opacity"/>
+                          </Link>
+                          <p className="text-[11px] text-gray-400 mt-0.5">{p.customerName}</p>
+                        </td>
+                        <td className="text-center py-3 px-3 text-gray-600 dark:text-gray-400 text-xs">{p.projectManager}</td>
+                        <td className="text-center py-3 px-3">
+                          <span className={`font-bold text-sm ${p.delayDays >= 14 ? 'text-red-600' : 'text-orange-500'}`}>{p.delayDays}d</span>
+                        </td>
+                        {/* Inline priority change */}
+                        <td className="text-center py-3 px-3" onClick={e => e.stopPropagation()}>
+                          <select
+                            defaultValue={p.escalationPriority || 'MEDIUM'}
+                            disabled={escalatingId === p.id}
+                            onChange={async (e) => {
+                              const priority = e.target.value as 'LOW' | 'MEDIUM' | 'HIGH';
+                              setEscalatingId(p.id);
+                              const token = localStorage.getItem('token');
+                              await fetch(`${process.env.NEXT_PUBLIC_API_URL||'http://localhost:3001'}/api/dashboard/escalate/${p.id}`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                                body: JSON.stringify({ priority }),
+                              });
+                              setEscalatingId(null);
+                              refetchEscalated();
+                            }}
+                            className={`text-xs font-semibold px-2 py-1 rounded-lg border cursor-pointer focus:outline-none focus:ring-2 focus:ring-red-300 ${
+                              p.escalationPriority==='HIGH' ? 'bg-red-50 border-red-200 text-red-700' :
+                              p.escalationPriority==='MEDIUM' ? 'bg-yellow-50 border-yellow-200 text-yellow-700' :
+                              'bg-gray-50 border-gray-200 text-gray-600'
+                            }`}
+                          >
+                            <option value="LOW">🟢 Low</option>
+                            <option value="MEDIUM">🟡 Medium</option>
+                            <option value="HIGH">🔴 High</option>
+                          </select>
+                        </td>
+                        <td className="text-center py-3 px-3">
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${p.isEscalated ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'}`}>
+                            {p.isEscalated ? 'Escalated' : 'Delayed'}
+                          </span>
+                        </td>
+                        <td className="text-center py-3 px-3" onClick={e => e.stopPropagation()}>
+                          {p.isEscalated ? (
+                            <button
+                              disabled={escalatingId === p.id}
+                              onClick={async () => {
+                                setEscalatingId(p.id);
+                                const token = localStorage.getItem('token');
+                                await fetch(`${process.env.NEXT_PUBLIC_API_URL||'http://localhost:3001'}/api/dashboard/deescalate/${p.id}`, {
+                                  method: 'POST', headers: { Authorization: `Bearer ${token}` },
+                                });
+                                setEscalatingId(null);
+                                refetchEscalated();
+                              }}
+                              className="text-xs text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 border border-gray-200 dark:border-gray-600 hover:border-gray-400 px-2.5 py-1 rounded-lg transition-colors disabled:opacity-40 flex items-center gap-1 mx-auto"
+                            >
+                              {escalatingId === p.id ? <Loader2 size={11} className="animate-spin"/> : <X size={11}/>} Remove
+                            </button>
+                          ) : (
+                            <button
+                              disabled={escalatingId === p.id}
+                              onClick={async () => {
+                                setEscalatingId(p.id);
+                                const token = localStorage.getItem('token');
+                                const priority = p.delayDays >= 14 ? 'HIGH' : p.delayDays >= 7 ? 'MEDIUM' : 'LOW';
+                                await fetch(`${process.env.NEXT_PUBLIC_API_URL||'http://localhost:3001'}/api/dashboard/escalate/${p.id}`, {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                                  body: JSON.stringify({ priority }),
+                                });
+                                setEscalatingId(null);
+                                refetchEscalated();
+                              }}
+                              className="text-xs text-white bg-red-500 hover:bg-red-600 px-2.5 py-1 rounded-lg transition-colors disabled:opacity-40 flex items-center gap-1 mx-auto"
+                            >
+                              {escalatingId === p.id ? <Loader2 size={11} className="animate-spin"/> : <AlertTriangle size={11}/>} Escalate
+                            </button>
+                          )}
+                        </td>
+                        <td className="text-center py-3 px-3">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); downloadProjectsCSV([p], `${p.name.replace(/[^a-z0-9]/gi,'_')}.csv`); }}
+                            className="text-xs text-red-600 hover:text-red-800 border border-red-200 hover:border-red-400 px-2 py-1 rounded-lg transition-colors flex items-center gap-1 mx-auto"
+                            title="Download project data"
+                          >
+                            <Download size={11}/> CSV
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+            <div className="px-5 py-3 border-t border-gray-200 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-800/50">
+              <p className="text-xs text-gray-400">Click project name to open · Change priority inline · Escalate or remove directly</p>
+              <Link href="/projects?delayStatus=DELAYED" onClick={() => setShowEscalatedPanel(false)} className="text-xs text-red-600 font-semibold hover:underline">View All Delayed Projects →</Link>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Main 3-column grid ─────────────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
@@ -594,16 +940,24 @@ export default function DashboardPage() {
             {migrationTypeStats?.byType?.filter((s: any) => s.total > 0).length ? (
               <div className="space-y-4">
                 <div className="grid grid-cols-3 gap-3">
-                  {migrationTypeStats.byType.filter((s: any) => s.total > 0).map((stat: any) => {
-                    const cfg: Record<string, { emoji: string; label: string; cardCls: string; textCls: string }> = {
-                      CONTENT: { emoji: '📁', label: 'Content', cardCls: 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800', textCls: 'text-blue-700 dark:text-blue-300' },
-                      EMAIL: { emoji: '📧', label: 'Email', cardCls: 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800', textCls: 'text-green-700 dark:text-green-300' },
-                      MESSAGING: { emoji: '💬', label: 'Messaging', cardCls: 'bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800', textCls: 'text-purple-700 dark:text-purple-300' },
-                    };
-                    const c = cfg[stat.type] || { emoji: '📦', label: stat.type, cardCls: 'bg-gray-50 border-gray-200', textCls: 'text-gray-700' };
+                  {migrationTypeStats.byType.filter((s: any) => s.total > 0).map((stat: any, idx: number) => {
+                    // Resolve icon + color from settings migration types; fall back by position
+                    const settingType = settings.migrationTypes.find(
+                      (t) => t.code.toUpperCase() === stat.type || t.name.toUpperCase().includes(stat.type)
+                    );
+                    const palettes = [
+                      { cardCls: 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800', textCls: 'text-blue-700 dark:text-blue-300' },
+                      { cardCls: 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800', textCls: 'text-green-700 dark:text-green-300' },
+                      { cardCls: 'bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800', textCls: 'text-purple-700 dark:text-purple-300' },
+                      { cardCls: 'bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800', textCls: 'text-orange-700 dark:text-orange-300' },
+                      { cardCls: 'bg-pink-50 dark:bg-pink-900/20 border-pink-200 dark:border-pink-800', textCls: 'text-pink-700 dark:text-pink-300' },
+                    ];
+                    const palette = palettes[idx % palettes.length];
+                    const emoji = settingType?.icon || '📦';
+                    const label = settingType?.name || stat.name || stat.type.charAt(0) + stat.type.slice(1).toLowerCase();
                     return (
-                      <button key={stat.type} onClick={() => setSelectedMigrationType(stat.type)} className={`p-4 rounded-xl border ${c.cardCls} block hover:opacity-90 transition-opacity text-left w-full cursor-pointer`}>
-                        <div className="flex items-center gap-2 mb-2"><span className="text-xl">{c.emoji}</span><span className={`text-sm font-semibold ${c.textCls}`}>{c.label}</span></div>
+                      <button key={stat.type} onClick={() => setSelectedMigrationType(stat.type)} className={`p-4 rounded-xl border ${palette.cardCls} block hover:opacity-90 transition-opacity text-left w-full cursor-pointer`}>
+                        <div className="flex items-center gap-2 mb-2"><span className="text-xl">{emoji}</span><span className={`text-sm font-semibold ${palette.textCls}`}>{label}</span></div>
                         <div className="text-3xl font-bold text-gray-900 dark:text-white mb-2">{stat.total}</div>
                         <div className="grid grid-cols-2 gap-1 text-xs">
                           <span className="flex items-center gap-1 text-gray-600 dark:text-gray-400"><span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />{stat.active} Active</span>
@@ -625,16 +979,20 @@ export default function DashboardPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {migrationTypeStats.byType.filter((s: any) => s.total > 0).map((stat: any) => (
+                      {migrationTypeStats.byType.filter((s: any) => s.total > 0).map((stat: any) => {
+                        const st = settings.migrationTypes.find(t => t.code.toUpperCase() === stat.type);
+                        const displayName = st?.name || stat.name || stat.type;
+                        return (
                         <tr key={stat.type} className="border-t border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/30 cursor-pointer" onClick={() => setSelectedMigrationType(stat.type)}>
-                          <td className="py-2 px-3 font-medium text-gray-800 dark:text-gray-200">{stat.type}</td>
+                          <td className="py-2 px-3 font-medium text-gray-800 dark:text-gray-200 flex items-center gap-1.5">{st?.icon || '📦'} {displayName}</td>
                           <td className="text-center py-2 px-3 font-bold">{stat.total}</td>
                           <td className="text-center py-2 px-3"><span className="inline-flex items-center justify-center min-w-[22px] h-5 px-1 rounded-full bg-green-100 text-green-700 text-xs font-semibold">{stat.active}</span></td>
                           <td className="text-center py-2 px-3"><span className="inline-flex items-center justify-center min-w-[22px] h-5 px-1 rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">{stat.completed}</span></td>
                           <td className="text-center py-2 px-3"><span className="inline-flex items-center justify-center min-w-[22px] h-5 px-1 rounded-full bg-yellow-100 text-yellow-700 text-xs font-semibold">{stat.inactive}</span></td>
                           <td className="text-center py-2 px-3"><span className={`inline-flex items-center justify-center min-w-[22px] h-5 px-1 rounded-full text-xs font-semibold ${stat.atRisk > 0 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-400'}`}>{stat.atRisk}</span></td>
                         </tr>
-                      ))}
+                        );
+                      })}
                       <tr className="border-t-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 font-semibold">
                         <td className="py-2 px-3 text-gray-700 dark:text-gray-300">TOTAL</td>
                         <td className="text-center py-2 px-3">{migrationTypeStats.totals.total}</td>
@@ -725,42 +1083,37 @@ export default function DashboardPage() {
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50 dark:bg-gray-700/50">
                     <tr>
-                      {['Manager', 'Goal (%)', 'Achieved (%)', 'Variance (%)'].map((h) => (
-                        <th key={h} className={`py-2 px-3 font-medium text-gray-500 dark:text-gray-400 ${h === 'Manager' ? 'text-left' : 'text-center'}`}>{h}</th>
+                      {['Project Manager', 'Gantt Review Progress', 'Closed Projects'].map((h) => (
+                        <th key={h} className={`py-2 px-3 font-medium text-gray-500 dark:text-gray-400 ${h === 'Project Manager' ? 'text-left' : 'text-center'}`}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {managers.map((m: any) => {
-                      const variance = m.achievedPct - m.goalPct;
-                      return (
-                        <tr key={m.manager} className="border-t border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/30">
-                          <td className="py-2.5 px-3">
-                            <div className="flex items-center gap-2">
-                              <div className="w-7 h-7 rounded-full bg-primary-100 dark:bg-primary-900/40 flex items-center justify-center text-xs font-bold text-primary-700 dark:text-primary-300 flex-shrink-0">
-                                {m.manager.charAt(0).toUpperCase()}
-                              </div>
-                              <span className="font-medium text-gray-800 dark:text-gray-200">{m.manager}</span>
+                    {managers.map((m: any) => (
+                      <tr key={m.manager} className="border-t border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/30">
+                        <td className="py-2.5 px-3">
+                          <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-full bg-primary-100 dark:bg-primary-900/40 flex items-center justify-center text-xs font-bold text-primary-700 dark:text-primary-300 flex-shrink-0">
+                              {m.manager.charAt(0).toUpperCase()}
                             </div>
-                          </td>
-                          <td className="text-center py-2.5 px-3 text-gray-700 dark:text-gray-300">{m.goalPct}%</td>
-                          <td className="text-center py-2.5 px-3">
-                            <div className="flex items-center justify-center gap-1">
-                              <div className="w-16 bg-gray-200 dark:bg-gray-600 rounded-full h-1.5">
-                                <div className="bg-primary-500 h-1.5 rounded-full" style={{ width: `${m.achievedPct}%` }} />
-                              </div>
-                              <span className="font-semibold text-gray-900 dark:text-white">{m.achievedPct}%</span>
+                            <span className="font-medium text-gray-800 dark:text-gray-200">{m.manager}</span>
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <div className="flex items-center gap-2 justify-center">
+                            <div className="flex-1 max-w-[120px] bg-gray-200 dark:bg-gray-600 rounded-full h-2.5">
+                              <div className="bg-primary-500 h-2.5 rounded-full transition-all" style={{ width: `${m.achievedPct}%` }} />
                             </div>
-                          </td>
-                          <td className="text-center py-2.5 px-3">
-                            <span className={`inline-flex items-center gap-0.5 font-semibold text-xs px-2 py-0.5 rounded-full ${variance >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                              {variance >= 0 ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
-                              {variance >= 0 ? '+' : ''}{variance}%
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
+                            <span className="font-semibold text-gray-900 dark:text-white text-xs w-10 text-right">{m.achievedPct}%</span>
+                          </div>
+                        </td>
+                        <td className="text-center py-2.5 px-3">
+                          <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-green-100 text-green-700 font-bold text-sm">
+                            {m.completed}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>

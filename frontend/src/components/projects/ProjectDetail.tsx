@@ -18,16 +18,33 @@ import {
   Settings,
   AlertTriangle,
   Users,
-  FileText
+  FileText,
+  Server,
+  Database,
+  Layers
 } from 'lucide-react';
 import Link from 'next/link';
 import { WeeklyReport } from './WeeklyReport';
+import { useSettings } from '@/context/SettingsContext';
 
 interface ProjectDetailProps {
   project: Project;
 }
 
 export function ProjectDetail({ project }: ProjectDetailProps) {
+  const { settings } = useSettings();
+
+  const migrationTypesList: { code: string; name: string; icon: string; color: string }[] = (() => {
+    if (!project.migrationTypes) return [];
+    const raw = project.migrationTypes.split(',').map(s => s.trim()).filter(Boolean);
+    return raw.map(r => {
+      const found = settings.migrationTypes.find(
+        mt => mt.code === r.toUpperCase() || mt.name.toLowerCase() === r.toLowerCase()
+      );
+      return found ?? { code: r, name: r, icon: '📋', color: '#6B7280' };
+    });
+  })();
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -91,8 +108,6 @@ export function ProjectDetail({ project }: ProjectDetailProps) {
                   <StatusBadge status={project.planType} variant="plan" />
                 </div>
               </div>
-              <InfoItem label="Source Platform" value={project.sourcePlatform || 'N/A'} />
-              <InfoItem label="Target Platform" value={project.targetPlatform || 'N/A'} />
             </div>
             {project.description && (
               <div className="mt-4 pt-4 border-t border-gray-100">
@@ -100,6 +115,32 @@ export function ProjectDetail({ project }: ProjectDetailProps) {
                 <p className="mt-1 text-gray-900">{project.description}</p>
               </div>
             )}
+          </Card>
+
+          {/* Infrastructure & Migration Details */}
+          <Card>
+            <CardHeader title="Infrastructure & Migration" />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <span className="text-sm text-gray-500">Migration Types</span>
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {migrationTypesList.length > 0 ? migrationTypesList.map(mt => (
+                    <span
+                      key={mt.code}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium text-white"
+                      style={{ backgroundColor: mt.color }}
+                    >
+                      <span>{mt.icon}</span>
+                      <span>{mt.name}</span>
+                    </span>
+                  )) : <span className="text-sm text-gray-400 italic">Not specified</span>}
+                </div>
+              </div>
+              <InfoItem icon={Server} label="Number of Servers" value={project.numberOfServers != null ? String(project.numberOfServers) : 'N/A'} />
+              <InfoItem icon={Database} label="Project Memory" value={project.projectMemory || 'N/A'} />
+              <InfoItem icon={Layers} label="Source Platform" value={project.sourcePlatform || 'N/A'} />
+              <InfoItem label="Target Platform" value={project.targetPlatform || 'N/A'} />
+            </div>
           </Card>
 
           {/* Migration Phases */}
@@ -139,7 +180,7 @@ export function ProjectDetail({ project }: ProjectDetailProps) {
               {project.actualStart && (
                 <TimelineItem
                   icon={Calendar}
-                  label="Actual Start"
+                  label="Kickoff Start Date"
                   value={formatDate(project.actualStart)}
                   highlight
                 />
@@ -147,7 +188,7 @@ export function ProjectDetail({ project }: ProjectDetailProps) {
               {project.actualEnd && (
                 <TimelineItem
                   icon={Calendar}
-                  label="Actual End"
+                  label="Project End Date"
                   value={formatDate(project.actualEnd)}
                   highlight
                 />
@@ -160,7 +201,7 @@ export function ProjectDetail({ project }: ProjectDetailProps) {
             <CardHeader title="Cost Summary" />
             <div className="space-y-3">
               <CostItem
-                label="Estimated Cost"
+                label="Budget"
                 value={formatCurrency(project.estimatedCost)}
               />
               <CostItem
