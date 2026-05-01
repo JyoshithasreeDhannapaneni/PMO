@@ -59,7 +59,7 @@ class AuthService {
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
     await execute(
-      `INSERT INTO sessions (id, user_id, token, expires_at) VALUES (?, ?, ?, ?)`,
+      `INSERT INTO sessions (id, user_id, token, expires_at) VALUES ($1, $2, $3, $4)`,
       [uuidv4(), user.id, token, expiresAt]
     );
 
@@ -97,13 +97,13 @@ class AuthService {
       [userId, name, email.toLowerCase(), userUsername.toLowerCase(), hashedPassword, 'VIEWER']
     );
 
-    const result = await query(`SELECT * FROM users WHERE id = ?`, [userId]);
+    const result = await query(`SELECT * FROM users WHERE id = $1`, [userId]);
     const user = result.rows[0];
     const token = this.generateToken();
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
     await execute(
-      `INSERT INTO sessions (id, user_id, token, expires_at) VALUES (?, ?, ?, ?)`,
+      `INSERT INTO sessions (id, user_id, token, expires_at) VALUES ($1, $2, $3, $4)`,
       [uuidv4(), user.id, token, expiresAt]
     );
 
@@ -430,7 +430,7 @@ class AuthService {
         ]
       );
 
-      result = await query(`SELECT * FROM users WHERE id = ?`, [userId]);
+      result = await query(`SELECT * FROM users WHERE id = $1`, [userId]);
       user = result.rows[0];
       logger.info(`New user created via Microsoft login: ${email}`);
     } else {
@@ -449,7 +449,7 @@ class AuthService {
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
     await execute(
-      `INSERT INTO sessions (id, user_id, token, expires_at) VALUES (?, ?, ?, ?)`,
+      `INSERT INTO sessions (id, user_id, token, expires_at) VALUES ($1, $2, $3, $4)`,
       [uuidv4(), user.id, token, expiresAt]
     );
 

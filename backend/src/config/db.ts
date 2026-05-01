@@ -1,76 +1,40 @@
-import mysql from 'mysql2/promise';
+import { Pool } from 'pg';
 import dotenv from 'dotenv';
+
 dotenv.config();
 
-export const pool = mysql.createPool({
+export const pool = new Pool({
   host: process.env.DB_HOST || 'localhost',
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || '',
-  database: process.env.DB_NAME || 'pmo_tracker',
-  port: Number(process.env.DB_PORT) || 3306,
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
+  user: process.env.DB_USER || 'postgres',
+  password: process.env.DB_PASSWORD || 'postgres123',
+  database: process.env.DB_NAME || 'pmo',
+  port: Number(process.env.DB_PORT) || 5432,
+  max: 10,
 });
 
-// Convert PostgreSQL $1,$2 placeholders to MySQL ? and deduplicate repeated params
-function convertPlaceholders(sql: string, params?: any[]): { sql: string; params: any[] } {
-  if (!params || params.length === 0) return { sql, params: params || [] };
-
-  // Check if already using ? placeholders (from seed.ts style)
-  if (sql.includes('?') && !sql.match(/\$\d/)) {
-    return { sql, params };
-  }
-
-  // Replace $N with ? and reorder params to match order of appearance
-  const usedIndices: number[] = [];
-  const converted = sql.replace(/\$(\d+)/g, (_, n) => {
-    usedIndices.push(parseInt(n, 10) - 1);
-    return '?';
-  });
-
-  return { sql: converted, params: usedIndices.map((i) => params[i]) };
-}
-
 export async function query(text: string, params?: any[]) {
-  const { sql, params: p } = convertPlaceholders(text, params);
-  const [rows] = await pool.execute(sql, p);
+  const result = await pool.query(text, params);
   return {
-    rows: rows as any[],
-    rowCount: Array.isArray(rows) ? rows.length : 0,
+    rows: result.rows,
+    rowCount: result.rowCount || 0,
   };
 }
 
 export async function execute(text: string, params?: any[]) {
-  const { sql, params: p } = convertPlaceholders(text, params);
-  const [result] = await pool.execute(sql, p);
-  return result;
+  return await pool.query(text, params);
 }
 
 export async function transaction<T>(callback: (client: any) => Promise<T>): Promise<T> {
-  const conn = await pool.getConnection();
-
-  // Wrap conn.query to convert placeholders transparently
-  const origQuery = conn.query.bind(conn);
-  const origExecute = conn.execute.bind(conn);
-  (conn as any).query = (text: string, params?: any[]) => {
-    const { sql, params: p } = convertPlaceholders(text, params);
-    return origQuery(sql, p);
-  };
-  (conn as any).execute = (text: string, params?: any[]) => {
-    const { sql, params: p } = convertPlaceholders(text, params);
-    return origExecute(sql, p);
-  };
-
+  const client = await pool.connect();
   try {
-    await conn.beginTransaction();
-    const result = await callback(conn);
-    await conn.commit();
+    await client.query('BEGIN');
+    const result = await callback(client);
+    await client.query('COMMIT');
     return result;
   } catch (error) {
-    await conn.rollback();
+    await client.query('ROLLBACK');
     throw error;
   } finally {
-    conn.release();
+    client.release();
   }
 }

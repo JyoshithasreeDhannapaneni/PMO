@@ -25,17 +25,7 @@ const baseSchema = z.object({
   plannedEnd: z.string().min(1, 'SOW end date is required'),
   actualStart: z.string().optional(),
   actualEnd: z.string().optional(),
-  numberOfServers: z.coerce.number({ invalid_type_error: 'Must be a number' }).int('Must be a whole number').nonnegative('Must be 0 or more').or(z.literal('')),
-  projectMemory: z.string().optional(),
-  estimatedCost: z.coerce.number({ invalid_type_error: 'Estimated cost must be a number' }).nonnegative('Must be 0 or more').or(z.literal('')),
-  actualCost: z.coerce.number().nonnegative().optional().or(z.literal('')).optional(),
-  description: z.string().optional(),
-  notes: z.string().optional(),
   phase: z.string().min(1, 'Phase is required'),
-  status: z.enum(['ACTIVE', 'INACTIVE', 'ON_HOLD', 'COMPLETED', 'CANCELLED'], { required_error: 'Status is required' }),
-  isOveraged: z.string().optional(),
-  isEscalated: z.string().optional(),
-  overageAmount: z.coerce.number().nonnegative().optional().or(z.literal('')),
 });
 
 type ProjectFormData = z.infer<typeof baseSchema>;

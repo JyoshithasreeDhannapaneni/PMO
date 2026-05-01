@@ -15,14 +15,14 @@ class DashboardService {
   // Build a WHERE clause fragment for manager filtering
   private managerWhere(managerName?: string): { clause: string; params: string[] } {
     if (managerName) {
-      return { clause: `WHERE project_manager = ?`, params: [managerName] };
+      return { clause: `WHERE project_manager = $1`, params: [managerName] };
     }
     return { clause: '', params: [] };
   }
 
   private andManagerWhere(managerName?: string): { clause: string; params: string[] } {
     if (managerName) {
-      return { clause: `AND project_manager = ?`, params: [managerName] };
+      return { clause: `AND project_manager = $1`, params: [managerName] };
     }
     return { clause: '', params: [] };
   }
@@ -154,7 +154,7 @@ class DashboardService {
      FROM projects
      WHERE status = 'ACTIVE'
        AND planned_end >= NOW()
-       AND planned_end <= DATE_ADD(NOW(), INTERVAL ${safeDays} DAY)
+       AND planned_end <= NOW() + (${safeDays} * INTERVAL '1 day')
        ${aw}
      ORDER BY planned_end ASC`,
     ap
