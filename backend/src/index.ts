@@ -6,6 +6,7 @@ import dotenv from 'dotenv';
 
 import { errorHandler } from './middleware/errorHandler';
 import { notFoundHandler } from './middleware/notFoundHandler';
+import { execute, query } from './config/db';
 import authRoutes from './routes/authRoutes';
 import projectRoutes from './routes/projectRoutes';
 import phaseRoutes from './routes/phaseRoutes';
@@ -85,11 +86,67 @@ app.use('/api/smtp', smtpRoutes);
 app.use(notFoundHandler);
 app.use(errorHandler);
 
+async function columnExists(table: string, column: string): Promise<boolean> {
+  try {
+    const result = await query(
+      `SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
+      [table, column]
+    );
+    return Number(result.rows[0]?.cnt ?? result.rows[0]?.['COUNT(*)'] ?? 0) > 0;
+  } catch {
+    return false;
+  }
+}
+
+async function runMigrations() {
+  // MODIFY existing columns — safe to retry (errors caught below)
+  const modifyStatements = [
+    `ALTER TABLE projects MODIFY COLUMN phase VARCHAR(50) NOT NULL DEFAULT 'KICKOFF'`,
+    `ALTER TABLE projects MODIFY COLUMN plan_type VARCHAR(50) NOT NULL DEFAULT 'SILVER'`,
+    `ALTER TABLE projects MODIFY COLUMN migration_types VARCHAR(500)`,
+    `ALTER TABLE projects MODIFY COLUMN source_platform VARCHAR(500)`,
+    `ALTER TABLE projects MODIFY COLUMN target_platform VARCHAR(500)`,
+  ];
+  for (const sql of modifyStatements) {
+    try { await execute(sql); } catch { /* already correct type — ignore */ }
+  }
+
+  // ADD new columns only if they don't exist (MySQL 5.7 compatible)
+  if (!await columnExists('projects', 'number_of_servers')) {
+    try { await execute(`ALTER TABLE projects ADD COLUMN number_of_servers INT`); } catch {}
+  }
+  if (!await columnExists('projects', 'project_memory')) {
+    try { await execute(`ALTER TABLE projects ADD COLUMN project_memory VARCHAR(100)`); } catch {}
+  }
+  if (!await columnExists('projects', 'is_escalated')) {
+    try { await execute(`ALTER TABLE projects ADD COLUMN is_escalated TINYINT(1) NOT NULL DEFAULT 0`); } catch {}
+  }
+  if (!await columnExists('projects', 'escalation_priority')) {
+    try { await execute(`ALTER TABLE projects ADD COLUMN escalation_priority ENUM('LOW','MEDIUM','HIGH') DEFAULT NULL`); } catch {}
+  }
+  if (!await columnExists('projects', 'escalated_at')) {
+    try { await execute(`ALTER TABLE projects ADD COLUMN escalated_at DATETIME DEFAULT NULL`); } catch {}
+  }
+  if (!await columnExists('projects', 'escalation_notes')) {
+    try { await execute(`ALTER TABLE projects ADD COLUMN escalation_notes TEXT DEFAULT NULL`); } catch {}
+  }
+  if (!await columnExists('projects', 'is_overaged')) {
+    try { await execute(`ALTER TABLE projects ADD COLUMN is_overaged TINYINT(1) NOT NULL DEFAULT 0`); } catch {}
+  }
+  if (!await columnExists('projects', 'overage_amount')) {
+    try { await execute(`ALTER TABLE projects ADD COLUMN overage_amount DECIMAL(15,2) DEFAULT NULL`); } catch {}
+  }
+}
+
 // Start server
 app.listen(PORT, async () => {
   logger.info(`🚀 Server running on port ${PORT}`);
   logger.info(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
   
+  // Run DB migrations (e.g. widen ENUM columns to VARCHAR for dynamic phases/plan types)
+  await runMigrations();
+
   // Create default admin user
   try {
     await authService.createDefaultAdmin();

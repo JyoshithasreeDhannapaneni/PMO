@@ -386,27 +386,37 @@ export default function SettingsPage() {
     }
   }, []);
 
-  // Live-sync platform & migration type changes to context so New Project dropdown updates instantly
+  // Convert a display name to an uppercase code, e.g. "Gold Plan" → "GOLD_PLAN"
+  const toCode = (name: string) =>
+    name.toUpperCase().replace(/\s+/g, '_').replace(/[^A-Z0-9_]/g, '');
+
+  // Live-sync ALL configurable options to context so ProjectForm dropdowns update instantly
   useEffect(() => {
     updateSettings({
       sourcePlatforms: sourcePlatforms as any,
       targetPlatforms: targetPlatforms as any,
       migrationTypes: migrationTypes as any,
+      planTypes: planTypes.map((p: any) => ({ ...p, code: p.code || toCode(p.name) })) as any,
+      phases: phases.map((p: any) => ({ ...p, code: p.code || toCode(p.name) })) as any,
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sourcePlatforms, targetPlatforms, migrationTypes]);
+  }, [sourcePlatforms, targetPlatforms, migrationTypes, planTypes, phases]);
 
   // Save all settings — single atomic write so no race between context and extras
   const handleSaveAll = async () => {
     setIsSaving(true);
     try {
+      // Enrich plan types and phases with auto-generated codes before saving
+      const enrichedPlanTypes = planTypes.map((p: any) => ({ ...p, code: p.code || toCode(p.name) }));
+      const enrichedPhases = phases.map((p: any) => ({ ...p, code: p.code || toCode(p.name) }));
+
       // Write EVERYTHING to localStorage in one go (PMOSettings + extras)
       const fullData = {
         migrationTypes,
         sourcePlatforms,
         targetPlatforms,
-        planTypes,
-        phases,
+        planTypes: enrichedPlanTypes,
+        phases: enrichedPhases,
         notificationSettings,
         alertThresholds,
         dashboardSettings,
@@ -430,8 +440,8 @@ export default function SettingsPage() {
         migrationTypes: migrationTypes as any,
         sourcePlatforms: sourcePlatforms as any,
         targetPlatforms: targetPlatforms as any,
-        planTypes: planTypes as any,
-        phases: phases as any,
+        planTypes: enrichedPlanTypes as any,
+        phases: enrichedPhases as any,
         notificationSettings,
         alertThresholds,
         dashboardSettings,
@@ -1699,21 +1709,50 @@ export default function SettingsPage() {
       try {
         const res = await projectsApi.getAll({ limit: 1000 });
         const projects = res.data || [];
-        const headers = ['Name', 'Status', 'Phase', 'Plan Type', 'Migration Type', 'Start Date', 'Target End Date', 'Delay Status', 'Source Platform', 'Destination Platform'];
+        const fmtDate = (d: any) => d ? new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+        const fmtStatus = (s: string) => {
+          if (!s) return '';
+          if (s === 'ACTIVE') return 'Active';
+          if (s === 'INACTIVE' || s === 'COMPLETED' || s === 'ON_HOLD' || s === 'CANCELLED') return 'Inactive';
+          return s.charAt(0) + s.slice(1).toLowerCase().replace(/_/g, ' ');
+        };
+        const headers = [
+          'Project Name',
+          'Project Manager',
+          'Account Manager',
+          'SOW Start Date',
+          'SOW End Date',
+          'Project Type (Migration)',
+          'Plan Type',
+          'Active / Inactive',
+          'Overages (Estimated Cost)',
+          'Actual Cost',
+          'Status',
+          'Phase',
+          'Delay Status',
+          'Source Platform',
+          'Target Platform',
+        ];
         const rows = projects.map((p: any) => [
           p.name || '',
-          p.status || '',
-          p.currentPhase || '',
+          p.projectManager || '',
+          p.accountManager || '',
+          fmtDate(p.plannedStart),
+          fmtDate(p.plannedEnd),
+          p.migrationTypes || '',
           p.planType || '',
-          p.migrationType || '',
-          p.startDate ? new Date(p.startDate).toLocaleDateString() : '',
-          p.targetEndDate ? new Date(p.targetEndDate).toLocaleDateString() : '',
+          fmtStatus(p.status),
+          p.estimatedCost || '',
+          p.actualCost || '',
+          p.status || '',
+          p.phase || '',
           p.delayStatus || '',
           p.sourcePlatform || '',
-          p.destinationPlatform || '',
+          p.targetPlatform || '',
         ]);
         const csv = [headers, ...rows].map((r) => r.map((v: any) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
-        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        // BOM so Excel opens UTF-8 correctly
+        const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -2562,6 +2601,8 @@ export default function SettingsPage() {
   };
   const getTemplateColor = (code: string) => TEMPLATE_COLORS[code] || { border: 'border-gray-200', bg: 'bg-gray-50', icon: '📋', text: 'text-gray-700' };
 
+  const [allProjects, setAllProjects] = useState<any[]>([]);
+
   const fetchTemplates = useCallback(async () => {
     setTemplatesLoading(true);
     setTemplatesError(null);
@@ -2576,7 +2617,10 @@ export default function SettingsPage() {
   }, []);
 
   useEffect(() => {
-    if (activeTab === 'templates') fetchTemplates();
+    if (activeTab === 'templates') {
+      fetchTemplates();
+      projectsApi.getAll({ limit: 1000 }).then((r: any) => setAllProjects(r.data || [])).catch(() => {});
+    }
   }, [activeTab, fetchTemplates]);
 
   const showTplMsg = (type: 'success' | 'error', text: string) => {
@@ -2797,6 +2841,39 @@ export default function SettingsPage() {
             {isExpanded && (
               <div className="p-4 space-y-3">
                 {tpl.description && <p className="text-sm text-gray-500 mb-3">{tpl.description}</p>}
+
+                {/* Projects using this template */}
+                {(() => {
+                  const matchedProjects = allProjects.filter((p: any) => {
+                    // Primary: project was explicitly assigned this template
+                    if (p.templateId === tpl.id) return true;
+                    // Secondary: migration type code matches
+                    const types = (p.migrationTypes || '').toUpperCase().split(',').map((s: string) => s.trim()).filter(Boolean);
+                    return types.includes(tpl.code.toUpperCase());
+                  });
+                  if (matchedProjects.length === 0) return null;
+                  return (
+                    <div className="mb-2 p-3 bg-blue-50 border border-blue-100 rounded-lg">
+                      <p className="text-xs font-semibold text-blue-700 mb-2 flex items-center gap-1">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="14" x="2" y="7" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+                        {matchedProjects.length} project{matchedProjects.length !== 1 ? 's' : ''} using this template
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {matchedProjects.map((p: any) => (
+                          <a
+                            key={p.id}
+                            href={`/projects/${p.id}/tasks`}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-blue-200 hover:border-blue-400 hover:bg-blue-50 rounded-lg text-xs font-medium text-blue-800 transition-colors shadow-sm"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                            {p.name}
+                            <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" x2="21" y1="14" y2="3"/></svg>
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Phases */}
                 {tpl.phases?.map((phase: any, pi: number) => {

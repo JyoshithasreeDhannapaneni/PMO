@@ -5,14 +5,13 @@ import { Card } from '@/components/ui/Card';
 import {
   Loader2, Plus, Calendar, ChevronDown, Maximize2,
   List, BarChart2, AlertTriangle, CheckCircle, Activity,
-  FolderKanban, FileText, MoreVertical, User,
+  FolderKanban, FileText, MoreVertical, User, LayoutList, Download,
 } from 'lucide-react';
 import Link from 'next/link';
 import { format, addDays, startOfMonth, endOfMonth, differenceInDays, eachMonthOfInterval, isToday } from 'date-fns';
 import { useWeeklyReport, useProjects } from '@/hooks/useProjects';
 import { useAuth } from '@/context/AuthContext';
-
-
+import { useSettings } from '@/context/SettingsContext';
 
 type ZoomLevel = 'Month' | 'Week' | 'Day';
 type ViewMode = 'list' | 'gantt';
@@ -36,15 +35,21 @@ interface Project {
   createdAt: string;
 }
 
-// Phase → approximate progress
-const PHASE_PROGRESS: Record<string, number> = {
-  KICKOFF: 10, MIGRATION: 40, VALIDATION: 65, CLOSURE: 85, COMPLETED: 100,
-};
+function buildPhaseProgress(phases: { code: string; order: number }[]): Record<string, number> {
+  if (!phases.length) return { KICKOFF: 10, MIGRATION: 40, VALIDATION: 65, CLOSURE: 85, COMPLETED: 100 };
+  const sorted = [...phases].sort((a, b) => a.order - b.order);
+  const total = sorted.length;
+  const map: Record<string, number> = {};
+  sorted.forEach((ph, i) => {
+    map[ph.code] = Math.round(((i + 1) / total) * 100);
+  });
+  return map;
+}
 
-function getProgress(p: Project): number {
+function getProgress(p: Project, phaseProgress: Record<string, number>): number {
   if (p.status === 'COMPLETED') return 100;
   if (p.status === 'ON_HOLD' || p.status === 'CANCELLED') return 0;
-  return PHASE_PROGRESS[p.phase] ?? 20;
+  return phaseProgress[p.phase] ?? 20;
 }
 
 function getStatusLabel(p: Project): string {
@@ -76,10 +81,13 @@ function getStatusDot(label: string): string {
 function getMigrationBadge(types: string | null) {
   if (!types) return null;
   const t = types.toUpperCase();
-  if (t.includes('CONTENT')) return { label: 'Content', cls: 'bg-blue-100 text-blue-700' };
-  if (t.includes('EMAIL')) return { label: 'Email', cls: 'bg-green-100 text-green-700' };
-  if (t.includes('MESSAGING')) return { label: 'Messaging', cls: 'bg-purple-100 text-purple-700' };
-  return { label: types, cls: 'bg-gray-100 text-gray-700' };
+  const first = types.split(',')[0].trim();
+  // Normalize display: strip " Migration" suffix for badge label
+  const label = first.replace(/\s*migration\s*/i, '').trim() || first;
+  if (t.includes('CONTENT')) return { label: label || 'Content', cls: 'bg-blue-100 text-blue-700' };
+  if (t.includes('EMAIL')) return { label: label || 'Email', cls: 'bg-green-100 text-green-700' };
+  if (t.includes('MESSAGING') || t.includes('MESSAGE')) return { label: label || 'Messaging', cls: 'bg-purple-100 text-purple-700' };
+  return { label, cls: 'bg-gray-100 text-gray-700' };
 }
 
 // ── Gantt Chart ─────────────────────────────────────────────────────────────
@@ -90,11 +98,13 @@ function GanttChart({
   zoom,
   rangeStart,
   rangeEnd,
+  phaseProgress,
 }: {
   projects: Project[];
   zoom: ZoomLevel;
   rangeStart: Date;
   rangeEnd: Date;
+  phaseProgress: Record<string, number>;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const px = PX_PER_DAY[zoom];
@@ -195,7 +205,7 @@ function GanttChart({
             const barLeft = Math.max(0, differenceInDays(start, rangeStart)) * px;
             const barDays = Math.max(1, differenceInDays(end, start));
             const barWidth = Math.min(barDays * px, totalWidth - barLeft);
-            const progress = getProgress(p);
+            const progress = getProgress(p, phaseProgress);
             const color = getBarColor(p);
             const lighterColor = color + '40';
 
@@ -232,14 +242,38 @@ function GanttChart({
   );
 }
 
+function downloadPortfolioCSV(projects: Project[], filename = 'portfolio.csv') {
+  const headers = ['Project Name', 'Customer', 'Manager', 'Status', 'Phase', 'Migration Types', 'Start Date', 'End Date', 'Progress %'];
+  const phaseProgressMap: Record<string, number> = { KICKOFF: 10, MIGRATION: 40, VALIDATION: 65, CLOSURE: 85, COMPLETED: 100 };
+  const rows = projects.map((p) => {
+    const prog = p.status === 'COMPLETED' ? 100 : phaseProgressMap[p.phase] ?? 20;
+    return [p.name, p.customerName, p.projectManager, p.status, p.phase, p.migrationTypes || '', new Date(p.plannedStart).toLocaleDateString(), new Date(p.plannedEnd).toLocaleDateString(), prog];
+  });
+  const csv = [headers, ...rows].map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
 // ── List View Table ──────────────────────────────────────────────────────────
-function ListView({ projects }: { projects: Project[] }) {
+function ListView({ projects, phaseProgress }: { projects: Project[]; phaseProgress: Record<string, number> }) {
   return (
+    <div className="space-y-2">
+      <div className="flex justify-end">
+        <button
+          onClick={() => downloadPortfolioCSV(projects, 'portfolio-all.csv')}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-600 rounded-lg text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 transition-colors"
+        >
+          <Download size={14} /> Download All ({projects.length})
+        </button>
+      </div>
     <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
       <table className="w-full text-sm">
         <thead className="bg-gray-50 dark:bg-gray-700/50">
           <tr>
-            {['Project / Manager', 'Type', 'Status', 'Start Date', 'End Date', 'Progress', ''].map((h) => (
+            {['Project / Manager', 'Type', 'Status', 'Start Date', 'End Date', 'Progress', 'Tasks', ''].map((h) => (
               <th key={h} className={`py-3 px-4 font-medium text-gray-500 dark:text-gray-400 ${h === 'Project / Manager' ? 'text-left' : 'text-center'}`}>{h}</th>
             ))}
           </tr>
@@ -248,7 +282,7 @@ function ListView({ projects }: { projects: Project[] }) {
           {projects.map((p) => {
             const statusLabel = getStatusLabel(p);
             const badge = getMigrationBadge(p.migrationTypes);
-            const progress = getProgress(p);
+            const progress = getProgress(p, phaseProgress);
             const color = getBarColor(p);
             return (
               <tr key={p.id} className="border-t border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
@@ -279,11 +313,25 @@ function ListView({ projects }: { projects: Project[] }) {
                   </div>
                 </td>
                 <td className="py-3 px-4 text-center">
-                  <Link href={`/portfolio/${p.id}`}>
-                    <button className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-700 transition-colors">
-                      <MoreVertical size={15} />
-                    </button>
+                  <Link href={`/projects/${p.id}/tasks`} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 transition-colors text-xs font-medium">
+                    <LayoutList size={12} /> Tasks
                   </Link>
+                </td>
+                <td className="py-3 px-4 text-center">
+                  <div className="flex items-center justify-center gap-1">
+                    <Link href={`/portfolio/${p.id}`}>
+                      <button className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-700 transition-colors">
+                        <MoreVertical size={15} />
+                      </button>
+                    </Link>
+                    <button
+                      onClick={() => downloadPortfolioCSV([p], `${p.name.replace(/[^a-z0-9]/gi, '_')}.csv`)}
+                      className="p-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 text-gray-400 hover:text-blue-600 transition-colors"
+                      title="Download project data"
+                    >
+                      <Download size={15} />
+                    </button>
+                  </div>
                 </td>
               </tr>
             );
@@ -291,29 +339,48 @@ function ListView({ projects }: { projects: Project[] }) {
         </tbody>
       </table>
     </div>
+    </div>
   );
 }
 
 // ── Main Page ────────────────────────────────────────────────────────────────
 export default function PortfolioPage() {
   const { user } = useAuth();
+  const { settings } = useSettings();
+  const isAdmin   = user?.role === 'ADMIN';
   const isManager = user?.role === 'MANAGER';
+  const phaseProgress = useMemo(
+    () => buildPhaseProgress(settings.phases.map((p) => ({ code: p.code, order: p.order }))),
+    [settings.phases]
+  );
   const [viewMode, setViewMode] = useState<ViewMode>('gantt');
   const [zoom, setZoom] = useState<ZoomLevel>('Month');
   const [filterStatus, setFilterStatus] = useState('');
   const [filterType, setFilterType] = useState('');
-  // Manager: lock filter to their own name; admin/viewer: free choice
-  const [filterManager, setFilterManager] = useState('');
+  const [selectedManager, setSelectedManager] = useState<string>('');
   const [showWeeklyDropdown, setShowWeeklyDropdown] = useState(false);
-  const { data: weeklyData } = useWeeklyReport(isManager ? (user?.name ?? undefined) : undefined);
+  const [dateRangeStart, setDateRangeStart] = useState('');
+  const [dateRangeEnd, setDateRangeEnd] = useState('');
 
+  // MANAGER role: only their own projects; ADMIN/VIEWER: all projects
   const { data: projectsData, isLoading: loading } = useProjects({
     limit: 200,
-    projectManager: isManager ? user?.name : undefined,
+    projectManager: isManager ? (user?.name ?? undefined) : undefined,
   });
   const projects: Project[] = (projectsData?.data as any) || [];
 
-  const allManagers = useMemo(() => [...new Set(projects.map((p) => p.projectManager).filter(Boolean))], [projects]);
+  // All unique managers in this dataset (for admin tabs)
+  const allManagers = useMemo(
+    () => [...new Set(projects.map((p) => p.projectManager).filter(Boolean))].sort() as string[],
+    [projects]
+  );
+
+  const { data: weeklyData } = useWeeklyReport(
+    isManager ? (user?.name ?? undefined) : selectedManager || undefined
+  );
+
+  // Effective manager scope for filtering
+  const effectiveManager = isManager ? (user?.name ?? '') : selectedManager;
 
   const filtered = useMemo(() => projects.filter((p) => {
     if (filterStatus) {
@@ -325,11 +392,11 @@ export default function PortfolioPage() {
       if (filterStatus === 'NOT_STARTED' && label !== 'Not Started') return false;
     }
     if (filterType && !p.migrationTypes?.toUpperCase().includes(filterType)) return false;
-    // Manager: always scoped to their name; admin: use dropdown filter
-    const managerCheck = isManager ? (user?.name ?? '') : filterManager;
-    if (managerCheck && p.projectManager !== managerCheck) return false;
+    if (effectiveManager && p.projectManager !== effectiveManager) return false;
+    if (dateRangeStart && new Date(p.plannedEnd) < new Date(dateRangeStart)) return false;
+    if (dateRangeEnd && new Date(p.plannedStart) > new Date(dateRangeEnd)) return false;
     return true;
-  }), [projects, filterStatus, filterType, filterManager, isManager, user?.name]);
+  }), [projects, filterStatus, filterType, effectiveManager, dateRangeStart, dateRangeEnd]);
 
   // Timeline range
   const { rangeStart, rangeEnd } = useMemo(() => {
@@ -348,12 +415,17 @@ export default function PortfolioPage() {
     };
   }, [filtered]);
 
+  // Stats reflect the currently selected manager scope (or all projects for "All")
+  const scopedProjects = useMemo(
+    () => effectiveManager ? projects.filter(p => p.projectManager === effectiveManager) : projects,
+    [projects, effectiveManager]
+  );
   const stats = useMemo(() => ({
-    total: projects.length,
-    active: projects.filter((p) => p.status === 'ACTIVE').length,
-    completed: projects.filter((p) => p.status === 'COMPLETED').length,
-    delayed: projects.filter((p) => p.delayStatus === 'DELAYED').length,
-  }), [projects]);
+    total: scopedProjects.length,
+    active: scopedProjects.filter((p) => p.status === 'ACTIVE').length,
+    completed: scopedProjects.filter((p) => p.status === 'COMPLETED').length,
+    delayed: scopedProjects.filter((p) => p.delayStatus === 'DELAYED').length,
+  }), [scopedProjects]);
 
   if (loading) return (
     <div className="flex items-center justify-center h-64">
@@ -370,7 +442,11 @@ export default function PortfolioPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Portfolio</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            {isManager ? `Your project portfolio — ${user?.name}` : 'View all portfolios and timelines'}
+            {isManager
+              ? `Your project portfolio — ${user?.name}`
+              : isAdmin
+                ? selectedManager ? `Viewing: ${selectedManager}'s projects` : 'All project portfolios'
+                : 'Project portfolio — read only'}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -404,11 +480,66 @@ export default function PortfolioPage() {
         </div>
       </div>
 
-      {/* Manager scope banner */}
+      {/* Manager scope banner — for MANAGER role */}
       {isManager && (
         <div className="flex items-center gap-3 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl text-xs text-blue-700 dark:text-blue-300">
           <User size={14} className="flex-shrink-0" />
           <span><strong>Manager View</strong> — Showing your portfolio: projects assigned to <strong>{user?.name}</strong>.</span>
+        </div>
+      )}
+
+      {/* Admin: individual manager selector tabs */}
+      {isAdmin && allManagers.length > 0 && (
+        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-3">
+          <div className="flex items-center gap-2 mb-2">
+            <User size={14} className="text-gray-400" />
+            <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Manager View</span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => setSelectedManager('')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                selectedManager === ''
+                  ? 'bg-primary-600 text-white border-primary-600 shadow-sm'
+                  : 'bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:border-primary-400 hover:text-primary-600'
+              }`}
+            >
+              <FolderKanban size={12} />
+              All Managers
+              <span className={`ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold ${selectedManager === '' ? 'bg-white/20 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300'}`}>
+                {projects.length}
+              </span>
+            </button>
+            {allManagers.map((mgr) => {
+              const mgrProjects = projects.filter(p => p.projectManager === mgr);
+              const mgrDelayed = mgrProjects.filter(p => p.delayStatus === 'DELAYED').length;
+              const isSelected = selectedManager === mgr;
+              return (
+                <button
+                  key={mgr}
+                  onClick={() => setSelectedManager(isSelected ? '' : mgr)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                    isSelected
+                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                      : 'bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:border-indigo-400 hover:text-indigo-600'
+                  }`}
+                >
+                  <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold ${isSelected ? 'bg-white/20' : 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600'}`}>
+                    {mgr.split(' ').map(n => n[0]).join('').toUpperCase().slice(0,2)}
+                  </div>
+                  {mgr}
+                  <span className={`ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold ${isSelected ? 'bg-white/20 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300'}`}>
+                    {mgrProjects.length}
+                  </span>
+                  {mgrDelayed > 0 && (
+                    <span className={`px-1 py-0.5 rounded-full text-[10px] font-bold ${isSelected ? 'bg-red-400/30 text-red-100' : 'bg-red-100 text-red-600'}`}>
+                      {mgrDelayed} delayed
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
 
@@ -486,27 +617,40 @@ export default function PortfolioPage() {
         <div className="relative">
           <select value={filterType} onChange={(e) => setFilterType(e.target.value)} className={selectCls}>
             <option value="">All Types</option>
-            <option value="CONTENT">Content</option>
-            <option value="EMAIL">Email</option>
-            <option value="MESSAGING">Messaging</option>
+            {settings.migrationTypes.filter(t => t.enabled).map(t => (
+              <option key={t.code} value={t.code}>{t.icon} {t.name}</option>
+            ))}
           </select>
           <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
         </div>
 
-        {/* Manager filter: hidden for MANAGER role (already scoped to their name) */}
-        {!isManager && (
-          <div className="relative">
-            <select value={filterManager} onChange={(e) => setFilterManager(e.target.value)} className={selectCls}>
-              <option value="">All Managers</option>
-              {allManagers.map((m) => <option key={m} value={m}>{m}</option>)}
-            </select>
-            <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-          </div>
-        )}
-        {/* Manager scope badge */}
-        {isManager && (
-          <span className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 rounded-lg">
-            <User size={12} /> {user?.name}
+        {/* Date Range */}
+        <div className="flex items-center gap-1.5 text-sm text-gray-600 dark:text-gray-400">
+          <Calendar size={13} className="text-gray-400" />
+          <input
+            type="date"
+            value={dateRangeStart}
+            onChange={(e) => setDateRangeStart(e.target.value)}
+            className={selectCls + ' pr-3 text-xs'}
+            placeholder="From"
+          />
+          <span className="text-gray-400">—</span>
+          <input
+            type="date"
+            value={dateRangeEnd}
+            onChange={(e) => setDateRangeEnd(e.target.value)}
+            className={selectCls + ' pr-3 text-xs'}
+            placeholder="To"
+          />
+          {(dateRangeStart || dateRangeEnd) && (
+            <button onClick={() => { setDateRangeStart(''); setDateRangeEnd(''); }} className="text-xs text-red-500 hover:text-red-700">Clear</button>
+          )}
+        </div>
+
+        {/* Manager scope badge — shown when a manager tab is selected (admin) or for manager role */}
+        {(isManager || selectedManager) && (
+          <span className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded-lg">
+            <User size={12} /> {isManager ? user?.name : selectedManager}
           </span>
         )}
 
@@ -558,9 +702,9 @@ export default function PortfolioPage() {
           <p className="text-sm">No projects match the selected filters</p>
         </Card>
       ) : viewMode === 'gantt' ? (
-        <GanttChart projects={filtered} zoom={zoom} rangeStart={rangeStart} rangeEnd={rangeEnd} />
+        <GanttChart projects={filtered} zoom={zoom} rangeStart={rangeStart} rangeEnd={rangeEnd} phaseProgress={phaseProgress} />
       ) : (
-        <ListView projects={filtered} />
+        <ListView projects={filtered} phaseProgress={phaseProgress} />
       )}
 
       {/* Footer */}

@@ -5,8 +5,9 @@ import { useRouter } from 'next/navigation';
 import { useUpdateProject } from '@/hooks/useProjects';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { DelayIndicator } from '@/components/ui/DelayIndicator';
-import { formatDate } from '@/lib/utils';
+import { formatDate, formatCurrency } from '@/lib/utils';
 import type { Project } from '@/types';
+import { useSettings } from '@/context/SettingsContext';
 import { 
   Eye, 
   Edit, 
@@ -37,6 +38,21 @@ type SortOrder = 'asc' | 'desc';
 export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
   const router = useRouter();
   const updateProject = useUpdateProject();
+  const { settings } = useSettings();
+
+  const resolveMigrationTypes = (raw: string | null) => {
+    if (!raw) return [];
+    return raw.split(',').map(r => r.trim()).filter(Boolean).map(r => {
+      const rUp = r.toUpperCase();
+      const found = settings.migrationTypes.find(mt =>
+        mt.code === rUp ||
+        mt.name.toLowerCase() === r.toLowerCase() ||
+        rUp.includes(mt.code.toUpperCase()) ||
+        rUp.includes(mt.name.toUpperCase())
+      );
+      return found ?? { code: r, name: r, icon: '📋', color: '#6B7280' };
+    });
+  };
   
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
   const [editValue, setEditValue] = useState<string>('');
@@ -316,9 +332,10 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
 
   const statusOptions = [
     { value: 'ACTIVE', label: 'Active' },
+    { value: 'INACTIVE', label: 'Inactive' },
     { value: 'ON_HOLD', label: 'On Hold' },
-    { value: 'COMPLETED', label: 'Completed' },
     { value: 'CANCELLED', label: 'Cancelled' },
+    { value: 'COMPLETED', label: 'Completed' },
   ];
 
   const phaseOptions = [
@@ -337,20 +354,6 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
 
   return (
     <div>
-      {/* Search */}
-      <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-        <input
-          type="text"
-          placeholder="Search by project name, customer, project manager, or account manager..."
-          value={searchTerm}
-          onChange={(e) => {
-            setSearchTerm(e.target.value);
-            setCurrentPage(1);
-          }}
-          className="w-full px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-        />
-      </div>
-
       {/* Table */}
       <div className="overflow-x-auto">
         <table className="w-full">
@@ -359,6 +362,10 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
               <SortHeader field="name" label="Project Name" />
               <SortHeader field="projectManager" label="Project Manager" />
               <SortHeader field="accountManager" label="Account Manager" />
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Migration Types</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Source</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Target</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Budget</th>
               <SortHeader field="planType" label="Plan" />
               <SortHeader field="delayStatus" label="Delay Status" />
               <SortHeader field="phase" label="Current Phase" />
@@ -366,10 +373,10 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
               <SortHeader field="plannedStart" label="SOW Start" />
               <SortHeader field="plannedEnd" label="SOW End" />
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
-                Actual Start
+                Kickoff Start Date
               </th>
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
-                Actual End
+                Project End Date
               </th>
               <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
                 Actions
@@ -406,10 +413,48 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
 
                 {/* Account Manager - Editable */}
                 <td className="px-4 py-3">
-                  <EditableText 
-                    projectId={project.id} 
-                    field="accountManager" 
-                    value={project.accountManager} 
+                  <EditableText
+                    projectId={project.id}
+                    field="accountManager"
+                    value={project.accountManager}
+                  />
+                </td>
+
+                {/* Migration Types */}
+                <td className="px-4 py-3">
+                  <div className="flex flex-wrap gap-1 min-w-[100px]">
+                    {resolveMigrationTypes(project.migrationTypes).length > 0
+                      ? resolveMigrationTypes(project.migrationTypes).map(mt => (
+                          <span
+                            key={mt.code}
+                            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs font-medium text-white whitespace-nowrap"
+                            style={{ backgroundColor: mt.color }}
+                          >
+                            <span>{mt.icon}</span>
+                            <span>{mt.name}</span>
+                          </span>
+                        ))
+                      : <span className="text-xs text-gray-400 italic">—</span>
+                    }
+                  </div>
+                </td>
+
+                {/* Source Platform - Editable */}
+                <td className="px-4 py-3">
+                  <EditableText projectId={project.id} field="sourcePlatform" value={project.sourcePlatform || ''} />
+                </td>
+
+                {/* Target Platform - Editable */}
+                <td className="px-4 py-3">
+                  <EditableText projectId={project.id} field="targetPlatform" value={project.targetPlatform || ''} />
+                </td>
+
+                {/* Budget - Editable */}
+                <td className="px-4 py-3">
+                  <EditableText
+                    projectId={project.id}
+                    field="estimatedCost"
+                    value={project.estimatedCost != null ? String(project.estimatedCost) : ''}
                   />
                 </td>
 
@@ -463,14 +508,14 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
                   />
                 </td>
 
-                {/* SOW Start (Planned Start) - Read Only */}
-                <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
-                  {formatDate(project.plannedStart)}
+                {/* SOW Start - Editable */}
+                <td className="px-4 py-3">
+                  <EditableDate projectId={project.id} field="plannedStart" value={project.plannedStart} />
                 </td>
 
-                {/* SOW End (Planned End) - Read Only */}
-                <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
-                  {formatDate(project.plannedEnd)}
+                {/* SOW End - Editable */}
+                <td className="px-4 py-3">
+                  <EditableDate projectId={project.id} field="plannedEnd" value={project.plannedEnd} />
                 </td>
 
                 {/* Actual Start - Editable */}

@@ -19,6 +19,8 @@ export function useProjects(params?: {
   return useQuery({
     queryKey: ['projects', params],
     queryFn: () => projectsApi.getAll(params),
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
   });
 }
 
@@ -84,6 +86,8 @@ export function useDashboard(manager?: string) {
   return useQuery({
     queryKey: ['dashboard', manager],
     queryFn: () => dashboardApi.getOverview(manager),
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
   });
 }
 
@@ -170,5 +174,29 @@ export function useProjectsByMigrationType(type: string | null) {
     queryKey: ['projectsByMigrationType', type],
     queryFn: () => migrationTypeApi.getProjectsByType(type!),
     enabled: !!type,
+  });
+}
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+const authFetch = (url: string) => {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
+  return fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} }).then(r => r.json());
+};
+
+export function useOveragedProjects(manager?: string) {
+  return useQuery({
+    queryKey: ['overagedProjects', manager],
+    queryFn: () => authFetch(`${API_BASE}/api/dashboard/overaged-projects${manager ? `?manager=${encodeURIComponent(manager)}` : ''}`),
+    staleTime: 0,
+    refetchInterval: 30_000,
+  });
+}
+
+export function useEscalatedProjects(manager?: string) {
+  return useQuery({
+    queryKey: ['escalatedProjects', manager],
+    queryFn: () => authFetch(`${API_BASE}/api/dashboard/escalated-projects${manager ? `?manager=${encodeURIComponent(manager)}` : ''}`),
+    staleTime: 0,
+    refetchInterval: 30_000,
   });
 }

@@ -159,15 +159,24 @@ const SettingsContext = createContext<SettingsContextType | undefined>(undefined
 
 const STORAGE_KEY = 'pmoSettings';
 
+const toCode = (name: string) =>
+  name.toUpperCase().replace(/\s+/g, '_').replace(/[^A-Z0-9_]/g, '');
+
 function mergeWithDefaults(saved: any): PMOSettings {
+  const savedPlanTypes = saved?.planTypes?.length
+    ? saved.planTypes.map((p: any) => ({ ...p, code: p.code || toCode(p.name) }))
+    : defaultSettings.planTypes;
+  const savedPhases = saved?.phases?.length
+    ? saved.phases.map((p: any) => ({ ...p, code: p.code || toCode(p.name) }))
+    : defaultSettings.phases;
   return {
     ...defaultSettings,
     ...saved,
     migrationTypes: saved?.migrationTypes?.length ? saved.migrationTypes : defaultSettings.migrationTypes,
     sourcePlatforms: saved?.sourcePlatforms?.length ? saved.sourcePlatforms : defaultSettings.sourcePlatforms,
     targetPlatforms: saved?.targetPlatforms?.length ? saved.targetPlatforms : defaultSettings.targetPlatforms,
-    planTypes: saved?.planTypes?.length ? saved.planTypes : defaultSettings.planTypes,
-    phases: saved?.phases?.length ? saved.phases : defaultSettings.phases,
+    planTypes: savedPlanTypes,
+    phases: savedPhases,
     notificationSettings: { ...defaultSettings.notificationSettings, ...saved?.notificationSettings },
     alertThresholds: { ...defaultSettings.alertThresholds, ...saved?.alertThresholds },
     brandingSettings: { ...defaultSettings.brandingSettings, ...saved?.brandingSettings },
