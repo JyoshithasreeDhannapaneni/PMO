@@ -8,32 +8,31 @@ import { useSettings } from '@/context/SettingsContext';
 import {
   LayoutDashboard,
   FolderKanban,
-  Plus,
   AlertTriangle,
   FileText,
   Bell,
   Settings,
-  Briefcase,
   Layers,
   Users,
-  UserCheck,
   Shuffle,
   BarChart2,
   ChevronDown,
   ChevronRight,
-  Mail,
   MessageSquare,
   LogOut,
+  DollarSign,
+  Siren,
+  Menu,
+  X,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
 const allNavigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard, adminOnly: false },
-  { name: 'Portfolio', href: '/portfolio', icon: Briefcase, adminOnly: false },
   { name: 'All Projects', href: '/projects', icon: FolderKanban, adminOnly: false },
-  { name: 'New Project', href: '/projects/new', icon: Plus, adminOnly: false },
-  { name: 'Managers & Goals', href: '/managers', icon: Users, badge: 'goals', adminOnly: true },
-  { name: 'Account Managers', href: '/managers', icon: UserCheck, badge: 'managers', adminOnly: true },
+  { name: 'Overage Projects', href: '/overage-projects', icon: DollarSign, adminOnly: false },
+  { name: 'Escalated Projects', href: '/escalation-projects', icon: Siren, adminOnly: false },
+  { name: 'Managers & Goals', href: '/managers', icon: Users, badge: 'goals', adminOnly: false },
   { name: 'Migration Types', href: '/migration-types', icon: Shuffle, adminOnly: true },
   { name: 'Templates', href: '/templates', icon: Layers, adminOnly: false },
   { name: 'Case Studies', href: '/case-studies', icon: FileText, adminOnly: false },
@@ -44,11 +43,10 @@ const allNavigation = [
     icon: BarChart2,
     adminOnly: false,
     children: [
-      { name: 'Weekly Reports', href: '/?report=weekly' },
-      { name: 'Monthly Reports', href: '/?report=monthly' },
+      { name: 'Weekly Reports', href: '/reports/weekly' },
+      { name: 'Monthly Reports', href: '/reports/monthly' },
     ],
   },
-  { name: 'SMTP Settings', href: '/smtp-settings', icon: Mail, badge: 'smtp', adminOnly: true },
   { name: 'Chat Bot', href: '/?chatbot=open', icon: MessageSquare, badge: 'chat', adminOnly: false },
   { name: 'Notifications', href: '/notifications', icon: Bell, adminOnly: false },
 ];
@@ -59,6 +57,8 @@ export function Sidebar() {
   const { user, logout } = useAuth();
   const companyName = settings.brandingSettings?.companyName || 'PMO Tracker';
   const [openGroups, setOpenGroups] = useState<string[]>([]);
+  const [collapsed, setCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
   const isAdmin = user?.role === 'ADMIN';
   const navigation = allNavigation.filter((item) => !item.adminOnly || isAdmin);
 
@@ -77,20 +77,34 @@ export function Sidebar() {
     cstemplate: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300',
   };
 
-  return (
-    <aside className="hidden md:flex md:w-64 md:flex-col bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 transition-colors">
-      {/* Logo */}
-      <div className="flex items-center h-16 px-6 border-b border-gray-200 dark:border-gray-700">
-        <Link href="/" className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center">
+  const sidebarContent = (
+    <>
+      {/* Logo + Hamburger */}
+      <div className="flex items-center h-16 px-3 border-b border-gray-200 dark:border-gray-700 gap-2">
+        <button
+          onClick={() => { setCollapsed((c) => !c); setMobileOpen(false); }}
+          className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex-shrink-0"
+          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        >
+          {collapsed ? <Menu size={20} /> : <X size={20} />}
+        </button>
+        {!collapsed && (
+          <Link href="/" className="flex items-center gap-2 overflow-hidden">
+            <div className="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center flex-shrink-0">
+              <FolderKanban className="text-white" size={20} />
+            </div>
+            <span className="text-xl font-bold text-gray-900 dark:text-white truncate">{companyName}</span>
+          </Link>
+        )}
+        {collapsed && (
+          <Link href="/" className="flex items-center justify-center w-8 h-8 bg-primary-600 rounded-lg flex-shrink-0 mx-auto">
             <FolderKanban className="text-white" size={20} />
-          </div>
-          <span className="text-xl font-bold text-gray-900 dark:text-white">{companyName}</span>
-        </Link>
+          </Link>
+        )}
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
+      <nav className="flex-1 px-2 py-4 space-y-0.5 overflow-y-auto">
         {navigation.map((item) => {
           const isActive =
             pathname === item.href ||
@@ -101,17 +115,23 @@ export function Sidebar() {
             return (
               <div key={item.name}>
                 <button
-                  onClick={() => toggleGroup(item.name)}
+                  onClick={() => { if (!collapsed) toggleGroup(item.name); }}
+                  title={collapsed ? item.name : undefined}
                   className={cn(
                     'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
-                    'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-white'
+                    'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-white',
+                    collapsed && 'justify-center'
                   )}
                 >
-                  <item.icon size={18} />
-                  <span className="flex-1 text-left">{item.name}</span>
-                  {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                  <item.icon size={18} className="flex-shrink-0" />
+                  {!collapsed && (
+                    <>
+                      <span className="flex-1 text-left">{item.name}</span>
+                      {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                    </>
+                  )}
                 </button>
-                {isOpen && (
+                {!collapsed && isOpen && (
                   <div className="ml-8 mt-0.5 space-y-0.5">
                     {item.children.map((child) => (
                       <Link
@@ -133,37 +153,79 @@ export function Sidebar() {
             <Link
               key={item.name}
               href={item.href}
+              title={collapsed ? item.name : undefined}
               className={cn(
                 'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
                 isActive
                   ? 'bg-primary-50 dark:bg-primary-900/50 text-primary-700 dark:text-primary-300'
-                  : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-white'
+                  : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-white',
+                collapsed && 'justify-center'
               )}
             >
-              <item.icon size={18} />
-              <span className="flex-1">{item.name}</span>
+              <item.icon size={18} className="flex-shrink-0" />
+              {!collapsed && <span className="flex-1">{item.name}</span>}
             </Link>
           );
         })}
       </nav>
 
       {/* Footer */}
-      <div className="p-3 border-t border-gray-200 dark:border-gray-700 space-y-0.5">
+      <div className="p-2 border-t border-gray-200 dark:border-gray-700 space-y-0.5">
         <Link
           href="/settings"
-          className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-white transition-colors"
+          title={collapsed ? 'Settings' : undefined}
+          className={cn(
+            'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-white transition-colors',
+            collapsed && 'justify-center'
+          )}
         >
-          <Settings size={18} />
-          Settings
+          <Settings size={18} className="flex-shrink-0" />
+          {!collapsed && 'Settings'}
         </Link>
         <button
           onClick={logout}
-          className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+          title={collapsed ? 'Logout' : undefined}
+          className={cn(
+            'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600 dark:hover:text-red-400 transition-colors',
+            collapsed && 'justify-center'
+          )}
         >
-          <LogOut size={18} />
-          Logout
+          <LogOut size={18} className="flex-shrink-0" />
+          {!collapsed && 'Logout'}
         </button>
       </div>
-    </aside>
+    </>
+  );
+
+  return (
+    <>
+      {/* Desktop sidebar */}
+      <aside
+        className={cn(
+          'hidden md:flex md:flex-col bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 transition-all duration-200',
+          collapsed ? 'md:w-16' : 'md:w-64'
+        )}
+      >
+        {sidebarContent}
+      </aside>
+
+      {/* Mobile hamburger button (top-left, only on small screens) */}
+      <button
+        onClick={() => setMobileOpen(true)}
+        className="md:hidden fixed top-4 left-4 z-40 p-2 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 shadow"
+      >
+        <Menu size={20} />
+      </button>
+
+      {/* Mobile overlay */}
+      {mobileOpen && (
+        <div className="md:hidden fixed inset-0 z-50 flex">
+          <aside className="w-64 flex flex-col bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700">
+            {sidebarContent}
+          </aside>
+          <div className="flex-1 bg-black/50" onClick={() => setMobileOpen(false)} />
+        </div>
+      )}
+    </>
   );
 }

@@ -12,7 +12,7 @@ import { Card } from '@/components/ui/Card';
 import { ChevronDown, ChevronUp, X } from 'lucide-react';
 import { useSettings } from '@/context/SettingsContext';
 import { useToast } from '@/context/ToastContext';
-import { templatesApi } from '@/services/api';
+import { templatesApi, authApi } from '@/services/api';
 import type { Project, CreateProjectInput } from '@/types';
 
 const baseSchema = z.object({
@@ -59,6 +59,7 @@ export function ProjectForm({ project, onSubmit, isLoading, defaultManagerName }
 
   const [accountManagers, setAccountManagers] = useState<string[]>([]);
   const [templates, setTemplates] = useState<any[]>([]);
+  const [users, setUsers] = useState<{ name: string; role: string }[]>([]);
 
   useEffect(() => {
     // Load account managers from settings (Team Management tab in Settings)
@@ -72,6 +73,9 @@ export function ProjectForm({ project, onSubmit, isLoading, defaultManagerName }
     } catch {}
     templatesApi.getAll().then((res) => {
       if (res.success) setTemplates(res.data || []);
+    }).catch(() => {});
+    authApi.getUsers().then((res) => {
+      if (res.success) setUsers(res.data || []);
     }).catch(() => {});
   }, []);
 
@@ -103,9 +107,18 @@ export function ProjectForm({ project, onSubmit, isLoading, defaultManagerName }
   // Pre-fill from existing project
   useEffect(() => {
     if (project?.migrationTypes) {
-      setSelectedMigrationTypes(
-        project.migrationTypes.split(',').map((t: string) => t.trim().toLowerCase())
-      );
+      const stored = project.migrationTypes.split(',').map((t: string) => t.trim());
+      const ids = stored.map((storedName: string) => {
+        const lower = storedName.toLowerCase();
+        const match = enabledMigrationTypes.find(
+          (t) => t.name.toLowerCase() === lower ||
+                 lower === t.id.toLowerCase() ||
+                 lower.replace(' migration', '') === t.id.toLowerCase() ||
+                 lower.includes(t.id.toLowerCase())
+        );
+        return match ? match.id : storedName.toLowerCase();
+      });
+      setSelectedMigrationTypes(ids);
     }
     if (project?.sourcePlatform) {
       setSelectedSourcePlatforms(project.sourcePlatform.split(',').map((p: string) => p.trim()));
@@ -113,7 +126,7 @@ export function ProjectForm({ project, onSubmit, isLoading, defaultManagerName }
     if (project?.targetPlatform) {
       setSelectedTargetPlatforms(project.targetPlatform.split(',').map((p: string) => p.trim()));
     }
-  }, [project]);
+  }, [project, enabledMigrationTypes.length]);
 
   const defaultPlanType = planTypes[0]?.code || 'SILVER';
   const defaultPhase = [...phases].sort((a, b) => a.order - b.order)[0]?.code || 'KICKOFF';
@@ -229,7 +242,7 @@ export function ProjectForm({ project, onSubmit, isLoading, defaultManagerName }
       return;
     }
 
-    const submitData: CreateProjectInput = {
+    const baseData = {
       name: data.name,
       customerName: data.customerName,
       projectManager: data.projectManager,
@@ -247,17 +260,27 @@ export function ProjectForm({ project, onSubmit, isLoading, defaultManagerName }
       notes: data.notes || '',
       phase: data.phase as any,
       status: data.status,
-      migrationTypes: selectedMigrationTypes.map((id) => {
-        const type = enabledMigrationTypes.find((t) => t.id === id);
-        return type ? `${type.name} Migration` : id;
-      }).join(', '),
       sourcePlatform: selectedSourcePlatforms.join(', '),
       targetPlatform: selectedTargetPlatforms.join(', '),
       isOveraged: data.isOveraged === 'YES' ? true : (data.isOveraged === 'NO' ? false : undefined),
       isEscalated: data.isEscalated === 'YES' ? true : (data.isEscalated === 'NO' ? false : undefined),
       overageAmount: data.overageAmount !== '' && data.overageAmount !== undefined ? Number(data.overageAmount) : undefined,
     };
-    onSubmit(submitData);
+
+    // When creating a new project with multiple migration types, create one entry per type
+    if (!project && selectedMigrationTypes.length > 1) {
+      selectedMigrationTypes.forEach((id) => {
+        const type = enabledMigrationTypes.find((t) => t.id === id);
+        const typeName = type ? type.name : id;
+        onSubmit({ ...baseData, migrationTypes: typeName });
+      });
+    } else {
+      const migrationTypes = selectedMigrationTypes.map((id) => {
+        const type = enabledMigrationTypes.find((t) => t.id === id);
+        return type ? type.name : id;
+      }).join(', ');
+      onSubmit({ ...baseData, migrationTypes });
+    }
   };
 
   const planOptions = planTypes

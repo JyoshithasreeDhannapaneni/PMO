@@ -113,6 +113,47 @@ class TaskService {
     };
   }
 
+  async createTask(projectId: string, data: {
+    phaseRecordId: string;
+    name: string;
+    plannedStart: string;
+    plannedEnd: string;
+    assignee?: string;
+    priority?: string;
+    notes?: string;
+    isMilestone?: boolean;
+  }) {
+    const start = new Date(data.plannedStart);
+    const end = new Date(data.plannedEnd);
+    const duration = Math.max(1, Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
+
+    // get max order_index in the phase
+    const maxResult = await query(
+      `SELECT COALESCE(MAX(order_index), 0) as maxIdx FROM project_tasks WHERE phase_record_id = ?`,
+      [data.phaseRecordId]
+    );
+    const orderIndex = (maxResult.rows[0]?.maxIdx || 0) + 1;
+
+    const id = uuidv4();
+    await execute(
+      `INSERT INTO project_tasks (id, project_id, phase_record_id, name, order_index, status, planned_start, planned_end, duration, progress, is_milestone, assignee, notes, priority, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, 'TODO', ?, ?, ?, 0, ?, ?, ?, ?, NOW(), NOW())`,
+      [id, projectId, data.phaseRecordId, data.name, orderIndex, start, end, duration,
+       data.isMilestone ? 1 : 0, data.assignee || null, data.notes || null, data.priority || null]
+    );
+    const result = await query(`SELECT * FROM project_tasks WHERE id = ?`, [id]);
+    await this.updatePhaseProgress(data.phaseRecordId);
+    return mapTaskRow(result.rows[0]);
+  }
+
+  async deleteTask(taskId: string) {
+    const result = await query(`SELECT phase_record_id FROM project_tasks WHERE id = ?`, [taskId]);
+    if (!result.rows.length) return;
+    const phaseRecordId = result.rows[0].phase_record_id;
+    await execute(`DELETE FROM project_tasks WHERE id = ?`, [taskId]);
+    await this.updatePhaseProgress(phaseRecordId);
+  }
+
   async updateTask(taskId: string, data: UpdateTaskInput) {
     const updates: string[] = [];
     const params: any[] = [];
@@ -331,6 +372,14 @@ class TaskService {
       },
       phases,
     };
+  }
+
+  async deleteTask(taskId: string) {
+    const result = await query(`SELECT phase_record_id FROM project_tasks WHERE id = ?`, [taskId]);
+    if (!result.rows[0]) return;
+    const phaseRecordId = result.rows[0].phase_record_id;
+    await execute(`DELETE FROM project_tasks WHERE id = ?`, [taskId]);
+    await this.updatePhaseProgress(phaseRecordId);
   }
 
   async createProjectTasksFromTemplate(

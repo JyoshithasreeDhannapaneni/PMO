@@ -40,6 +40,18 @@ export const taskController = {
     });
   }),
 
+  deleteTask: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const { taskId } = req.params;
+    await taskService.deleteTask(taskId);
+    res.json({ success: true, message: 'Task deleted' });
+  }),
+
+  createTask: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const { projectId } = req.params;
+    const task = await taskService.createTask(projectId, req.body);
+    res.status(201).json({ success: true, data: task });
+  }),
+
   updateTask: asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const { taskId } = req.params;
     const task = await taskService.updateTask(taskId, req.body);

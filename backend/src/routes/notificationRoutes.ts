@@ -15,4 +15,7 @@ router.put('/:id/read', notificationController.markAsRead);
 // POST /api/notifications/test - Send test notification (dev only)
 router.post('/test', notificationController.sendTest);
 
+// POST /api/notifications/test-email - Send a test email using provided SMTP settings
+router.post('/test-email', notificationController.sendTestEmail);
+
 export default router;

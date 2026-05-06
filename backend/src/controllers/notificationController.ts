@@ -71,4 +71,37 @@ export const notificationController = {
       message: 'Test notification sent',
     });
   }),
+
+  /**
+   * POST /api/notifications/test-email
+   * Send a test email using provided SMTP config and optional custom subject/body
+   */
+  sendTestEmail: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const { to, smtpSettings, subject, body, notificationType } = req.body;
+    if (!to) {
+      res.status(400).json({ success: false, error: { message: 'Recipient email required' } });
+      return;
+    }
+
+    try {
+      const nodemailer = await import('nodemailer');
+      const transporter = nodemailer.default.createTransport({
+        host: smtpSettings?.host || 'smtp.gmail.com',
+        port: parseInt(smtpSettings?.port || '587'),
+        secure: parseInt(smtpSettings?.port || '587') === 465,
+        auth: smtpSettings?.user ? { user: smtpSettings.user, pass: smtpSettings.password } : undefined,
+      });
+
+      await transporter.sendMail({
+        from: smtpSettings?.fromEmail || smtpSettings?.user || 'noreply@pmo.local',
+        to,
+        subject: subject || `[PMO] Test Email${notificationType ? ` — ${notificationType}` : ''}`,
+        text: body || 'This is a test email from PMO Tracker. Your SMTP configuration is working correctly.',
+      });
+
+      res.json({ success: true, message: 'Test email sent successfully' });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: { message: err.message || 'Failed to send email' } });
+    }
+  }),
 };

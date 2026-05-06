@@ -487,9 +487,6 @@ export default function DashboardPage() {
   );
 
   const { stats, projectsByStatus, projectsByPhase, recentActivity, delaySummary, upcomingDeadlines, migrationTypeStats } = data.data;
-  const healthScore = stats.totalProjects > 0 ? Math.round(((stats.totalProjects - stats.delayedProjects - stats.atRiskProjects) / stats.totalProjects) * 100) : 100;
-  const completionRate = stats.totalProjects > 0 ? Math.round((stats.completedProjects / stats.totalProjects) * 100) : 0;
-  const healthLabel = healthScore >= 90 ? 'Excellent' : healthScore >= 70 ? 'Good' : healthScore >= 50 ? 'Fair' : 'Needs Attention';
   const managers: any[] = managerData?.data || [];
 
   return (
@@ -565,51 +562,59 @@ export default function DashboardPage() {
       ) : null}
 
       {/* ── KPI Row ────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <Link href="/projects" className="col-span-2 lg:col-span-1 block group">
-          <Card className="bg-gradient-to-br from-primary-600 to-primary-700 text-white border-0 h-full transition-transform group-hover:scale-[1.02] group-hover:shadow-lg">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-primary-100 text-sm font-medium">Portfolio Health</p>
-                <p className="text-4xl font-bold mt-1">{healthScore}%</p>
-                <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-xs font-semibold ${healthScore >= 70 ? 'bg-yellow-400/30 text-yellow-100' : 'bg-red-400/30 text-red-100'}`}>{healthLabel}</span>
-              </div>
-              <div className="w-16 h-16 rounded-full bg-white/20 flex items-center justify-center">
-                <Activity size={28} className="text-white" />
-              </div>
-            </div>
-          </Card>
-        </Link>
-        <Link href="/projects" className="block group">
           <Card className="h-full transition-transform group-hover:scale-[1.02] group-hover:shadow-lg">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-gray-500 text-sm font-medium">Total Projects</p>
-                <p className="text-4xl font-bold text-gray-900 dark:text-white mt-1">{stats.totalProjects}</p>
-                <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                  <span className="text-green-600 text-xs font-medium">{stats.activeProjects} active</span>
-                  <span className="text-gray-300">•</span>
-                  <span className="text-blue-600 text-xs font-medium">{stats.completedProjects} done</span>
-                </div>
+                <p className="text-3xl font-bold text-gray-900 dark:text-white mt-1">{stats.totalProjects}</p>
+                <p className="text-xs text-gray-400 mt-1">Excl. completed &amp; cancelled</p>
               </div>
-              <div className="w-12 h-12 rounded-xl bg-blue-50 dark:bg-blue-900/40 flex items-center justify-center">
-                <FolderKanban size={22} className="text-blue-600" />
+              <div className="w-11 h-11 rounded-xl bg-blue-50 dark:bg-blue-900/40 flex items-center justify-center">
+                <FolderKanban size={20} className="text-blue-600" />
               </div>
             </div>
           </Card>
         </Link>
-        <Link href="/projects?status=COMPLETED" className="block group">
-          <Card className="h-full transition-transform group-hover:scale-[1.02] group-hover:shadow-lg">
+        <Link href="/projects?status=ACTIVE" className="block group">
+          <Card className="h-full transition-transform group-hover:scale-[1.02] group-hover:shadow-lg border-green-200 dark:border-green-800">
             <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <p className="text-gray-500 text-sm font-medium">Completion Rate</p>
-                <p className="text-4xl font-bold text-gray-900 dark:text-white mt-1">{completionRate}%</p>
-                <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-1.5 mt-2">
-                  <div className="bg-green-500 h-1.5 rounded-full" style={{ width: `${completionRate}%` }} />
-                </div>
+              <div>
+                <p className="text-green-600 text-sm font-medium">Active</p>
+                <p className="text-3xl font-bold text-green-700 dark:text-green-300 mt-1">{stats.activeProjects}</p>
+                <p className="text-xs text-green-500 mt-1">Active projects</p>
               </div>
-              <div className="w-12 h-12 rounded-xl bg-green-50 dark:bg-green-900/40 flex items-center justify-center ml-3">
-                <Target size={22} className="text-green-600" />
+              <div className="w-11 h-11 rounded-xl bg-green-50 dark:bg-green-900/40 flex items-center justify-center">
+                <PlayCircle size={20} className="text-green-600" />
+              </div>
+            </div>
+          </Card>
+        </Link>
+        <Link href="/projects?status=ON_HOLD" className="block group">
+          <Card className="h-full transition-transform group-hover:scale-[1.02] group-hover:shadow-lg border-yellow-200 dark:border-yellow-800">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-yellow-600 text-sm font-medium">Inactive</p>
+                <p className="text-3xl font-bold text-yellow-700 dark:text-yellow-300 mt-1">{stats.inactiveProjects ?? stats.onHoldProjects}</p>
+                <p className="text-xs text-yellow-500 mt-1">On hold projects</p>
+              </div>
+              <div className="w-11 h-11 rounded-xl bg-yellow-50 dark:bg-yellow-900/40 flex items-center justify-center">
+                <PauseCircle size={20} className="text-yellow-600" />
+              </div>
+            </div>
+          </Card>
+        </Link>
+        <Link href="/overage-projects" className="block group">
+          <Card className="h-full transition-transform group-hover:scale-[1.02] group-hover:shadow-lg border-orange-200 dark:border-orange-800">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-orange-600 text-sm font-medium">Overages</p>
+                <p className="text-3xl font-bold text-orange-700 dark:text-orange-300 mt-1">{stats.overagedCount ?? overagedProjects.length}</p>
+                <p className="text-xs text-orange-500 mt-1">Total overaged</p>
+              </div>
+              <div className="w-11 h-11 rounded-xl bg-orange-50 dark:bg-orange-900/40 flex items-center justify-center">
+                <Clock size={20} className="text-orange-600" />
               </div>
             </div>
           </Card>
@@ -619,11 +624,11 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className={`text-sm font-medium ${stats.delayedProjects + stats.atRiskProjects > 0 ? 'text-red-600' : 'text-green-600'}`}>Risk Status</p>
-                <p className={`text-4xl font-bold mt-1 ${stats.delayedProjects + stats.atRiskProjects > 0 ? 'text-red-700 dark:text-red-300' : 'text-green-700 dark:text-green-300'}`}>{stats.delayedProjects + stats.atRiskProjects}</p>
-                <p className="text-xs mt-1 text-red-500">{stats.atRiskProjects} at risk • {stats.delayedProjects} delayed</p>
+                <p className={`text-3xl font-bold mt-1 ${stats.delayedProjects + stats.atRiskProjects > 0 ? 'text-red-700 dark:text-red-300' : 'text-green-700 dark:text-green-300'}`}>{stats.delayedProjects + stats.atRiskProjects}</p>
+                <p className="text-xs mt-1 text-red-500">{stats.atRiskProjects} at risk</p>
               </div>
-              <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${stats.delayedProjects + stats.atRiskProjects > 0 ? 'bg-red-100 dark:bg-red-900/40' : 'bg-green-100 dark:bg-green-900/40'}`}>
-                <AlertTriangle size={22} className={stats.delayedProjects + stats.atRiskProjects > 0 ? 'text-red-600' : 'text-green-600'} />
+              <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${stats.delayedProjects + stats.atRiskProjects > 0 ? 'bg-red-100 dark:bg-red-900/40' : 'bg-green-100 dark:bg-green-900/40'}`}>
+                <AlertTriangle size={20} className={stats.delayedProjects + stats.atRiskProjects > 0 ? 'text-red-600' : 'text-green-600'} />
               </div>
             </div>
           </Card>
@@ -686,6 +691,29 @@ export default function DashboardPage() {
           </Card>
         </Link>
       </div>
+
+      {/* ── Pending Case Studies Alert ──────────────────────────────── */}
+      {stats.pendingCaseStudies > 0 && (
+        <div className="flex items-center gap-3 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-300 dark:border-yellow-700 rounded-xl">
+          <div className="w-9 h-9 rounded-lg bg-yellow-100 dark:bg-yellow-900/40 flex items-center justify-center flex-shrink-0">
+            <FileText size={18} className="text-yellow-600" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-yellow-800 dark:text-yellow-200">
+              {stats.pendingCaseStudies} case {stats.pendingCaseStudies === 1 ? 'study' : 'studies'} pending completion
+            </p>
+            <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-0.5">
+              Projects that are completed or closed need their case studies documented.
+            </p>
+          </div>
+          <Link
+            href="/case-studies"
+            className="flex-shrink-0 flex items-center gap-1 px-3 py-1.5 bg-yellow-600 text-white rounded-lg text-xs font-medium hover:bg-yellow-700 transition-colors"
+          >
+            Complete Now <ChevronRight size={12} />
+          </Link>
+        </div>
+      )}
 
       {/* ── Overaged Projects Panel ──────────────────────────────────── */}
       {showOveragedPanel && (

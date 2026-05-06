@@ -7,7 +7,8 @@ import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import {
   Users, TrendingUp, TrendingDown, Plus, X, Loader2,
-  Target, AlertCircle, UserCheck, Trash2, ChevronRight, ShieldAlert,
+  Target, AlertCircle, Trash2, ChevronRight, FolderKanban,
+  CheckCircle, PauseCircle, PlayCircle,
 } from 'lucide-react';
 import Link from 'next/link';
 import api from '@/services/api';
@@ -119,19 +120,9 @@ export default function ManagersPage() {
   const { user } = useAuth();
   const { showToast } = useToast();
   const queryClient = useQueryClient();
+  const isAdmin = user?.role === 'ADMIN';
+  const isManager = user?.role === 'MANAGER';
   const [showAddModal, setShowAddModal] = useState(false);
-
-  if (user && user.role !== 'ADMIN') {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-center">
-          <AlertCircle className="w-14 h-14 text-red-400 mx-auto mb-3" />
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Access Restricted</h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Only administrators can view this page.</p>
-        </div>
-      </div>
-    );
-  }
 
   const { data: statsData, isLoading } = useQuery({
     queryKey: ['managerGoalsWithStats'],
@@ -166,9 +157,13 @@ export default function ManagersPage() {
     onError: () => showToast('error', 'Failed to delete goal'),
   });
 
-  const stats: ManagerStat[] = statsData?.data || [];
+  let stats: ManagerStat[] = statsData?.data || [];
+  // Managers see only their own row; viewers see all (read-only)
+  if (isManager && user?.name) {
+    stats = stats.filter((s) => s.manager === user.name);
+  }
   const goals: ManagerGoal[] = goalsData?.data || [];
-  const managerNames = stats.map((s) => s.manager);
+  const managerNames = (statsData?.data || []).map((s: ManagerStat) => s.manager);
 
   return (
     <div className="space-y-6">
@@ -178,20 +173,30 @@ export default function ManagersPage() {
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Managers & Goals</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Track manager performance and set completion goals</p>
         </div>
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors"
-        >
-          <Plus size={16} /> Add Manager Goal
-        </button>
+        {isAdmin && (
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors"
+          >
+            <Plus size={16} /> Add Manager Goal
+          </button>
+        )}
       </div>
+
+      {/* Role scope banner */}
+      {isManager && (
+        <div className="flex items-center gap-3 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl text-xs text-blue-700 dark:text-blue-300">
+          <AlertCircle size={14} className="flex-shrink-0" />
+          <span><strong>Manager View</strong> — Showing your project tracker (<strong>{user?.name}</strong>).</span>
+        </div>
+      )}
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { label: 'Total Managers', value: stats.length, icon: Users, color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-900/40' },
-          { label: 'On Target', value: stats.filter((s) => s.achievedPct >= s.goalPct).length, icon: TrendingUp, color: 'text-green-600', bg: 'bg-green-50 dark:bg-green-900/40' },
-          { label: 'Below Target', value: stats.filter((s) => s.achievedPct < s.goalPct).length, icon: TrendingDown, color: 'text-red-600', bg: 'bg-red-50 dark:bg-red-900/40' },
+          { label: 'Total Managers', value: (statsData?.data || []).length, icon: Users, color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-900/40' },
+          { label: 'On Target', value: (statsData?.data || []).filter((s: ManagerStat) => s.achievedPct >= s.goalPct).length, icon: TrendingUp, color: 'text-green-600', bg: 'bg-green-50 dark:bg-green-900/40' },
+          { label: 'Below Target', value: (statsData?.data || []).filter((s: ManagerStat) => s.achievedPct < s.goalPct).length, icon: TrendingDown, color: 'text-red-600', bg: 'bg-red-50 dark:bg-red-900/40' },
           { label: 'Custom Goals Set', value: goals.length, icon: Target, color: 'text-purple-600', bg: 'bg-purple-50 dark:bg-purple-900/40' },
         ].map((item) => (
           <Card key={item.label} className="text-center py-4">
@@ -204,18 +209,20 @@ export default function ManagersPage() {
         ))}
       </div>
 
-      {/* Manager Goals Table */}
+      {/* Manager Tracker Table */}
       <Card>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-            <Users size={16} className="text-primary-600" /> Manager Goals &amp; Variance
+            <FolderKanban size={16} className="text-primary-600" /> Manager Project Tracker
           </h2>
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="text-xs text-primary-600 hover:text-primary-700 font-medium flex items-center gap-1"
-          >
-            <Plus size={12} /> Add Goal
-          </button>
+          {isAdmin && (
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="text-xs text-primary-600 hover:text-primary-700 font-medium flex items-center gap-1"
+            >
+              <Plus size={12} /> Add Goal
+            </button>
+          )}
         </div>
 
         {isLoading ? (
@@ -232,7 +239,7 @@ export default function ManagersPage() {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 dark:bg-gray-700/50">
                 <tr>
-                  {['Manager', 'Total', 'Active', 'Completed', 'Delayed', 'Goal (%)', 'Achieved (%)', 'Variance (%)'].map((h) => (
+                  {['Manager', 'Total Projects', 'Active', 'Inactive', 'Completed', 'Delayed', 'Goal (%)', 'Achieved (%)', 'Variance (%)', 'Metrics'].map((h) => (
                     <th key={h} className={`py-2.5 px-3 font-medium text-gray-500 dark:text-gray-400 ${h === 'Manager' ? 'text-left' : 'text-center'}`}>{h}</th>
                   ))}
                 </tr>
@@ -240,6 +247,11 @@ export default function ManagersPage() {
               <tbody>
                 {stats.map((m) => {
                   const variance = m.achievedPct - m.goalPct;
+                  const inactive = Math.max(0, m.total - m.active - m.completed - m.delayed);
+                  const inactivePct = m.total > 0 ? Math.round((inactive / m.total) * 100) : 0;
+                  const allocationOk = m.total >= 15;
+                  const inactiveOk = inactivePct <= 5;
+                  const achievementOk = m.achievedPct >= 25;
                   return (
                     <tr key={m.manager} className="border-t border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
                       <td className="py-3 px-3">
@@ -247,15 +259,36 @@ export default function ManagersPage() {
                           <div className="w-7 h-7 rounded-full bg-primary-100 dark:bg-primary-900/40 flex items-center justify-center text-xs font-bold text-primary-700 dark:text-primary-300 flex-shrink-0">
                             {m.manager.charAt(0).toUpperCase()}
                           </div>
-                          <span className="font-medium text-gray-800 dark:text-gray-200">{m.manager}</span>
+                          <Link href={`/projects?projectManager=${encodeURIComponent(m.manager)}`} className="font-medium text-gray-800 dark:text-gray-200 hover:text-primary-600 hover:underline">
+                            {m.manager}
+                          </Link>
                         </div>
                       </td>
-                      <td className="text-center py-3 px-3 text-gray-700 dark:text-gray-300">{m.total}</td>
                       <td className="text-center py-3 px-3">
-                        <span className="inline-flex items-center justify-center min-w-[22px] h-5 px-1 rounded-full bg-green-100 text-green-700 text-xs font-semibold">{m.active}</span>
+                        <Link href={`/projects?projectManager=${encodeURIComponent(m.manager)}`} className="font-semibold text-gray-700 dark:text-gray-300 hover:text-primary-600">
+                          {m.total}
+                        </Link>
                       </td>
                       <td className="text-center py-3 px-3">
-                        <span className="inline-flex items-center justify-center min-w-[22px] h-5 px-1 rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">{m.completed}</span>
+                        <Link href={`/projects?projectManager=${encodeURIComponent(m.manager)}&status=ACTIVE`}>
+                          <span className="inline-flex items-center gap-1 min-w-[28px] h-5 px-1 rounded-full bg-green-100 text-green-700 text-xs font-semibold hover:bg-green-200 cursor-pointer">
+                            <PlayCircle size={10} />{m.active}
+                          </span>
+                        </Link>
+                      </td>
+                      <td className="text-center py-3 px-3">
+                        <Link href={`/projects?projectManager=${encodeURIComponent(m.manager)}&status=ON_HOLD`}>
+                          <span className="inline-flex items-center gap-1 min-w-[28px] h-5 px-1 rounded-full bg-yellow-100 text-yellow-700 text-xs font-semibold hover:bg-yellow-200 cursor-pointer">
+                            <PauseCircle size={10} />{inactive}
+                          </span>
+                        </Link>
+                      </td>
+                      <td className="text-center py-3 px-3">
+                        <Link href={`/projects?projectManager=${encodeURIComponent(m.manager)}&status=COMPLETED`}>
+                          <span className="inline-flex items-center gap-1 min-w-[28px] h-5 px-1 rounded-full bg-blue-100 text-blue-700 text-xs font-semibold hover:bg-blue-200 cursor-pointer">
+                            <CheckCircle size={10} />{m.completed}
+                          </span>
+                        </Link>
                       </td>
                       <td className="text-center py-3 px-3">
                         <span className={`inline-flex items-center justify-center min-w-[22px] h-5 px-1 rounded-full text-xs font-semibold ${m.delayed > 0 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-400'}`}>{m.delayed}</span>
@@ -264,7 +297,7 @@ export default function ManagersPage() {
                       <td className="text-center py-3 px-3">
                         <div className="flex items-center justify-center gap-2">
                           <div className="w-16 bg-gray-200 dark:bg-gray-600 rounded-full h-1.5">
-                            <div className="bg-primary-500 h-1.5 rounded-full" style={{ width: `${m.achievedPct}%` }} />
+                            <div className="bg-primary-500 h-1.5 rounded-full" style={{ width: `${Math.min(m.achievedPct, 100)}%` }} />
                           </div>
                           <span className="font-semibold text-gray-900 dark:text-white text-xs">{m.achievedPct}%</span>
                         </div>
@@ -275,6 +308,19 @@ export default function ManagersPage() {
                           {variance >= 0 ? '+' : ''}{variance}%
                         </span>
                       </td>
+                      <td className="text-center py-3 px-3">
+                        <div className="flex flex-col gap-1 items-center">
+                          <span title={`Allocation: ${m.total}/15 projects`} className={`text-xs px-1.5 py-0.5 rounded font-medium ${allocationOk ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                            {allocationOk ? '✓' : '✗'} {m.total}/15
+                          </span>
+                          <span title={`Inactive rate: ${inactivePct}% (target ≤5%)`} className={`text-xs px-1.5 py-0.5 rounded font-medium ${inactiveOk ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
+                            {inactiveOk ? '✓' : '✗'} {inactivePct}% inactive
+                          </span>
+                          <span title={`Achievement: ${m.achievedPct}% (target ≥25%)`} className={`text-xs px-1.5 py-0.5 rounded font-medium ${achievementOk ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                            {achievementOk ? '✓' : '✗'} {m.achievedPct}% achvd
+                          </span>
+                        </div>
+                      </td>
                     </tr>
                   );
                 })}
@@ -284,8 +330,8 @@ export default function ManagersPage() {
         )}
       </Card>
 
-      {/* Custom Goals List */}
-      {goals.length > 0 && (
+      {/* Custom Goals List — admin only */}
+      {isAdmin && goals.length > 0 && (
         <Card>
           <h2 className="text-base font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
             <Target size={16} className="text-primary-600" /> Custom Goal Settings
@@ -315,36 +361,7 @@ export default function ManagersPage() {
         </Card>
       )}
 
-      {/* Account Managers Section */}
-      <Card>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-            <UserCheck size={16} className="text-primary-600" /> Account Managers Overview
-          </h2>
-          <Link href="/projects" className="text-xs text-primary-600 hover:text-primary-700 font-medium flex items-center gap-1">
-            View All Projects <ChevronRight size={12} />
-          </Link>
-        </div>
-        <p className="text-sm text-gray-500 dark:text-gray-400">
-          Account managers are assigned per project. To see account manager assignments, view individual projects or filter projects by account manager in the All Projects view.
-        </p>
-        <div className="mt-4 flex gap-3">
-          <Link
-            href="/projects"
-            className="flex items-center gap-2 px-4 py-2 bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 rounded-lg text-sm hover:bg-primary-100 transition-colors"
-          >
-            <Users size={14} /> View All Projects
-          </Link>
-          <Link
-            href="/projects/new"
-            className="flex items-center gap-2 px-4 py-2 bg-gray-50 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg text-sm hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
-          >
-            <Plus size={14} /> New Project
-          </Link>
-        </div>
-      </Card>
-
-      {showAddModal && (
+      {showAddModal && isAdmin && (
         <AddGoalModal
           managers={managerNames}
           onClose={() => setShowAddModal(false)}

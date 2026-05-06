@@ -285,7 +285,6 @@ const defaultTargetPlatforms: TargetPlatform[] = [
 const tabs = [
   { id: 'templates', name: 'Project Templates', icon: Workflow },
   { id: 'migration', name: 'Migration Types', icon: Database },
-  { id: 'case-study', name: 'Case Study Template', icon: FileText },
   { id: 'project', name: 'Project Configuration', icon: FolderKanban },
   { id: 'notifications', name: 'Notifications', icon: Bell },
   { id: 'team', name: 'Team Management', icon: Users },
@@ -352,6 +351,47 @@ export default function SettingsPage() {
   const [testEmailStatus, setTestEmailStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
   const [testEmailRecipient, setTestEmailRecipient] = useState('');
 
+  // Per-notification-type SMTP customization
+  const defaultNotifTypeConfigs: Record<string, { recipients: string; subject: string; body: string }> = {
+    delayAlerts: { recipients: '', subject: '[PMO] Project Delay Alert: {{projectName}}', body: 'Project {{projectName}} ({{customerName}}) is delayed by {{delayDays}} days.\n\nProject Manager: {{projectManager}}\nPlanned End: {{plannedEnd}}\n\nPlease review and take action.' },
+    phaseCompletion: { recipients: '', subject: '[PMO] Phase Completed: {{projectName}} — {{phase}}', body: 'Project {{projectName}} has completed phase: {{phase}}.\n\nProject Manager: {{projectManager}}\nCustomer: {{customerName}}' },
+    projectCompletion: { recipients: '', subject: '[PMO] Project Completed: {{projectName}}', body: 'Project {{projectName}} ({{customerName}}) has been marked as completed.\n\nProject Manager: {{projectManager}}\nActual End: {{actualEnd}}\n\nPlease create a case study for this project.' },
+    caseStudyReminders: { recipients: '', subject: '[PMO] Case Study Reminder: {{projectName}}', body: 'Reminder: The case study for project {{projectName}} ({{customerName}}) is pending completion.\n\nProject Manager: {{projectManager}}\nPlease complete the case study at your earliest convenience.' },
+  };
+  const [notifTypeConfigs, setNotifTypeConfigs] = useState<Record<string, { recipients: string; subject: string; body: string }>>(defaultNotifTypeConfigs);
+  const [expandedNotifType, setExpandedNotifType] = useState<string | null>(null);
+
+  // Custom notification types (user-created, app-wide triggers)
+  interface CustomNotifType {
+    id: string;
+    key: string;
+    label: string;
+    desc: string;
+    icon: string;
+    trigger: string; // event key that fires this notification
+    enabled: boolean;
+  }
+  const TRIGGER_OPTIONS = [
+    { value: 'project.status.changed', label: 'Project status changes' },
+    { value: 'project.created', label: 'New project created' },
+    { value: 'project.completed', label: 'Project completed/cancelled' },
+    { value: 'project.delayed', label: 'Project becomes delayed' },
+    { value: 'project.escalated', label: 'Project escalated' },
+    { value: 'project.overage', label: 'Project marked as overage' },
+    { value: 'phase.changed', label: 'Project phase changes' },
+    { value: 'case_study.pending', label: 'Case study pending' },
+    { value: 'manager.goal.missed', label: 'Manager goal missed' },
+    { value: 'weekly', label: 'Weekly (scheduled)' },
+    { value: 'monthly', label: 'Monthly (scheduled)' },
+  ];
+  const [customNotifTypes, setCustomNotifTypes] = useState<CustomNotifType[]>([]);
+  const [showAddNotifModal, setShowAddNotifModal] = useState(false);
+  const [newNotif, setNewNotif] = useState({ label: '', desc: '', icon: '🔔', trigger: 'project.status.changed' });
+
+  // Automation rule add modal state (hoisted — cannot use useState inside render function)
+  const [showAddAutomationRule, setShowAddAutomationRule] = useState(false);
+  const [newAutomationRule, setNewAutomationRule] = useState({ name: '', trigger: 'daily', action: 'send_email', actionDetail: '' });
+
   // Data export state
   const [exportStatus, setExportStatus] = useState<{ projects: string; reports: string }>({ projects: '', reports: '' });
 
@@ -380,6 +420,8 @@ export default function SettingsPage() {
         if (parsed.combinationDocs) setCombinationDocs(parsed.combinationDocs);
         if (parsed.companyLogo) setCompanyLogo(parsed.companyLogo);
         if (parsed.testEmailRecipient) setTestEmailRecipient(parsed.testEmailRecipient);
+        if (parsed.notifTypeConfigs) setNotifTypeConfigs((p) => ({ ...p, ...parsed.notifTypeConfigs }));
+        if (parsed.customNotifTypes) setCustomNotifTypes(parsed.customNotifTypes);
       }
     } catch (e) {
       console.error('Failed to load settings');
@@ -432,6 +474,8 @@ export default function SettingsPage() {
         combinationDocs,
         companyLogo,
         testEmailRecipient,
+        notifTypeConfigs,
+        customNotifTypes,
       };
       localStorage.setItem('pmoSettings', JSON.stringify(fullData));
 
@@ -972,40 +1016,108 @@ export default function SettingsPage() {
 
         {/* Notification Types */}
         <div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Notification Types</h3>
+          <h3 className="text-lg font-semibold text-gray-900 mb-1">Notification Types</h3>
+          <p className="text-sm text-gray-500 mb-4">Enable each type and customize the recipient list, subject line, and email body. Uses the SMTP configuration above.</p>
           <div className="space-y-3">
             {[
               { key: 'delayAlerts', label: 'Delay Alerts', desc: 'Notify when projects become delayed or at-risk', icon: '⚠️' },
               { key: 'phaseCompletion', label: 'Phase Completion', desc: 'Notify when a project phase is marked complete', icon: '✅' },
               { key: 'projectCompletion', label: 'Project Completion', desc: 'Notify when a project is fully completed', icon: '🏁' },
               { key: 'caseStudyReminders', label: 'Case Study Reminders', desc: 'Remind team to create case studies for completed projects', icon: '📋' },
-            ].map((item) => (
-              <label
-                key={item.key}
-                className={`flex items-center justify-between p-4 border rounded-xl cursor-pointer transition-all ${
-                  notificationSettings[item.key as keyof NotificationSettings]
-                    ? 'border-primary-300 bg-primary-50'
-                    : 'border-gray-200 hover:bg-gray-50'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <span className="text-xl">{item.icon}</span>
-                  <div>
-                    <p className="font-medium text-gray-900">{item.label}</p>
-                    <p className="text-sm text-gray-500">{item.desc}</p>
+            ].map((item) => {
+              const isEnabled = notificationSettings[item.key as keyof NotificationSettings] as boolean;
+              const isExpanded = expandedNotifType === item.key;
+              const cfg = notifTypeConfigs[item.key] || defaultNotifTypeConfigs[item.key];
+              return (
+                <div key={item.key} className={`border rounded-xl transition-all ${isEnabled ? 'border-primary-300' : 'border-gray-200'}`}>
+                  <div
+                    className={`flex items-center justify-between p-4 cursor-pointer ${isEnabled ? 'bg-primary-50' : 'hover:bg-gray-50'} rounded-xl`}
+                    onClick={() => setExpandedNotifType(isExpanded ? null : item.key)}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-xl">{item.icon}</span>
+                      <div>
+                        <p className="font-medium text-gray-900">{item.label}</p>
+                        <p className="text-sm text-gray-500">{item.desc}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      {cfg.recipients && <span className="text-xs text-gray-400 hidden sm:block">{cfg.recipients.split(',')[0].trim()}{cfg.recipients.includes(',') ? ' +more' : ''}</span>}
+                      <label className="relative inline-flex items-center cursor-pointer flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={isEnabled}
+                          onChange={(e) => setNotificationSettings({ ...notificationSettings, [item.key]: e.target.checked })}
+                          className="sr-only peer"
+                        />
+                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
+                      </label>
+                      <ChevronDown size={14} className={`text-gray-400 transition-transform flex-shrink-0 ${isExpanded ? 'rotate-180' : ''}`} />
+                    </div>
                   </div>
+                  {isExpanded && (
+                    <div className="px-4 pb-4 space-y-3 border-t border-gray-200 pt-4 bg-white rounded-b-xl">
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-700 mb-1">Recipients (comma-separated emails)</label>
+                        <input
+                          type="text"
+                          value={cfg.recipients}
+                          onChange={(e) => setNotifTypeConfigs({ ...notifTypeConfigs, [item.key]: { ...cfg, recipients: e.target.value } })}
+                          placeholder="manager@company.com, admin@company.com"
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
+                        />
+                        <p className="text-xs text-gray-400 mt-0.5">Leave blank to use the From email. Overrides per-notification send targets.</p>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-700 mb-1">Email Subject</label>
+                        <input
+                          type="text"
+                          value={cfg.subject}
+                          onChange={(e) => setNotifTypeConfigs({ ...notifTypeConfigs, [item.key]: { ...cfg, subject: e.target.value } })}
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-700 mb-1">Email Body</label>
+                        <textarea
+                          rows={5}
+                          value={cfg.body}
+                          onChange={(e) => setNotifTypeConfigs({ ...notifTypeConfigs, [item.key]: { ...cfg, body: e.target.value } })}
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400 font-mono"
+                        />
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          Available variables: <code className="bg-gray-100 px-1 rounded">{'{{projectName}}'}</code> <code className="bg-gray-100 px-1 rounded">{'{{customerName}}'}</code> <code className="bg-gray-100 px-1 rounded">{'{{projectManager}}'}</code> <code className="bg-gray-100 px-1 rounded">{'{{delayDays}}'}</code> <code className="bg-gray-100 px-1 rounded">{'{{phase}}'}</code> <code className="bg-gray-100 px-1 rounded">{'{{plannedEnd}}'}</code>
+                        </p>
+                      </div>
+                      <button
+                        onClick={async () => {
+                          if (!testEmailRecipient && !cfg.recipients) { alert('Enter a recipient email first.'); return; }
+                          setTestEmailStatus('sending');
+                          try {
+                            await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/notifications/test-email`, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token') || ''}` },
+                              body: JSON.stringify({
+                                to: cfg.recipients || testEmailRecipient,
+                                smtpSettings,
+                                subject: cfg.subject,
+                                body: cfg.body,
+                                notificationType: item.key,
+                              }),
+                            });
+                            setTestEmailStatus('sent');
+                          } catch { setTestEmailStatus('error'); }
+                          setTimeout(() => setTestEmailStatus('idle'), 3000);
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                      >
+                        <Mail size={12} /> Send Test for This Type
+                      </button>
+                    </div>
+                  )}
                 </div>
-                <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
-                  <input
-                    type="checkbox"
-                    checked={notificationSettings[item.key as keyof NotificationSettings] as boolean}
-                    onChange={(e) => setNotificationSettings({ ...notificationSettings, [item.key]: e.target.checked })}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
-                </label>
-              </label>
-            ))}
+              );
+            })}
           </div>
         </div>
 
@@ -1076,6 +1188,125 @@ export default function SettingsPage() {
               </div>
             </div>
           </div>
+        </div>
+
+        {/* Custom Notification Types */}
+        <div>
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">Custom Notification Types</h3>
+              <p className="text-sm text-gray-500">Create new notification triggers that fire across the entire application automatically.</p>
+            </div>
+            <button
+              onClick={() => setShowAddNotifModal(true)}
+              className="flex items-center gap-1.5 px-3 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors"
+            >
+              <Plus size={14} /> New Notification
+            </button>
+          </div>
+          {customNotifTypes.length === 0 ? (
+            <div className="text-center py-8 text-gray-400 border-2 border-dashed border-gray-200 rounded-xl">
+              <Bell size={28} className="mx-auto mb-2 opacity-30" />
+              <p className="text-sm">No custom notification types yet. Click "New Notification" to add one.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {customNotifTypes.map((cn) => {
+                const cfg = notifTypeConfigs[cn.key];
+                const isExpanded = expandedNotifType === `custom_${cn.id}`;
+                const triggerLabel = TRIGGER_OPTIONS.find((t) => t.value === cn.trigger)?.label || cn.trigger;
+                return (
+                  <div key={cn.id} className={`border rounded-xl transition-all ${cn.enabled ? 'border-green-300' : 'border-gray-200'}`}>
+                    <div
+                      className={`flex items-center justify-between p-4 cursor-pointer rounded-xl ${cn.enabled ? 'bg-green-50' : 'hover:bg-gray-50'}`}
+                      onClick={() => setExpandedNotifType(isExpanded ? null : `custom_${cn.id}`)}
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="text-xl">{cn.icon}</span>
+                        <div>
+                          <p className="font-medium text-gray-900">{cn.label}</p>
+                          <p className="text-xs text-gray-500">Triggers on: <span className="font-medium text-primary-600">{triggerLabel}</span></p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <label className="relative inline-flex items-center cursor-pointer flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                          <input type="checkbox" checked={cn.enabled} onChange={() => setCustomNotifTypes(customNotifTypes.map((t) => t.id === cn.id ? { ...t, enabled: !t.enabled } : t))} className="sr-only peer" />
+                          <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-500"></div>
+                        </label>
+                        <button onClick={(e) => { e.stopPropagation(); setCustomNotifTypes(customNotifTypes.filter((t) => t.id !== cn.id)); }} className="p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"><X size={14} /></button>
+                        <ChevronDown size={14} className={`text-gray-400 transition-transform flex-shrink-0 ${isExpanded ? 'rotate-180' : ''}`} />
+                      </div>
+                    </div>
+                    {isExpanded && cfg && (
+                      <div className="px-4 pb-4 space-y-3 border-t border-gray-200 pt-4 bg-white rounded-b-xl">
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-700 mb-1">Recipients</label>
+                          <input type="text" value={cfg.recipients} onChange={(e) => setNotifTypeConfigs({ ...notifTypeConfigs, [cn.key]: { ...cfg, recipients: e.target.value } })} placeholder="email1@company.com, email2@company.com" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400" />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-700 mb-1">Subject</label>
+                          <input type="text" value={cfg.subject} onChange={(e) => setNotifTypeConfigs({ ...notifTypeConfigs, [cn.key]: { ...cfg, subject: e.target.value } })} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400" />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-700 mb-1">Body</label>
+                          <textarea rows={4} value={cfg.body} onChange={(e) => setNotifTypeConfigs({ ...notifTypeConfigs, [cn.key]: { ...cfg, body: e.target.value } })} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400 font-mono" />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {/* Add custom notification modal */}
+          {showAddNotifModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setShowAddNotifModal(false)}>
+              <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between p-5 border-b border-gray-200">
+                  <h2 className="text-base font-bold text-gray-900">New Custom Notification</h2>
+                  <button onClick={() => setShowAddNotifModal(false)} className="p-1.5 rounded-lg hover:bg-gray-100"><X size={16} className="text-gray-500" /></button>
+                </div>
+                <div className="p-5 space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                    <input type="text" value={newNotif.label} onChange={(e) => setNewNotif({ ...newNotif, label: e.target.value })} placeholder="e.g. Manager Weekly Summary" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                    <input type="text" value={newNotif.desc} onChange={(e) => setNewNotif({ ...newNotif, desc: e.target.value })} placeholder="Short description of when/why this fires" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Trigger Event</label>
+                    <select value={newNotif.trigger} onChange={(e) => setNewNotif({ ...newNotif, trigger: e.target.value })} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400">
+                      {TRIGGER_OPTIONS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Icon (emoji)</label>
+                    <input type="text" value={newNotif.icon} onChange={(e) => setNewNotif({ ...newNotif, icon: e.target.value })} maxLength={4} className="w-20 border border-gray-300 rounded-lg px-3 py-2 text-sm text-center focus:outline-none focus:ring-2 focus:ring-primary-400" />
+                  </div>
+                  <div className="flex gap-3 pt-2">
+                    <button onClick={() => setShowAddNotifModal(false)} className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50">Cancel</button>
+                    <button
+                      disabled={!newNotif.label.trim()}
+                      onClick={() => {
+                        const id = `custom_${Date.now()}`;
+                        const key = `custom_${newNotif.label.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')}`;
+                        const newType: CustomNotifType = { id, key, label: newNotif.label, desc: newNotif.desc, icon: newNotif.icon, trigger: newNotif.trigger, enabled: true };
+                        setCustomNotifTypes([...customNotifTypes, newType]);
+                        setNotifTypeConfigs({ ...notifTypeConfigs, [key]: { recipients: '', subject: `[PMO] ${newNotif.label}`, body: `Notification: ${newNotif.label}\n\nProject: {{projectName}}\nManager: {{projectManager}}` } });
+                        setNewNotif({ label: '', desc: '', icon: '🔔', trigger: 'project.status.changed' });
+                        setShowAddNotifModal(false);
+                      }}
+                      className="flex-1 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50"
+                    >
+                      Add Notification
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -1605,40 +1836,143 @@ export default function SettingsPage() {
     </div>
   );
 
-  const renderAutomationTab = () => (
-    <div className="space-y-6">
-      <div>
-        <h3 className="text-lg font-semibold text-gray-900 mb-2">Automation Rules</h3>
-        <p className="text-sm text-gray-500 mb-4">Configure automated tasks and workflows</p>
-      </div>
+  const renderAutomationTab = () => {
+    const AUTOMATION_TRIGGERS = [
+      { value: 'daily', label: 'Daily (scheduled)' },
+      { value: 'weekly', label: 'Weekly (scheduled)' },
+      { value: 'monthly', label: 'Monthly (scheduled)' },
+      { value: 'project.created', label: 'When project is created' },
+      { value: 'project.status.changed', label: 'When project status changes' },
+      { value: 'project.completed', label: 'When project is completed/cancelled' },
+      { value: 'project.delayed', label: 'When project becomes delayed' },
+      { value: 'project.escalated', label: 'When project is escalated' },
+      { value: 'project.overage', label: 'When project is marked overage' },
+      { value: 'phase.changed', label: 'When project phase changes' },
+      { value: 'case_study.pending', label: 'When case study is pending' },
+    ];
+    const AUTOMATION_ACTIONS = [
+      { value: 'send_email', label: 'Send email notification' },
+      { value: 'update_delay_status', label: 'Update delay status for all projects' },
+      { value: 'create_notification', label: 'Create in-app notification' },
+      { value: 'flag_risk', label: 'Flag project as at-risk' },
+      { value: 'remind_case_study', label: 'Send case study reminder' },
+      { value: 'escalate_project', label: 'Auto-escalate overdue projects' },
+      { value: 'notify_manager', label: 'Notify project manager' },
+      { value: 'export_report', label: 'Generate and export report' },
+    ];
+    const showAddRule = showAddAutomationRule;
+    const setShowAddRule = setShowAddAutomationRule;
+    const newRule = newAutomationRule;
+    const setNewRule = setNewAutomationRule;
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-1">Automation Rules</h3>
+            <p className="text-sm text-gray-500">Configure automated tasks and workflows that trigger across the entire application</p>
+          </div>
+          <button
+            onClick={() => setShowAddRule(true)}
+            className="flex items-center gap-1.5 px-3 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors"
+          >
+            <Plus size={14} /> New Rule
+          </button>
+        </div>
 
-      <div className="space-y-3">
-        {automationRules.map((rule) => (
-          <div key={rule.id} className={`p-4 border rounded-lg ${rule.enabled ? 'border-green-200 bg-green-50' : 'border-gray-200'}`}>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${rule.enabled ? 'bg-green-100' : 'bg-gray-100'}`}>
-                  <Workflow className={rule.enabled ? 'text-green-600' : 'text-gray-400'} size={20} />
+        <div className="space-y-3">
+          {automationRules.map((rule) => (
+            <div key={rule.id} className={`p-4 border rounded-xl ${rule.enabled ? 'border-green-200 bg-green-50' : 'border-gray-200'}`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${rule.enabled ? 'bg-green-100' : 'bg-gray-100'}`}>
+                    <Workflow className={rule.enabled ? 'text-green-600' : 'text-gray-400'} size={20} />
+                  </div>
+                  <div>
+                    <p className="font-medium text-gray-900">{rule.name}</p>
+                    <p className="text-xs text-gray-500 flex items-center gap-1">
+                      <Clock size={10} /> {rule.trigger}
+                      <span className="mx-1 text-gray-300">→</span>
+                      <span className="text-primary-600">{rule.action}</span>
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <p className="font-medium text-gray-900">{rule.name}</p>
-                  <p className="text-sm text-gray-500">
-                    <Clock size={12} className="inline mr-1" />
-                    {rule.trigger}
-                  </p>
+                <div className="flex items-center gap-2">
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" checked={rule.enabled} onChange={() => toggleAutomationRule(rule.id)} className="sr-only peer" />
+                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
+                  </label>
+                  {/* Only allow deleting custom rules (id starts with 'custom_') */}
+                  {String(rule.id).startsWith('custom_') && (
+                    <button onClick={() => setAutomationRules(automationRules.filter((r) => r.id !== rule.id))} className="p-1.5 rounded hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"><X size={14} /></button>
+                  )}
                 </div>
               </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input type="checkbox" checked={rule.enabled} onChange={() => toggleAutomationRule(rule.id)} className="sr-only peer" />
-                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
-              </label>
             </div>
-            <p className="mt-2 text-sm text-gray-600 ml-13">{rule.action}</p>
+          ))}
+        </div>
+
+        {/* Add Rule Modal */}
+        {showAddRule && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setShowAddRule(false)}>
+            <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between p-5 border-b border-gray-200">
+                <h2 className="text-base font-bold text-gray-900 flex items-center gap-2"><Workflow size={16} className="text-primary-600" /> New Automation Rule</h2>
+                <button onClick={() => setShowAddRule(false)} className="p-1.5 rounded-lg hover:bg-gray-100"><X size={16} className="text-gray-500" /></button>
+              </div>
+              <div className="p-5 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Rule Name</label>
+                  <input type="text" value={newRule.name} onChange={(e) => setNewRule({ ...newRule, name: e.target.value })} placeholder="e.g. Auto-notify on project delay" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Trigger</label>
+                  <select value={newRule.trigger} onChange={(e) => setNewRule({ ...newRule, trigger: e.target.value })} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400">
+                    {AUTOMATION_TRIGGERS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Action</label>
+                  <select value={newRule.action} onChange={(e) => setNewRule({ ...newRule, action: e.target.value })} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400">
+                    {AUTOMATION_ACTIONS.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Action Detail (optional)</label>
+                  <input type="text" value={newRule.actionDetail} onChange={(e) => setNewRule({ ...newRule, actionDetail: e.target.value })} placeholder="e.g. recipient email or additional config" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400" />
+                </div>
+                <div className="p-3 bg-blue-50 rounded-lg text-xs text-blue-700">
+                  <strong>App-wide effect:</strong> When enabled, this rule is evaluated on every matching event across all projects, managers, and reports in the application.
+                </div>
+                <div className="flex gap-3 pt-2">
+                  <button onClick={() => setShowAddRule(false)} className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50">Cancel</button>
+                  <button
+                    disabled={!newRule.name.trim()}
+                    onClick={() => {
+                      const id = `custom_${Date.now()}`;
+                      const actionLabel = AUTOMATION_ACTIONS.find((a) => a.value === newRule.action)?.label || newRule.action;
+                      const triggerLabel = AUTOMATION_TRIGGERS.find((t) => t.value === newRule.trigger)?.label || newRule.trigger;
+                      setAutomationRules([...automationRules, {
+                        id,
+                        name: newRule.name,
+                        trigger: triggerLabel,
+                        action: newRule.actionDetail ? `${actionLabel}: ${newRule.actionDetail}` : actionLabel,
+                        enabled: true,
+                      }]);
+                      setNewRule({ name: '', trigger: 'daily', action: 'send_email', actionDetail: '' });
+                      setShowAddRule(false);
+                    }}
+                    className="flex-1 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50"
+                  >
+                    Create Rule
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
-        ))}
+        )}
       </div>
-    </div>
-  );
+    );
+  };
 
   const renderIntegrationsTab = () => (
     <div className="space-y-6">
@@ -1978,99 +2312,17 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* Theme Colors */}
-      <div>
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Theme Colors</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Primary Color</label>
-            <div className="flex items-center gap-3">
-              <input
-                type="color"
-                value={brandingSettings.primaryColor}
-                onChange={(e) => {
-                  const color = e.target.value;
-                  setBrandingSettings((prev) => ({ ...prev, primaryColor: color }));
-                  document.documentElement.style.setProperty('--color-primary', color);
-                }}
-                className="w-12 h-12 rounded-lg cursor-pointer border border-gray-200"
-              />
-              <Input
-                value={brandingSettings.primaryColor}
-                onChange={(e) => {
-                  const color = e.target.value;
-                  setBrandingSettings((prev) => ({ ...prev, primaryColor: color }));
-                  if (/^#[0-9A-Fa-f]{6}$/.test(color)) {
-                    document.documentElement.style.setProperty('--color-primary', color);
-                  }
-                }}
-                className="flex-1 font-mono"
-                placeholder="#4F46E5"
-              />
-            </div>
-            <div className="mt-2 flex gap-2 flex-wrap">
-              {['#4F46E5','#2563EB','#7C3AED','#DC2626','#059669','#D97706','#0891B2','#374151'].map((c) => (
-                <button
-                  key={c}
-                  title={c}
-                  onClick={() => {
-                    setBrandingSettings((prev) => ({ ...prev, primaryColor: c }));
-                    document.documentElement.style.setProperty('--color-primary', c);
-                  }}
-                  className="w-7 h-7 rounded-full border-2 transition-transform hover:scale-110"
-                  style={{ backgroundColor: c, borderColor: brandingSettings.primaryColor === c ? '#111' : 'transparent' }}
-                />
-              ))}
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Secondary Color</label>
-            <div className="flex items-center gap-3">
-              <input
-                type="color"
-                value={brandingSettings.secondaryColor}
-                onChange={(e) => setBrandingSettings((prev) => ({ ...prev, secondaryColor: e.target.value }))}
-                className="w-12 h-12 rounded-lg cursor-pointer border border-gray-200"
-              />
-              <Input
-                value={brandingSettings.secondaryColor}
-                onChange={(e) => setBrandingSettings((prev) => ({ ...prev, secondaryColor: e.target.value }))}
-                className="flex-1 font-mono"
-                placeholder="#10B981"
-              />
-            </div>
-            <div className="mt-2 flex gap-2 flex-wrap">
-              {['#10B981','#3B82F6','#8B5CF6','#F59E0B','#EF4444','#06B6D4','#84CC16','#6B7280'].map((c) => (
-                <button
-                  key={c}
-                  title={c}
-                  onClick={() => setBrandingSettings((prev) => ({ ...prev, secondaryColor: c }))}
-                  className="w-7 h-7 rounded-full border-2 transition-transform hover:scale-110"
-                  style={{ backgroundColor: c, borderColor: brandingSettings.secondaryColor === c ? '#111' : 'transparent' }}
-                />
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-
       {/* Preview */}
       <div>
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Preview</h3>
-        <div className="p-4 border border-gray-200 rounded-xl bg-gray-50 space-y-3">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: brandingSettings.primaryColor }}>
-              {companyLogo
-                ? <img src={companyLogo} alt="Logo" className="w-8 h-8 object-contain rounded" />
-                : <FolderKanban className="text-white" size={20} />
-              }
-            </div>
-            <span className="text-lg font-bold text-gray-900">{brandingSettings.companyName || 'PMO Tracker'}</span>
+        <div className="p-4 border border-gray-200 rounded-xl bg-gray-50 flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-primary-600 flex items-center justify-center">
+            {companyLogo
+              ? <img src={companyLogo} alt="Logo" className="w-8 h-8 object-contain rounded" />
+              : <FolderKanban className="text-white" size={20} />
+            }
           </div>
-          <div className="flex gap-2">
-            <span className="px-3 py-1 rounded-full text-white text-sm font-medium" style={{ backgroundColor: brandingSettings.primaryColor }}>Primary Button</span>
-            <span className="px-3 py-1 rounded-full text-white text-sm font-medium" style={{ backgroundColor: brandingSettings.secondaryColor }}>Secondary</span>
-          </div>
+          <span className="text-lg font-bold text-gray-900">{brandingSettings.companyName || 'PMO Tracker'}</span>
         </div>
       </div>
 

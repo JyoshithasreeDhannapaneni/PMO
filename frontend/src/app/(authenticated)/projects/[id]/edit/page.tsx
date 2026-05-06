@@ -20,7 +20,11 @@ export default function EditProjectPage({ params }: EditProjectPageProps) {
   const handleSubmit = async (formData: CreateProjectInput) => {
     try {
       await updateProject.mutateAsync({ id: params.id, data: formData });
-      router.push(`/projects/${params.id}`);
+      if (formData.status === 'COMPLETED' || formData.status === 'CANCELLED') {
+        router.push(`/case-studies?projectId=${params.id}`);
+      } else {
+        router.push(`/projects/${params.id}`);
+      }
     } catch (error) {
       console.error('Failed to update project:', error);
     }
