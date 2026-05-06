@@ -58,7 +58,7 @@ function mapChangeRequestRow(row: any) {
 class ChangeRequestService {
   async getByProject(projectId: string) {
     const result = await query(
-      `SELECT * FROM change_requests WHERE project_id = $1 
+      `SELECT * FROM change_requests WHERE project_id = ? 
        ORDER BY status ASC, priority DESC, requested_date DESC`,
       [projectId]
     );
@@ -70,7 +70,7 @@ class ChangeRequestService {
       `SELECT cr.*, p.name as project_name
        FROM change_requests cr
        JOIN projects p ON cr.project_id = p.id
-       WHERE cr.id = $1`,
+       WHERE cr.id = ?`,
       [id]
     );
 
@@ -206,17 +206,17 @@ class ChangeRequestService {
   }
 
   async delete(id: string) {
-    await query(`DELETE FROM change_requests WHERE id = $1`, [id]);
+    await query(`DELETE FROM change_requests WHERE id = ?`, [id]);
     logger.info(`Change request deleted: ${id}`);
   }
 
   async getSummary(projectId: string) {
     const [total, pending, approved, rejected, implemented] = await Promise.all([
-      query(`SELECT COUNT(*) FROM change_requests WHERE project_id = $1`, [projectId]),
-      query(`SELECT COUNT(*) FROM change_requests WHERE project_id = $1 AND status IN ('PENDING', 'UNDER_REVIEW')`, [projectId]),
-      query(`SELECT COUNT(*) FROM change_requests WHERE project_id = $1 AND status = 'APPROVED'`, [projectId]),
-      query(`SELECT COUNT(*) FROM change_requests WHERE project_id = $1 AND status = 'REJECTED'`, [projectId]),
-      query(`SELECT COUNT(*) FROM change_requests WHERE project_id = $1 AND status = 'IMPLEMENTED'`, [projectId]),
+      query(`SELECT COUNT(*) FROM change_requests WHERE project_id = ?`, [projectId]),
+      query(`SELECT COUNT(*) FROM change_requests WHERE project_id = ? AND status IN ('PENDING', 'UNDER_REVIEW')`, [projectId]),
+      query(`SELECT COUNT(*) FROM change_requests WHERE project_id = ? AND status = 'APPROVED'`, [projectId]),
+      query(`SELECT COUNT(*) FROM change_requests WHERE project_id = ? AND status = 'REJECTED'`, [projectId]),
+      query(`SELECT COUNT(*) FROM change_requests WHERE project_id = ? AND status = 'IMPLEMENTED'`, [projectId]),
     ]);
 
     return {

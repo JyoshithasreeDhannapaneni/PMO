@@ -60,4 +60,13 @@ router.post('/deescalate/:id', dashboardController.deescalateProject);
 // POST /api/dashboard/set-resolved-date/:id - Set or clear the resolved date
 router.post('/set-resolved-date/:id', dashboardController.setResolvedDate);
 
+// GET /api/dashboard/archived-escalations - Completed/archived escalated projects
+router.get('/archived-escalations', dashboardController.getArchivedEscalations);
+
+// POST /api/dashboard/archive-escalation/:id - Archive an escalated project
+router.post('/archive-escalation/:id', dashboardController.archiveEscalation);
+
+// POST /api/dashboard/unarchive-escalation/:id - Restore to active escalations
+router.post('/unarchive-escalation/:id', dashboardController.unarchiveEscalation);
+
 export default router;

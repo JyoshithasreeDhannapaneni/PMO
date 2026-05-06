@@ -17,14 +17,14 @@ class DashboardService {
   // Build a WHERE clause fragment for manager filtering
   private managerWhere(managerName?: string): { clause: string; params: string[] } {
     if (managerName) {
-      return { clause: `WHERE project_manager = $1`, params: [managerName] };
+      return { clause: `WHERE project_manager = ?`, params: [managerName] };
     }
     return { clause: '', params: [] };
   }
 
   private andManagerWhere(managerName?: string): { clause: string; params: string[] } {
     if (managerName) {
-      return { clause: `AND project_manager = $1`, params: [managerName] };
+      return { clause: `AND project_manager = ?`, params: [managerName] };
     }
     return { clause: '', params: [] };
   }
@@ -162,7 +162,7 @@ class DashboardService {
      FROM projects
      WHERE status = 'ACTIVE'
        AND planned_end >= NOW()
-       AND planned_end <= NOW() + (${safeDays} * INTERVAL '1 day')
+       AND planned_end <= DATE_ADD(NOW(), INTERVAL ${safeDays} DAY)
        ${aw}
      ORDER BY planned_end ASC`,
     ap
@@ -440,10 +440,8 @@ class DashboardService {
       resolved_date DATETIME NULL,
       INDEX idx_esc_hist_project (project_id)
     )`, []);
-    // Add resolved_date to projects table if missing
-    try {
-      await execute(`ALTER TABLE projects ADD COLUMN resolved_date DATETIME NULL`, []);
-    } catch (_) { /* column already exists */ }
+    try { await execute(`ALTER TABLE projects ADD COLUMN resolved_date DATETIME NULL`, []); } catch (_) { /* exists */ }
+    try { await execute(`ALTER TABLE projects ADD COLUMN escalation_archived TINYINT(1) NOT NULL DEFAULT 0`, []); } catch (_) { /* exists */ }
     this._escalationHistoryReady = true;
   }
 
@@ -455,7 +453,8 @@ class DashboardService {
               planned_end, delay_days, delay_status, migration_types,
               is_escalated, escalation_priority, escalated_at, escalation_notes, resolved_date
        FROM projects
-       WHERE is_escalated = 1 AND status NOT IN ('COMPLETED','CANCELLED') ${aw}
+       WHERE is_escalated = 1 AND status NOT IN ('COMPLETED','CANCELLED')
+             AND (escalation_archived IS NULL OR escalation_archived = 0) ${aw}
        ORDER BY FIELD(escalation_priority,'HIGH','MEDIUM','LOW'), delay_days DESC`,
       ap
     );
@@ -504,6 +503,74 @@ class DashboardService {
       }
     }
     return projects;
+  }
+
+  async getArchivedEscalations(managerName?: string) {
+    await this.ensureEscalationHistoryTable();
+    const { clause: aw, params: ap } = this.andManagerWhere(managerName);
+    const result = await query(
+      `SELECT id, name, customer_name, project_manager, account_manager, status, phase,
+              planned_end, delay_days, delay_status, migration_types,
+              is_escalated, escalation_priority, escalated_at, escalation_notes, resolved_date, escalation_archived
+       FROM projects
+       WHERE is_escalated = 1 AND (status IN ('COMPLETED','CANCELLED') OR escalation_archived = 1) ${aw}
+       ORDER BY COALESCE(resolved_date, escalated_at) DESC`,
+      ap
+    );
+    const projects = result.rows.map((r: any) => ({
+      id: r.id,
+      name: r.name,
+      customerName: r.customer_name,
+      projectManager: r.project_manager,
+      accountManager: r.account_manager,
+      status: r.status,
+      phase: r.phase,
+      plannedEnd: r.planned_end,
+      delayDays: r.delay_days,
+      delayStatus: r.delay_status,
+      migrationTypes: r.migration_types,
+      isEscalated: !!r.is_escalated,
+      escalationPriority: r.escalation_priority || 'MEDIUM',
+      escalatedAt: r.escalated_at,
+      escalationNotes: r.escalation_notes,
+      resolvedDate: r.resolved_date,
+      escalationArchived: !!r.escalation_archived,
+      escalationHistory: [] as any[],
+    }));
+    if (projects.length > 0) {
+      const ids = projects.map((p) => p.id);
+      const placeholders = ids.map(() => '?').join(',');
+      const histResult = await query(
+        `SELECT id, project_id, priority, escalation_type, notes, escalated_at, resolved_date
+         FROM escalation_history WHERE project_id IN (${placeholders}) ORDER BY escalated_at DESC`,
+        ids
+      );
+      const histMap: Record<string, any[]> = {};
+      for (const h of histResult.rows) {
+        if (!histMap[h.project_id]) histMap[h.project_id] = [];
+        histMap[h.project_id].push({
+          id: h.id,
+          priority: h.priority,
+          escalationType: h.escalation_type,
+          notes: h.notes,
+          escalatedAt: h.escalated_at,
+          resolvedDate: h.resolved_date,
+        });
+      }
+      for (const p of projects) {
+        p.escalationHistory = histMap[p.id] || [];
+      }
+    }
+    return projects;
+  }
+
+  async archiveEscalation(projectId: string) {
+    await this.ensureEscalationHistoryTable();
+    await execute(`UPDATE projects SET escalation_archived = 1 WHERE id = ?`, [projectId]);
+  }
+
+  async unarchiveEscalation(projectId: string) {
+    await execute(`UPDATE projects SET escalation_archived = 0 WHERE id = ?`, [projectId]);
   }
 
   private _overageHistoryReady = false;

@@ -69,14 +69,14 @@ class NotificationService {
       });
 
       await query(
-        `UPDATE notifications SET status = 'SENT', sent_at = NOW() WHERE id = $1`,
+        `UPDATE notifications SET status = 'SENT', sent_at = NOW() WHERE id = ?`,
         [notificationId]
       );
 
       logger.info(`Notification sent: ${type} - ${title}`);
     } catch (error) {
       await query(
-        `UPDATE notifications SET status = 'FAILED' WHERE id = $1`,
+        `UPDATE notifications SET status = 'FAILED' WHERE id = ?`,
         [notificationId]
       );
       logger.error(`Failed to send notification: ${error}`);
@@ -188,7 +188,7 @@ class NotificationService {
 
   async markAsRead(id: string): Promise<void> {
     await query(
-      `UPDATE notifications SET status = 'SENT', sent_at = NOW() WHERE id = $1`,
+      `UPDATE notifications SET status = 'SENT', sent_at = NOW() WHERE id = ?`,
       [id]
     );
     logger.info(`Notification marked as read: ${id}`);

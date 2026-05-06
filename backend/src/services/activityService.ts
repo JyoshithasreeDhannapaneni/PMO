@@ -38,7 +38,7 @@ class ActivityService {
 
       if (data.userId) {
         const userResult = await query(
-          `SELECT id, name, email, avatar FROM users WHERE id = $1`,
+          `SELECT id, name, email, avatar FROM users WHERE id = ?`,
           [data.userId]
         );
 
@@ -127,7 +127,7 @@ class ActivityService {
       `SELECT a.*, u.id as u_id, u.name as u_name, u.email as u_email, u.avatar as u_avatar
        FROM activities a
        LEFT JOIN users u ON a.user_id = u.id
-       WHERE a.entity_type = $1 AND a.entity_id = $2
+       WHERE a.entity_type = ? AND a.entity_id = ?
        ORDER BY a.created_at DESC
        LIMIT ${safeLimit}`,
       [entityType, entityId]
@@ -174,7 +174,7 @@ class ActivityService {
   async getByUser(userId: string, limit = 30) {
     const safeLimit = Math.max(1, Math.min(100, Math.floor(limit)));
     const result = await query(
-      `SELECT * FROM activities WHERE user_id = $1 ORDER BY created_at DESC LIMIT ${safeLimit}`,
+      `SELECT * FROM activities WHERE user_id = ? ORDER BY created_at DESC LIMIT ${safeLimit}`,
       [userId]
     );
 

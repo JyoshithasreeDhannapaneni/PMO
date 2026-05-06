@@ -34,7 +34,7 @@ function mapPhaseRow(row: any) {
 class PhaseService {
   async getByProjectId(projectId: string) {
     const result = await query(
-      `SELECT * FROM project_phases WHERE project_id = $1 ORDER BY order_index ASC`,
+      `SELECT * FROM project_phases WHERE project_id = ? ORDER BY order_index ASC`,
       [projectId]
     );
     return result.rows.map(mapPhaseRow);
@@ -44,7 +44,7 @@ class PhaseService {
     const existingResult = await query(
       `SELECT pp.*, p.id as p_id FROM project_phases pp 
        JOIN projects p ON pp.project_id = p.id 
-       WHERE pp.id = $1`,
+       WHERE pp.id = ?`,
       [id]
     );
 
@@ -99,7 +99,7 @@ class PhaseService {
   async completePhase(projectId: string, phaseName: ProjectPhase): Promise<void> {
     await query(
       `UPDATE project_phases SET status = 'COMPLETED', actual_end = NOW() 
-       WHERE project_id = $1 AND phase_name = $2`,
+       WHERE project_id = ? AND phase_name = ?`,
       [projectId, phaseName]
     );
 
@@ -115,18 +115,18 @@ class PhaseService {
 
       if (nextPhase === 'COMPLETED') {
         await query(
-          `UPDATE projects SET phase = $1, status = 'COMPLETED', actual_end = NOW() WHERE id = $2`,
+          `UPDATE projects SET phase = ?, status = 'COMPLETED', actual_end = NOW() WHERE id = ?`,
           [nextPhase, projectId]
         );
       } else {
         await query(
-          `UPDATE projects SET phase = $1 WHERE id = $2`,
+          `UPDATE projects SET phase = ? WHERE id = ?`,
           [nextPhase, projectId]
         );
 
         await query(
           `UPDATE project_phases SET status = 'IN_PROGRESS', actual_start = NOW() 
-           WHERE project_id = $1 AND phase_name = $2`,
+           WHERE project_id = ? AND phase_name = ?`,
           [projectId, nextPhase]
         );
       }

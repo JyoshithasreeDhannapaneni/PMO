@@ -274,3 +274,45 @@ export function useDeescalateProject() {
     },
   });
 }
+
+export function useArchivedEscalations(manager?: string) {
+  return useQuery({
+    queryKey: ['archivedEscalations', manager],
+    queryFn: () => authFetch(`${API_BASE}/api/dashboard/archived-escalations${manager ? `?manager=${encodeURIComponent(manager)}` : ''}`),
+    staleTime: 0,
+  });
+}
+
+export function useArchiveEscalation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
+      return fetch(`${API_BASE}/api/dashboard/archive-escalation/${id}`, {
+        method: 'POST',
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      }).then(r => r.json());
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['escalatedProjects'] });
+      queryClient.invalidateQueries({ queryKey: ['archivedEscalations'] });
+    },
+  });
+}
+
+export function useUnarchiveEscalation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
+      return fetch(`${API_BASE}/api/dashboard/unarchive-escalation/${id}`, {
+        method: 'POST',
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      }).then(r => r.json());
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['escalatedProjects'] });
+      queryClient.invalidateQueries({ queryKey: ['archivedEscalations'] });
+    },
+  });
+}

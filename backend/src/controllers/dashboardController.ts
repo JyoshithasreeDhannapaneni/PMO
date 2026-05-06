@@ -227,4 +227,22 @@ export const dashboardController = {
     await dashboardService.setResolvedDate(id, resolvedDate || null);
     res.json({ success: true, message: 'Resolved date updated' });
   }),
+
+  getArchivedEscalations: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const manager = req.query.manager as string | undefined;
+    const data = await dashboardService.getArchivedEscalations(manager);
+    res.json({ success: true, data });
+  }),
+
+  archiveEscalation: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const { id } = req.params;
+    await dashboardService.archiveEscalation(id);
+    res.json({ success: true, message: 'Escalation archived' });
+  }),
+
+  unarchiveEscalation: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const { id } = req.params;
+    await dashboardService.unarchiveEscalation(id);
+    res.json({ success: true, message: 'Escalation restored to active' });
+  }),
 };

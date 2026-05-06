@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { useEscalatedProjects, useEscalateProject, useDeescalateProject, useProjects } from '@/hooks/useProjects';
+import { useEscalatedProjects, useEscalateProject, useDeescalateProject, useProjects, useArchivedEscalations, useArchiveEscalation, useUnarchiveEscalation } from '@/hooks/useProjects';
 import { useAuth } from '@/context/AuthContext';
 import { Card } from '@/components/ui/Card';
 import Link from 'next/link';
@@ -9,6 +9,7 @@ import {
   Siren, AlertTriangle, Search,
   RotateCcw, Eye, Download, ChevronLeft, ChevronRight,
   Plus, X, AlertCircle, TrendingUp, ChevronDown, History, Calendar, Trash2, CheckCircle2,
+  Archive, ArchiveRestore,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { StatusBadge } from '@/components/ui/StatusBadge';
@@ -34,6 +35,12 @@ export default function EscalationProjectsPage() {
 
   const escalateProject = useEscalateProject();
   const deescalateProject = useDeescalateProject();
+  const archiveEscalation = useArchiveEscalation();
+  const unarchiveEscalation = useUnarchiveEscalation();
+
+  const [activeTab, setActiveTab] = useState<'active' | 'archive'>('active');
+  const { data: archiveData, refetch: refetchArchive } = useArchivedEscalations(managerFilter);
+  const archived: any[] = archiveData?.data || [];
 
   const [search, setSearch] = useState('');
   const [prioritySel, setPrioritySel] = useState('');
@@ -166,6 +173,19 @@ export default function EscalationProjectsPage() {
     refetch();
   }
 
+  async function handleArchive(id: string) {
+    if (!confirm('Archive this escalation? It will move to the Archive tab.')) return;
+    await archiveEscalation.mutateAsync(id);
+    refetch();
+    refetchArchive();
+  }
+
+  async function handleUnarchive(id: string) {
+    await unarchiveEscalation.mutateAsync(id);
+    refetchArchive();
+    refetch();
+  }
+
   async function handleDeleteProject(id: string) {
     if (!confirm('Remove escalation from this project?')) return;
     await deescalateProject.mutateAsync(id);
@@ -270,8 +290,26 @@ export default function EscalationProjectsPage() {
         </Card>
       </div>
 
-      {/* Filters */}
-      <Card>
+      {/* Tab Toggle */}
+      <div className="flex gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-xl w-fit">
+        <button
+          onClick={() => setActiveTab('active')}
+          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors ${activeTab === 'active' ? 'bg-white dark:bg-gray-700 text-red-600 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'}`}
+        >
+          <Siren size={14} /> Active Escalations
+          <span className={`ml-1 px-1.5 py-0.5 rounded-full text-xs font-bold ${activeTab === 'active' ? 'bg-red-100 text-red-700' : 'bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300'}`}>{deduped.length}</span>
+        </button>
+        <button
+          onClick={() => setActiveTab('archive')}
+          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors ${activeTab === 'archive' ? 'bg-white dark:bg-gray-700 text-amber-600 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'}`}
+        >
+          <Archive size={14} /> Archive
+          <span className={`ml-1 px-1.5 py-0.5 rounded-full text-xs font-bold ${activeTab === 'archive' ? 'bg-amber-100 text-amber-700' : 'bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300'}`}>{archived.length}</span>
+        </button>
+      </div>
+
+      {/* Filters — only for active tab */}
+      {activeTab === 'active' && <Card>
         <div className="flex flex-wrap gap-3 items-center">
           <div className="relative flex-1 min-w-[200px]">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -307,10 +345,91 @@ export default function EscalationProjectsPage() {
             <RotateCcw size={13} /> Reset
           </button>
         </div>
-      </Card>
+      </Card>}
 
-      {/* Table */}
-      <Card>
+      {/* Archive View */}
+      {activeTab === 'archive' && (
+        <Card>
+          {archived.length === 0 ? (
+            <div className="flex flex-col items-center py-12 text-gray-400 gap-2">
+              <Archive size={32} />
+              <p>No archived escalations yet</p>
+              <p className="text-xs text-gray-400">Completed or archived escalated projects will appear here</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 dark:bg-gray-700/50">
+                  <tr>
+                    {['Project Name', 'Project Manager', 'Escalation Type', 'Priority', 'Status', 'Phase', 'Escalated At', 'Resolved Date', 'Action'].map((h) => (
+                      <th key={h} className={`py-3 px-4 text-xs font-semibold text-gray-500 dark:text-gray-400 ${h === 'Project Name' ? 'text-left' : 'text-center'}`}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                  {archived.map((p) => {
+                    const notes = p.escalationNotes || '';
+                    const escType = ESCALATION_TYPES.find((t) => notes.startsWith(t)) || (notes ? notes.split(' — ')[0] : 'Others');
+                    return (
+                      <tr key={p.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
+                        <td className="py-3 px-4">
+                          <Link href={`/projects/${p.id}`} className="font-medium text-primary-600 hover:underline">{p.name}</Link>
+                          <div className="text-xs text-gray-400">{p.customerName}</div>
+                        </td>
+                        <td className="py-3 px-4 text-center text-gray-700 dark:text-gray-300">{p.projectManager || '—'}</td>
+                        <td className="py-3 px-4 text-center">
+                          <span className="px-2 py-0.5 rounded-full text-xs bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">{escType}</span>
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          {p.escalationPriority ? (
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${PRIORITY_COLORS[p.escalationPriority] || 'bg-gray-100 text-gray-600'}`}>{p.escalationPriority}</span>
+                          ) : <span className="text-gray-400">—</span>}
+                        </td>
+                        <td className="py-3 px-4 text-center"><StatusBadge status={p.status} variant="status" /></td>
+                        <td className="py-3 px-4 text-center"><StatusBadge status={p.phase} variant="phase" /></td>
+                        <td className="py-3 px-4 text-center text-gray-500 whitespace-nowrap">
+                          {p.escalatedAt ? format(new Date(p.escalatedAt), 'MMM d, yyyy') : '—'}
+                        </td>
+                        <td className="py-3 px-4 text-center whitespace-nowrap">
+                          {p.resolvedDate ? (
+                            <span className="text-green-600 dark:text-green-400 text-xs font-medium">{format(new Date(p.resolvedDate), 'MMM d, yyyy')}</span>
+                          ) : <span className="text-gray-400 text-xs">—</span>}
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          <div className="flex items-center justify-center gap-1">
+                            <Link href={`/projects/${p.id}`} className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-600 hover:bg-primary-100 hover:text-primary-700 transition-colors">
+                              <Eye size={14} />
+                            </Link>
+                            <button
+                              onClick={() => { setHistoryProject(p); setNewNoteText(''); setNewNoteType('Client Issues'); setNewNotePriority('MEDIUM'); }}
+                              title="View escalation history"
+                              className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 dark:bg-gray-700 text-purple-500 hover:bg-purple-100 transition-colors"
+                            >
+                              <History size={14} />
+                            </button>
+                            {isAdmin && p.escalationArchived && (
+                              <button
+                                onClick={() => handleUnarchive(p.id)}
+                                title="Restore to active escalations"
+                                className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 dark:bg-gray-700 text-green-500 hover:bg-green-100 transition-colors"
+                              >
+                                <ArchiveRestore size={14} />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+      )}
+
+      {/* Active Table */}
+      {activeTab === 'active' && <Card>
         {isLoading ? (
           <div className="flex justify-center py-12 text-gray-400">Loading…</div>
         ) : filtered.length === 0 ? (
@@ -428,6 +547,15 @@ export default function EscalationProjectsPage() {
                               >
                                 <Calendar size={14} />
                               </button>
+                              {isAdmin && (
+                                <button
+                                  onClick={() => handleArchive(p.id)}
+                                  title="Archive this escalation"
+                                  className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 dark:bg-gray-700 text-amber-500 hover:bg-amber-100 transition-colors"
+                                >
+                                  <Archive size={14} />
+                                </button>
+                              )}
                               {isAdmin && p.isEscalated && (
                                 <button
                                   onClick={() => handleDeescalate(p.id)}
@@ -518,12 +646,6 @@ export default function EscalationProjectsPage() {
                                       )}
                                     </div>
                                   )}
-                                  <button
-                                    onClick={() => downloadICS(p)}
-                                    className="mt-3 flex items-center gap-1.5 px-3 py-1.5 text-xs text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors"
-                                  >
-                                    <Calendar size={12} /> Download Calendar (.ics)
-                                  </button>
                                 </div>
                               </div>
                             </td>
@@ -558,13 +680,15 @@ export default function EscalationProjectsPage() {
             </div>
           </>
         )}
-      </Card>
+      </Card>}
 
       {/* Footer note */}
-      <div className="flex items-center gap-2 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-sm text-red-700 dark:text-red-300">
-        <AlertCircle size={15} />
-        Escalation projects are those that have been delayed, breached SLA, or escalated by customers.
-      </div>
+      {activeTab === 'active' && (
+        <div className="flex items-center gap-2 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-sm text-red-700 dark:text-red-300">
+          <AlertCircle size={15} />
+          Escalation projects are those that have been delayed, breached SLA, or escalated by customers.
+        </div>
+      )}
 
       {/* Add Escalation Modal */}
       {showModal && (

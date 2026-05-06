@@ -1,40 +1,44 @@
-import { Pool } from 'pg';
+import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
 
 dotenv.config();
 
-export const pool = new Pool({
+const pool = mysql.createPool({
   host: process.env.DB_HOST || 'localhost',
-  user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || 'postgres123',
-  database: process.env.DB_NAME || 'pmo',
-  port: Number(process.env.DB_PORT) || 5432,
-  max: 10,
+  user: process.env.DB_USER || 'root',
+  password: process.env.DB_PASSWORD || '',
+  database: process.env.DB_NAME || 'pmo_tracker',
+  port: Number(process.env.DB_PORT) || 3306,
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0,
+  timezone: '+00:00',
 });
 
 export async function query(text: string, params?: any[]) {
-  const result = await pool.query(text, params);
+  const [rows] = await pool.execute(text, params || []);
   return {
-    rows: result.rows,
-    rowCount: result.rowCount || 0,
+    rows: rows as any[],
+    rowCount: (rows as any[]).length,
   };
 }
 
 export async function execute(text: string, params?: any[]) {
-  return await pool.query(text, params);
+  const [result] = await pool.execute(text, params || []);
+  return result;
 }
 
 export async function transaction<T>(callback: (client: any) => Promise<T>): Promise<T> {
-  const client = await pool.connect();
+  const connection = await pool.getConnection();
   try {
-    await client.query('BEGIN');
-    const result = await callback(client);
-    await client.query('COMMIT');
+    await connection.beginTransaction();
+    const result = await callback(connection);
+    await connection.commit();
     return result;
   } catch (error) {
-    await client.query('ROLLBACK');
+    await connection.rollback();
     throw error;
   } finally {
-    client.release();
+    connection.release();
   }
 }

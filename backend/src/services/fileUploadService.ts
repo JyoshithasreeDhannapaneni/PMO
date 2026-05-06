@@ -59,7 +59,7 @@ class FileUploadService {
   }
 
   async getById(id: string) {
-    const result = await query(`SELECT * FROM file_uploads WHERE id = $1`, [id]);
+    const result = await query(`SELECT * FROM file_uploads WHERE id = ?`, [id]);
     if (result.rows.length === 0) return null;
     
     const row = result.rows[0];
@@ -79,7 +79,7 @@ class FileUploadService {
 
   async getByEntity(entityType: string, entityId: string) {
     const result = await query(
-      `SELECT * FROM file_uploads WHERE entity_type = $1 AND entity_id = $2 ORDER BY created_at DESC`,
+      `SELECT * FROM file_uploads WHERE entity_type = ? AND entity_id = ? ORDER BY created_at DESC`,
       [entityType, entityId]
     );
     
@@ -98,7 +98,7 @@ class FileUploadService {
   }
 
   async delete(id: string) {
-    const result = await query(`SELECT * FROM file_uploads WHERE id = $1`, [id]);
+    const result = await query(`SELECT * FROM file_uploads WHERE id = ?`, [id]);
     
     if (result.rows.length === 0) {
       throw new Error('File not found');
@@ -110,7 +110,7 @@ class FileUploadService {
       fs.unlinkSync(file.path);
     }
 
-    await query(`DELETE FROM file_uploads WHERE id = $1`, [id]);
+    await query(`DELETE FROM file_uploads WHERE id = ?`, [id]);
     logger.info(`File deleted: ${id}`);
   }
 
