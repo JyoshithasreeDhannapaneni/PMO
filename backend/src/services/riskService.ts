@@ -55,7 +55,7 @@ function mapRiskRow(row: any) {
 class RiskService {
   async getByProject(projectId: string) {
     const result = await query(
-      `SELECT * FROM project_risks WHERE project_id = $1 
+      `SELECT * FROM project_risks WHERE project_id = ? 
        ORDER BY status ASC, impact DESC, probability DESC`,
       [projectId]
     );
@@ -67,7 +67,7 @@ class RiskService {
       `SELECT r.*, p.name as project_name
        FROM project_risks r
        JOIN projects p ON r.project_id = p.id
-       WHERE r.id = $1`,
+       WHERE r.id = ?`,
       [id]
     );
 
@@ -84,7 +84,7 @@ class RiskService {
     const riskId = uuidv4();
     await execute(
       `INSERT INTO project_risks (id, project_id, title, description, category, probability, impact, mitigation, contingency, owner, due_date, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'OPEN')`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN')`,
       [
         riskId,
         data.projectId,
@@ -100,7 +100,7 @@ class RiskService {
       ]
     );
 
-    const result = await query(`SELECT * FROM project_risks WHERE id = $1`, [riskId]);
+    const result = await query(`SELECT * FROM project_risks WHERE id = ?`, [riskId]);
     const risk = mapRiskRow(result.rows[0]);
     logger.info(`Risk created: ${risk.id} for project ${data.projectId}`);
     return risk;
@@ -134,20 +134,20 @@ class RiskService {
       params
     );
 
-    const result = await query(`SELECT * FROM project_risks WHERE id = $1`, [id]);
+    const result = await query(`SELECT * FROM project_risks WHERE id = ?`, [id]);
     const risk = mapRiskRow(result.rows[0]);
     logger.info(`Risk updated: ${risk.id}`);
     return risk;
   }
 
   async delete(id: string) {
-    await query(`DELETE FROM project_risks WHERE id = $1`, [id]);
+    await query(`DELETE FROM project_risks WHERE id = ?`, [id]);
     logger.info(`Risk deleted: ${id}`);
   }
 
   async getRiskMatrix(projectId: string) {
     const result = await query(
-      `SELECT * FROM project_risks WHERE project_id = $1 AND status IN ('OPEN', 'MITIGATING')`,
+      `SELECT * FROM project_risks WHERE project_id = ? AND status IN ('OPEN', 'MITIGATING')`,
       [projectId]
     );
 
@@ -181,10 +181,10 @@ class RiskService {
 
   async getRiskSummary(projectId: string) {
     const [total, open, mitigating, resolved] = await Promise.all([
-      query(`SELECT COUNT(*) FROM project_risks WHERE project_id = $1`, [projectId]),
-      query(`SELECT COUNT(*) FROM project_risks WHERE project_id = $1 AND status = 'OPEN'`, [projectId]),
-      query(`SELECT COUNT(*) FROM project_risks WHERE project_id = $1 AND status = 'MITIGATING'`, [projectId]),
-      query(`SELECT COUNT(*) FROM project_risks WHERE project_id = $1 AND status IN ('RESOLVED', 'CLOSED')`, [projectId]),
+      query(`SELECT COUNT(*) FROM project_risks WHERE project_id = ?`, [projectId]),
+      query(`SELECT COUNT(*) FROM project_risks WHERE project_id = ? AND status = 'OPEN'`, [projectId]),
+      query(`SELECT COUNT(*) FROM project_risks WHERE project_id = ? AND status = 'MITIGATING'`, [projectId]),
+      query(`SELECT COUNT(*) FROM project_risks WHERE project_id = ? AND status IN ('RESOLVED', 'CLOSED')`, [projectId]),
     ]);
 
     return {

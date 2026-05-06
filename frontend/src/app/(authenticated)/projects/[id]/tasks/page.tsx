@@ -302,6 +302,16 @@ export default function ProjectTasksPage() {
     }
   };
 
+  const deleteTask = async (taskId: string, taskName: string) => {
+    if (!confirm(`Delete task "${taskName}"? This cannot be undone.`)) return;
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
+    await fetch(`${API_URL}/api/tasks/${taskId}`, {
+      method: 'DELETE',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    await fetchData();
+  };
+
   const togglePhase = (id: string) => {
     setExpandedPhases(prev => {
       const next = new Set(prev);

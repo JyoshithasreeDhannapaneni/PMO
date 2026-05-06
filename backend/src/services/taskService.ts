@@ -374,14 +374,6 @@ class TaskService {
     };
   }
 
-  async deleteTask(taskId: string) {
-    const result = await query(`SELECT phase_record_id FROM project_tasks WHERE id = ?`, [taskId]);
-    if (!result.rows[0]) return;
-    const phaseRecordId = result.rows[0].phase_record_id;
-    await execute(`DELETE FROM project_tasks WHERE id = ?`, [taskId]);
-    await this.updatePhaseProgress(phaseRecordId);
-  }
-
   async createProjectTasksFromTemplate(
     projectId: string,
     templateCode: string,

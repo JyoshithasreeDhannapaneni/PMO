@@ -111,7 +111,7 @@ class AuditService {
       `SELECT a.*, u.id as u_id, u.name as u_name, u.email as u_email
        FROM audit_logs a
        LEFT JOIN users u ON a.user_id = u.id
-       WHERE a.entity_type = $1 AND a.entity_id = $2
+       WHERE a.entity_type = ? AND a.entity_id = ?
        ORDER BY a.created_at DESC`,
       [entityType, entityId]
     );
@@ -135,7 +135,7 @@ class AuditService {
   async getByUser(userId: string, limit = 50) {
     const safeLimit = Math.max(1, Math.min(200, Math.floor(limit)));
     const result = await query(
-      `SELECT * FROM audit_logs WHERE user_id = $1 ORDER BY created_at DESC LIMIT ${safeLimit}`,
+      `SELECT * FROM audit_logs WHERE user_id = ? ORDER BY created_at DESC LIMIT ${safeLimit}`,
       [userId]
     );
 

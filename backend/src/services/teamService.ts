@@ -46,7 +46,7 @@ function mapTeamMemberRow(row: any) {
 class TeamService {
   async getByProject(projectId: string) {
     const result = await query(
-      `SELECT * FROM project_team_members WHERE project_id = $1 ORDER BY role ASC, name ASC`,
+      `SELECT * FROM project_team_members WHERE project_id = ? ORDER BY role ASC, name ASC`,
       [projectId]
     );
     return result.rows.map(mapTeamMemberRow);
@@ -57,7 +57,7 @@ class TeamService {
       `SELECT m.*, p.name as project_name
        FROM project_team_members m
        JOIN projects p ON m.project_id = p.id
-       WHERE m.id = $1`,
+       WHERE m.id = ?`,
       [id]
     );
 
@@ -122,13 +122,13 @@ class TeamService {
   }
 
   async delete(id: string) {
-    await query(`DELETE FROM project_team_members WHERE id = $1`, [id]);
+    await query(`DELETE FROM project_team_members WHERE id = ?`, [id]);
     logger.info(`Team member removed: ${id}`);
   }
 
   async getTeamSummary(projectId: string) {
     const result = await query(
-      `SELECT * FROM project_team_members WHERE project_id = $1 AND is_active = true`,
+      `SELECT * FROM project_team_members WHERE project_id = ? AND is_active = true`,
       [projectId]
     );
 

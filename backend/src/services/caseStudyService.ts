@@ -41,7 +41,7 @@ class CaseStudyService {
     const params: any[] = [];
 
     if (status) {
-      queryStr += ` WHERE cs.status = $1`;
+      queryStr += ` WHERE cs.status = ?`;
       params.push(status);
     }
 
@@ -67,7 +67,7 @@ class CaseStudyService {
               p.source_platform, p.target_platform, p.migration_types
        FROM case_studies cs
        JOIN projects p ON cs.project_id = p.id
-       WHERE cs.id = $1`,
+       WHERE cs.id = ?`,
       [id]
     );
 
@@ -100,7 +100,7 @@ class CaseStudyService {
       `SELECT cs.*, p.id as p_id, p.name as p_name, p.customer_name
        FROM case_studies cs
        JOIN projects p ON cs.project_id = p.id
-       WHERE cs.project_id = $1`,
+       WHERE cs.project_id = ?`,
       [projectId]
     );
 
@@ -119,7 +119,7 @@ class CaseStudyService {
 
   async create(data: CreateCaseStudyDTO) {
     const projectResult = await query(
-      `SELECT * FROM projects WHERE id = $1`,
+      `SELECT * FROM projects WHERE id = ?`,
       [data.projectId]
     );
 
@@ -128,7 +128,7 @@ class CaseStudyService {
     }
 
     const existingResult = await query(
-      `SELECT id FROM case_studies WHERE project_id = $1`,
+      `SELECT id FROM case_studies WHERE project_id = ?`,
       [data.projectId]
     );
 
@@ -157,7 +157,7 @@ class CaseStudyService {
   }
 
   async update(id: string, data: UpdateCaseStudyDTO) {
-    const existingResult = await query(`SELECT * FROM case_studies WHERE id = $1`, [id]);
+    const existingResult = await query(`SELECT * FROM case_studies WHERE id = ?`, [id]);
 
     if (existingResult.rows.length === 0) {
       throw new AppError('Case study not found', 404);
@@ -191,13 +191,13 @@ class CaseStudyService {
   }
 
   async delete(id: string): Promise<void> {
-    const existing = await query(`SELECT id FROM case_studies WHERE id = $1`, [id]);
+    const existing = await query(`SELECT id FROM case_studies WHERE id = ?`, [id]);
 
     if (existing.rows.length === 0) {
       throw new AppError('Case study not found', 404);
     }
 
-    await query(`DELETE FROM case_studies WHERE id = $1`, [id]);
+    await query(`DELETE FROM case_studies WHERE id = ?`, [id]);
     logger.info(`Case study deleted: ${id}`);
   }
 

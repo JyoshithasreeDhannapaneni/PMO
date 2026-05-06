@@ -10,14 +10,14 @@ class PasswordResetService {
   }
 
   async createResetToken(email: string): Promise<{ success: boolean; message: string }> {
-    const userResult = await query(`SELECT * FROM users WHERE email = $1`, [email]);
+    const userResult = await query(`SELECT * FROM users WHERE email = ?`, [email]);
     const user = userResult.rows[0];
     
     if (!user) {
       return { success: true, message: 'If an account exists, a reset email has been sent' };
     }
 
-    await query(`DELETE FROM password_resets WHERE user_id = $1`, [user.id]);
+    await query(`DELETE FROM password_resets WHERE user_id = ?`, [user.id]);
 
     const rawToken = randomBytes(32).toString('hex');
     const hashedToken = this.hashToken(rawToken);
@@ -56,7 +56,7 @@ class PasswordResetService {
     const hashedToken = this.hashToken(token);
     
     const result = await query(
-      `SELECT * FROM password_resets WHERE token = $1`,
+      `SELECT * FROM password_resets WHERE token = ?`,
       [hashedToken]
     );
 
@@ -67,7 +67,7 @@ class PasswordResetService {
     }
 
     if (new Date(reset.expires_at) < new Date()) {
-      await query(`DELETE FROM password_resets WHERE id = $1`, [reset.id]);
+      await query(`DELETE FROM password_resets WHERE id = ?`, [reset.id]);
       return { valid: false };
     }
 
@@ -90,15 +90,15 @@ class PasswordResetService {
 
     await transaction(async (client) => {
       await client.query(
-        `UPDATE users SET password = $1 WHERE id = $2`,
+        `UPDATE users SET password = ? WHERE id = ?`,
         [hashedPassword, validation.userId]
       );
       await client.query(
-        `UPDATE password_resets SET used_at = NOW() WHERE token = $1`,
+        `UPDATE password_resets SET used_at = NOW() WHERE token = ?`,
         [hashedToken]
       );
       await client.query(
-        `DELETE FROM sessions WHERE user_id = $1`,
+        `DELETE FROM sessions WHERE user_id = ?`,
         [validation.userId]
       );
     });

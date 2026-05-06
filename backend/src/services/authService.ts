@@ -41,8 +41,8 @@ class AuthService {
 
   async login(usernameOrEmail: string, password: string): Promise<AuthResult> {
     const result = await query(
-      `SELECT * FROM users WHERE username = $1 OR email = $1 LIMIT 1`,
-      [usernameOrEmail.toLowerCase()]
+      `SELECT * FROM users WHERE username = ? OR email = ? LIMIT 1`,
+      [usernameOrEmail.toLowerCase(), usernameOrEmail.toLowerCase()]
     );
 
     const user = result.rows[0];
@@ -59,7 +59,7 @@ class AuthService {
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
     await execute(
-      `INSERT INTO sessions (id, user_id, token, expires_at) VALUES ($1, $2, $3, $4)`,
+      `INSERT INTO sessions (id, user_id, token, expires_at) VALUES (?, ?, ?, ?)`,
       [uuidv4(), user.id, token, expiresAt]
     );
 
@@ -80,7 +80,7 @@ class AuthService {
     const userUsername = username || email.split('@')[0].toLowerCase();
 
     const existing = await query(
-      `SELECT id FROM users WHERE email = $1 OR username = $2 LIMIT 1`,
+      `SELECT id FROM users WHERE email = ? OR username = ? LIMIT 1`,
       [email.toLowerCase(), userUsername.toLowerCase()]
     );
 
@@ -97,13 +97,13 @@ class AuthService {
       [userId, name, email.toLowerCase(), userUsername.toLowerCase(), hashedPassword, 'VIEWER']
     );
 
-    const result = await query(`SELECT * FROM users WHERE id = $1`, [userId]);
+    const result = await query(`SELECT * FROM users WHERE id = ?`, [userId]);
     const user = result.rows[0];
     const token = this.generateToken();
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
     await execute(
-      `INSERT INTO sessions (id, user_id, token, expires_at) VALUES ($1, $2, $3, $4)`,
+      `INSERT INTO sessions (id, user_id, token, expires_at) VALUES (?, ?, ?, ?)`,
       [uuidv4(), user.id, token, expiresAt]
     );
 
@@ -125,7 +125,7 @@ class AuthService {
       `SELECT s.*, u.id as user_id, u.name, u.email, u.role 
        FROM sessions s 
        JOIN users u ON s.user_id = u.id 
-       WHERE s.token = $1`,
+       WHERE s.token = ?`,
       [token]
     );
 
@@ -133,7 +133,7 @@ class AuthService {
 
     if (!session || new Date(session.expires_at) < new Date()) {
       if (session) {
-        await query(`DELETE FROM sessions WHERE id = $1`, [session.id]);
+        await query(`DELETE FROM sessions WHERE id = ?`, [session.id]);
       }
       return null;
     }
@@ -147,7 +147,7 @@ class AuthService {
   }
 
   async logout(token: string): Promise<void> {
-    await query(`DELETE FROM sessions WHERE token = $1`, [token]);
+    await query(`DELETE FROM sessions WHERE token = ?`, [token]);
     logger.info('User logged out');
   }
 
@@ -159,7 +159,7 @@ class AuthService {
     if (adminExists.rows.length === 0) {
       await query(
         `INSERT INTO users (name, email, username, password, role) 
-         VALUES ($1, $2, $3, $4, $5)`,
+         VALUES (?, ?, ?, ?, ?)`,
         ['Administrator', 'admin@company.com', 'admin', this.hashPassword('admin2026'), 'ADMIN']
       );
       logger.info('Default admin user created (admin / admin2026)');
@@ -169,7 +169,7 @@ class AuthService {
   }
 
   async verifyPassword(userId: string, hashedPassword: string): Promise<boolean> {
-    const result = await query(`SELECT password FROM users WHERE id = $1`, [userId]);
+    const result = await query(`SELECT password FROM users WHERE id = ?`, [userId]);
     if (result.rows.length === 0) return false;
     return result.rows[0].password === hashedPassword;
   }
@@ -177,11 +177,11 @@ class AuthService {
   async updatePassword(userId: string, newPassword: string): Promise<void> {
     const hashedPassword = this.hashPassword(newPassword);
     await query(
-      `UPDATE users SET password = $1 WHERE id = $2`,
+      `UPDATE users SET password = ? WHERE id = ?`,
       [hashedPassword, userId]
     );
     
-    await query(`DELETE FROM sessions WHERE user_id = $1`, [userId]);
+    await query(`DELETE FROM sessions WHERE user_id = ?`, [userId]);
     
     logger.info(`Password updated for user: ${userId}`);
   }
@@ -200,18 +200,18 @@ class AuthService {
   }
 
   async updateUserRole(userId: string, role: 'ADMIN' | 'MANAGER' | 'VIEWER'): Promise<void> {
-    await query(`UPDATE users SET role = $1 WHERE id = $2`, [role, userId]);
+    await query(`UPDATE users SET role = ? WHERE id = ?`, [role, userId]);
     logger.info(`User role updated: ${userId} -> ${role}`);
   }
 
   async deactivateUser(userId: string): Promise<void> {
-    await query(`UPDATE users SET is_active = false WHERE id = $1`, [userId]);
-    await query(`DELETE FROM sessions WHERE user_id = $1`, [userId]);
+    await query(`UPDATE users SET is_active = false WHERE id = ?`, [userId]);
+    await query(`DELETE FROM sessions WHERE user_id = ?`, [userId]);
     logger.info(`User deactivated: ${userId}`);
   }
 
   async activateUser(userId: string): Promise<void> {
-    await query(`UPDATE users SET is_active = true WHERE id = $1`, [userId]);
+    await query(`UPDATE users SET is_active = true WHERE id = ?`, [userId]);
     logger.info(`User activated: ${userId}`);
   }
 
@@ -225,7 +225,7 @@ class AuthService {
     const username = email.split('@')[0].toLowerCase();
 
     const existing = await query(
-      `SELECT id FROM users WHERE email = $1 OR username = $2 LIMIT 1`,
+      `SELECT id FROM users WHERE email = ? OR username = ? LIMIT 1`,
       [email.toLowerCase(), username]
     );
 
@@ -256,8 +256,8 @@ class AuthService {
   }
 
   async deleteUserById(userId: string): Promise<void> {
-    await query(`DELETE FROM sessions WHERE user_id = $1`, [userId]);
-    await query(`DELETE FROM users WHERE id = $1`, [userId]);
+    await query(`DELETE FROM sessions WHERE user_id = ?`, [userId]);
+    await query(`DELETE FROM users WHERE id = ?`, [userId]);
     logger.info(`User deleted: ${userId}`);
   }
 
@@ -388,7 +388,7 @@ class AuthService {
       throw new AppError('Failed to get user info from Microsoft', 401);
     }
 
-    const data = await response.json();
+    const data = await response.json() as any;
     return {
       id: data.id,
       displayName: data.displayName,
@@ -404,7 +404,7 @@ class AuthService {
     
     // Check if user exists
     let result = await query(
-      `SELECT * FROM users WHERE email = $1 OR microsoft_id = $2 LIMIT 1`,
+      `SELECT * FROM users WHERE email = ? OR microsoft_id = ? LIMIT 1`,
       [email, microsoftUser.id]
     );
 
@@ -430,7 +430,7 @@ class AuthService {
         ]
       );
 
-      result = await query(`SELECT * FROM users WHERE id = $1`, [userId]);
+      result = await query(`SELECT * FROM users WHERE id = ?`, [userId]);
       user = result.rows[0];
       logger.info(`New user created via Microsoft login: ${email}`);
     } else {
@@ -449,7 +449,7 @@ class AuthService {
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
     await execute(
-      `INSERT INTO sessions (id, user_id, token, expires_at) VALUES ($1, $2, $3, $4)`,
+      `INSERT INTO sessions (id, user_id, token, expires_at) VALUES (?, ?, ?, ?)`,
       [uuidv4(), user.id, token, expiresAt]
     );
 
