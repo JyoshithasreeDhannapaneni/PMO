@@ -9,6 +9,9 @@ router.get('/project/:projectId', taskController.getProjectTasks);
 // GET /api/tasks/project/:projectId/gantt - Get Gantt chart data
 router.get('/project/:projectId/gantt', taskController.getGanttData);
 
+// POST /api/tasks/project/:projectId - Create a new task in a phase
+router.post('/project/:projectId', taskController.createTask);
+
 // POST /api/tasks/project/:projectId/from-template - Create tasks from template
 router.post('/project/:projectId/from-template', taskController.createFromTemplate);
 
@@ -17,6 +20,9 @@ router.post('/project/:projectId/auto-update', taskController.autoUpdateStatuses
 
 // GET /api/tasks/:taskId - Get single task
 router.get('/:taskId', taskController.getTaskById);
+
+// DELETE /api/tasks/:taskId - Delete task
+router.delete('/:taskId', taskController.deleteTask);
 
 // PUT /api/tasks/:taskId - Update task
 router.put('/:taskId', taskController.updateTask);

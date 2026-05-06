@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { StatusBadge } from '@/components/ui/StatusBadge';
@@ -58,6 +59,9 @@ export default function CaseStudiesPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'ADMIN';
   const isManager = user?.role === 'MANAGER';
+  const searchParams = useSearchParams();
+  const highlightProjectId = searchParams.get('projectId');
+  const highlightRef = useRef<HTMLDivElement>(null);
   const [caseStudies, setCaseStudies] = useState<CaseStudy[]>([]);
   const [completedProjects, setCompletedProjects] = useState<Project[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -117,6 +121,12 @@ export default function CaseStudiesPage() {
     }
     return matchesSearch;
   });
+
+  useEffect(() => {
+    if (highlightProjectId && !isLoading && highlightRef.current) {
+      highlightRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [highlightProjectId, isLoading]);
 
   const stats = {
     total: caseStudies.length,
@@ -244,7 +254,8 @@ export default function CaseStudiesPage() {
               .map((cs) => (
                 <div
                   key={cs.id}
-                  className="p-4 border border-yellow-300 bg-white rounded-lg hover:shadow-md transition-shadow"
+                  ref={cs.projectId === highlightProjectId ? highlightRef : undefined}
+                  className={`p-4 border rounded-lg hover:shadow-md transition-shadow ${cs.projectId === highlightProjectId ? 'border-yellow-500 bg-yellow-100 ring-2 ring-yellow-400' : 'border-yellow-300 bg-white'}`}
                 >
                   <div className="flex items-center gap-2 mb-2">
                     <FileText className="text-yellow-600" size={18} />
@@ -279,7 +290,8 @@ export default function CaseStudiesPage() {
             {completedProjects.slice(0, 6).map((project) => (
               <div
                 key={project.id}
-                className="p-4 border border-orange-200 bg-orange-50 rounded-lg"
+                ref={project.id === highlightProjectId ? highlightRef : undefined}
+                className={`p-4 border rounded-lg transition-all ${project.id === highlightProjectId ? 'border-yellow-500 bg-yellow-50 ring-2 ring-yellow-400' : 'border-orange-200 bg-orange-50'}`}
               >
                 <p className="font-medium text-gray-900">{project.name}</p>
                 <p className="text-sm text-gray-600">{project.customerName}</p>

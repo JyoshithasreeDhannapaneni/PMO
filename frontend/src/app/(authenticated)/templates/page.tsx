@@ -14,6 +14,7 @@ import {
   Plus,
   X,
   Check,
+  Pencil,
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -78,7 +79,14 @@ const DEFAULT_COMBINATIONS: Record<SubTab, Combination[]> = {
   ],
 };
 
-const DOC_TYPES = [
+interface DocType {
+  id: string;
+  label: string;
+  icon: string;
+  custom?: boolean;
+}
+
+const DEFAULT_DOC_TYPES: DocType[] = [
   { id: 'kickoff',       label: 'Kickoff Deck',        icon: '🚀' },
   { id: 'runbook',       label: 'Runbook',              icon: '📋' },
   { id: 'migration-plan',label: 'Migration Plan',       icon: '🗺️' },
@@ -88,8 +96,9 @@ const DOC_TYPES = [
   { id: 'other',         label: 'Other',                icon: '📁' },
 ];
 
-const COMBOS_KEY = 'templateCombinations';
-const DOCS_KEY   = 'templateCombinationDocs';
+const COMBOS_KEY    = 'templateCombinations';
+const DOCS_KEY      = 'templateCombinationDocs';
+const DOC_TYPES_KEY = 'templateDocTypes';
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -98,6 +107,7 @@ export default function TemplatesPage() {
   const [combinations, setCombinations]   = useState<Record<SubTab, Combination[]>>(DEFAULT_COMBINATIONS);
   const [selectedCombo, setSelectedCombo] = useState<string | null>(null);
   const [docs, setDocs]                   = useState<Record<string, UploadedDoc[]>>({});
+  const [docTypes, setDocTypes]           = useState<DocType[]>(DEFAULT_DOC_TYPES);
   const [selectedDocType, setSelectedDocType] = useState<string>('kickoff');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -112,6 +122,20 @@ export default function TemplatesPage() {
   // Delete confirmation state
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
+  // Rename document state
+  const [renamingDocId, setRenamingDocId] = useState<string | null>(null);
+  const [renameValue, setRenameValue]     = useState('');
+
+  // Add doc-type state
+  const [showAddDocType, setShowAddDocType]   = useState(false);
+  const [newDocTypeLabel, setNewDocTypeLabel] = useState('');
+  const [newDocTypeIcon, setNewDocTypeIcon]   = useState('📄');
+  const [docTypeError, setDocTypeError]       = useState('');
+
+  // Rename doc-type state
+  const [renamingTypeId, setRenamingTypeId]   = useState<string | null>(null);
+  const [renameTypeValue, setRenameTypeValue] = useState('');
+
   // ── Persistence ─────────────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -120,6 +144,8 @@ export default function TemplatesPage() {
       if (savedCombos) setCombinations(JSON.parse(savedCombos));
       const savedDocs = localStorage.getItem(DOCS_KEY);
       if (savedDocs) setDocs(JSON.parse(savedDocs));
+      const savedTypes = localStorage.getItem(DOC_TYPES_KEY);
+      if (savedTypes) setDocTypes(JSON.parse(savedTypes));
     } catch {}
   }, []);
 
@@ -131,6 +157,11 @@ export default function TemplatesPage() {
   const persistDocs = (updated: Record<string, UploadedDoc[]>) => {
     setDocs(updated);
     try { localStorage.setItem(DOCS_KEY, JSON.stringify(updated)); } catch {}
+  };
+
+  const persistDocTypes = (updated: DocType[]) => {
+    setDocTypes(updated);
+    try { localStorage.setItem(DOC_TYPES_KEY, JSON.stringify(updated)); } catch {}
   };
 
   // ── Derived ─────────────────────────────────────────────────────────────────
@@ -179,6 +210,53 @@ export default function TemplatesPage() {
   const removeDoc = (docId: string) => {
     if (!selectedCombo) return;
     persistDocs({ ...docs, [selectedCombo]: (docs[selectedCombo] ?? []).filter((d) => d.id !== docId) });
+  };
+
+  const startRename = (doc: UploadedDoc) => {
+    setRenamingDocId(doc.id);
+    setRenameValue(doc.name);
+  };
+
+  const commitRename = (comboId: string) => {
+    const trimmed = renameValue.trim();
+    if (!trimmed || !renamingDocId) { setRenamingDocId(null); return; }
+    persistDocs({
+      ...docs,
+      [comboId]: (docs[comboId] ?? []).map((d) =>
+        d.id === renamingDocId ? { ...d, name: trimmed } : d
+      ),
+    });
+    setRenamingDocId(null);
+  };
+
+  // ── Doc-type management ─────────────────────────────────────────────────────
+
+  const handleAddDocType = () => {
+    const label = newDocTypeLabel.trim();
+    if (!label) { setDocTypeError('Type name is required.'); return; }
+    if (docTypes.some((dt) => dt.label.toLowerCase() === label.toLowerCase())) {
+      setDocTypeError('A type with this name already exists.'); return;
+    }
+    const id = `custom-${Date.now()}`;
+    persistDocTypes([...docTypes, { id, label, icon: newDocTypeIcon || '📄', custom: true }]);
+    setSelectedDocType(id);
+    setNewDocTypeLabel('');
+    setNewDocTypeIcon('📄');
+    setDocTypeError('');
+    setShowAddDocType(false);
+  };
+
+  const handleDeleteDocType = (typeId: string) => {
+    if (!confirm('Delete this document type? Uploaded files in this category will become uncategorised.')) return;
+    persistDocTypes(docTypes.filter((dt) => dt.id !== typeId));
+    if (selectedDocType === typeId) setSelectedDocType(docTypes[0]?.id ?? '');
+  };
+
+  const commitRenameDocType = () => {
+    const label = renameTypeValue.trim();
+    if (!label || !renamingTypeId) { setRenamingTypeId(null); return; }
+    persistDocTypes(docTypes.map((dt) => dt.id === renamingTypeId ? { ...dt, label } : dt));
+    setRenamingTypeId(null);
   };
 
   // ── Add combination ─────────────────────────────────────────────────────────
@@ -500,29 +578,109 @@ export default function TemplatesPage() {
               )}
 
               {/* Upload bar */}
-              <div className="flex items-center gap-3 p-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm">
-                <select
-                  value={selectedDocType}
-                  onChange={(e) => setSelectedDocType(e.target.value)}
-                  className="text-sm border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 outline-none bg-white dark:bg-gray-700 dark:text-gray-200"
-                >
-                  {DOC_TYPES.map((dt) => (
-                    <option key={dt.id} value={dt.id}>{dt.icon} {dt.label}</option>
+              <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm overflow-hidden">
+                {/* Doc-type management header */}
+                <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50">
+                  <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Document Type</span>
+                  <button
+                    onClick={() => { setShowAddDocType((v) => !v); setDocTypeError(''); }}
+                    className="ml-auto flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-lg text-white bg-primary-600 hover:bg-primary-700 transition-colors"
+                  >
+                    {showAddDocType ? <><X size={11} /> Cancel</> : <><Plus size={11} /> Add Type</>}
+                  </button>
+                </div>
+
+                {/* Add doc-type inline form */}
+                {showAddDocType && (
+                  <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100 dark:border-gray-700 bg-primary-50 dark:bg-primary-900/20">
+                    <input
+                      type="text"
+                      value={newDocTypeIcon}
+                      onChange={(e) => setNewDocTypeIcon(e.target.value)}
+                      maxLength={4}
+                      className="w-10 text-center text-lg border border-gray-300 rounded-lg p-1 bg-white focus:outline-none focus:ring-1 focus:ring-primary-400"
+                      title="Icon (emoji)"
+                    />
+                    <input
+                      autoFocus
+                      type="text"
+                      value={newDocTypeLabel}
+                      onChange={(e) => { setNewDocTypeLabel(e.target.value); setDocTypeError(''); }}
+                      onKeyDown={(e) => { if (e.key === 'Enter') handleAddDocType(); if (e.key === 'Escape') setShowAddDocType(false); }}
+                      placeholder="Type name, e.g. SOW Document"
+                      className="flex-1 text-sm border border-gray-300 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-primary-400"
+                    />
+                    <button onClick={handleAddDocType} className="p-1.5 text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors" title="Add">
+                      <Check size={14} />
+                    </button>
+                    {docTypeError && <span className="text-xs text-red-500">{docTypeError}</span>}
+                  </div>
+                )}
+
+                {/* Doc-type pills */}
+                <div className="flex flex-wrap gap-2 px-3 py-2 border-b border-gray-100 dark:border-gray-700">
+                  {docTypes.map((dt) => (
+                    <div key={dt.id} className={`flex items-center gap-1 rounded-full border text-xs font-medium transition-colors ${selectedDocType === dt.id ? `${tab.border} border-2 ${tab.color} ${tab.bg}` : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-700'}`}>
+                      {renamingTypeId === dt.id ? (
+                        <>
+                          <input
+                            autoFocus
+                            value={renameTypeValue}
+                            onChange={(e) => setRenameTypeValue(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') commitRenameDocType(); if (e.key === 'Escape') setRenamingTypeId(null); }}
+                            className="w-28 text-xs px-2 py-1 rounded-full border border-primary-400 outline-none bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                          />
+                          <button onClick={commitRenameDocType} className="p-0.5 text-green-600 hover:text-green-700" title="Save"><Check size={11} /></button>
+                          <button onClick={() => setRenamingTypeId(null)} className="p-0.5 text-gray-400 hover:text-gray-600 pr-1" title="Cancel"><X size={11} /></button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => setSelectedDocType(dt.id)}
+                            className="flex items-center gap-1 pl-2.5 py-1.5"
+                          >
+                            <span>{dt.icon}</span>
+                            <span>{dt.label}</span>
+                          </button>
+                          <button
+                            onClick={() => { setRenamingTypeId(dt.id); setRenameTypeValue(dt.label); }}
+                            className="p-0.5 text-gray-300 hover:text-blue-500 transition-colors"
+                            title="Rename type"
+                          >
+                            <Pencil size={10} />
+                          </button>
+                          {dt.custom && (
+                            <button
+                              onClick={() => handleDeleteDocType(dt.id)}
+                              className="p-0.5 text-gray-300 hover:text-red-500 transition-colors pr-1.5"
+                              title="Delete type"
+                            >
+                              <X size={10} />
+                            </button>
+                          )}
+                          {!dt.custom && <span className="pr-2" />}
+                        </>
+                      )}
+                    </div>
                   ))}
-                </select>
-                <label className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-colors text-white ${tab.activeBtn}`}>
-                  <Upload size={15} />
-                  Upload Document
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    multiple
-                    className="hidden"
-                    accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.png,.jpg,.jpeg"
-                    onChange={(e) => { handleFiles(e.target.files); e.target.value = ''; }}
-                  />
-                </label>
-                <p className="text-xs text-gray-400 ml-auto hidden sm:block">PDF, Word, Excel, PPT, images</p>
+                </div>
+
+                {/* Upload button row */}
+                <div className="flex items-center gap-3 px-3 py-2">
+                  <label className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-colors text-white ${tab.activeBtn}`}>
+                    <Upload size={15} />
+                    Upload Document
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      multiple
+                      className="hidden"
+                      accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.png,.jpg,.jpeg"
+                      onChange={(e) => { handleFiles(e.target.files); e.target.value = ''; }}
+                    />
+                  </label>
+                  <p className="text-xs text-gray-400 ml-auto hidden sm:block">PDF, Word, Excel, PPT, images</p>
+                </div>
               </div>
 
               {/* Documents list grouped by type */}
@@ -534,7 +692,7 @@ export default function TemplatesPage() {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {DOC_TYPES.map((dt) => {
+                  {docTypes.map((dt) => {
                     const files = comboDocs.filter((d) => d.docType === dt.id);
                     if (files.length === 0) return null;
                     return (
@@ -551,10 +709,38 @@ export default function TemplatesPage() {
                                 <span className="text-xs font-bold text-gray-500 dark:text-gray-400">{doc.ext}</span>
                               </div>
                               <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">{doc.name}</p>
+                                {renamingDocId === doc.id ? (
+                                  <div className="flex items-center gap-1.5">
+                                    <input
+                                      autoFocus
+                                      value={renameValue}
+                                      onChange={(e) => setRenameValue(e.target.value)}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') commitRename(selectedCombo!);
+                                        if (e.key === 'Escape') setRenamingDocId(null);
+                                      }}
+                                      className="flex-1 text-sm px-2 py-1 border border-primary-400 rounded-lg outline-none focus:ring-1 focus:ring-primary-400 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                                    />
+                                    <button onClick={() => commitRename(selectedCombo!)} className="p-1 text-green-600 hover:bg-green-50 rounded-lg transition-colors" title="Save name">
+                                      <Check size={14} />
+                                    </button>
+                                    <button onClick={() => setRenamingDocId(null)} className="p-1 text-gray-400 hover:bg-gray-100 rounded-lg transition-colors" title="Cancel">
+                                      <X size={14} />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <p className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">{doc.name}</p>
+                                )}
                                 <p className="text-xs text-gray-400">{doc.size} · {format(new Date(doc.uploadedAt), 'MMM d, yyyy')}</p>
                               </div>
                               <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button
+                                  onClick={() => startRename(doc)}
+                                  title="Rename document"
+                                  className="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
+                                >
+                                  <Pencil size={14} />
+                                </button>
                                 <button
                                   onClick={() => downloadDoc(doc)}
                                   title="Download"
@@ -580,29 +766,6 @@ export default function TemplatesPage() {
                 </div>
               )}
 
-              {/* Empty doc-type quick-upload slots */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 pt-2">
-                {DOC_TYPES.filter((dt) => comboDocs.filter((d) => d.docType === dt.id).length === 0).map((dt) => (
-                  <label
-                    key={dt.id}
-                    onClick={() => setSelectedDocType(dt.id)}
-                    className="flex flex-col items-center gap-2 p-4 bg-white dark:bg-gray-800 border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-xl cursor-pointer hover:border-primary-300 hover:bg-primary-50/30 transition-colors group"
-                  >
-                    <span className="text-2xl">{dt.icon}</span>
-                    <span className="text-xs font-medium text-gray-500 dark:text-gray-400 group-hover:text-primary-600 text-center">{dt.label}</span>
-                    <span className="text-xs text-gray-400 group-hover:text-primary-500 flex items-center gap-1">
-                      <Upload size={11} /> Upload
-                    </span>
-                    <input
-                      type="file"
-                      multiple
-                      className="hidden"
-                      accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.png,.jpg,.jpeg"
-                      onChange={(e) => { handleFiles(e.target.files); e.target.value = ''; }}
-                    />
-                  </label>
-                ))}
-              </div>
             </div>
           )}
         </div>

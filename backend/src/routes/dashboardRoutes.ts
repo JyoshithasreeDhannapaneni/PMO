@@ -45,10 +45,19 @@ router.get('/overaged-projects', dashboardController.getOveragedProjects);
 // GET /api/dashboard/escalated-projects - Escalated or highly delayed projects
 router.get('/escalated-projects', dashboardController.getEscalatedProjects);
 
+// POST /api/dashboard/mark-overage/:id - Mark a project as overaged
+router.post('/mark-overage/:id', dashboardController.markOverageProject);
+
+// POST /api/dashboard/unmark-overage/:id - Remove overage from a project
+router.post('/unmark-overage/:id', dashboardController.unmarkOverageProject);
+
 // POST /api/dashboard/escalate/:id - Mark a project as escalated
 router.post('/escalate/:id', dashboardController.escalateProject);
 
 // POST /api/dashboard/deescalate/:id - Remove escalation from a project
 router.post('/deescalate/:id', dashboardController.deescalateProject);
+
+// POST /api/dashboard/set-resolved-date/:id - Set or clear the resolved date
+router.post('/set-resolved-date/:id', dashboardController.setResolvedDate);
 
 export default router;

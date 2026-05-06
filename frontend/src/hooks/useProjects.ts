@@ -200,3 +200,77 @@ export function useEscalatedProjects(manager?: string) {
     refetchInterval: 30_000,
   });
 }
+
+export function useMarkOverageProject() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, overageAmount, notes, extendedStartDate, extendedEndDate }: { id: string; overageAmount?: number; notes?: string; extendedStartDate?: string; extendedEndDate?: string }) => {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
+      return fetch(`${API_BASE}/api/dashboard/mark-overage/${id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ overageAmount, notes, extendedStartDate, extendedEndDate }),
+      }).then(r => r.json());
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['overagedProjects'] });
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+  });
+}
+
+export function useUnmarkOverageProject() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
+      return fetch(`${API_BASE}/api/dashboard/unmark-overage/${id}`, {
+        method: 'POST',
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      }).then(r => r.json());
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['overagedProjects'] });
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+  });
+}
+
+export function useEscalateProject() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, priority, notes }: { id: string; priority: 'LOW' | 'MEDIUM' | 'HIGH'; notes?: string }) => {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
+      return fetch(`${API_BASE}/api/dashboard/escalate/${id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ priority, notes }),
+      }).then(r => r.json());
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['escalatedProjects'] });
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+  });
+}
+
+export function useDeescalateProject() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
+      return fetch(`${API_BASE}/api/dashboard/deescalate/${id}`, {
+        method: 'POST',
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      }).then(r => r.json());
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['escalatedProjects'] });
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+  });
+}

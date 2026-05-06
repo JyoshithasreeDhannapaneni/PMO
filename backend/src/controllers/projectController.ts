@@ -16,6 +16,7 @@ export const projectController = {
       search: req.query.search as string,
       projectManager: req.query.projectManager as string,
       accountManager: req.query.accountManager as string,
+      migrationType: req.query.migrationType as string,
     };
 
     const pagination: PaginationOptions = {

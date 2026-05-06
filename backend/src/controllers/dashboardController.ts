@@ -195,6 +195,19 @@ export const dashboardController = {
     res.json({ success: true, data });
   }),
 
+  markOverageProject: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const { id } = req.params;
+    const { overageAmount, notes, extendedStartDate, extendedEndDate } = req.body;
+    await dashboardService.markOverageProject(id, overageAmount, notes, extendedStartDate, extendedEndDate);
+    res.json({ success: true, message: 'Project marked as overaged' });
+  }),
+
+  unmarkOverageProject: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const { id } = req.params;
+    await dashboardService.unmarkOverageProject(id);
+    res.json({ success: true, message: 'Overage removed' });
+  }),
+
   escalateProject: asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const { id } = req.params;
     const { priority = 'MEDIUM', notes } = req.body;
@@ -206,5 +219,12 @@ export const dashboardController = {
     const { id } = req.params;
     await dashboardService.deescalateProject(id);
     res.json({ success: true, message: 'Escalation removed' });
+  }),
+
+  setResolvedDate: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const { id } = req.params;
+    const { resolvedDate } = req.body;
+    await dashboardService.setResolvedDate(id, resolvedDate || null);
+    res.json({ success: true, message: 'Resolved date updated' });
   }),
 };

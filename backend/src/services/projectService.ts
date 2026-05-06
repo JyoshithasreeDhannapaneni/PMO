@@ -44,6 +44,7 @@ export interface ProjectFilters {
   search?: string;
   projectManager?: string;
   accountManager?: string;
+  migrationType?: string;
 }
 
 export interface PaginationOptions {
@@ -122,6 +123,10 @@ class ProjectService {
     if (filters.accountManager) {
       conditions.push(`account_manager = ?`);
       params.push(filters.accountManager);
+    }
+    if (filters.migrationType) {
+      conditions.push(`migration_types LIKE ?`);
+      params.push(`%${filters.migrationType}%`);
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';

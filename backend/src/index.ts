@@ -137,6 +137,9 @@ async function runMigrations() {
   if (!await columnExists('projects', 'overage_amount')) {
     try { await execute(`ALTER TABLE projects ADD COLUMN overage_amount DECIMAL(15,2) DEFAULT NULL`); } catch {}
   }
+  if (!await columnExists('projects', 'overage_notes')) {
+    try { await execute(`ALTER TABLE projects ADD COLUMN overage_notes TEXT DEFAULT NULL`); } catch {}
+  }
 }
 
 // Start server

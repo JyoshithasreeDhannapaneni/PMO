@@ -9,7 +9,7 @@ import {
   ArrowLeft, Loader2, ChevronDown, ChevronRight,
   Clock, CheckCircle, Circle, AlertTriangle, Play, Pause,
   Calendar, BarChart3, List, RefreshCw, Zap, AlertCircle,
-  CalendarDays, Flag, ChevronsLeft, ChevronsRight,
+  CalendarDays, Flag, ChevronsLeft, ChevronsRight, Plus, Pencil, X, Trash2,
 } from 'lucide-react';
 
 /* ── Types ─────────────────────────────────────────────────────────── */
@@ -119,6 +119,7 @@ export default function ProjectTasksPage() {
   const [expandedPhases,  setExpandedPhases]  = useState<Set<string>>(new Set());
   const [isLoading,       setIsLoading]       = useState(true);
   const [error,           setError]           = useState<string | null>(null);
+  const [errorStatus,     setErrorStatus]     = useState<number | null>(null);
   const [viewMode,        setViewMode]        = useState<'gantt' | 'list'>('gantt');
   const [updatingTask,    setUpdatingTask]    = useState<string | null>(null);
   const [isAutoUpdating,  setIsAutoUpdating]  = useState(false);
@@ -129,6 +130,18 @@ export default function ProjectTasksPage() {
   const [hoveredTask,     setHoveredTask]     = useState<string | null>(null);
   const [viewStartDate,   setViewStartDate]   = useState<Date>(new Date());
   const [listPage,        setListPage]        = useState(1);
+
+  // Task add/edit modal state
+  const [taskModal, setTaskModal] = useState<{
+    mode: 'add' | 'edit';
+    task?: any;
+  } | null>(null);
+  const [taskForm, setTaskForm] = useState({
+    name: '', phaseRecordId: '', plannedStart: '', plannedEnd: '',
+    assignee: '', priority: 'MEDIUM' as 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL',
+    notes: '', status: 'TODO' as string, progress: 0, isMilestone: false,
+  });
+  const [savingTask, setSavingTask] = useState(false);
 
   /* fetch ─────────────────────────────────────────────────────────── */
   const fetchData = useCallback(async () => {
@@ -142,6 +155,7 @@ export default function ProjectTasksPage() {
       const json = await res.json();
       if (json.success) {
         setGanttData(json.data);
+        setErrorStatus(null);
         setExpandedPhases(new Set(json.data.phases.map((p: ProjectPhase) => p.id)));
         setLastSync(new Date());
         if (json.data.project.plannedStart) {
@@ -150,6 +164,7 @@ export default function ProjectTasksPage() {
           setViewStartDate(s);
         }
       } else {
+        setErrorStatus(res.status);
         setError(json.error?.message || 'Failed to load tasks');
       }
     } catch {
@@ -208,6 +223,83 @@ export default function ProjectTasksPage() {
       });
       await fetchData();
     } catch { /* silent */ } finally { setUpdatingTask(null); }
+  };
+
+  const openAddTask = () => {
+    const firstPhase = ganttData?.phases[0];
+    setTaskForm({
+      name: '', phaseRecordId: firstPhase?.id || '',
+      plannedStart: ganttData?.project.plannedStart?.split('T')[0] || new Date().toISOString().split('T')[0],
+      plannedEnd: ganttData?.project.plannedEnd?.split('T')[0] || new Date().toISOString().split('T')[0],
+      assignee: '', priority: 'MEDIUM', notes: '', status: 'TODO', progress: 0, isMilestone: false,
+    });
+    setTaskModal({ mode: 'add' });
+  };
+
+  const openEditTask = (t: any) => {
+    setTaskForm({
+      name: t.name, phaseRecordId: '', // not needed for edit
+      plannedStart: t.plannedStart?.split('T')[0] || '',
+      plannedEnd: t.plannedEnd?.split('T')[0] || '',
+      assignee: t.assignee || '', priority: t.priority || 'MEDIUM',
+      notes: t.notes || '', status: t.status, progress: t.progress, isMilestone: t.isMilestone,
+    });
+    setTaskModal({ mode: 'edit', task: t });
+  };
+
+  const deleteTask = async (taskId: string, taskName: string) => {
+    if (!confirm(`Delete task "${taskName}"? This cannot be undone.`)) return;
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
+      await fetch(`${API_URL}/api/tasks/${taskId}`, {
+        method: 'DELETE',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      await fetchData();
+    } catch { /* silent */ }
+  };
+
+  const saveTask = async () => {
+    if (!taskForm.name.trim()) return;
+    setSavingTask(true);
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
+      if (taskModal?.mode === 'add') {
+        await fetch(`${API_URL}/api/tasks/project/${projectId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+          body: JSON.stringify({
+            phaseRecordId: taskForm.phaseRecordId,
+            name: taskForm.name,
+            plannedStart: taskForm.plannedStart,
+            plannedEnd: taskForm.plannedEnd,
+            assignee: taskForm.assignee || undefined,
+            priority: taskForm.priority,
+            notes: taskForm.notes || undefined,
+            isMilestone: taskForm.isMilestone,
+          }),
+        });
+      } else if (taskModal?.mode === 'edit' && taskModal.task) {
+        await fetch(`${API_URL}/api/tasks/${taskModal.task.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+          body: JSON.stringify({
+            name: taskForm.name,
+            plannedStart: new Date(taskForm.plannedStart),
+            plannedEnd: new Date(taskForm.plannedEnd),
+            assignee: taskForm.assignee || null,
+            priority: taskForm.priority,
+            notes: taskForm.notes || null,
+            status: taskForm.status,
+            progress: taskForm.status === 'DONE' ? 100 : taskForm.progress,
+          }),
+        });
+      }
+      await fetchData();
+      setTaskModal(null);
+    } catch { /* silent */ } finally {
+      setSavingTask(false);
+    }
   };
 
   const togglePhase = (id: string) => {
@@ -319,10 +411,26 @@ export default function ProjectTasksPage() {
     </div>
   );
   if (error) return (
-    <div className="flex flex-col items-center justify-center h-64 gap-3">
-      <AlertCircle className="w-12 h-12 text-red-500" />
-      <p className="text-red-600 font-medium">{error}</p>
-      <Button onClick={fetchData}><RefreshCw size={14} className="mr-1"/>Try Again</Button>
+    <div className="flex flex-col items-center justify-center h-64 gap-4">
+      <AlertCircle className="w-14 h-14 text-red-400" />
+      <div className="text-center">
+        <p className="text-lg font-semibold text-gray-800 dark:text-white">
+          {errorStatus === 404 ? 'Project Not Found' : 'Something went wrong'}
+        </p>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+          {errorStatus === 404
+            ? 'This project may have been deleted or the link is no longer valid.'
+            : error}
+        </p>
+      </div>
+      <div className="flex items-center gap-3">
+        <Link href="/projects">
+          <Button variant="outline"><ArrowLeft size={14} className="mr-1.5"/>All Projects</Button>
+        </Link>
+        {errorStatus !== 404 && (
+          <Button onClick={fetchData}><RefreshCw size={14} className="mr-1.5"/>Try Again</Button>
+        )}
+      </div>
     </div>
   );
   if (!ganttData) return (
@@ -708,6 +816,18 @@ export default function ProjectTasksPage() {
       {/* ══════════════════════════════════════════════════════════════ */}
       {viewMode === 'list' && (
         <div className="flex-1 flex flex-col bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+          {/* List toolbar */}
+          <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-200 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-800/60">
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{flatTasks.length} tasks</span>
+            {ganttData && (
+              <button
+                onClick={openAddTask}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors font-medium"
+              >
+                <Plus size={13} /> Add Task
+              </button>
+            )}
+          </div>
           <div className="flex-1 overflow-auto">
             <table className="w-full text-sm min-w-[900px]">
               <thead className="bg-gray-50 dark:bg-gray-800 sticky top-0 z-10">
@@ -806,9 +926,14 @@ export default function ProjectTasksPage() {
                       </td>
                       {/* Actions */}
                       <td className="py-3 px-2 text-center">
-                        <button className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400">
-                          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="3" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="8" cy="13" r="1.5"/></svg>
-                        </button>
+                        <div className="flex items-center justify-center gap-1">
+                          <button onClick={() => openEditTask(t)} title="Edit task" className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-primary-600 transition-colors">
+                            <Pencil size={13} />
+                          </button>
+                          <button onClick={() => deleteTask(t.id, t.name)} title="Delete task" className="p-1.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-gray-400 hover:text-red-600 transition-colors">
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -834,6 +959,139 @@ export default function ProjectTasksPage() {
               <button onClick={()=>setListPage(p=>Math.min(listPages,p+1))} disabled={listPage===listPages}
                 className="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-30"><ChevronsRight size={14}/></button>
               <span className="text-xs text-gray-400 ml-2">{PAGE_SIZE}/page</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add / Edit Task Modal */}
+      {taskModal && ganttData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => setTaskModal(null)}>
+          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
+              <h2 className="text-base font-semibold text-gray-900 dark:text-white">
+                {taskModal.mode === 'add' ? 'Add Task' : 'Edit Task'}
+              </h2>
+              <button onClick={() => setTaskModal(null)} className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400">
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
+              {/* Task name */}
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Task Name <span className="text-red-500">*</span></label>
+                <input
+                  value={taskForm.name}
+                  onChange={e => setTaskForm(f => ({ ...f, name: e.target.value }))}
+                  placeholder="Enter task name…"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-400"
+                />
+              </div>
+
+              {/* Phase (only on add) */}
+              {taskModal.mode === 'add' && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Phase <span className="text-red-500">*</span></label>
+                  <select
+                    value={taskForm.phaseRecordId}
+                    onChange={e => setTaskForm(f => ({ ...f, phaseRecordId: e.target.value }))}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  >
+                    {ganttData.phases.map(ph => (
+                      <option key={ph.id} value={ph.id}>{ph.phaseName}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Dates */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Start Date <span className="text-red-500">*</span></label>
+                  <input type="date" value={taskForm.plannedStart}
+                    onChange={e => setTaskForm(f => ({ ...f, plannedStart: e.target.value }))}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">End Date <span className="text-red-500">*</span></label>
+                  <input type="date" value={taskForm.plannedEnd}
+                    onChange={e => setTaskForm(f => ({ ...f, plannedEnd: e.target.value }))}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
+                </div>
+              </div>
+
+              {/* Assignee + Priority */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Assignee</label>
+                  <input value={taskForm.assignee}
+                    onChange={e => setTaskForm(f => ({ ...f, assignee: e.target.value }))}
+                    placeholder="Name…"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Priority</label>
+                  <select value={taskForm.priority}
+                    onChange={e => setTaskForm(f => ({ ...f, priority: e.target.value as any }))}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                    <option value="LOW">Low</option>
+                    <option value="MEDIUM">Medium</option>
+                    <option value="HIGH">High</option>
+                    <option value="CRITICAL">Critical</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Status + Progress (edit only) */}
+              {taskModal.mode === 'edit' && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Status</label>
+                    <select value={taskForm.status}
+                      onChange={e => setTaskForm(f => ({ ...f, status: e.target.value }))}
+                      className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                      <option value="TODO">To Do</option>
+                      <option value="IN_PROGRESS">In Progress</option>
+                      <option value="DONE">Done</option>
+                      <option value="BLOCKED">Blocked</option>
+                      <option value="SKIPPED">Skipped</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Progress ({taskForm.progress}%)</label>
+                    <input type="range" min={0} max={100} value={taskForm.progress}
+                      onChange={e => setTaskForm(f => ({ ...f, progress: Number(e.target.value) }))}
+                      className="w-full mt-2" />
+                  </div>
+                </div>
+              )}
+
+              {/* Milestone + Notes */}
+              <div className="flex items-center gap-2">
+                <input type="checkbox" id="isMilestone" checked={taskForm.isMilestone}
+                  onChange={e => setTaskForm(f => ({ ...f, isMilestone: e.target.checked }))}
+                  className="rounded border-gray-300" />
+                <label htmlFor="isMilestone" className="text-xs text-gray-600 dark:text-gray-400">Mark as milestone</label>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Notes</label>
+                <textarea value={taskForm.notes}
+                  onChange={e => setTaskForm(f => ({ ...f, notes: e.target.value }))}
+                  rows={2} placeholder="Optional notes…"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white resize-none" />
+              </div>
+            </div>
+
+            <div className="flex gap-3 px-5 py-4 border-t border-gray-200 dark:border-gray-700">
+              <button onClick={() => setTaskModal(null)}
+                className="flex-1 px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                Cancel
+              </button>
+              <button onClick={saveTask} disabled={savingTask || !taskForm.name.trim()}
+                className="flex-1 px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-60 transition-colors font-medium">
+                {savingTask ? 'Saving…' : taskModal.mode === 'add' ? 'Add Task' : 'Save Changes'}
+              </button>
             </div>
           </div>
         </div>
