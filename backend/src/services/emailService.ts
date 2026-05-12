@@ -1,108 +1,257 @@
+'use strict';
 import nodemailer from 'nodemailer';
 import { logger } from '../utils/logger';
+import { query } from '../config/database';
 
-class EmailService {
-  private transporter: nodemailer.Transporter | null = null;
-
-  constructor() {
-    this.initializeTransporter();
-  }
-
-  private initializeTransporter(): void {
-    if (process.env.SMTP_HOST && process.env.SMTP_USER) {
-      this.transporter = nodemailer.createTransport({
-        host: process.env.SMTP_HOST,
-        port: parseInt(process.env.SMTP_PORT || '587'),
-        secure: process.env.SMTP_PORT === '465',
-        auth: {
-          user: process.env.SMTP_USER,
-          pass: process.env.SMTP_PASS,
-        },
-      });
-      logger.info('Email transporter initialized');
-    } else {
-      logger.warn('Email configuration not found - emails will be logged only');
-    }
-  }
-
-  async sendEmail(options: EmailOptions): Promise<void> {
-    const recipients = Array.isArray(options.to) ? options.to.join(', ') : options.to;
-
-    if (!this.transporter) {
-      logger.info(`[MOCK EMAIL] To: ${recipients}`);
-      logger.info(`[MOCK EMAIL] Subject: ${options.subject}`);
-      logger.info(`[MOCK EMAIL] Body: ${options.html.substring(0, 200)}...`);
-      return;
-    }
-
-    try {
-      await this.transporter.sendMail({
-        from: process.env.SMTP_FROM || 'noreply@pmo-tracker.com',
-        to: recipients,
-        subject: options.subject,
-        html: options.html,
-        text: options.text,
-      });
-      logger.info(`Email sent to: ${recipients}`);
-    } catch (error) {
-      logger.error(`Failed to send email: ${error}`);
-      throw error;
-    }
-  }
-
-  async sendWelcomeEmail(name: string, email: string): Promise<void> {
-    await this.sendEmail({
-      to: email,
-      subject: 'Welcome to PMO Tracker',
-      html: `
-        <h2>Welcome to PMO Tracker!</h2>
-        <p>Hello ${name},</p>
-        <p>Your account has been created successfully.</p>
-        <p>You can now log in and start tracking your projects.</p>
-        <p>Best regards,<br>PMO Tracker Team</p>
-      `,
-    });
-  }
-
-  async sendPasswordChangedEmail(name: string, email: string): Promise<void> {
-    await this.sendEmail({
-      to: email,
-      subject: 'Password Changed - PMO Tracker',
-      html: `
-        <h2>Password Changed</h2>
-        <p>Hello ${name},</p>
-        <p>Your password has been changed successfully.</p>
-        <p>If you did not make this change, please contact support immediately.</p>
-        <p>Best regards,<br>PMO Tracker Team</p>
-      `,
-    });
-  }
-
-  async sendNewUserCredentialsEmail(name: string, email: string, tempPassword: string): Promise<void> {
-    await this.sendEmail({
-      to: email,
-      subject: 'Your PMO Tracker Account Has Been Created',
-      html: `
-        <h2>Welcome to PMO Tracker!</h2>
-        <p>Hello ${name},</p>
-        <p>Your account has been created by an administrator.</p>
-        <p><strong>Login Credentials:</strong></p>
-        <ul>
-          <li>Email: ${email}</li>
-          <li>Temporary Password: <code>${tempPassword}</code></li>
-        </ul>
-        <p>Please log in and change your password immediately for security.</p>
-        <p>Best regards,<br>PMO Tracker Team</p>
-      `,
-    });
-  }
-}
-
-interface EmailOptions {
+export interface EmailOptions {
   to: string | string[];
   subject: string;
   html: string;
   text?: string;
+}
+
+const BRAND_COLOR = '#2563eb';
+
+/** Wrap any body HTML in a consistent CloudFuze-branded shell. */
+function brandedEmail(title: string, body: string, accentColor = BRAND_COLOR): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${title}</title>
+</head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,Helvetica,sans-serif;color:#1e293b;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:32px 16px;">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(37,99,235,0.08);">
+
+        <!-- Header -->
+        <tr>
+          <td style="background:${accentColor};padding:28px 32px;">
+            <table width="100%" cellpadding="0" cellspacing="0">
+              <tr>
+                <td>
+                  <span style="font-size:20px;font-weight:700;color:#ffffff;letter-spacing:-0.5px;">☁ CloudFuze PMO</span>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- Title bar -->
+        <tr>
+          <td style="padding:24px 32px 8px 32px;border-bottom:2px solid #eff6ff;">
+            <h2 style="margin:0;font-size:18px;font-weight:700;color:#1e293b;">${title}</h2>
+          </td>
+        </tr>
+
+        <!-- Body -->
+        <tr>
+          <td style="padding:24px 32px;">
+            ${body}
+          </td>
+        </tr>
+
+        <!-- Footer -->
+        <tr>
+          <td style="background:#f8faff;padding:20px 32px;border-top:1px solid #e2e8f0;text-align:center;">
+            <p style="margin:0;font-size:12px;color:#94a3b8;">
+              CloudFuze PMO Tracker &nbsp;·&nbsp; Project Migration Management<br/>
+              This is an automated notification — please do not reply directly to this email.
+            </p>
+          </td>
+        </tr>
+
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+}
+
+/** Fetch active SMTP settings from the DB, falling back to env vars. */
+async function loadSmtpConfig(): Promise<{
+  host: string; port: number; user: string; pass: string; secure: boolean; from: string;
+} | null> {
+  // Try DB first
+  try {
+    const res = await query(`SELECT * FROM smtp_settings WHERE id = 1`);
+    const r = res.rows[0];
+    if (r && r.host && r.email) {
+      const secure = r.security === 'SSL';
+      return {
+        host: r.host,
+        port: Number(r.port) || 587,
+        user: r.email,
+        pass: r.password || '',
+        secure,
+        from: `"CloudFuze PMO" <${r.email}>`,
+      };
+    }
+  } catch {
+    // table might not exist yet — fall through to env
+  }
+
+  // Fall back to environment variables
+  if (process.env.SMTP_HOST && process.env.SMTP_USER) {
+    return {
+      host: process.env.SMTP_HOST,
+      port: parseInt(process.env.SMTP_PORT || '587'),
+      secure: process.env.SMTP_PORT === '465',
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS || '',
+      from: process.env.SMTP_FROM || `"CloudFuze PMO" <${process.env.SMTP_USER}>`,
+    };
+  }
+
+  return null;
+}
+
+class EmailService {
+  /** Core send method — loads config fresh from DB every call so UI changes take effect immediately. */
+  async sendEmail(options: EmailOptions): Promise<void> {
+    const to = Array.isArray(options.to) ? options.to.join(', ') : options.to;
+    const cfg = await loadSmtpConfig();
+
+    if (!cfg) {
+      logger.warn(`[EMAIL NO-OP] SMTP not configured. To: ${to} | Subject: ${options.subject}`);
+      return;
+    }
+
+    const transporter = nodemailer.createTransport({
+      host: cfg.host,
+      port: cfg.port,
+      secure: cfg.secure,
+      auth: { user: cfg.user, pass: cfg.pass },
+      tls: { rejectUnauthorized: false },
+    });
+
+    try {
+      const info = await transporter.sendMail({
+        from: cfg.from,
+        to,
+        subject: options.subject,
+        html: options.html,
+        text: options.text,
+      });
+      logger.info(`Email sent → ${to} | messageId: ${info.messageId}`);
+    } catch (err: any) {
+      logger.error(`Email failed → ${to} | ${err.message}`);
+      throw err;
+    }
+  }
+
+  // ── Pre-built email types ──────────────────────────────────────────
+
+  async sendWelcome(name: string, email: string): Promise<void> {
+    const body = `
+      <p style="font-size:15px;">Hello <strong>${name}</strong>,</p>
+      <p>Your CloudFuze PMO Tracker account has been created successfully. You can now log in and start tracking your migration projects.</p>
+      <p style="margin-top:24px;">
+        <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/login"
+           style="background:${BRAND_COLOR};color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">
+          Sign In Now →
+        </a>
+      </p>`;
+    await this.sendEmail({ to: email, subject: 'Welcome to CloudFuze PMO Tracker', html: brandedEmail('Welcome!', body) });
+  }
+
+  async sendPasswordChanged(name: string, email: string): Promise<void> {
+    const body = `
+      <p>Hello <strong>${name}</strong>,</p>
+      <p>Your account password was changed successfully.</p>
+      <p style="background:#fef2f2;border-left:4px solid #ef4444;padding:12px 16px;border-radius:4px;font-size:13px;">
+        If you did not make this change, <strong>contact your administrator immediately</strong>.
+      </p>`;
+    await this.sendEmail({ to: email, subject: 'Password Changed — CloudFuze PMO', html: brandedEmail('Password Changed', body, '#ef4444') });
+  }
+
+  async sendNewUserCredentials(name: string, email: string, tempPassword: string): Promise<void> {
+    const body = `
+      <p>Hello <strong>${name}</strong>,</p>
+      <p>An administrator has created your CloudFuze PMO Tracker account. Use the credentials below to sign in.</p>
+      <table cellpadding="0" cellspacing="0" style="background:#f8faff;border:1px solid #bfdbfe;border-radius:8px;padding:16px;margin:16px 0;width:100%;">
+        <tr><td style="padding:6px 12px;font-size:13px;color:#64748b;">Email</td><td style="padding:6px 12px;font-weight:600;">${email}</td></tr>
+        <tr><td style="padding:6px 12px;font-size:13px;color:#64748b;">Temp password</td><td style="padding:6px 12px;font-weight:600;font-family:monospace;">${tempPassword}</td></tr>
+      </table>
+      <p style="font-size:13px;color:#ef4444;font-weight:600;">Please change your password immediately after first login.</p>
+      <p style="margin-top:20px;">
+        <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/login"
+           style="background:${BRAND_COLOR};color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">
+          Sign In Now →
+        </a>
+      </p>`;
+    await this.sendEmail({ to: email, subject: 'Your CloudFuze PMO Account', html: brandedEmail('Account Created', body) });
+  }
+
+  async sendPasswordReset(name: string, email: string, resetUrl: string): Promise<void> {
+    const body = `
+      <p>Hello <strong>${name}</strong>,</p>
+      <p>We received a request to reset your CloudFuze PMO Tracker password. Click the button below to set a new password:</p>
+      <p style="margin:24px 0;">
+        <a href="${resetUrl}"
+           style="background:${BRAND_COLOR};color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">
+          Reset My Password →
+        </a>
+      </p>
+      <p style="font-size:13px;color:#64748b;">This link expires in <strong>1 hour</strong>. If you did not request this, you can safely ignore this email.</p>`;
+    await this.sendEmail({ to: email, subject: 'Reset Your Password — CloudFuze PMO', html: brandedEmail('Password Reset', body) });
+  }
+
+  /** Generic notification email with accent color per type. */
+  async sendNotification(opts: {
+    to: string[];
+    type: 'DELAY_DETECTED' | 'PROJECT_COMPLETED' | 'CASE_STUDY_REMINDER' | 'PHASE_COMPLETED' | 'GENERAL';
+    title: string;
+    rows: { label: string; value: string }[];
+    note?: string;
+    projectUrl?: string;
+  }): Promise<void> {
+    if (opts.to.length === 0) return;
+
+    const accentMap: Record<string, string> = {
+      DELAY_DETECTED: '#ef4444',
+      PROJECT_COMPLETED: '#16a34a',
+      CASE_STUDY_REMINDER: '#2563eb',
+      PHASE_COMPLETED: '#7c3aed',
+      GENERAL: '#64748b',
+    };
+    const accent = accentMap[opts.type] || BRAND_COLOR;
+
+    const tableRows = opts.rows
+      .map(r => `<tr>
+        <td style="padding:8px 12px;font-size:13px;color:#64748b;white-space:nowrap;border-bottom:1px solid #f1f5f9;">${r.label}</td>
+        <td style="padding:8px 12px;font-size:13px;font-weight:600;border-bottom:1px solid #f1f5f9;">${r.value}</td>
+      </tr>`)
+      .join('');
+
+    const noteHtml = opts.note
+      ? `<p style="background:#f8faff;border-left:4px solid ${accent};padding:10px 14px;border-radius:4px;font-size:13px;margin:16px 0;">${opts.note}</p>`
+      : '';
+
+    const ctaHtml = opts.projectUrl
+      ? `<p style="margin-top:20px;">
+          <a href="${opts.projectUrl}"
+             style="background:${accent};color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:600;font-size:13px;">
+            View Project →
+          </a>
+        </p>`
+      : '';
+
+    const body = `
+      <table cellpadding="0" cellspacing="0" style="width:100%;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;margin-bottom:16px;">
+        ${tableRows}
+      </table>
+      ${noteHtml}
+      ${ctaHtml}`;
+
+    await this.sendEmail({
+      to: opts.to,
+      subject: opts.title,
+      html: brandedEmail(opts.title, body, accent),
+    });
+  }
 }
 
 export const emailService = new EmailService();

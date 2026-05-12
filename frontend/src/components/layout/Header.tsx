@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Bell, User, LogOut, Settings, ChevronDown } from 'lucide-react';
+import { LogOut, Settings, ChevronDown } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useSettings } from '@/context/SettingsContext';
 import Link from 'next/link';
@@ -14,85 +14,87 @@ export function Header() {
   const { settings } = useSettings();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const companyName = settings.brandingSettings?.companyName || 'PMO Tracker';
 
-  // Apply branding primary color as CSS variable so Tailwind primary-* classes update
   useEffect(() => {
     const color = settings.brandingSettings?.primaryColor;
-    if (color) {
-      document.documentElement.style.setProperty('--color-primary', color);
-    }
+    if (color) document.documentElement.style.setProperty('--color-primary', color);
   }, [settings.brandingSettings?.primaryColor]);
 
   useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsDropdownOpen(false);
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    const handler = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) setIsDropdownOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
   }, []);
 
+  const initials = user?.name?.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase() || 'U';
+
   return (
-    <header className="h-16 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between px-6 transition-colors">
+    <header className="header-3d h-16 flex items-center justify-between px-6 relative z-10 flex-shrink-0">
+      {/* Bottom accent line */}
+      <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-blue-400/30 to-transparent" />
+
       {/* Search */}
       <div className="flex-1 max-w-sm">
         <GlobalSearch />
       </div>
 
-      {/* Right side */}
+      {/* Right actions */}
       <div className="flex items-center gap-2">
-        {/* Theme Toggle */}
         <ThemeToggle />
-
-        {/* Notifications */}
         <NotificationCenter />
 
         {/* User menu */}
         <div className="relative" ref={dropdownRef}>
           <button
             onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-            className="flex items-center gap-3 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg p-1.5 pr-2 transition-colors"
+            className="flex items-center gap-2.5 bg-white rounded-xl px-3 py-1.5 hover:bg-blue-50 transition-all border border-blue-100 hover:border-blue-300 shadow-sm"
           >
-            <div className="w-9 h-9 bg-primary-100 dark:bg-primary-900 rounded-full flex items-center justify-center">
-              <User className="text-primary-600 dark:text-primary-400" size={18} />
+            {/* Avatar */}
+            <div className="w-8 h-8 rounded-lg bg-indigo-gradient flex items-center justify-center text-white text-xs font-bold shadow-glow-sm flex-shrink-0">
+              {initials}
             </div>
             <div className="text-left hidden sm:block">
-              <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{user?.name || 'User'}</p>
-              <p className="text-xs text-gray-500 dark:text-gray-400">{user?.email || ''}</p>
+              <p className="text-sm font-medium text-slate-700 leading-tight">{user?.name || 'User'}</p>
+              <p className="text-[10px] text-slate-400 leading-tight">{user?.role || 'Viewer'}</p>
             </div>
-            <ChevronDown size={16} className="text-gray-400 hidden sm:block" />
+            <ChevronDown size={14} className={`text-slate-400 hidden sm:block transition-transform duration-200 ${isDropdownOpen ? 'rotate-180' : ''}`} />
           </button>
 
-          {/* Dropdown menu */}
+          {/* Dropdown */}
           {isDropdownOpen && (
-            <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-50">
-              <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700">
-                <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{user?.name}</p>
-                <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{user?.email}</p>
-                <span className="inline-block mt-1 px-2 py-0.5 text-xs font-medium bg-primary-50 dark:bg-primary-900 text-primary-700 dark:text-primary-300 rounded">
-                  {user?.role || 'User'}
-                </span>
+            <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-lg border border-blue-100 py-1 z-50 animate-scaleIn origin-top-right">
+              {/* User info */}
+              <div className="px-4 py-3 border-b border-blue-50">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-indigo-gradient flex items-center justify-center text-white text-sm font-bold shadow-glow-sm">
+                    {initials}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-slate-800 truncate">{user?.name}</p>
+                    <p className="text-xs text-slate-400 truncate">{user?.email}</p>
+                    <span className="inline-block mt-0.5 px-1.5 py-0.5 text-[10px] font-medium bg-blue-100 text-blue-600 border border-blue-200 rounded-full">
+                      {user?.role || 'User'}
+                    </span>
+                  </div>
+                </div>
               </div>
-              
+
               <Link
                 href="/settings"
-                className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
                 onClick={() => setIsDropdownOpen(false)}
+                className="flex items-center gap-2.5 px-4 py-2 text-sm text-slate-600 hover:text-blue-600 hover:bg-blue-50 transition-all"
               >
-                <Settings size={16} />
+                <Settings size={15} className="text-slate-400" />
                 Settings
               </Link>
-              
+
               <button
-                onClick={() => {
-                  setIsDropdownOpen(false);
-                  logout();
-                }}
-                className="flex items-center gap-2 w-full px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
+                onClick={() => { setIsDropdownOpen(false); logout(); }}
+                className="flex items-center gap-2.5 w-full px-4 py-2 text-sm text-red-500 hover:text-red-600 hover:bg-red-50 transition-all"
               >
-                <LogOut size={16} />
+                <LogOut size={15} />
                 Sign out
               </button>
             </div>

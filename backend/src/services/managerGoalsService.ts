@@ -12,11 +12,11 @@ class ManagerGoalsService {
   async ensureTable() {
     await execute(`
       CREATE TABLE IF NOT EXISTS manager_goals (
-        id VARCHAR(36) PRIMARY KEY DEFAULT (UUID()),
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         manager_name VARCHAR(255) NOT NULL UNIQUE,
-        goal_pct INT NOT NULL DEFAULT 80,
+        goal_pct INTEGER NOT NULL DEFAULT 80,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
   }
@@ -37,25 +37,25 @@ class ManagerGoalsService {
     await this.ensureTable();
     await execute(
       `INSERT INTO manager_goals (manager_name, goal_pct)
-       VALUES (?, ?)
-       ON DUPLICATE KEY UPDATE goal_pct = ?, updated_at = CURRENT_TIMESTAMP`,
-      [managerName, goalPct, goalPct]
+       VALUES ($1, $2)
+       ON CONFLICT (manager_name) DO UPDATE SET goal_pct = EXCLUDED.goal_pct, updated_at = CURRENT_TIMESTAMP`,
+      [managerName, goalPct]
     );
-    const result = await query(`SELECT id, manager_name, goal_pct, created_at, updated_at FROM manager_goals WHERE manager_name = ?`, [managerName]);
+    const result = await query(`SELECT id, manager_name, goal_pct, created_at, updated_at FROM manager_goals WHERE manager_name = $1`, [managerName]);
     const r = result.rows[0];
     return { id: r.id, managerName: r.manager_name, goalPct: r.goal_pct, createdAt: r.created_at, updatedAt: r.updated_at };
   }
 
   async delete(id: string): Promise<void> {
     await this.ensureTable();
-    await execute(`DELETE FROM manager_goals WHERE id = ?`, [id]);
+    await execute(`DELETE FROM manager_goals WHERE id = $1`, [id]);
   }
 
   // Get manager stats combined with custom goals
   async getManagerStatsWithGoals(managerName?: string) {
     await this.ensureTable();
 
-    const whereClause = managerName ? `WHERE project_manager = ?` : '';
+    const whereClause = managerName ? `WHERE project_manager = $1` : '';
     const params = managerName ? [managerName] : [];
 
     const [projectsResult, goalsResult] = await Promise.all([

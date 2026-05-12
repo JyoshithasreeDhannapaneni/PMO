@@ -36,11 +36,11 @@ class FileUploadService {
     const fileId = uuidv4();
     await execute(
       `INSERT INTO file_uploads (id, filename, original_name, mime_type, size, path, entity_type, entity_id, uploaded_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [fileId, filename, data.originalName, data.mimeType, data.buffer.length, filePath, data.entityType, data.entityId, data.uploadedBy]
     );
 
-    const result = await query(`SELECT * FROM file_uploads WHERE id = ?`, [fileId]);
+    const result = await query(`SELECT * FROM file_uploads WHERE id = $1`, [fileId]);
     const fileRecord = result.rows[0];
     logger.info(`File uploaded: ${fileRecord.id} - ${data.originalName}`);
     
@@ -59,7 +59,7 @@ class FileUploadService {
   }
 
   async getById(id: string) {
-    const result = await query(`SELECT * FROM file_uploads WHERE id = ?`, [id]);
+    const result = await query(`SELECT * FROM file_uploads WHERE id = $1`, [id]);
     if (result.rows.length === 0) return null;
     
     const row = result.rows[0];
@@ -79,7 +79,7 @@ class FileUploadService {
 
   async getByEntity(entityType: string, entityId: string) {
     const result = await query(
-      `SELECT * FROM file_uploads WHERE entity_type = ? AND entity_id = ? ORDER BY created_at DESC`,
+      `SELECT * FROM file_uploads WHERE entity_type = $1 AND entity_id = $2 ORDER BY created_at DESC`,
       [entityType, entityId]
     );
     
@@ -98,7 +98,7 @@ class FileUploadService {
   }
 
   async delete(id: string) {
-    const result = await query(`SELECT * FROM file_uploads WHERE id = ?`, [id]);
+    const result = await query(`SELECT * FROM file_uploads WHERE id = $1`, [id]);
     
     if (result.rows.length === 0) {
       throw new Error('File not found');
@@ -110,7 +110,7 @@ class FileUploadService {
       fs.unlinkSync(file.path);
     }
 
-    await query(`DELETE FROM file_uploads WHERE id = ?`, [id]);
+    await query(`DELETE FROM file_uploads WHERE id = $1`, [id]);
     logger.info(`File deleted: ${id}`);
   }
 

@@ -33,6 +33,8 @@ interface UpdateTaskInput {
   progress?: number;
   assignee?: string | null;
   notes?: string | null;
+  priority?: string | null;
+  isMilestone?: boolean;
 }
 
 function mapTaskRow(row: any) {
@@ -77,14 +79,14 @@ function mapPhaseRow(row: any) {
 class TaskService {
   async getProjectTasks(projectId: string) {
     const phasesResult = await query(
-      `SELECT * FROM project_phases WHERE project_id = ? ORDER BY order_index ASC`,
+      `SELECT * FROM project_phases WHERE project_id = $1 ORDER BY order_index ASC`,
       [projectId]
     );
 
     const phases = [];
     for (const phaseRow of phasesResult.rows) {
       const tasksResult = await query(
-        `SELECT * FROM project_tasks WHERE phase_record_id = ? ORDER BY order_index ASC`,
+        `SELECT * FROM project_tasks WHERE phase_record_id = $1 ORDER BY order_index ASC`,
         [phaseRow.id]
       );
       phases.push({
@@ -101,7 +103,7 @@ class TaskService {
        FROM project_tasks t
        JOIN projects p ON t.project_id = p.id
        JOIN project_phases ph ON t.phase_record_id = ph.id
-       WHERE t.id = ?`,
+       WHERE t.id = $1`,
       [taskId]
     );
     if (result.rows.length === 0) return null;
@@ -129,7 +131,7 @@ class TaskService {
 
     // get max order_index in the phase
     const maxResult = await query(
-      `SELECT COALESCE(MAX(order_index), 0) as maxIdx FROM project_tasks WHERE phase_record_id = ?`,
+      `SELECT COALESCE(MAX(order_index), 0) as maxIdx FROM project_tasks WHERE phase_record_id = $1`,
       [data.phaseRecordId]
     );
     const orderIndex = (maxResult.rows[0]?.maxIdx || 0) + 1;
@@ -137,20 +139,20 @@ class TaskService {
     const id = uuidv4();
     await execute(
       `INSERT INTO project_tasks (id, project_id, phase_record_id, name, order_index, status, planned_start, planned_end, duration, progress, is_milestone, assignee, notes, priority, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, 'TODO', ?, ?, ?, 0, ?, ?, ?, ?, NOW(), NOW())`,
+       VALUES ($1, $2, $3, $4, $5, 'TODO', $6, $7, $8, 0, $9, $10, $11, $12, NOW(), NOW())`,
       [id, projectId, data.phaseRecordId, data.name, orderIndex, start, end, duration,
        data.isMilestone ? 1 : 0, data.assignee || null, data.notes || null, data.priority || null]
     );
-    const result = await query(`SELECT * FROM project_tasks WHERE id = ?`, [id]);
+    const result = await query(`SELECT * FROM project_tasks WHERE id = $1`, [id]);
     await this.updatePhaseProgress(data.phaseRecordId);
     return mapTaskRow(result.rows[0]);
   }
 
   async deleteTask(taskId: string) {
-    const result = await query(`SELECT phase_record_id FROM project_tasks WHERE id = ?`, [taskId]);
+    const result = await query(`SELECT phase_record_id FROM project_tasks WHERE id = $1`, [taskId]);
     if (!result.rows.length) return;
     const phaseRecordId = result.rows[0].phase_record_id;
-    await execute(`DELETE FROM project_tasks WHERE id = ?`, [taskId]);
+    await execute(`DELETE FROM project_tasks WHERE id = $1`, [taskId]);
     await this.updatePhaseProgress(phaseRecordId);
   }
 
@@ -158,22 +160,24 @@ class TaskService {
     const updates: string[] = [];
     const params: any[] = [];
 
-    if (data.name !== undefined)        { updates.push(`name = ?`);         params.push(data.name); }
-    if (data.status !== undefined)      { updates.push(`status = ?`);       params.push(data.status); }
-    if (data.plannedStart !== undefined){ updates.push(`planned_start = ?`); params.push(data.plannedStart); }
-    if (data.plannedEnd !== undefined)  { updates.push(`planned_end = ?`);   params.push(data.plannedEnd); }
-    if (data.actualStart !== undefined) { updates.push(`actual_start = ?`);  params.push(data.actualStart); }
-    if (data.actualEnd !== undefined)   { updates.push(`actual_end = ?`);    params.push(data.actualEnd); }
-    if (data.assignee !== undefined)    { updates.push(`assignee = ?`);      params.push(data.assignee); }
-    if (data.notes !== undefined)       { updates.push(`notes = ?`);         params.push(data.notes); }
+    if (data.name !== undefined)        { updates.push(`name = $${params.length + 1}`);         params.push(data.name); }
+    if (data.status !== undefined)      { updates.push(`status = $${params.length + 1}`);       params.push(data.status); }
+    if (data.plannedStart !== undefined){ updates.push(`planned_start = $${params.length + 1}`); params.push(data.plannedStart); }
+    if (data.plannedEnd !== undefined)  { updates.push(`planned_end = $${params.length + 1}`);   params.push(data.plannedEnd); }
+    if (data.actualStart !== undefined) { updates.push(`actual_start = $${params.length + 1}`);  params.push(data.actualStart); }
+    if (data.actualEnd !== undefined)   { updates.push(`actual_end = $${params.length + 1}`);    params.push(data.actualEnd); }
+    if (data.assignee !== undefined)    { updates.push(`assignee = $${params.length + 1}`);      params.push(data.assignee); }
+    if (data.notes !== undefined)       { updates.push(`notes = $${params.length + 1}`);         params.push(data.notes); }
+    if (data.priority !== undefined)    { updates.push(`priority = $${params.length + 1}`);      params.push(data.priority); }
+    if (data.isMilestone !== undefined) { updates.push(`is_milestone = $${params.length + 1}`);  params.push(data.isMilestone); }
 
     const progress = data.status === 'DONE' ? 100 : data.progress;
-    if (progress !== undefined) { updates.push(`progress = ?`); params.push(progress); }
+    if (progress !== undefined) { updates.push(`progress = $${params.length + 1}`); params.push(progress); }
 
-    params.push(taskId);
-    await execute(`UPDATE project_tasks SET ${updates.join(', ')} WHERE id = ?`, params);
+    updates.push(`updated_at = NOW()`);
+    await execute(`UPDATE project_tasks SET ${updates.join(', ')} WHERE id = $${params.length + 1}`, [...params, taskId]);
 
-    const result = await query(`SELECT * FROM project_tasks WHERE id = ?`, [taskId]);
+    const result = await query(`SELECT * FROM project_tasks WHERE id = $1`, [taskId]);
     const task = mapTaskRow(result.rows[0]);
     await this.updatePhaseProgress(task.phaseRecordId);
     return task;
@@ -186,12 +190,12 @@ class TaskService {
 
     await execute(
       `UPDATE project_tasks
-       SET status = ?, progress = ?, actual_start = COALESCE(?, actual_start), actual_end = ?
-       WHERE id = ?`,
+       SET status = $1, progress = $2, actual_start = COALESCE($3, actual_start), actual_end = $4
+       WHERE id = $5`,
       [status, progress, actualStart, actualEnd, taskId]
     );
 
-    const result = await query(`SELECT * FROM project_tasks WHERE id = ?`, [taskId]);
+    const result = await query(`SELECT * FROM project_tasks WHERE id = $1`, [taskId]);
     const task = mapTaskRow(result.rows[0]);
     await this.updatePhaseProgress(task.phaseRecordId);
     return task;
@@ -199,7 +203,7 @@ class TaskService {
 
   async updatePhaseProgress(phaseRecordId: string) {
     const tasksResult = await query(
-      `SELECT * FROM project_tasks WHERE phase_record_id = ?`,
+      `SELECT * FROM project_tasks WHERE phase_record_id = $1`,
       [phaseRecordId]
     );
 
@@ -217,14 +221,14 @@ class TaskService {
 
     await execute(
       `UPDATE project_phases
-       SET progress = ?, status = ?,
-           actual_start = CASE WHEN ? != 'PENDING' THEN COALESCE(actual_start, NOW()) ELSE actual_start END,
-           actual_end   = CASE WHEN ? = 'COMPLETED' THEN NOW() ELSE actual_end END
-       WHERE id = ?`,
+       SET progress = $1, status = $2,
+           actual_start = CASE WHEN $3 != 'PENDING' THEN COALESCE(actual_start, NOW()) ELSE actual_start END,
+           actual_end   = CASE WHEN $4 = 'COMPLETED' THEN NOW() ELSE actual_end END
+       WHERE id = $5`,
       [avgProgress, status, status, status, phaseRecordId]
     );
 
-    const phaseResult = await query(`SELECT project_id FROM project_phases WHERE id = ?`, [phaseRecordId]);
+    const phaseResult = await query(`SELECT project_id FROM project_phases WHERE id = $1`, [phaseRecordId]);
     if (status === 'COMPLETED' && phaseResult.rows.length > 0) {
       await this.checkProjectCompletion(phaseResult.rows[0].project_id);
     }
@@ -232,7 +236,7 @@ class TaskService {
 
   async checkProjectCompletion(projectId: string) {
     const phasesResult = await query(
-      `SELECT * FROM project_phases WHERE project_id = ?`,
+      `SELECT * FROM project_phases WHERE project_id = $1`,
       [projectId]
     );
 
@@ -241,13 +245,13 @@ class TaskService {
 
     if (allPhasesCompleted) {
       const existingCaseStudy = await query(
-        `SELECT id FROM case_studies WHERE project_id = ?`,
+        `SELECT id FROM case_studies WHERE project_id = $1`,
         [projectId]
       );
 
       if (existingCaseStudy.rows.length === 0) {
         try {
-          const projectResult = await query(`SELECT * FROM projects WHERE id = ?`, [projectId]);
+          const projectResult = await query(`SELECT * FROM projects WHERE id = $1`, [projectId]);
           const project = projectResult.rows[0];
           if (project) {
             await caseStudyService.create({
@@ -257,7 +261,7 @@ class TaskService {
             });
             logger.info(`Auto-created case study for project: ${projectId}`);
             await execute(
-              `UPDATE projects SET status = 'COMPLETED', phase = 'COMPLETED', actual_end = NOW() WHERE id = ?`,
+              `UPDATE projects SET status = 'COMPLETED', phase = 'COMPLETED', actual_end = NOW() WHERE id = $1`,
               [projectId]
             );
             logger.info(`Project ${projectId} marked as COMPLETED`);
@@ -273,7 +277,7 @@ class TaskService {
     const tasksResult = await query(
       `SELECT t.*, ph.id as phase_id FROM project_tasks t
        JOIN project_phases ph ON t.phase_record_id = ph.id
-       WHERE t.project_id = ? AND t.status NOT IN ('DONE', 'BLOCKED', 'SKIPPED')`,
+       WHERE t.project_id = $1 AND t.status NOT IN ('DONE', 'BLOCKED', 'SKIPPED')`,
       [projectId]
     );
 
@@ -292,10 +296,10 @@ class TaskService {
 
         await execute(
           `UPDATE project_tasks
-           SET status = ?, progress = ?,
-               actual_start = COALESCE(?, actual_start),
-               actual_end   = COALESCE(?, actual_end)
-           WHERE id = ?`,
+           SET status = $1, progress = $2,
+               actual_start = COALESCE($3, actual_start),
+               actual_end   = COALESCE($4, actual_end)
+           WHERE id = $5`,
           [status, progress, actualStart, actualEnd, task.id]
         );
 
@@ -312,25 +316,25 @@ class TaskService {
   }
 
   async getGanttData(projectId: string) {
-    const projectResult = await query(`SELECT * FROM projects WHERE id = ?`, [projectId]);
+    const projectResult = await query(`SELECT * FROM projects WHERE id = $1`, [projectId]);
     if (projectResult.rows.length === 0) return null;
 
     await this.autoUpdateTaskStatuses(projectId);
 
     const project = projectResult.rows[0];
     const phasesResult = await query(
-      `SELECT * FROM project_phases WHERE project_id = ? ORDER BY order_index ASC`,
+      `SELECT * FROM project_phases WHERE project_id = $1 ORDER BY order_index ASC`,
       [projectId]
     );
 
     const phases = [];
     for (const phaseRow of phasesResult.rows) {
       const tasksResult = await query(
-        `SELECT * FROM project_tasks WHERE phase_record_id = ? ORDER BY order_index ASC`,
+        `SELECT * FROM project_tasks WHERE phase_record_id = $1 ORDER BY order_index ASC`,
         [phaseRow.id]
       );
 
-      const phaseRefresh = await query(`SELECT * FROM project_phases WHERE id = ?`, [phaseRow.id]);
+      const phaseRefresh = await query(`SELECT * FROM project_phases WHERE id = $1`, [phaseRow.id]);
       const rph = phaseRefresh.rows[0] || phaseRow;
 
       phases.push({
@@ -381,13 +385,13 @@ class TaskService {
   ) {
     // Try exact code match first, then partial name match
     let templateResult = await query(
-      `SELECT * FROM migration_templates WHERE UPPER(code) = ? AND is_active = 1`,
+      `SELECT * FROM migration_templates WHERE UPPER(code) = $1 AND is_active = true`,
       [templateCode.toUpperCase()]
     );
 
     if (templateResult.rows.length === 0) {
       templateResult = await query(
-        `SELECT * FROM migration_templates WHERE UPPER(name) LIKE ? AND is_active = 1 LIMIT 1`,
+        `SELECT * FROM migration_templates WHERE UPPER(name) LIKE $1 AND is_active = true LIMIT 1`,
         [`%${templateCode.toUpperCase()}%`]
       );
     }
@@ -401,16 +405,16 @@ class TaskService {
 
     // Remove any existing phases/tasks for this project first (idempotent)
     const existingPhases = await query(
-      `SELECT id FROM project_phases WHERE project_id = ?`,
+      `SELECT id FROM project_phases WHERE project_id = $1`,
       [projectId]
     );
     for (const ph of existingPhases.rows) {
-      await execute(`DELETE FROM project_tasks WHERE phase_record_id = ?`, [ph.id]);
+      await execute(`DELETE FROM project_tasks WHERE phase_record_id = $1`, [ph.id]);
     }
-    await execute(`DELETE FROM project_phases WHERE project_id = ?`, [projectId]);
+    await execute(`DELETE FROM project_phases WHERE project_id = $1`, [projectId]);
 
     const phasesResult = await query(
-      `SELECT * FROM template_phases WHERE template_id = ? ORDER BY order_index ASC`,
+      `SELECT * FROM template_phases WHERE template_id = $1 ORDER BY order_index ASC`,
       [template.id]
     );
 
@@ -424,12 +428,12 @@ class TaskService {
       const phaseRecordId = uuidv4();
       await execute(
         `INSERT INTO project_phases (id, project_id, phase_name, order_index, planned_start, planned_end, status, progress, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, 'PENDING', 0, NOW(), NOW())`,
+         VALUES ($1, $2, $3, $4, $5, $6, 'PENDING', 0, NOW(), NOW())`,
         [phaseRecordId, projectId, templatePhase.name, templatePhase.order_index, phaseStart, phaseEnd]
       );
 
       const tasksResult = await query(
-        `SELECT * FROM template_tasks WHERE phase_id = ? ORDER BY order_index ASC`,
+        `SELECT * FROM template_tasks WHERE phase_id = $1 ORDER BY order_index ASC`,
         [templatePhase.id]
       );
 
@@ -441,7 +445,7 @@ class TaskService {
 
         await execute(
           `INSERT INTO project_tasks (id, project_id, phase_record_id, name, order_index, status, planned_start, planned_end, duration, progress, is_milestone, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, 'TODO', ?, ?, ?, 0, ?, NOW(), NOW())`,
+           VALUES ($1, $2, $3, $4, $5, 'TODO', $6, $7, $8, 0, $9, NOW(), NOW())`,
           [uuidv4(), projectId, phaseRecordId, templateTask.name, templateTask.order_index,
            taskStart, taskEnd, templateTask.default_duration || 1, templateTask.is_milestone || false]
         );
@@ -452,7 +456,7 @@ class TaskService {
       currentDate = new Date(phaseEnd);
     }
 
-    await execute(`UPDATE projects SET template_id = ? WHERE id = ?`, [template.id, projectId]);
+    await execute(`UPDATE projects SET template_id = $1 WHERE id = $2`, [template.id, projectId]);
     logger.info(`Created tasks for project ${projectId} from template "${template.name}" (${templateCode})`);
     return true;
   }

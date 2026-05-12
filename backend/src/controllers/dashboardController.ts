@@ -245,4 +245,24 @@ export const dashboardController = {
     await dashboardService.unarchiveEscalation(id);
     res.json({ success: true, message: 'Escalation restored to active' });
   }),
+
+  getEscalationDailyNotes: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const { projectId } = req.params;
+    const notes = await dashboardService.getEscalationDailyNotes(projectId);
+    res.json({ success: true, data: notes });
+  }),
+
+  addEscalationDailyNote: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const { projectId } = req.params;
+    const { note, author, noteDate } = req.body;
+    if (!note?.trim()) { res.status(400).json({ success: false, message: 'Note text is required' }); return; }
+    const result = await dashboardService.addEscalationDailyNote(projectId, note.trim(), author, noteDate);
+    res.json({ success: true, data: result });
+  }),
+
+  deleteEscalationDailyNote: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const { projectId, noteId } = req.params;
+    await dashboardService.deleteEscalationDailyNote(projectId, noteId);
+    res.json({ success: true, message: 'Note deleted' });
+  }),
 };

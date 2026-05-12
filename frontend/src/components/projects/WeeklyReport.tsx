@@ -48,19 +48,19 @@ function ReportCard({ report }: { report: any }) {
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+    <div className="border border-gray-200 rounded-lg overflow-hidden">
       {/* Header */}
       <button
-        className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors text-left"
+        className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors text-left"
         onClick={() => setExpanded((v) => !v)}
       >
         <div className="flex items-center gap-3">
           <FileText size={16} className="text-gray-400 flex-shrink-0" />
           <div>
-            <p className="text-sm font-semibold text-gray-900 dark:text-white">
+            <p className="text-sm font-semibold text-gray-900">
               {report.reportType} Report — {format(new Date(report.reportDate), 'MMM d, yyyy')}
             </p>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
+            <p className="text-xs text-gray-500">
               {report.completionPercentage ?? 0}% complete · {report.tasksCompleted ?? 0}/{report.tasksTotal ?? 0} tasks done
             </p>
           </div>
@@ -82,8 +82,8 @@ function ReportCard({ report }: { report: any }) {
               { label: 'Budget', status: report.budgetStatus },
               { label: 'Resources', status: report.resourceStatus },
             ].map((item) => (
-              <div key={item.label} className="flex flex-col items-center gap-1 p-2 rounded-lg bg-gray-50 dark:bg-gray-700/50">
-                <span className="text-xs text-gray-500 dark:text-gray-400">{item.label}</span>
+              <div key={item.label} className="flex flex-col items-center gap-1 p-2 rounded-lg bg-gray-50">
+                <span className="text-xs text-gray-500">{item.label}</span>
                 <StatusBadge status={item.status || 'GREEN'} />
               </div>
             ))}
@@ -92,10 +92,10 @@ function ReportCard({ report }: { report: any }) {
           {/* Progress bar */}
           <div>
             <div className="flex items-center justify-between mb-1">
-              <span className="text-xs font-medium text-gray-600 dark:text-gray-400">Completion</span>
-              <span className="text-xs font-bold text-gray-900 dark:text-white">{report.completionPercentage ?? 0}%</span>
+              <span className="text-xs font-medium text-gray-600">Completion</span>
+              <span className="text-xs font-bold text-gray-900">{report.completionPercentage ?? 0}%</span>
             </div>
-            <div className="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2">
+            <div className="w-full bg-gray-200 rounded-full h-2">
               <div
                 className="bg-primary-500 h-2 rounded-full transition-all"
                 style={{ width: `${report.completionPercentage ?? 0}%` }}
@@ -114,9 +114,9 @@ function ReportCard({ report }: { report: any }) {
             <div key={section.label}>
               <div className="flex items-center gap-1.5 mb-1">
                 {section.icon}
-                <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">{section.label}</span>
+                <span className="text-xs font-semibold text-gray-700">{section.label}</span>
               </div>
-              <p className="text-sm text-gray-600 dark:text-gray-400 whitespace-pre-line pl-5">{section.value}</p>
+              <p className="text-sm text-gray-600 whitespace-pre-line pl-5">{section.value}</p>
             </div>
           ))}
         </div>
@@ -145,9 +145,9 @@ export function WeeklyReport({ projectId }: WeeklyReportProps) {
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <FileText size={18} className="text-primary-600" />
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Weekly Reports</h3>
+          <h3 className="text-lg font-semibold text-gray-900">Weekly Reports</h3>
           {reports.length > 0 && (
-            <span className="px-2 py-0.5 text-xs font-semibold bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-300 rounded-full">
+            <span className="px-2 py-0.5 text-xs font-semibold bg-primary-100 text-primary-700 rounded-full">
               {reports.length}
             </span>
           )}
@@ -173,8 +173,8 @@ export function WeeklyReport({ projectId }: WeeklyReportProps) {
       {!isLoading && reports.length === 0 && (
         <div className="text-center py-8">
           <Calendar size={36} className="mx-auto mb-3 text-gray-300" />
-          <p className="text-sm font-medium text-gray-600 dark:text-gray-400">No reports yet</p>
-          <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Click "Generate Report" to create the first weekly report</p>
+          <p className="text-sm font-medium text-gray-600">No reports yet</p>
+          <p className="text-xs text-gray-400 mt-1">Click "Generate Report" to create the first weekly report</p>
         </div>
       )}
 

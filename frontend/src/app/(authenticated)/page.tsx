@@ -102,7 +102,7 @@ function AiChatPanel({ onClose, userName, dashData }: { onClose: () => void; use
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
   return (
-    <div className="fixed bottom-6 right-6 z-40 w-80 bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden" style={{ maxHeight: 500 }}>
+    <div className="fixed bottom-6 right-6 z-40 w-80 bg-white rounded-2xl shadow-2xl border border-blue-100 flex flex-col overflow-hidden" style={{ maxHeight: 500 }}>
       <div className="flex items-center justify-between px-4 py-3 bg-primary-600 text-white">
         <div className="flex items-center gap-2">
           <MessageSquare size={16} />
@@ -114,7 +114,7 @@ function AiChatPanel({ onClose, userName, dashData }: { onClose: () => void; use
       <div className="flex-1 overflow-y-auto p-3 space-y-2" style={{ minHeight: 200 }}>
         {messages.map((m, i) => (
           <div key={i} className={`flex ${m.from === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[90%] px-3 py-2 rounded-xl text-xs whitespace-pre-line ${m.from === 'user' ? 'bg-primary-600 text-white rounded-br-none' : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-bl-none'}`}>
+            <div className={`max-w-[90%] px-3 py-2 rounded-xl text-xs whitespace-pre-line ${m.from === 'user' ? 'bg-primary-600 text-white rounded-br-none' : 'bg-blue-50 text-slate-800 rounded-bl-none'}`}>
               {m.text.replace(/\*\*(.*?)\*\*/g, '$1')}
             </div>
           </div>
@@ -123,18 +123,18 @@ function AiChatPanel({ onClose, userName, dashData }: { onClose: () => void; use
       </div>
       <div className="px-3 pb-2 flex flex-wrap gap-1">
         {QUICK_REPLIES.map((q) => (
-          <button key={q} onClick={() => sendMessage(q)} className="text-xs px-2 py-1 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-primary-50 dark:hover:bg-primary-900/30 hover:text-primary-700 transition-colors">
+          <button key={q} onClick={() => sendMessage(q)} className="text-xs px-2 py-1 rounded-full bg-blue-50 text-slate-600 hover:bg-primary-50 hover:text-primary-700 transition-colors">
             {q}
           </button>
         ))}
       </div>
-      <div className="flex items-center gap-2 px-3 py-2 border-t border-gray-100 dark:border-gray-700">
+      <div className="flex items-center gap-2 px-3 py-2 border-t border-blue-50">
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && sendMessage(input)}
           placeholder="Ask about your projects..."
-          className="flex-1 text-xs px-2 py-1.5 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-primary-500"
+          className="flex-1 text-xs px-2 py-1.5 rounded-lg border border-blue-100 bg-white text-gray-800 focus:outline-none focus:ring-1 focus:ring-primary-500"
         />
         <button onClick={() => sendMessage(input)} className="p-1.5 rounded-lg bg-primary-600 text-white hover:bg-primary-700 transition-colors">
           <Send size={13} />
@@ -166,7 +166,7 @@ function DonutChart({ segments }: { segments: { label: string; value: number; co
               style={{ transform: `rotate(${rot}deg)`, transformOrigin: '50px 50px' }} />
           );
         })}
-        <text x={cx} y={cy} textAnchor="middle" dominantBaseline="middle" className="text-xs font-bold fill-gray-700 dark:fill-gray-200" fontSize={12}>
+        <text x={cx} y={cy} textAnchor="middle" dominantBaseline="middle" className="text-xs font-bold fill-gray-700" fontSize={12}>
           {total}
         </text>
       </svg>
@@ -174,8 +174,8 @@ function DonutChart({ segments }: { segments: { label: string; value: number; co
         {segments.map((seg) => (
           <div key={seg.label} className="flex items-center gap-2 text-xs">
             <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: seg.color }} />
-            <span className="text-gray-600 dark:text-gray-400 flex-1">{seg.label}</span>
-            <span className="font-semibold text-gray-800 dark:text-gray-200">{seg.value}</span>
+            <span className="text-gray-600 flex-1">{seg.label}</span>
+            <span className="font-semibold text-gray-800">{seg.value}</span>
             <span className="text-gray-400">({Math.round((seg.value / total) * 100)}%)</span>
           </div>
         ))}
@@ -191,9 +191,9 @@ function BarChart({ bars }: { bars: { label: string; value: number; color: strin
     <div className="flex items-end gap-3 h-28">
       {bars.map((b) => (
         <div key={b.label} className="flex-1 flex flex-col items-center gap-1">
-          <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">{b.value}</span>
+          <span className="text-xs font-semibold text-gray-700">{b.value}</span>
           <div className="w-full rounded-t-md transition-all" style={{ height: `${(b.value / max) * 80}px`, background: b.color, minHeight: b.value > 0 ? 8 : 0 }} />
-          <span className="text-xs text-gray-500 dark:text-gray-400 text-center leading-tight">{b.label}</span>
+          <span className="text-xs text-gray-500 text-center leading-tight">{b.label}</span>
         </div>
       ))}
     </div>
@@ -214,7 +214,7 @@ function EscalateControl({ projectId, isEscalated, defaultPriority, busy, onEsca
         onChange={e => setPriority(e.target.value as any)}
         disabled={busy}
         onClick={e => e.stopPropagation()}
-        className="text-xs px-1.5 py-1 border border-gray-200 rounded-lg bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none cursor-pointer"
+        className="text-xs px-1.5 py-1 border border-blue-100 rounded-lg bg-white text-gray-700 focus:outline-none cursor-pointer"
       >
         <option value="LOW">🟢 Low</option>
         <option value="MEDIUM">🟡 Medium</option>
@@ -245,7 +245,7 @@ function MigrationTypeModal({ type, onClose }: { type: string; onClose: () => vo
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={onClose}>
-      <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
         <div className={`flex items-center justify-between p-5 ${bg} text-white`}>
           <div className="flex items-center gap-2">
             <span className="text-2xl">{emoji}</span>
@@ -265,24 +265,24 @@ function MigrationTypeModal({ type, onClose }: { type: string; onClose: () => vo
               <p className="text-sm">No {type.toLowerCase()} projects found</p>
             </div>
           ) : (
-            <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
+            <div className="overflow-x-auto rounded-xl border border-blue-100">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50 dark:bg-gray-700/50">
+                <thead className="bg-blue-50/60">
                   <tr>
                     {['Project Name', 'Manager', 'Status', 'Phase', 'Delay'].map((h) => (
-                      <th key={h} className={`py-2.5 px-3 font-medium text-gray-500 dark:text-gray-400 ${h === 'Project Name' ? 'text-left' : 'text-center'}`}>{h}</th>
+                      <th key={h} className={`py-2.5 px-3 font-medium text-gray-500 ${h === 'Project Name' ? 'text-left' : 'text-center'}`}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {projects.map((p: any) => (
-                    <tr key={p.id} className="border-t border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/30 cursor-pointer" onClick={() => { window.location.href = `/projects/${p.id}`; onClose(); }}>
-                      <td className="py-2.5 px-3 font-medium text-gray-900 dark:text-white max-w-[200px] truncate">{p.name}</td>
-                      <td className="text-center py-2.5 px-3 text-gray-600 dark:text-gray-400 text-xs">{p.projectManager}</td>
+                    <tr key={p.id} className="border-t border-blue-50 hover:bg-blue-50/50 cursor-pointer" onClick={() => { window.location.href = `/projects/${p.id}`; onClose(); }}>
+                      <td className="py-2.5 px-3 font-medium text-gray-900 max-w-[200px] truncate">{p.name}</td>
+                      <td className="text-center py-2.5 px-3 text-gray-600 text-xs">{p.projectManager}</td>
                       <td className="text-center py-2.5 px-3">
                         <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${p.status === 'ACTIVE' ? 'bg-green-100 text-green-700' : p.status === 'COMPLETED' ? 'bg-blue-100 text-blue-700' : p.status === 'ON_HOLD' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>{p.status}</span>
                       </td>
-                      <td className="text-center py-2.5 px-3 text-xs text-gray-500 dark:text-gray-400">{p.phase}</td>
+                      <td className="text-center py-2.5 px-3 text-xs text-gray-500">{p.phase}</td>
                       <td className="text-center py-2.5 px-3">
                         {p.delayDays > 0 ? (
                           <span className="text-xs font-semibold text-red-600">+{p.delayDays}d</span>
@@ -297,7 +297,7 @@ function MigrationTypeModal({ type, onClose }: { type: string; onClose: () => vo
             </div>
           )}
         </div>
-        <div className="p-4 border-t border-gray-200 dark:border-gray-700 flex justify-end">
+        <div className="p-4 border-t border-blue-100 flex justify-end">
           <Link href={`/projects?planType=${type}`} onClick={onClose}
             className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors">
             <Filter size={13} /> View in Projects Page <ChevronRight size={13} />
@@ -331,18 +331,18 @@ function AddManagerGoalModal({ managers, onClose }: { managers: string[]; onClos
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={onClose}>
-      <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between p-5 border-b border-gray-200 dark:border-gray-700">
-          <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between p-5 border-b border-blue-100">
+          <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
             <Target size={18} className="text-primary-600" /> Add Manager Goal
           </h2>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"><X size={17} className="text-gray-500" /></button>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-blue-50"><X size={17} className="text-gray-500" /></button>
         </div>
         <div className="p-5 space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Manager</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Manager</label>
             <select value={managerName} onChange={(e) => setManagerName(e.target.value)}
-              className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500">
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500">
               <option value="">Select a manager...</option>
               {managers.map((m) => <option key={m} value={m}>{m}</option>)}
               <option value="__custom__">+ Enter custom name</option>
@@ -350,21 +350,21 @@ function AddManagerGoalModal({ managers, onClose }: { managers: string[]; onClos
           </div>
           {managerName === '__custom__' && (
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Manager Name</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Manager Name</label>
               <input type="text" value={customManager} onChange={(e) => setCustomManager(e.target.value)}
                 placeholder="Enter manager name..."
-                className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500" />
             </div>
           )}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label className="block text-sm font-medium text-gray-700 mb-1">
               Goal Percentage: <span className="text-primary-600 font-bold">{goalPct}%</span>
             </label>
             <input type="range" min={0} max={100} step={5} value={goalPct} onChange={(e) => setGoalPct(Number(e.target.value))} className="w-full accent-primary-600" />
             <div className="flex justify-between text-xs text-gray-400 mt-0.5"><span>0%</span><span>50%</span><span>100%</span></div>
           </div>
           <div className="flex gap-3 pt-2">
-            <button onClick={onClose} className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">Cancel</button>
+            <button onClick={onClose} className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-blue-50/50 transition-colors">Cancel</button>
             <button onClick={handleSave} disabled={!finalManager || upsertGoal.isPending}
               className="flex-1 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm hover:bg-primary-700 transition-colors disabled:opacity-50">
               {upsertGoal.isPending ? 'Saving...' : 'Save Goal'}
@@ -470,7 +470,7 @@ export default function DashboardPage() {
     <div className="flex items-center justify-center h-96">
       <div className="text-center">
         <Loader2 className="w-12 h-12 animate-spin text-primary-600 mx-auto" />
-        <p className="mt-4 text-gray-600 dark:text-gray-400">Loading dashboard…</p>
+        <p className="mt-4 text-gray-600">Loading dashboard…</p>
       </div>
     </div>
   );
@@ -479,7 +479,7 @@ export default function DashboardPage() {
     <div className="flex items-center justify-center h-96">
       <div className="text-center">
         <AlertCircle className="w-16 h-16 text-red-500 mx-auto" />
-        <h2 className="mt-4 text-xl font-semibold text-gray-900 dark:text-white">Failed to load dashboard</h2>
+        <h2 className="mt-4 text-xl font-semibold text-gray-900">Failed to load dashboard</h2>
         <p className="mt-2 text-gray-500">Please check if the backend server is running</p>
         <button onClick={handleRefresh} className="mt-4 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700">Try Again</button>
       </div>
@@ -495,29 +495,29 @@ export default function DashboardPage() {
       {/* ── Header ─────────────────────────────────────────────────── */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">PMO Dashboard</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Welcome back, {user?.name || 'Administrator'}</p>
+          <h1 className="text-2xl font-bold text-gray-900">PMO Dashboard</h1>
+          <p className="text-sm text-gray-500 mt-0.5">Welcome back, {user?.name || 'Administrator'}</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {/* View toggle — all roles */}
-          <div className="flex items-center bg-gray-100 dark:bg-gray-700 rounded-xl p-1 gap-1">
+          <div className="flex items-center bg-blue-50 border border-blue-200 rounded-xl p-1 gap-1">
             <button onClick={() => setViewMode('my')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${viewMode === 'my' ? 'bg-white dark:bg-gray-800 text-primary-700 dark:text-primary-400 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700'}`}>
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${viewMode === 'my' ? 'bg-white text-blue-700 shadow-sm border border-blue-200' : 'text-slate-500 hover:text-blue-600'}`}>
               <User size={13} />
               My View
             </button>
             <button onClick={() => setViewMode('overall')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${viewMode === 'overall' ? 'bg-white dark:bg-gray-800 text-primary-700 dark:text-primary-400 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700'}`}>
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${viewMode === 'overall' ? 'bg-white text-blue-700 shadow-sm border border-blue-200' : 'text-slate-500 hover:text-blue-600'}`}>
               <Users size={13} />
               {isManager ? 'Overview' : 'Overall View'}
             </button>
           </div>
           <span className={`hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ${
             viewMode === 'my'
-              ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
+              ? 'bg-blue-100 text-blue-700'
               : isManager
-                ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
-                : 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300'
+                ? 'bg-blue-100 text-blue-700'
+                : 'bg-purple-100 text-purple-700'
           }`}>
             {viewMode === 'my' ? <User size={10} /> : <Users size={10} />}
             {viewMode === 'my'
@@ -527,11 +527,11 @@ export default function DashboardPage() {
                 : 'All managers'}
           </span>
           <span className="text-xs text-gray-400 hidden md:block">Updated {format(new Date(), 'MMM d · h:mm a')}</span>
-          <button onClick={handleRefresh} className={`p-2 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 transition-all ${isRefreshing ? 'animate-spin' : ''}`}>
-            <RefreshCw size={15} className="text-gray-500" />
+          <button onClick={handleRefresh} className={`p-2 rounded-lg bg-white border border-blue-200 hover:bg-blue-50 transition-all ${isRefreshing ? 'animate-spin' : ''}`}>
+            <RefreshCw size={15} className="text-slate-500" />
           </button>
           <button onClick={() => { setShowWeeklyReport(true); setWeeklyTab('summary'); }}
-            className="flex items-center gap-1.5 px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-lg text-xs font-medium hover:bg-gray-50 transition-colors">
+            className="flex items-center gap-1.5 px-3 py-2 bg-white border border-blue-200 text-slate-700 rounded-lg text-xs font-medium hover:bg-blue-50 transition-colors">
             <FileText size={14} className="text-primary-600" /> Weekly Report
           </button>
           <Link href="/projects/new" className="flex items-center gap-1.5 px-3 py-2 bg-primary-600 text-white rounded-lg text-xs font-medium hover:bg-primary-700 transition-colors">
@@ -542,7 +542,7 @@ export default function DashboardPage() {
 
       {/* Context banner */}
       {isManager ? (
-        <div className="flex items-center gap-3 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl text-xs text-blue-700 dark:text-blue-300">
+        <div className="flex items-center gap-3 p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-700">
           <User size={14} className="flex-shrink-0" />
           <span>
             {viewMode === 'my'
@@ -553,7 +553,7 @@ export default function DashboardPage() {
           </span>
         </div>
       ) : viewMode === 'my' ? (
-        <div className="flex items-center gap-3 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl text-xs text-blue-700 dark:text-blue-300">
+        <div className="flex items-center gap-3 p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-700">
           <User size={14} className="flex-shrink-0" />
           <span><strong>My View</strong> — Showing projects assigned to <strong>{user?.name}</strong>.
             <button onClick={() => setViewMode('overall')} className="ml-2 underline hover:no-underline">Switch to Overall View →</button>
@@ -568,66 +568,66 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-gray-500 text-sm font-medium">Total Projects</p>
-                <p className="text-3xl font-bold text-gray-900 dark:text-white mt-1">{stats.totalProjects}</p>
+                <p className="text-3xl font-bold text-gray-900 mt-1">{stats.totalProjects}</p>
                 <p className="text-xs text-gray-400 mt-1">Excl. completed &amp; cancelled</p>
               </div>
-              <div className="w-11 h-11 rounded-xl bg-blue-50 dark:bg-blue-900/40 flex items-center justify-center">
+              <div className="w-11 h-11 rounded-xl bg-blue-50 flex items-center justify-center">
                 <FolderKanban size={20} className="text-blue-600" />
               </div>
             </div>
           </Card>
         </Link>
         <Link href="/projects?status=ACTIVE" className="block group">
-          <Card className="h-full transition-transform group-hover:scale-[1.02] group-hover:shadow-lg border-green-200 dark:border-green-800">
+          <Card className="h-full transition-transform group-hover:scale-[1.02] group-hover:shadow-lg border-green-200">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-green-600 text-sm font-medium">Active</p>
-                <p className="text-3xl font-bold text-green-700 dark:text-green-300 mt-1">{stats.activeProjects}</p>
+                <p className="text-3xl font-bold text-green-700 mt-1">{stats.activeProjects}</p>
                 <p className="text-xs text-green-500 mt-1">Active projects</p>
               </div>
-              <div className="w-11 h-11 rounded-xl bg-green-50 dark:bg-green-900/40 flex items-center justify-center">
+              <div className="w-11 h-11 rounded-xl bg-green-50 flex items-center justify-center">
                 <PlayCircle size={20} className="text-green-600" />
               </div>
             </div>
           </Card>
         </Link>
         <Link href="/projects?status=ON_HOLD" className="block group">
-          <Card className="h-full transition-transform group-hover:scale-[1.02] group-hover:shadow-lg border-yellow-200 dark:border-yellow-800">
+          <Card className="h-full transition-transform group-hover:scale-[1.02] group-hover:shadow-lg border-yellow-200">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-yellow-600 text-sm font-medium">Inactive</p>
-                <p className="text-3xl font-bold text-yellow-700 dark:text-yellow-300 mt-1">{stats.inactiveProjects ?? stats.onHoldProjects}</p>
+                <p className="text-3xl font-bold text-yellow-700 mt-1">{stats.inactiveProjects ?? stats.onHoldProjects}</p>
                 <p className="text-xs text-yellow-500 mt-1">On hold projects</p>
               </div>
-              <div className="w-11 h-11 rounded-xl bg-yellow-50 dark:bg-yellow-900/40 flex items-center justify-center">
+              <div className="w-11 h-11 rounded-xl bg-yellow-50 flex items-center justify-center">
                 <PauseCircle size={20} className="text-yellow-600" />
               </div>
             </div>
           </Card>
         </Link>
         <Link href="/overage-projects" className="block group">
-          <Card className="h-full transition-transform group-hover:scale-[1.02] group-hover:shadow-lg border-orange-200 dark:border-orange-800">
+          <Card className="h-full transition-transform group-hover:scale-[1.02] group-hover:shadow-lg border-orange-200">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-orange-600 text-sm font-medium">Overages</p>
-                <p className="text-3xl font-bold text-orange-700 dark:text-orange-300 mt-1">{stats.overagedCount ?? overagedProjects.length}</p>
+                <p className="text-3xl font-bold text-orange-700 mt-1">{stats.overagedCount ?? overagedProjects.length}</p>
                 <p className="text-xs text-orange-500 mt-1">Total overaged</p>
               </div>
-              <div className="w-11 h-11 rounded-xl bg-orange-50 dark:bg-orange-900/40 flex items-center justify-center">
+              <div className="w-11 h-11 rounded-xl bg-orange-50 flex items-center justify-center">
                 <Clock size={20} className="text-orange-600" />
               </div>
             </div>
           </Card>
         </Link>
         <Link href="/projects?delayStatus=DELAYED" className="block group">
-          <Card className={`h-full transition-transform group-hover:scale-[1.02] group-hover:shadow-lg ${stats.delayedProjects + stats.atRiskProjects > 0 ? 'border-red-200 bg-red-50 dark:bg-red-900/20' : 'border-green-200 bg-green-50 dark:bg-green-900/20'}`}>
+          <Card className={`h-full transition-transform group-hover:scale-[1.02] group-hover:shadow-lg ${stats.delayedProjects + stats.atRiskProjects > 0 ? 'border-red-200 bg-red-50' : 'border-green-200 bg-green-50'}`}>
             <div className="flex items-center justify-between">
               <div>
                 <p className={`text-sm font-medium ${stats.delayedProjects + stats.atRiskProjects > 0 ? 'text-red-600' : 'text-green-600'}`}>Risk Status</p>
-                <p className={`text-3xl font-bold mt-1 ${stats.delayedProjects + stats.atRiskProjects > 0 ? 'text-red-700 dark:text-red-300' : 'text-green-700 dark:text-green-300'}`}>{stats.delayedProjects + stats.atRiskProjects}</p>
+                <p className={`text-3xl font-bold mt-1 ${stats.delayedProjects + stats.atRiskProjects > 0 ? 'text-red-700' : 'text-green-700'}`}>{stats.delayedProjects + stats.atRiskProjects}</p>
                 <p className="text-xs mt-1 text-red-500">{stats.atRiskProjects} at risk</p>
               </div>
-              <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${stats.delayedProjects + stats.atRiskProjects > 0 ? 'bg-red-100 dark:bg-red-900/40' : 'bg-green-100 dark:bg-green-900/40'}`}>
+              <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${stats.delayedProjects + stats.atRiskProjects > 0 ? 'bg-red-100' : 'bg-green-100'}`}>
                 <AlertTriangle size={20} className={stats.delayedProjects + stats.atRiskProjects > 0 ? 'text-red-600' : 'text-green-600'} />
               </div>
             </div>
@@ -639,22 +639,22 @@ export default function DashboardPage() {
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <Link href="/projects?sortBy=createdAt&sortOrder=desc" className="block group">
           <Card className="text-center py-3 h-full transition-transform group-hover:scale-[1.02] group-hover:shadow-lg">
-            <div className="w-10 h-10 rounded-lg bg-purple-100 dark:bg-purple-900/40 flex items-center justify-center mx-auto mb-2">
+            <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center mx-auto mb-2">
               <Plus size={18} className="text-purple-600" />
             </div>
-            <p className="text-2xl font-bold text-gray-900 dark:text-white">{migrationTypeStats?.totals?.newProjects ?? 0}</p>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">New (30d)</p>
+            <p className="text-2xl font-bold text-gray-900">{migrationTypeStats?.totals?.newProjects ?? 0}</p>
+            <p className="text-xs text-gray-500 mt-0.5">New (30d)</p>
           </Card>
         </Link>
 
         <button type="button" onClick={() => setShowOveragedPanel(true)}
           className="block w-full text-left group focus:outline-none">
           <Card className="text-center py-3 h-full group-hover:shadow-lg group-hover:border-orange-300 transition-all">
-            <div className="w-10 h-10 rounded-lg bg-orange-100 dark:bg-orange-900/40 flex items-center justify-center mx-auto mb-2">
+            <div className="w-10 h-10 rounded-lg bg-orange-100 flex items-center justify-center mx-auto mb-2">
               <Clock size={18} className="text-orange-600" />
             </div>
             <p className="text-2xl font-bold text-orange-600">{overagedProjects.length}</p>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Overaged</p>
+            <p className="text-xs text-gray-500 mt-0.5">Overaged</p>
             <p className="text-[10px] text-orange-500 font-medium mt-1">View Overaged →</p>
           </Card>
         </button>
@@ -662,47 +662,47 @@ export default function DashboardPage() {
         <button type="button" onClick={() => setShowEscalatedPanel(true)}
           className="block w-full text-left group focus:outline-none">
           <Card className="text-center py-3 h-full group-hover:shadow-lg group-hover:border-red-300 transition-all">
-            <div className="w-10 h-10 rounded-lg bg-red-100 dark:bg-red-900/40 flex items-center justify-center mx-auto mb-2">
+            <div className="w-10 h-10 rounded-lg bg-red-100 flex items-center justify-center mx-auto mb-2">
               <AlertTriangle size={18} className="text-red-600" />
             </div>
             <p className="text-2xl font-bold text-red-600">{escalatedProjects.length}</p>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Escalated</p>
+            <p className="text-xs text-gray-500 mt-0.5">Escalated</p>
             <p className="text-[10px] text-red-500 font-medium mt-1">View Escalated →</p>
           </Card>
         </button>
 
         <Link href="/case-studies" className="block group">
           <Card className="text-center py-3 h-full transition-transform group-hover:scale-[1.02] group-hover:shadow-lg">
-            <div className="w-10 h-10 rounded-lg bg-indigo-100 dark:bg-indigo-900/40 flex items-center justify-center mx-auto mb-2">
+            <div className="w-10 h-10 rounded-lg bg-indigo-100 flex items-center justify-center mx-auto mb-2">
               <FileText size={18} className="text-indigo-600" />
             </div>
-            <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.pendingCaseStudies}</p>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Pending Cases</p>
+            <p className="text-2xl font-bold text-gray-900">{stats.pendingCaseStudies}</p>
+            <p className="text-xs text-gray-500 mt-0.5">Pending Cases</p>
           </Card>
         </Link>
 
         <Link href="/projects?delayStatus=DELAYED" className="block group">
           <Card className="text-center py-3 h-full transition-transform group-hover:scale-[1.02] group-hover:shadow-lg">
-            <div className="w-10 h-10 rounded-lg bg-gray-100 dark:bg-gray-700 flex items-center justify-center mx-auto mb-2">
+            <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center mx-auto mb-2">
               <TrendingUp size={18} className="text-gray-600" />
             </div>
-            <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.avgDelayDays}</p>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Avg Delay (d)</p>
+            <p className="text-2xl font-bold text-gray-900">{stats.avgDelayDays}</p>
+            <p className="text-xs text-gray-500 mt-0.5">Avg Delay (d)</p>
           </Card>
         </Link>
       </div>
 
       {/* ── Pending Case Studies Alert ──────────────────────────────── */}
       {stats.pendingCaseStudies > 0 && (
-        <div className="flex items-center gap-3 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-300 dark:border-yellow-700 rounded-xl">
-          <div className="w-9 h-9 rounded-lg bg-yellow-100 dark:bg-yellow-900/40 flex items-center justify-center flex-shrink-0">
+        <div className="flex items-center gap-3 p-3 bg-yellow-50 border border-yellow-300 rounded-xl">
+          <div className="w-9 h-9 rounded-lg bg-yellow-100 flex items-center justify-center flex-shrink-0">
             <FileText size={18} className="text-yellow-600" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-yellow-800 dark:text-yellow-200">
+            <p className="text-sm font-semibold text-yellow-800">
               {stats.pendingCaseStudies} case {stats.pendingCaseStudies === 1 ? 'study' : 'studies'} pending completion
             </p>
-            <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-0.5">
+            <p className="text-xs text-yellow-600 mt-0.5">
               Projects that are completed or closed need their case studies documented.
             </p>
           </div>
@@ -718,7 +718,7 @@ export default function DashboardPage() {
       {/* ── Overaged Projects Panel ──────────────────────────────────── */}
       {showOveragedPanel && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setShowOveragedPanel(false)}>
-          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-5 py-4 bg-orange-500 text-white">
               <div className="flex items-center gap-2">
                 <Clock size={20} />
@@ -740,26 +740,26 @@ export default function DashboardPage() {
                 <div className="text-center py-16 text-gray-400"><CheckCircle size={40} className="mx-auto mb-3 text-green-400"/><p className="font-medium">No overaged projects 🎉</p></div>
               ) : (
                 <table className="w-full text-sm">
-                  <thead className="bg-gray-50 dark:bg-gray-800 sticky top-0 z-10">
+                  <thead className="bg-blue-50/60 sticky top-0 z-10">
                     <tr>
                       {['Project Name','Manager','Due Date','Days Overdue','Status','Escalate','Download'].map(h => (
-                        <th key={h} className={`py-2.5 px-3 font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wide ${h==='Project Name'?'text-left':'text-center'}`}>{h}</th>
+                        <th key={h} className={`py-2.5 px-3 font-semibold text-gray-500 text-xs uppercase tracking-wide ${h==='Project Name'?'text-left':'text-center'}`}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {overagedProjects.map((p: any) => (
-                      <tr key={p.id} className="border-t border-gray-100 dark:border-gray-700 hover:bg-orange-50 dark:hover:bg-orange-900/10 group">
+                      <tr key={p.id} className="border-t border-blue-50 hover:bg-orange-50 group">
                         {/* Project name — click to navigate */}
                         <td className="py-3 px-3">
                           <Link href={`/projects/${p.id}`} onClick={() => setShowOveragedPanel(false)}
-                            className="font-semibold text-gray-900 dark:text-white hover:text-orange-600 dark:hover:text-orange-400 flex items-center gap-1.5 group-hover:underline">
+                            className="font-semibold text-gray-900 hover:text-orange-600 flex items-center gap-1.5 group-hover:underline">
                             {p.name}
                             <ChevronRight size={13} className="opacity-0 group-hover:opacity-100 text-orange-500 transition-opacity"/>
                           </Link>
                           <p className="text-[11px] text-gray-400 mt-0.5">{p.customerName}</p>
                         </td>
-                        <td className="text-center py-3 px-3 text-gray-600 dark:text-gray-400 text-xs">{p.projectManager}</td>
+                        <td className="text-center py-3 px-3 text-gray-600 text-xs">{p.projectManager}</td>
                         <td className="text-center py-3 px-3 text-gray-500 text-xs">{new Date(p.plannedEnd).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</td>
                         <td className="text-center py-3 px-3">
                           <span className={`font-bold text-sm ${p.daysOverdue >= 14 ? 'text-red-600' : 'text-orange-600'}`}>{p.daysOverdue}d</span>
@@ -803,7 +803,7 @@ export default function DashboardPage() {
                 </table>
               )}
             </div>
-            <div className="px-5 py-3 border-t border-gray-200 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-800/50">
+            <div className="px-5 py-3 border-t border-blue-100 flex justify-between items-center bg-gray-50">
               <p className="text-xs text-gray-400">Click project name to open · Set priority and escalate in one click</p>
               <Link href="/projects" onClick={() => setShowOveragedPanel(false)} className="text-xs text-orange-600 font-semibold hover:underline">View All Projects →</Link>
             </div>
@@ -814,7 +814,7 @@ export default function DashboardPage() {
       {/* ── Escalated Projects Panel ─────────────────────────────────── */}
       {showEscalatedPanel && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setShowEscalatedPanel(false)}>
-          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-5 py-4 bg-red-600 text-white">
               <div className="flex items-center gap-2">
                 <AlertTriangle size={20} />
@@ -836,26 +836,26 @@ export default function DashboardPage() {
                 <div className="text-center py-16 text-gray-400"><CheckCircle size={40} className="mx-auto mb-3 text-green-400"/><p className="font-medium">No escalated projects 🎉</p></div>
               ) : (
                 <table className="w-full text-sm">
-                  <thead className="bg-gray-50 dark:bg-gray-800 sticky top-0 z-10">
+                  <thead className="bg-blue-50/60 sticky top-0 z-10">
                     <tr>
                       {['Project Name','Manager','Days Delayed','Change Priority','Status','Action','Download'].map(h => (
-                        <th key={h} className={`py-2.5 px-3 font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wide ${h==='Project Name'?'text-left':'text-center'}`}>{h}</th>
+                        <th key={h} className={`py-2.5 px-3 font-semibold text-gray-500 text-xs uppercase tracking-wide ${h==='Project Name'?'text-left':'text-center'}`}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {escalatedProjects.map((p: any) => (
-                      <tr key={p.id} className="border-t border-gray-100 dark:border-gray-700 hover:bg-red-50 dark:hover:bg-red-900/10 group">
+                      <tr key={p.id} className="border-t border-blue-50 hover:bg-red-50 group">
                         {/* Project name — click to navigate */}
                         <td className="py-3 px-3">
                           <Link href={`/projects/${p.id}`} onClick={() => setShowEscalatedPanel(false)}
-                            className="font-semibold text-gray-900 dark:text-white hover:text-red-600 dark:hover:text-red-400 flex items-center gap-1.5 group-hover:underline">
+                            className="font-semibold text-gray-900 hover:text-red-600 flex items-center gap-1.5 group-hover:underline">
                             {p.name}
                             <ChevronRight size={13} className="opacity-0 group-hover:opacity-100 text-red-500 transition-opacity"/>
                           </Link>
                           <p className="text-[11px] text-gray-400 mt-0.5">{p.customerName}</p>
                         </td>
-                        <td className="text-center py-3 px-3 text-gray-600 dark:text-gray-400 text-xs">{p.projectManager}</td>
+                        <td className="text-center py-3 px-3 text-gray-600 text-xs">{p.projectManager}</td>
                         <td className="text-center py-3 px-3">
                           <span className={`font-bold text-sm ${p.delayDays >= 14 ? 'text-red-600' : 'text-orange-500'}`}>{p.delayDays}d</span>
                         </td>
@@ -905,7 +905,7 @@ export default function DashboardPage() {
                                 setEscalatingId(null);
                                 refetchEscalated();
                               }}
-                              className="text-xs text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 border border-gray-200 dark:border-gray-600 hover:border-gray-400 px-2.5 py-1 rounded-lg transition-colors disabled:opacity-40 flex items-center gap-1 mx-auto"
+                              className="text-xs text-gray-500 hover:text-gray-800 border border-blue-100 hover:border-gray-400 px-2.5 py-1 rounded-lg transition-colors disabled:opacity-40 flex items-center gap-1 mx-auto"
                             >
                               {escalatingId === p.id ? <Loader2 size={11} className="animate-spin"/> : <X size={11}/>} Remove
                             </button>
@@ -945,7 +945,7 @@ export default function DashboardPage() {
                 </table>
               )}
             </div>
-            <div className="px-5 py-3 border-t border-gray-200 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-800/50">
+            <div className="px-5 py-3 border-t border-blue-100 flex justify-between items-center bg-gray-50">
               <p className="text-xs text-gray-400">Click project name to open · Change priority inline · Escalate or remove directly</p>
               <Link href="/projects?delayStatus=DELAYED" onClick={() => setShowEscalatedPanel(false)} className="text-xs text-red-600 font-semibold hover:underline">View All Delayed Projects →</Link>
             </div>
@@ -962,7 +962,7 @@ export default function DashboardPage() {
           {/* Migration Type Overview */}
           <Card>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-base font-semibold text-gray-900 dark:text-white">Migration Type Overview</h2>
+              <h2 className="text-base font-semibold text-gray-900">Migration Type Overview</h2>
               <Link href="/projects" className="text-primary-600 hover:text-primary-700 text-sm font-medium flex items-center gap-1">View All <ChevronRight size={14} /></Link>
             </div>
             {migrationTypeStats?.byType?.filter((s: any) => s.total > 0).length ? (
@@ -974,11 +974,11 @@ export default function DashboardPage() {
                       (t) => t.code.toUpperCase() === stat.type || t.name.toUpperCase().includes(stat.type)
                     );
                     const palettes = [
-                      { cardCls: 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800', textCls: 'text-blue-700 dark:text-blue-300' },
-                      { cardCls: 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800', textCls: 'text-green-700 dark:text-green-300' },
-                      { cardCls: 'bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800', textCls: 'text-purple-700 dark:text-purple-300' },
-                      { cardCls: 'bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800', textCls: 'text-orange-700 dark:text-orange-300' },
-                      { cardCls: 'bg-pink-50 dark:bg-pink-900/20 border-pink-200 dark:border-pink-800', textCls: 'text-pink-700 dark:text-pink-300' },
+                      { cardCls: 'bg-blue-50 border-blue-200', textCls: 'text-blue-700' },
+                      { cardCls: 'bg-green-50 border-green-200', textCls: 'text-green-700' },
+                      { cardCls: 'bg-purple-50 border-purple-200', textCls: 'text-purple-700' },
+                      { cardCls: 'bg-orange-50 border-orange-200', textCls: 'text-orange-700' },
+                      { cardCls: 'bg-pink-50 border-pink-200', textCls: 'text-pink-700' },
                     ];
                     const palette = palettes[idx % palettes.length];
                     const emoji = settingType?.icon || '📦';
@@ -986,23 +986,23 @@ export default function DashboardPage() {
                     return (
                       <button key={stat.type} onClick={() => setSelectedMigrationType(stat.type)} className={`p-4 rounded-xl border ${palette.cardCls} block hover:opacity-90 transition-opacity text-left w-full cursor-pointer`}>
                         <div className="flex items-center gap-2 mb-2"><span className="text-xl">{emoji}</span><span className={`text-sm font-semibold ${palette.textCls}`}>{label}</span></div>
-                        <div className="text-3xl font-bold text-gray-900 dark:text-white mb-2">{stat.total}</div>
+                        <div className="text-3xl font-bold text-gray-900 mb-2">{stat.total}</div>
                         <div className="grid grid-cols-2 gap-1 text-xs">
-                          <span className="flex items-center gap-1 text-gray-600 dark:text-gray-400"><span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />{stat.active} Active</span>
-                          <span className="flex items-center gap-1 text-gray-600 dark:text-gray-400"><span className="w-1.5 h-1.5 rounded-full bg-blue-500 inline-block" />{stat.completed} Done</span>
-                          <span className="flex items-center gap-1 text-gray-600 dark:text-gray-400"><span className="w-1.5 h-1.5 rounded-full bg-orange-500 inline-block" />{stat.overaged} Overaged</span>
-                          <span className="flex items-center gap-1 text-gray-600 dark:text-gray-400"><span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block" />{stat.delayed} Delayed</span>
+                          <span className="flex items-center gap-1 text-gray-600"><span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />{stat.active} Active</span>
+                          <span className="flex items-center gap-1 text-gray-600"><span className="w-1.5 h-1.5 rounded-full bg-blue-500 inline-block" />{stat.completed} Done</span>
+                          <span className="flex items-center gap-1 text-gray-600"><span className="w-1.5 h-1.5 rounded-full bg-orange-500 inline-block" />{stat.overaged} Overaged</span>
+                          <span className="flex items-center gap-1 text-gray-600"><span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block" />{stat.delayed} Delayed</span>
                         </div>
                       </button>
                     );
                   })}
                 </div>
-                <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
+                <div className="overflow-x-auto rounded-xl border border-blue-100">
                   <table className="w-full text-sm">
-                    <thead className="bg-gray-50 dark:bg-gray-700/50">
+                    <thead className="bg-blue-50/60">
                       <tr>
                         {['Type', 'Total', 'Active', 'Completed', 'On Hold', 'At Risk'].map((h) => (
-                          <th key={h} className={`py-2 px-3 font-medium text-gray-500 dark:text-gray-400 ${h === 'Type' ? 'text-left' : 'text-center'}`}>{h}</th>
+                          <th key={h} className={`py-2 px-3 font-medium text-gray-500 ${h === 'Type' ? 'text-left' : 'text-center'}`}>{h}</th>
                         ))}
                       </tr>
                     </thead>
@@ -1011,18 +1011,18 @@ export default function DashboardPage() {
                         const st = settings.migrationTypes.find(t => t.code.toUpperCase() === stat.type);
                         const displayName = st?.name || stat.name || stat.type;
                         return (
-                        <tr key={stat.type} className="border-t border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/30 cursor-pointer" onClick={() => setSelectedMigrationType(stat.type)}>
-                          <td className="py-2 px-3 font-medium text-gray-800 dark:text-gray-200 flex items-center gap-1.5">{st?.icon || '📦'} {displayName}</td>
+                        <tr key={stat.type} className="border-t border-blue-50 hover:bg-blue-50/50 cursor-pointer" onClick={() => setSelectedMigrationType(stat.type)}>
+                          <td className="py-2 px-3 font-medium text-gray-800 flex items-center gap-1.5">{st?.icon || '📦'} {displayName}</td>
                           <td className="text-center py-2 px-3 font-bold">{stat.total}</td>
                           <td className="text-center py-2 px-3"><span className="inline-flex items-center justify-center min-w-[22px] h-5 px-1 rounded-full bg-green-100 text-green-700 text-xs font-semibold">{stat.active}</span></td>
                           <td className="text-center py-2 px-3"><span className="inline-flex items-center justify-center min-w-[22px] h-5 px-1 rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">{stat.completed}</span></td>
                           <td className="text-center py-2 px-3"><span className="inline-flex items-center justify-center min-w-[22px] h-5 px-1 rounded-full bg-yellow-100 text-yellow-700 text-xs font-semibold">{stat.inactive}</span></td>
-                          <td className="text-center py-2 px-3"><span className={`inline-flex items-center justify-center min-w-[22px] h-5 px-1 rounded-full text-xs font-semibold ${stat.atRisk > 0 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-400'}`}>{stat.atRisk}</span></td>
+                          <td className="text-center py-2 px-3"><span className={`inline-flex items-center justify-center min-w-[22px] h-5 px-1 rounded-full text-xs font-semibold ${stat.atRisk > 0 ? 'bg-red-100 text-red-700' : 'bg-blue-50 text-gray-400'}`}>{stat.atRisk}</span></td>
                         </tr>
                         );
                       })}
-                      <tr className="border-t-2 border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 font-semibold">
-                        <td className="py-2 px-3 text-gray-700 dark:text-gray-300">TOTAL</td>
+                      <tr className="border-t-2 border-blue-200 bg-gray-50 font-semibold">
+                        <td className="py-2 px-3 text-gray-700">TOTAL</td>
                         <td className="text-center py-2 px-3">{migrationTypeStats.totals.total}</td>
                         <td className="text-center py-2 px-3 text-green-700">{migrationTypeStats.totals.active}</td>
                         <td className="text-center py-2 px-3 text-blue-700">{migrationTypeStats.totals.completed}</td>
@@ -1046,7 +1046,7 @@ export default function DashboardPage() {
             <div className="grid grid-cols-2 gap-4">
               <Card>
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Portfolio Status</h3>
+                  <h3 className="text-sm font-semibold text-gray-900">Portfolio Status</h3>
                   <Link href="/projects" className="text-xs text-primary-600 hover:text-primary-700 font-medium flex items-center gap-0.5">View Details <ChevronRight size={12} /></Link>
                 </div>
                 <DonutChart segments={[
@@ -1057,7 +1057,7 @@ export default function DashboardPage() {
               </Card>
               <Card>
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Projects by Phase</h3>
+                  <h3 className="text-sm font-semibold text-gray-900">Projects by Phase</h3>
                   <Link href="/projects" className="text-xs text-primary-600 hover:text-primary-700 font-medium flex items-center gap-0.5">View Details <ChevronRight size={12} /></Link>
                 </div>
                 <BarChart bars={(projectsByPhase as any[] || []).filter((p) => p.count > 0).map((p: any) => {
@@ -1071,7 +1071,7 @@ export default function DashboardPage() {
           {/* Projects by Status */}
           {dash.showCharts && (
             <Card>
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Projects by Status</h3>
+              <h3 className="text-sm font-semibold text-gray-900 mb-4">Projects by Status</h3>
               <div className="space-y-3">
                 {[
                   { label: 'Active', value: stats.activeProjects, iconColor: 'text-green-600', barColor: 'bg-green-500', icon: PlayCircle },
@@ -1082,13 +1082,13 @@ export default function DashboardPage() {
                   <div key={item.label} className="flex items-center justify-between">
                     <div className="flex items-center gap-2 w-24">
                       <item.icon size={14} className={item.iconColor} />
-                      <span className="text-sm text-gray-700 dark:text-gray-300">{item.label}</span>
+                      <span className="text-sm text-gray-700">{item.label}</span>
                     </div>
                     <div className="flex items-center gap-2 flex-1">
-                      <div className="flex-1 bg-gray-200 dark:bg-gray-600 rounded-full h-2">
+                      <div className="flex-1 bg-blue-100 rounded-full h-2">
                         <div className={`${item.barColor} h-2 rounded-full transition-all`} style={{ width: `${stats.totalProjects > 0 ? (item.value / stats.totalProjects) * 100 : 0}%` }} />
                       </div>
-                      <span className="text-sm font-semibold text-gray-900 dark:text-white w-6 text-right">{item.value}</span>
+                      <span className="text-sm font-semibold text-gray-900 w-6 text-right">{item.value}</span>
                     </div>
                   </div>
                 ))}
@@ -1100,7 +1100,7 @@ export default function DashboardPage() {
           {managers.length > 0 && (
             <Card>
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
                   <Users size={16} className="text-primary-600" /> Manager Goals &amp; Variance
                 </h3>
                 {isAdmin && (
@@ -1109,30 +1109,30 @@ export default function DashboardPage() {
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="bg-gray-50 dark:bg-gray-700/50">
+                  <thead className="bg-blue-50/60">
                     <tr>
                       {['Project Manager', 'Gantt Review Progress', 'Closed Projects'].map((h) => (
-                        <th key={h} className={`py-2 px-3 font-medium text-gray-500 dark:text-gray-400 ${h === 'Project Manager' ? 'text-left' : 'text-center'}`}>{h}</th>
+                        <th key={h} className={`py-2 px-3 font-medium text-gray-500 ${h === 'Project Manager' ? 'text-left' : 'text-center'}`}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {managers.map((m: any) => (
-                      <tr key={m.manager} className="border-t border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/30">
+                      <tr key={m.manager} className="border-t border-blue-50 hover:bg-blue-50/50">
                         <td className="py-2.5 px-3">
                           <div className="flex items-center gap-2">
-                            <div className="w-7 h-7 rounded-full bg-primary-100 dark:bg-primary-900/40 flex items-center justify-center text-xs font-bold text-primary-700 dark:text-primary-300 flex-shrink-0">
+                            <div className="w-7 h-7 rounded-full bg-primary-100 flex items-center justify-center text-xs font-bold text-primary-700 flex-shrink-0">
                               {m.manager.charAt(0).toUpperCase()}
                             </div>
-                            <span className="font-medium text-gray-800 dark:text-gray-200">{m.manager}</span>
+                            <span className="font-medium text-gray-800">{m.manager}</span>
                           </div>
                         </td>
                         <td className="py-2.5 px-3">
                           <div className="flex items-center gap-2 justify-center">
-                            <div className="flex-1 max-w-[120px] bg-gray-200 dark:bg-gray-600 rounded-full h-2.5">
+                            <div className="flex-1 max-w-[120px] bg-blue-100 rounded-full h-2.5">
                               <div className="bg-primary-500 h-2.5 rounded-full transition-all" style={{ width: `${m.achievedPct}%` }} />
                             </div>
-                            <span className="font-semibold text-gray-900 dark:text-white text-xs w-10 text-right">{m.achievedPct}%</span>
+                            <span className="font-semibold text-gray-900 text-xs w-10 text-right">{m.achievedPct}%</span>
                           </div>
                         </td>
                         <td className="text-center py-2.5 px-3">
@@ -1153,14 +1153,14 @@ export default function DashboardPage() {
         <div className="space-y-4">
 
           {/* Weekly Report Widget */}
-          <Card className="border-primary-200 dark:border-primary-800">
+          <Card className="border-primary-200">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Weekly Report</h3>
+              <h3 className="text-sm font-semibold text-gray-900">Weekly Report</h3>
               <button onClick={() => { setShowWeeklyReport(true); setWeeklyTab('summary'); }} className="text-xs text-primary-600 hover:text-primary-700 font-medium flex items-center gap-0.5">
                 View All <ChevronRight size={12} />
               </button>
             </div>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-3 flex items-center gap-1">
+            <p className="text-xs text-gray-500 mb-3 flex items-center gap-1">
               <CalendarDays size={11} />
               {weeklyData?.data ? `${format(new Date(weeklyData.data.weekRange.start), 'MMM d')} – ${format(new Date(weeklyData.data.weekRange.end), 'MMM d, yyyy')}` : 'Last 7 days'}
             </p>
@@ -1170,8 +1170,8 @@ export default function DashboardPage() {
                 { label: 'Closed / Decommissioned', value: weeklyData?.data?.summary.closedDecommissioned ?? '—', icon: MinusCircle, color: 'text-red-500' },
                 { label: 'Changes by Managers', value: weeklyData?.data?.summary.changesByManagers ?? '—', icon: UserCheck, color: 'text-blue-600' },
               ].map((item) => (
-                <div key={item.label} className="flex items-center justify-between py-1.5 border-b border-gray-100 dark:border-gray-700 last:border-0">
-                  <div className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300">
+                <div key={item.label} className="flex items-center justify-between py-1.5 border-b border-blue-50 last:border-0">
+                  <div className="flex items-center gap-2 text-xs text-gray-700">
                     <item.icon size={13} className={item.color} /> {item.label}
                   </div>
                   <span className={`text-sm font-bold ${item.color}`}>{item.value}</span>
@@ -1188,14 +1188,14 @@ export default function DashboardPage() {
           {dash.showUpcomingDeadlines && (
             <Card>
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Upcoming Deadlines</h3>
+                <h3 className="text-sm font-semibold text-gray-900">Upcoming Deadlines</h3>
                 <Link href="/projects" className="text-xs text-primary-600 hover:text-primary-700 font-medium flex items-center gap-0.5">View All <ChevronRight size={12} /></Link>
               </div>
               <div className="space-y-2 max-h-52 overflow-y-auto">
                 {upcomingDeadlines?.length > 0 ? upcomingDeadlines.slice(0, 5).map((project: any) => (
                   <Link key={project.id} href={`/projects/${project.id}`}
-                    className="flex items-center justify-between p-2.5 rounded-lg border border-gray-100 dark:border-gray-700 hover:border-primary-300 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-all">
-                    <p className="text-xs font-medium text-gray-900 dark:text-white truncate flex-1 pr-2">{project.name}</p>
+                    className="flex items-center justify-between p-2.5 rounded-lg border border-gray-100 hover:border-primary-300 hover:bg-primary-50 transition-all">
+                    <p className="text-xs font-medium text-gray-900 truncate flex-1 pr-2">{project.name}</p>
                     <span className={`text-xs font-semibold flex-shrink-0 px-2 py-0.5 rounded ${new Date(project.deadline) < new Date(Date.now() + 3 * 86400000) ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'}`}>
                       {format(new Date(project.deadline), 'MMM d')}
                     </span>
@@ -1212,9 +1212,9 @@ export default function DashboardPage() {
 
           {/* Delayed Projects */}
           {dash.showDelayedProjects && (
-            <Card className={delaySummary?.topDelayed?.length > 0 ? 'border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/10' : ''}>
+            <Card className={delaySummary?.topDelayed?.length > 0 ? 'border-red-200 bg-red-50' : ''}>
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Delayed Projects</h3>
+                <h3 className="text-sm font-semibold text-gray-900">Delayed Projects</h3>
                 {delaySummary?.topDelayed?.length > 0 && (
                   <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-semibold rounded-full">Action Required</span>
                 )}
@@ -1222,9 +1222,9 @@ export default function DashboardPage() {
               <div className="space-y-2 max-h-48 overflow-y-auto">
                 {delaySummary?.topDelayed?.length > 0 ? delaySummary.topDelayed.map((project: any) => (
                   <Link key={project.id} href={`/projects/${project.id}`}
-                    className="flex items-center justify-between p-2.5 rounded-lg bg-white dark:bg-gray-800 border border-red-200 dark:border-red-800 hover:border-red-400 transition-all">
+                    className="flex items-center justify-between p-2.5 rounded-lg bg-white border border-red-200 hover:border-red-400 transition-all">
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium text-gray-900 dark:text-white truncate">{project.name}</p>
+                      <p className="text-xs font-medium text-gray-900 truncate">{project.name}</p>
                       <p className="text-xs text-gray-500 truncate">{project.customerName}</p>
                     </div>
                     <span className="text-sm font-bold text-red-600 ml-2">+{project.delayDays}d</span>
@@ -1247,19 +1247,19 @@ export default function DashboardPage() {
           {/* Notifications widget */}
           <Card>
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-1.5">
+              <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-1.5">
                 <Bell size={14} className="text-primary-600" /> Notifications
               </h3>
               <Link href="/notifications" className="text-xs text-primary-600 hover:text-primary-700 font-medium">Mark all as read</Link>
             </div>
             <div className="space-y-2">
               {recentActivity?.length > 0 ? recentActivity.slice(0, 4).map((activity: any, i: number) => (
-                <div key={i} className="flex items-start gap-2 p-2 rounded-lg bg-gray-50 dark:bg-gray-700/50">
-                  <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${i === 0 ? 'bg-green-100 dark:bg-green-900/40' : i === 1 ? 'bg-orange-100 dark:bg-orange-900/40' : i === 2 ? 'bg-red-100 dark:bg-red-900/40' : 'bg-blue-100 dark:bg-blue-900/40'}`}>
+                <div key={i} className="flex items-start gap-2 p-2 rounded-lg bg-gray-50">
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${i === 0 ? 'bg-green-100' : i === 1 ? 'bg-orange-100' : i === 2 ? 'bg-red-100' : 'bg-blue-100'}`}>
                     {i === 0 ? <Plus size={10} className="text-green-600" /> : i === 1 ? <AlertTriangle size={10} className="text-orange-500" /> : i === 2 ? <Mail size={10} className="text-red-500" /> : <Zap size={10} className="text-blue-500" />}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs text-gray-700 dark:text-gray-300 truncate">{activity.message}</p>
+                    <p className="text-xs text-gray-700 truncate">{activity.message}</p>
                     <p className="text-xs text-gray-400 mt-0.5">{formatDistanceToNow(new Date(activity.timestamp), { addSuffix: true })}</p>
                   </div>
                 </div>
@@ -1277,21 +1277,21 @@ export default function DashboardPage() {
 
           {/* Quick Actions */}
           <Card>
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Quick Actions</h3>
+            <h3 className="text-sm font-semibold text-gray-900 mb-3">Quick Actions</h3>
             <div className="grid grid-cols-2 gap-2">
-              <Link href="/projects/new" className="flex items-center gap-2 p-2.5 rounded-lg bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 hover:bg-primary-100 transition-colors">
+              <Link href="/projects/new" className="flex items-center gap-2 p-2.5 rounded-lg bg-primary-50 text-primary-700 hover:bg-primary-100 transition-colors">
                 <Plus size={14} /><span className="text-xs font-medium">New Project</span>
               </Link>
-              <Link href="/projects" className="flex items-center gap-2 p-2.5 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors">
+              <Link href="/projects" className="flex items-center gap-2 p-2.5 rounded-lg bg-slate-50 text-slate-700 hover:bg-blue-50 transition-colors">
                 <FolderKanban size={14} /><span className="text-xs font-medium">All Projects</span>
               </Link>
-              <Link href="/case-studies" className="flex items-center gap-2 p-2.5 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors">
+              <Link href="/case-studies" className="flex items-center gap-2 p-2.5 rounded-lg bg-slate-50 text-slate-700 hover:bg-blue-50 transition-colors">
                 <FileText size={14} /><span className="text-xs font-medium">Case Studies</span>
               </Link>
-              <Link href="/settings?tab=notifications" className="flex items-center gap-2 p-2.5 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors">
+              <Link href="/settings?tab=notifications" className="flex items-center gap-2 p-2.5 rounded-lg bg-slate-50 text-slate-700 hover:bg-blue-50 transition-colors">
                 <Mail size={14} /><span className="text-xs font-medium">SMTP Settings</span>
               </Link>
-              <button onClick={() => setShowChat(true)} className="col-span-2 flex items-center justify-center gap-2 p-2.5 rounded-lg bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 hover:bg-green-100 transition-colors">
+              <button onClick={() => setShowChat(true)} className="col-span-2 flex items-center justify-center gap-2 p-2.5 rounded-lg bg-green-50 text-green-700 hover:bg-green-100 transition-colors">
                 <MessageSquare size={14} /><span className="text-xs font-medium">Open AI Chat Assistant</span>
               </button>
             </div>
@@ -1302,23 +1302,23 @@ export default function DashboardPage() {
       {/* ── Weekly Report Modal ────────────────────────────────────── */}
       {showWeeklyReport && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setShowWeeklyReport(false)}>
-          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between p-5 border-b border-gray-200 dark:border-gray-700">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-5 border-b border-blue-100">
               <div>
-                <h2 className="text-lg font-bold text-gray-900 dark:text-white">Weekly Report</h2>
+                <h2 className="text-lg font-bold text-gray-900">Weekly Report</h2>
                 <p className="text-xs text-gray-500 flex items-center gap-1 mt-0.5">
                   <CalendarDays size={11} />
                   {weeklyData?.data ? `${format(new Date(weeklyData.data.weekRange.start), 'MMM d, yyyy')} – ${format(new Date(weeklyData.data.weekRange.end), 'MMM d, yyyy')}` : 'Last 7 days'}
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                <div className="flex items-center gap-1.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1">
+                <div className="flex items-center gap-1.5 bg-gray-50 border border-blue-100 rounded-lg px-2 py-1">
                   <Calendar size={12} className="text-gray-400 flex-shrink-0" />
                   <input
                     type="date"
                     value={reportStartDate}
                     onChange={(e) => setReportStartDate(e.target.value)}
-                    className="text-xs bg-transparent text-gray-700 dark:text-gray-300 outline-none w-28"
+                    className="text-xs bg-transparent text-gray-700 outline-none w-28"
                     title="Start date"
                   />
                   <span className="text-gray-300 text-xs">–</span>
@@ -1326,7 +1326,7 @@ export default function DashboardPage() {
                     type="date"
                     value={reportEndDate}
                     onChange={(e) => setReportEndDate(e.target.value)}
-                    className="text-xs bg-transparent text-gray-700 dark:text-gray-300 outline-none w-28"
+                    className="text-xs bg-transparent text-gray-700 outline-none w-28"
                     title="End date"
                   />
                   {(reportStartDate || reportEndDate) && (
@@ -1335,7 +1335,7 @@ export default function DashboardPage() {
                     </button>
                   )}
                 </div>
-                <button onClick={() => setShowWeeklyReport(false)} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"><X size={17} className="text-gray-500" /></button>
+                <button onClick={() => setShowWeeklyReport(false)} className="p-2 rounded-lg hover:bg-blue-50 transition-colors"><X size={17} className="text-gray-500" /></button>
               </div>
             </div>
 
@@ -1348,8 +1348,8 @@ export default function DashboardPage() {
               <div className="flex-1 flex items-center justify-center py-16 text-center px-6">
                 <div>
                   <AlertCircle className="w-10 h-10 text-red-400 mx-auto" />
-                  <p className="mt-3 text-sm font-medium text-gray-700 dark:text-gray-300">Could not load weekly report</p>
-                  <p className="mt-1 text-xs text-gray-400">Make sure the backend is running and <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">/api/dashboard/weekly-report</code> is available.</p>
+                  <p className="mt-3 text-sm font-medium text-gray-700">Could not load weekly report</p>
+                  <p className="mt-1 text-xs text-gray-400">Make sure the backend is running and <code className="bg-blue-50 px-1 rounded">/api/dashboard/weekly-report</code> is available.</p>
                 </div>
               </div>
             )}
@@ -1357,7 +1357,7 @@ export default function DashboardPage() {
               const wr = weeklyData.data;
               return (
                 <>
-                  <div className="flex border-b border-gray-200 dark:border-gray-700 px-5 gap-1 overflow-x-auto">
+                  <div className="flex border-b border-blue-100 px-5 gap-1 overflow-x-auto">
                     {[
                       { id: 'summary', label: 'Summary' },
                       { id: 'added', label: `Newly Added (${wr.summary.newlyAdded})` },
@@ -1365,7 +1365,7 @@ export default function DashboardPage() {
                       { id: 'changes', label: `Changes by Managers (${wr.summary.changesByManagers})` },
                     ].map((tab) => (
                       <button key={tab.id} onClick={() => setWeeklyTab(tab.id as any)}
-                        className={`px-3 py-2.5 text-xs font-medium border-b-2 transition-colors whitespace-nowrap flex-shrink-0 ${weeklyTab === tab.id ? 'border-primary-600 text-primary-600 dark:text-primary-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-200'}`}>
+                        className={`px-3 py-2.5 text-xs font-medium border-b-2 transition-colors whitespace-nowrap flex-shrink-0 ${weeklyTab === tab.id ? 'border-primary-600 text-primary-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
                         {tab.label}
                       </button>
                     ))}
@@ -1375,13 +1375,13 @@ export default function DashboardPage() {
                       <div className="space-y-5">
                         <div className="grid grid-cols-3 gap-3">
                           {[
-                            { label: 'Newly Added', value: wr.summary.newlyAdded, vs: wr.summary.newlyAddedVsLastWeek, color: 'text-green-600', bg: 'bg-green-50 dark:bg-green-900/20', border: 'border-green-200', icon: Plus },
-                            { label: 'Closed / Decommissioned', value: wr.summary.closedDecommissioned, vs: wr.summary.closedVsLastWeek, color: 'text-red-500', bg: 'bg-red-50 dark:bg-red-900/20', border: 'border-red-200', icon: MinusCircle },
-                            { label: 'Changes by Managers', value: wr.summary.changesByManagers, vs: wr.summary.changesVsLastWeek, color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-900/20', border: 'border-blue-200', icon: UserCheck },
+                            { label: 'Newly Added', value: wr.summary.newlyAdded, vs: wr.summary.newlyAddedVsLastWeek, color: 'text-green-600', bg: 'bg-green-50', border: 'border-green-200', icon: Plus },
+                            { label: 'Closed / Decommissioned', value: wr.summary.closedDecommissioned, vs: wr.summary.closedVsLastWeek, color: 'text-red-500', bg: 'bg-red-50', border: 'border-red-200', icon: MinusCircle },
+                            { label: 'Changes by Managers', value: wr.summary.changesByManagers, vs: wr.summary.changesVsLastWeek, color: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-200', icon: UserCheck },
                           ].map((item) => (
                             <div key={item.label} className={`p-4 rounded-xl border ${item.border} ${item.bg}`}>
                               <div className="flex items-center justify-between mb-2">
-                                <span className="text-xs text-gray-600 dark:text-gray-400 font-medium">{item.label}</span>
+                                <span className="text-xs text-gray-600 font-medium">{item.label}</span>
                                 <item.icon size={14} className={item.color} />
                               </div>
                               <p className={`text-3xl font-bold ${item.color}`}>{item.value}</p>
@@ -1390,8 +1390,8 @@ export default function DashboardPage() {
                           ))}
                         </div>
                         <div className="grid grid-cols-2 gap-4">
-                          <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700">
-                            <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Details Overview</h4>
+                          <div className="p-4 rounded-xl border border-blue-100">
+                            <h4 className="text-sm font-semibold text-gray-900 mb-3">Details Overview</h4>
                             <div className="space-y-2.5">
                               {[
                                 { icon: FolderKanban, label: 'Total Projects Impacted', value: wr.summary.totalProjectsImpacted },
@@ -1399,14 +1399,14 @@ export default function DashboardPage() {
                                 { icon: Activity, label: 'Applications Modified', value: wr.summary.applicationsModified },
                               ].map((item) => (
                                 <div key={item.label} className="flex items-center justify-between">
-                                  <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400"><item.icon size={13} className="text-gray-400" />{item.label}</div>
-                                  <span className="text-sm font-semibold text-gray-900 dark:text-white">{item.value}</span>
+                                  <div className="flex items-center gap-2 text-xs text-gray-600"><item.icon size={13} className="text-gray-400" />{item.label}</div>
+                                  <span className="text-sm font-semibold text-gray-900">{item.value}</span>
                                 </div>
                               ))}
                             </div>
                           </div>
-                          <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700">
-                            <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Change Types</h4>
+                          <div className="p-4 rounded-xl border border-blue-100">
+                            <h4 className="text-sm font-semibold text-gray-900 mb-3">Change Types</h4>
                             {wr.changeTypes.length > 0 ? (
                               <div className="space-y-2">
                                 {wr.changeTypes.map((ct: any, i: number) => {
@@ -1415,9 +1415,9 @@ export default function DashboardPage() {
                                   return (
                                     <div key={ct.label} className="flex items-center gap-2">
                                       <span className={`w-2 h-2 rounded-full flex-shrink-0 ${colors[i % colors.length]}`} />
-                                      <span className="text-xs text-gray-600 dark:text-gray-400 flex-1">{ct.label}</span>
+                                      <span className="text-xs text-gray-600 flex-1">{ct.label}</span>
                                       <span className="text-xs font-semibold">{ct.count}</span>
-                                      <div className="w-14 bg-gray-200 dark:bg-gray-600 rounded-full h-1.5">
+                                      <div className="w-14 bg-blue-100 rounded-full h-1.5">
                                         <div className={`${colors[i % colors.length]} h-1.5 rounded-full`} style={{ width: `${total > 0 ? (ct.count / total) * 100 : 0}%` }} />
                                       </div>
                                     </div>
@@ -1433,8 +1433,8 @@ export default function DashboardPage() {
                       <div className="space-y-2">
                         {wr.newlyAddedProjects.length > 0 ? wr.newlyAddedProjects.map((p: any) => (
                           <Link key={p.id} href={`/projects/${p.id}`} onClick={() => setShowWeeklyReport(false)}
-                            className="flex items-center justify-between p-3 rounded-lg border border-gray-100 dark:border-gray-700 hover:border-green-300 hover:bg-green-50 dark:hover:bg-green-900/20 transition-all">
-                            <div><p className="text-sm font-medium text-gray-900 dark:text-white">{p.name}</p><p className="text-xs text-gray-500">{p.customerName} · {p.projectManager}</p></div>
+                            className="flex items-center justify-between p-3 rounded-lg border border-gray-100 hover:border-green-300 hover:bg-green-50 transition-all">
+                            <div><p className="text-sm font-medium text-gray-900">{p.name}</p><p className="text-xs text-gray-500">{p.customerName} · {p.projectManager}</p></div>
                             <span className="text-xs text-gray-400">{format(new Date(p.createdAt), 'MMM d')}</span>
                           </Link>
                         )) : <div className="text-center py-10 text-gray-400"><Plus size={30} className="mx-auto mb-2 opacity-30" /><p className="text-sm">No projects added this week</p></div>}
@@ -1444,8 +1444,8 @@ export default function DashboardPage() {
                       <div className="space-y-2">
                         {wr.closedProjects.length > 0 ? wr.closedProjects.map((p: any) => (
                           <Link key={p.id} href={`/projects/${p.id}`} onClick={() => setShowWeeklyReport(false)}
-                            className="flex items-center justify-between p-3 rounded-lg border border-gray-100 dark:border-gray-700 hover:border-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all">
-                            <div><p className="text-sm font-medium text-gray-900 dark:text-white">{p.name}</p><p className="text-xs text-gray-500">{p.customerName} · {p.projectManager}</p></div>
+                            className="flex items-center justify-between p-3 rounded-lg border border-gray-100 hover:border-red-300 hover:bg-red-50 transition-all">
+                            <div><p className="text-sm font-medium text-gray-900">{p.name}</p><p className="text-xs text-gray-500">{p.customerName} · {p.projectManager}</p></div>
                             <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${p.status === 'COMPLETED' ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'}`}>{p.status === 'COMPLETED' ? 'Closed' : 'Decommissioned'}</span>
                           </Link>
                         )) : <div className="text-center py-10 text-gray-400"><CheckCircle size={30} className="mx-auto mb-2 opacity-30" /><p className="text-sm">No projects closed this week</p></div>}
@@ -1454,15 +1454,15 @@ export default function DashboardPage() {
                     {weeklyTab === 'changes' && (
                       <div className="space-y-4">
                         {wr.changesByManager.length > 0 && (
-                          <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700">
-                            <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Changes by Manager</h4>
+                          <div className="p-4 rounded-xl border border-blue-100">
+                            <h4 className="text-sm font-semibold text-gray-900 mb-3">Changes by Manager</h4>
                             <div className="space-y-2">
                               {wr.changesByManager.map((cm: any) => (
                                 <div key={cm.manager} className="flex items-center gap-3">
-                                  <div className="w-7 h-7 rounded-full bg-primary-100 dark:bg-primary-900/40 flex items-center justify-center text-xs font-bold text-primary-700 flex-shrink-0">{cm.manager.charAt(0).toUpperCase()}</div>
-                                  <span className="text-sm text-gray-700 dark:text-gray-300 flex-1">{cm.manager}</span>
+                                  <div className="w-7 h-7 rounded-full bg-primary-100 flex items-center justify-center text-xs font-bold text-primary-700 flex-shrink-0">{cm.manager.charAt(0).toUpperCase()}</div>
+                                  <span className="text-sm text-gray-700 flex-1">{cm.manager}</span>
                                   <div className="flex items-center gap-2">
-                                    <div className="w-20 bg-gray-200 dark:bg-gray-600 rounded-full h-1.5">
+                                    <div className="w-20 bg-blue-100 rounded-full h-1.5">
                                       <div className="bg-primary-500 h-1.5 rounded-full" style={{ width: `${wr.summary.changesByManagers > 0 ? (cm.count / wr.summary.changesByManagers) * 100 : 0}%` }} />
                                     </div>
                                     <span className="text-xs font-semibold w-4 text-right">{cm.count}</span>
@@ -1475,8 +1475,8 @@ export default function DashboardPage() {
                         <div className="space-y-2">
                           {wr.changedProjects.length > 0 ? wr.changedProjects.map((p: any) => (
                             <Link key={p.id} href={`/projects/${p.id}`} onClick={() => setShowWeeklyReport(false)}
-                              className="flex items-center justify-between p-3 rounded-lg border border-gray-100 dark:border-gray-700 hover:border-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all">
-                              <div><p className="text-sm font-medium text-gray-900 dark:text-white">{p.name}</p><p className="text-xs text-gray-500">{p.customerName} · {p.projectManager}</p></div>
+                              className="flex items-center justify-between p-3 rounded-lg border border-gray-100 hover:border-blue-300 hover:bg-blue-50 transition-all">
+                              <div><p className="text-sm font-medium text-gray-900">{p.name}</p><p className="text-xs text-gray-500">{p.customerName} · {p.projectManager}</p></div>
                               <span className="text-xs text-gray-400">{formatDistanceToNow(new Date(p.updatedAt), { addSuffix: true })}</span>
                             </Link>
                           )) : <div className="text-center py-10 text-gray-400"><Activity size={30} className="mx-auto mb-2 opacity-30" /><p className="text-sm">No manager changes this week</p></div>}
@@ -1484,7 +1484,7 @@ export default function DashboardPage() {
                       </div>
                     )}
                   </div>
-                  <div className="p-4 border-t border-gray-200 dark:border-gray-700 flex justify-end">
+                  <div className="p-4 border-t border-blue-100 flex justify-end">
                     <div className="relative">
                       <button
                         onClick={() => setShowDownloadMenu((v) => !v)}
@@ -1492,7 +1492,7 @@ export default function DashboardPage() {
                         <Download size={13} /> Download Report <ChevronRight size={12} className={`transition-transform ${showDownloadMenu ? 'rotate-90' : ''}`} />
                       </button>
                       {showDownloadMenu && (
-                        <div className="absolute bottom-full right-0 mb-1 w-44 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden z-10">
+                        <div className="absolute bottom-full right-0 mb-1 w-44 bg-white rounded-xl shadow-lg border border-blue-100 overflow-hidden z-10">
                           {[
                             { label: 'Download PDF', fmt: 'pdf' },
                             { label: 'Download Excel', fmt: 'excel' },
@@ -1588,7 +1588,7 @@ export default function DashboardPage() {
                                 const a = document.createElement('a'); a.href = url; a.download = `${filename}.ppt`; a.click(); URL.revokeObjectURL(url);
                                 showToast('success', 'PPT downloaded!', 'Open in PowerPoint or Google Slides');
                               }
-                            }} className="w-full text-left px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2 transition-colors">
+                            }} className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50/50 flex items-center gap-2 transition-colors">
                               <Download size={13} className="text-primary-600" /> {label}
                             </button>
                           ))}

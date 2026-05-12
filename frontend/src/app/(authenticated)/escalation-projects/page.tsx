@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { useEscalatedProjects, useEscalateProject, useDeescalateProject, useProjects, useArchivedEscalations, useArchiveEscalation, useUnarchiveEscalation } from '@/hooks/useProjects';
+import { useEscalatedProjects, useEscalateProject, useDeescalateProject, useProjects, useArchivedEscalations, useArchiveEscalation, useUnarchiveEscalation, useEscalationDailyNotes, useAddEscalationDailyNote, useDeleteEscalationDailyNote } from '@/hooks/useProjects';
 import { useAuth } from '@/context/AuthContext';
 import { Card } from '@/components/ui/Card';
 import Link from 'next/link';
@@ -9,15 +9,15 @@ import {
   Siren, AlertTriangle, Search,
   RotateCcw, Eye, Download, ChevronLeft, ChevronRight,
   Plus, X, AlertCircle, TrendingUp, ChevronDown, History, Calendar, Trash2, CheckCircle2,
-  Archive, ArchiveRestore,
+  Archive, ArchiveRestore, BookOpen, Send, Loader2,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 
 const PRIORITY_COLORS: Record<string, string> = {
-  HIGH: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
-  MEDIUM: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300',
-  LOW: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300',
+  HIGH: 'bg-red-100 text-red-700',
+  MEDIUM: 'bg-orange-100 text-orange-700',
+  LOW: 'bg-yellow-100 text-yellow-700',
 };
 
 const ESCALATION_TYPES = ['Client Issues', 'Tools Issues', 'Process Issues', 'Resource Issues', 'Data Related Issues', 'Others'];
@@ -30,7 +30,7 @@ export default function EscalationProjectsPage() {
   const { data, isLoading, refetch } = useEscalatedProjects(managerFilter);
   const escalated: any[] = data?.data || [];
 
-  const { data: allProjectsData } = useProjects({ limit: 1000, status: 'ACTIVE' });
+  const { data: allProjectsData } = useProjects({ limit: 500 });
   const allProjects: any[] = allProjectsData?.data || [];
 
   const escalateProject = useEscalateProject();
@@ -117,6 +117,21 @@ export default function EscalationProjectsPage() {
     return next;
   });
 
+  // Daily notes modal
+  const [dailyNotesProject, setDailyNotesProject] = useState<any | null>(null);
+  const [newDailyNote, setNewDailyNote] = useState('');
+  const [dailyNoteDate, setDailyNoteDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const { data: dailyNotesData, isLoading: loadingNotes } = useEscalationDailyNotes(dailyNotesProject?.id ?? null);
+  const dailyNotes: any[] = dailyNotesData?.data || [];
+  const addDailyNote = useAddEscalationDailyNote();
+  const deleteDailyNote = useDeleteEscalationDailyNote();
+
+  async function handleAddDailyNote() {
+    if (!dailyNotesProject || !newDailyNote.trim()) return;
+    await addDailyNote.mutateAsync({ projectId: dailyNotesProject.id, note: newDailyNote.trim(), author: user?.name, noteDate: dailyNoteDate });
+    setNewDailyNote('');
+  }
+
   // Per-project inline notes (persisted to localStorage)
   const [projectNotes, setProjectNotes] = useState<Record<string, string>>(() => {
     try { return JSON.parse(localStorage.getItem('escalationProjectNotes') || '{}'); } catch { return {}; }
@@ -146,8 +161,8 @@ export default function EscalationProjectsPage() {
   const totalPages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
   const paged = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
 
-  // All active projects can be re-escalated (multiple escalations allowed)
-  const nonEscalated = allProjects;
+  // Show all non-completed/non-cancelled projects for escalation
+  const nonEscalated = allProjects.filter((p: any) => p.status !== 'COMPLETED' && p.status !== 'CANCELLED');
 
   async function handleAddEscalation() {
     if (!form.projectId) { setModalError('Please select a project'); return; }
@@ -233,18 +248,18 @@ export default function EscalationProjectsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <nav className="text-xs text-gray-500 dark:text-gray-400 mb-1 flex items-center gap-1">
+          <nav className="text-xs text-gray-500 mb-1 flex items-center gap-1">
             <Link href="/" className="hover:text-primary-600">Dashboard</Link>
             <span>/</span>
-            <span className="text-gray-700 dark:text-gray-300">Escalated Projects</span>
+            <span className="text-gray-700">Escalated Projects</span>
           </nav>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Escalated Projects</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Escalated Projects</h1>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => refetch()} className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+          <button onClick={() => refetch()} className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
             <RotateCcw size={14} /> Refresh
           </button>
-          <button onClick={downloadCSV} className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+          <button onClick={downloadCSV} className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
             <Download size={14} /> Export
           </button>
           <button onClick={() => setShowModal(true)} className="flex items-center gap-1.5 px-3 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">
@@ -255,56 +270,56 @@ export default function EscalationProjectsPage() {
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-        <Card className="border-red-200 dark:border-red-800">
+        <Card className="border-red-200">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-red-100 dark:bg-red-900/40 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
               <Siren size={20} className="text-red-600" />
             </div>
             <div>
-              <p className="text-xs text-gray-500 dark:text-gray-400">Total Escalated</p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white">{total}</p>
+              <p className="text-xs text-gray-500">Total Escalated</p>
+              <p className="text-2xl font-bold text-gray-900">{total}</p>
             </div>
           </div>
         </Card>
-        <Card className="border-orange-200 dark:border-orange-800">
+        <Card className="border-orange-200">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-orange-100 dark:bg-orange-900/40 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center">
               <AlertTriangle size={20} className="text-orange-600" />
             </div>
             <div>
-              <p className="text-xs text-gray-500 dark:text-gray-400">Critical Escalations</p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white">{critical}</p>
+              <p className="text-xs text-gray-500">Critical Escalations</p>
+              <p className="text-2xl font-bold text-gray-900">{critical}</p>
             </div>
           </div>
         </Card>
-        <Card className="border-green-200 dark:border-green-800">
+        <Card className="border-green-200">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-green-100 dark:bg-green-900/40 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
               <TrendingUp size={20} className="text-green-600" />
             </div>
             <div>
-              <p className="text-xs text-gray-500 dark:text-gray-400">Active Escalations</p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white">{escalated.filter((p) => p.isEscalated && p.status !== 'COMPLETED' && p.status !== 'CANCELLED').length}</p>
+              <p className="text-xs text-gray-500">Active Escalations</p>
+              <p className="text-2xl font-bold text-gray-900">{escalated.filter((p) => p.isEscalated && p.status !== 'COMPLETED' && p.status !== 'CANCELLED').length}</p>
             </div>
           </div>
         </Card>
       </div>
 
       {/* Tab Toggle */}
-      <div className="flex gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-xl w-fit">
+      <div className="flex gap-1 p-1 bg-gray-100 rounded-xl w-fit">
         <button
           onClick={() => setActiveTab('active')}
-          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors ${activeTab === 'active' ? 'bg-white dark:bg-gray-700 text-red-600 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'}`}
+          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors ${activeTab === 'active' ? 'bg-white text-red-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
         >
           <Siren size={14} /> Active Escalations
-          <span className={`ml-1 px-1.5 py-0.5 rounded-full text-xs font-bold ${activeTab === 'active' ? 'bg-red-100 text-red-700' : 'bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300'}`}>{deduped.length}</span>
+          <span className={`ml-1 px-1.5 py-0.5 rounded-full text-xs font-bold ${activeTab === 'active' ? 'bg-red-100 text-red-700' : 'bg-gray-200 text-gray-600'}`}>{deduped.length}</span>
         </button>
         <button
           onClick={() => setActiveTab('archive')}
-          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors ${activeTab === 'archive' ? 'bg-white dark:bg-gray-700 text-amber-600 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'}`}
+          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors ${activeTab === 'archive' ? 'bg-white text-amber-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
         >
           <Archive size={14} /> Archive
-          <span className={`ml-1 px-1.5 py-0.5 rounded-full text-xs font-bold ${activeTab === 'archive' ? 'bg-amber-100 text-amber-700' : 'bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300'}`}>{archived.length}</span>
+          <span className={`ml-1 px-1.5 py-0.5 rounded-full text-xs font-bold ${activeTab === 'archive' ? 'bg-amber-100 text-amber-700' : 'bg-gray-200 text-gray-600'}`}>{archived.length}</span>
         </button>
       </div>
 
@@ -317,13 +332,13 @@ export default function EscalationProjectsPage() {
               value={search}
               onChange={(e) => { setSearch(e.target.value); setPage(1); }}
               placeholder="Search project, customer, manager..."
-              className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-900"
             />
           </div>
           <select
             value={prioritySel}
             onChange={(e) => { setPrioritySel(e.target.value); setPage(1); }}
-            className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+            className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-900"
           >
             <option value="">All Priorities</option>
             <option value="HIGH">Critical (High)</option>
@@ -333,14 +348,14 @@ export default function EscalationProjectsPage() {
           <select
             value={typeSel}
             onChange={(e) => { setTypeSel(e.target.value); setPage(1); }}
-            className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+            className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-900"
           >
             <option value="">All Types</option>
             {ESCALATION_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
           </select>
           <button
             onClick={() => { setSearch(''); setPrioritySel(''); setTypeSel(''); setPage(1); }}
-            className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700"
+            className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
           >
             <RotateCcw size={13} /> Reset
           </button>
@@ -359,26 +374,26 @@ export default function EscalationProjectsPage() {
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50 dark:bg-gray-700/50">
+                <thead className="bg-blue-50/60">
                   <tr>
                     {['Project Name', 'Project Manager', 'Escalation Type', 'Priority', 'Status', 'Phase', 'Escalated At', 'Resolved Date', 'Action'].map((h) => (
-                      <th key={h} className={`py-3 px-4 text-xs font-semibold text-gray-500 dark:text-gray-400 ${h === 'Project Name' ? 'text-left' : 'text-center'}`}>{h}</th>
+                      <th key={h} className={`py-3 px-4 text-xs font-semibold text-gray-500 ${h === 'Project Name' ? 'text-left' : 'text-center'}`}>{h}</th>
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                <tbody className="divide-y divide-gray-100">
                   {archived.map((p) => {
                     const notes = p.escalationNotes || '';
                     const escType = ESCALATION_TYPES.find((t) => notes.startsWith(t)) || (notes ? notes.split(' — ')[0] : 'Others');
                     return (
-                      <tr key={p.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
+                      <tr key={p.id} className="hover:bg-gray-50">
                         <td className="py-3 px-4">
                           <Link href={`/projects/${p.id}`} className="font-medium text-primary-600 hover:underline">{p.name}</Link>
                           <div className="text-xs text-gray-400">{p.customerName}</div>
                         </td>
-                        <td className="py-3 px-4 text-center text-gray-700 dark:text-gray-300">{p.projectManager || '—'}</td>
+                        <td className="py-3 px-4 text-center text-gray-700">{p.projectManager || '—'}</td>
                         <td className="py-3 px-4 text-center">
-                          <span className="px-2 py-0.5 rounded-full text-xs bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">{escType}</span>
+                          <span className="px-2 py-0.5 rounded-full text-xs bg-purple-100 text-purple-700">{escType}</span>
                         </td>
                         <td className="py-3 px-4 text-center">
                           {p.escalationPriority ? (
@@ -392,18 +407,18 @@ export default function EscalationProjectsPage() {
                         </td>
                         <td className="py-3 px-4 text-center whitespace-nowrap">
                           {p.resolvedDate ? (
-                            <span className="text-green-600 dark:text-green-400 text-xs font-medium">{format(new Date(p.resolvedDate), 'MMM d, yyyy')}</span>
+                            <span className="text-green-600 text-xs font-medium">{format(new Date(p.resolvedDate), 'MMM d, yyyy')}</span>
                           ) : <span className="text-gray-400 text-xs">—</span>}
                         </td>
                         <td className="py-3 px-4 text-center">
                           <div className="flex items-center justify-center gap-1">
-                            <Link href={`/projects/${p.id}`} className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-600 hover:bg-primary-100 hover:text-primary-700 transition-colors">
+                            <Link href={`/projects/${p.id}`} className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 text-gray-600 hover:bg-primary-100 hover:text-primary-700 transition-colors">
                               <Eye size={14} />
                             </Link>
                             <button
                               onClick={() => { setHistoryProject(p); setNewNoteText(''); setNewNoteType('Client Issues'); setNewNotePriority('MEDIUM'); }}
                               title="View escalation history"
-                              className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 dark:bg-gray-700 text-purple-500 hover:bg-purple-100 transition-colors"
+                              className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 text-purple-500 hover:bg-purple-100 transition-colors"
                             >
                               <History size={14} />
                             </button>
@@ -411,7 +426,7 @@ export default function EscalationProjectsPage() {
                               <button
                                 onClick={() => handleUnarchive(p.id)}
                                 title="Restore to active escalations"
-                                className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 dark:bg-gray-700 text-green-500 hover:bg-green-100 transition-colors"
+                                className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 text-green-500 hover:bg-green-100 transition-colors"
                               >
                                 <ArchiveRestore size={14} />
                               </button>
@@ -444,14 +459,14 @@ export default function EscalationProjectsPage() {
           <>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50 dark:bg-gray-700/50">
+                <thead className="bg-blue-50/60">
                   <tr>
                     {['', 'Project Name', 'Project Manager', 'Escalation Type', 'Priority', 'Status', 'Phase', 'Delay Days', 'Escalated At', 'Resolved Date', 'Notes', 'Action'].map((h) => (
-                      <th key={h} className={`py-3 px-4 text-xs font-semibold text-gray-500 dark:text-gray-400 ${h === 'Project Name' || h === 'Notes' ? 'text-left' : 'text-center'}`}>{h}</th>
+                      <th key={h} className={`py-3 px-4 text-xs font-semibold text-gray-500 ${h === 'Project Name' || h === 'Notes' ? 'text-left' : 'text-center'}`}>{h}</th>
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                <tbody className="divide-y divide-gray-100">
                   {paged.map((p) => {
                     const notes = p.escalationNotes || '';
                     const escType = ESCALATION_TYPES.find((t) => notes.startsWith(t)) || (notes ? notes.split(' — ')[0] : 'Others');
@@ -459,7 +474,7 @@ export default function EscalationProjectsPage() {
                     const isExpanded = expandedRows.has(p.id);
                     return (
                       <>
-                        <tr key={p.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30 cursor-pointer" onClick={() => toggleRow(p.id)}>
+                        <tr key={p.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => toggleRow(p.id)}>
                           <td className="py-3 px-2 text-center">
                             <ChevronDown size={14} className={`text-gray-400 transition-transform mx-auto ${isExpanded ? 'rotate-180' : ''}`} />
                           </td>
@@ -467,9 +482,9 @@ export default function EscalationProjectsPage() {
                             <Link href={`/projects/${p.id}`} onClick={(e) => e.stopPropagation()} className="font-medium text-primary-600 hover:underline">{p.name}</Link>
                             <div className="text-xs text-gray-400">{p.customerName}</div>
                           </td>
-                          <td className="py-3 px-4 text-center text-gray-700 dark:text-gray-300">{p.projectManager || '—'}</td>
+                          <td className="py-3 px-4 text-center text-gray-700">{p.projectManager || '—'}</td>
                           <td className="py-3 px-4 text-center">
-                            <span className="px-2 py-0.5 rounded-full text-xs bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">{escType}</span>
+                            <span className="px-2 py-0.5 rounded-full text-xs bg-purple-100 text-purple-700">{escType}</span>
                           </td>
                           <td className="py-3 px-4 text-center">
                             {p.escalationPriority ? (
@@ -485,7 +500,7 @@ export default function EscalationProjectsPage() {
                               {p.delayDays} day{p.delayDays !== 1 ? 's' : ''}
                             </span>
                           </td>
-                          <td className="py-3 px-4 text-center text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                          <td className="py-3 px-4 text-center text-gray-500 whitespace-nowrap">
                             {p.escalatedAt ? format(new Date(p.escalatedAt), 'MMM d, yyyy') : '—'}
                           </td>
                           <td className="py-3 px-4 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
@@ -495,7 +510,7 @@ export default function EscalationProjectsPage() {
                                   type="date"
                                   value={resolvedDateInput}
                                   onChange={(e) => setResolvedDateInput(e.target.value)}
-                                  className="text-xs border border-gray-300 dark:border-gray-600 rounded px-1.5 py-0.5 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                                  className="text-xs border border-gray-300 rounded px-1.5 py-0.5 bg-white text-gray-900"
                                   autoFocus
                                 />
                                 <button onClick={() => handleSaveResolvedDate(p.id)} className="text-green-600 hover:text-green-700 p-0.5">
@@ -512,9 +527,9 @@ export default function EscalationProjectsPage() {
                                 title="Click to set resolved date"
                               >
                                 {p.resolvedDate ? (
-                                  <span className="text-green-600 dark:text-green-400 text-xs font-medium group-hover:underline">{format(new Date(p.resolvedDate), 'MMM d, yyyy')}</span>
+                                  <span className="text-green-600 text-xs font-medium group-hover:underline">{format(new Date(p.resolvedDate), 'MMM d, yyyy')}</span>
                                 ) : (
-                                  <span className="text-gray-400 text-xs group-hover:text-gray-600 dark:group-hover:text-gray-300">Pending</span>
+                                  <span className="text-gray-400 text-xs group-hover:text-gray-600">Pending</span>
                                 )}
                               </button>
                             )}
@@ -525,25 +540,32 @@ export default function EscalationProjectsPage() {
                               onChange={(e) => saveNote(p.id, e.target.value)}
                               placeholder="Add note…"
                               rows={2}
-                              className="w-44 text-xs border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1 resize-none bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-1 focus:ring-primary-400 placeholder-gray-300"
+                              className="w-44 text-xs border border-gray-200 rounded-lg px-2 py-1 resize-none bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-primary-400 placeholder-gray-300"
                             />
                           </td>
                           <td className="py-3 px-4 text-center" onClick={(e) => e.stopPropagation()}>
                             <div className="flex items-center justify-center gap-1">
-                              <Link href={`/projects/${p.id}`} className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-primary-100 hover:text-primary-700 transition-colors">
+                              <Link href={`/projects/${p.id}`} className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 text-gray-600 hover:bg-primary-100 hover:text-primary-700 transition-colors">
                                 <Eye size={14} />
                               </Link>
                               <button
                                 onClick={() => { setHistoryProject(p); setNewNoteText(''); setNewNoteType('Client Issues'); setNewNotePriority('MEDIUM'); }}
                                 title="View escalation history"
-                                className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 dark:bg-gray-700 text-purple-500 hover:bg-purple-100 transition-colors"
+                                className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 text-purple-500 hover:bg-purple-100 transition-colors"
                               >
                                 <History size={14} />
                               </button>
                               <button
+                                onClick={() => { setDailyNotesProject(p); setNewDailyNote(''); setDailyNoteDate(new Date().toISOString().split('T')[0]); }}
+                                title="Daily tracking notes"
+                                className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 text-teal-600 hover:bg-teal-100 transition-colors"
+                              >
+                                <BookOpen size={14} />
+                              </button>
+                              <button
                                 onClick={() => setCalendarProject(p)}
                                 title="View escalation timeline"
-                                className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 dark:bg-gray-700 text-blue-500 hover:bg-blue-100 transition-colors"
+                                className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 text-blue-500 hover:bg-blue-100 transition-colors"
                               >
                                 <Calendar size={14} />
                               </button>
@@ -551,7 +573,7 @@ export default function EscalationProjectsPage() {
                                 <button
                                   onClick={() => handleArchive(p.id)}
                                   title="Archive this escalation"
-                                  className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 dark:bg-gray-700 text-amber-500 hover:bg-amber-100 transition-colors"
+                                  className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 text-amber-500 hover:bg-amber-100 transition-colors"
                                 >
                                   <Archive size={14} />
                                 </button>
@@ -560,7 +582,7 @@ export default function EscalationProjectsPage() {
                                 <button
                                   onClick={() => handleDeescalate(p.id)}
                                   title="Remove escalation"
-                                  className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 dark:bg-gray-700 text-red-500 hover:bg-red-100 transition-colors"
+                                  className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 text-red-500 hover:bg-red-100 transition-colors"
                                 >
                                   <X size={14} />
                                 </button>
@@ -569,7 +591,7 @@ export default function EscalationProjectsPage() {
                                 <button
                                   onClick={() => handleDeleteProject(p.id)}
                                   title="Remove from escalation"
-                                  className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 dark:bg-gray-700 text-red-500 hover:bg-red-100 transition-colors"
+                                  className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 text-red-500 hover:bg-red-100 transition-colors"
                                 >
                                   <Trash2 size={14} />
                                 </button>
@@ -578,35 +600,35 @@ export default function EscalationProjectsPage() {
                           </td>
                         </tr>
                         {isExpanded && (
-                          <tr key={`${p.id}-history`} className="bg-red-50/50 dark:bg-red-900/10">
+                          <tr key={`${p.id}-history`} className="bg-red-50/50">
                             <td colSpan={12} className="px-6 py-4">
                               <div className="flex items-start gap-3">
-                                <div className="w-8 h-8 rounded-full bg-red-100 dark:bg-red-900/40 flex items-center justify-center flex-shrink-0 mt-0.5">
+                                <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0 mt-0.5">
                                   <History size={15} className="text-red-600" />
                                 </div>
                                 <div className="flex-1">
-                                  <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-3">
+                                  <p className="text-xs font-semibold text-gray-700 mb-3">
                                     Escalation History ({(p.escalationHistory?.length || 0) > 0 ? p.escalationHistory.length : '1'} event{(p.escalationHistory?.length || 0) !== 1 ? 's' : ''})
                                   </p>
                                   {/* Full history from DB */}
                                   {p.escalationHistory && p.escalationHistory.length > 0 ? (
                                     <div className="space-y-3">
                                       {p.escalationHistory.map((h: any, idx: number) => (
-                                        <div key={h.id || idx} className="flex items-start gap-3 text-xs bg-white dark:bg-gray-800 rounded-lg p-3 border border-red-100 dark:border-red-900/30">
+                                        <div key={h.id || idx} className="flex items-start gap-3 text-xs bg-white rounded-lg p-3 border border-red-100">
                                           <div className="flex flex-col items-center gap-1 flex-shrink-0 pt-0.5">
                                             <span className={`w-2.5 h-2.5 rounded-full ${h.resolvedDate ? 'bg-green-400' : 'bg-red-500'}`} />
-                                            {idx < p.escalationHistory.length - 1 && <span className="w-px flex-1 bg-gray-200 dark:bg-gray-700 min-h-[12px]" />}
+                                            {idx < p.escalationHistory.length - 1 && <span className="w-px flex-1 bg-gray-200 min-h-[12px]" />}
                                           </div>
                                           <div className="flex-1">
                                             <div className="flex items-center gap-2 flex-wrap mb-1">
-                                              <span className="font-semibold text-gray-800 dark:text-gray-200">
+                                              <span className="font-semibold text-gray-800">
                                                 {format(new Date(h.escalatedAt), 'MMM d, yyyy HH:mm')}
                                               </span>
                                               <span className={`px-1.5 py-0.5 rounded text-xs font-semibold ${h.priority === 'HIGH' ? 'bg-red-100 text-red-700' : h.priority === 'MEDIUM' ? 'bg-orange-100 text-orange-700' : 'bg-yellow-100 text-yellow-700'}`}>
                                                 {h.priority}
                                               </span>
                                               {h.escalationType && (
-                                                <span className="px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">{h.escalationType}</span>
+                                                <span className="px-1.5 py-0.5 rounded bg-purple-100 text-purple-700">{h.escalationType}</span>
                                               )}
                                               {h.resolvedDate ? (
                                                 <span className="px-1.5 py-0.5 rounded bg-green-100 text-green-700 text-xs font-medium">Resolved {format(new Date(h.resolvedDate), 'MMM d, yyyy')}</span>
@@ -614,7 +636,7 @@ export default function EscalationProjectsPage() {
                                                 <span className="px-1.5 py-0.5 rounded bg-red-50 text-red-600 text-xs border border-red-200">Open</span>
                                               )}
                                             </div>
-                                            {h.notes && <p className="text-gray-600 dark:text-gray-400 mt-0.5">{h.notes}</p>}
+                                            {h.notes && <p className="text-gray-600 mt-0.5">{h.notes}</p>}
                                           </div>
                                         </div>
                                       ))}
@@ -626,8 +648,8 @@ export default function EscalationProjectsPage() {
                                         <div className="flex items-start gap-3">
                                           <span className="w-2 h-2 rounded-full bg-red-500 mt-1 flex-shrink-0" />
                                           <div>
-                                            <span className="font-medium text-gray-800 dark:text-gray-200">Escalated on </span>
-                                            <span className="text-gray-600 dark:text-gray-400">{format(new Date(p.escalatedAt), 'MMM d, yyyy HH:mm')}</span>
+                                            <span className="font-medium text-gray-800">Escalated on </span>
+                                            <span className="text-gray-600">{format(new Date(p.escalatedAt), 'MMM d, yyyy HH:mm')}</span>
                                             <span className="ml-2 px-1.5 py-0.5 rounded bg-red-100 text-red-700 font-semibold">{p.escalationPriority || 'MEDIUM'}</span>
                                           </div>
                                         </div>
@@ -635,13 +657,13 @@ export default function EscalationProjectsPage() {
                                       {escType && (
                                         <div className="flex items-start gap-3">
                                           <span className="w-2 h-2 rounded-full bg-purple-400 mt-1 flex-shrink-0" />
-                                          <span className="text-gray-600 dark:text-gray-400">Type: {escType}</span>
+                                          <span className="text-gray-600">Type: {escType}</span>
                                         </div>
                                       )}
                                       {userNote && (
                                         <div className="flex items-start gap-3">
                                           <span className="w-2 h-2 rounded-full bg-gray-400 mt-1 flex-shrink-0" />
-                                          <span className="text-gray-600 dark:text-gray-400">Notes: {userNote}</span>
+                                          <span className="text-gray-600">Notes: {userNote}</span>
                                         </div>
                                       )}
                                     </div>
@@ -659,21 +681,21 @@ export default function EscalationProjectsPage() {
             </div>
 
             {/* Pagination */}
-            <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
-              <p className="text-xs text-gray-500 dark:text-gray-400">
+            <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">
+              <p className="text-xs text-gray-500">
                 Showing {(page - 1) * PER_PAGE + 1}–{Math.min(page * PER_PAGE, filtered.length)} of {filtered.length} entries
               </p>
               <div className="flex items-center gap-1">
-                <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="p-1 rounded text-gray-500 disabled:opacity-40 hover:bg-gray-100 dark:hover:bg-gray-700">
+                <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="p-1 rounded text-gray-500 disabled:opacity-40 hover:bg-gray-100">
                   <ChevronLeft size={16} />
                 </button>
                 {Array.from({ length: totalPages }, (_, i) => i + 1).map((n) => (
                   <button key={n} onClick={() => setPage(n)}
-                    className={`w-7 h-7 rounded text-xs font-medium ${n === page ? 'bg-primary-600 text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'}`}>
+                    className={`w-7 h-7 rounded text-xs font-medium ${n === page ? 'bg-primary-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
                     {n}
                   </button>
                 ))}
-                <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="p-1 rounded text-gray-500 disabled:opacity-40 hover:bg-gray-100 dark:hover:bg-gray-700">
+                <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="p-1 rounded text-gray-500 disabled:opacity-40 hover:bg-gray-100">
                   <ChevronRight size={16} />
                 </button>
               </div>
@@ -684,7 +706,7 @@ export default function EscalationProjectsPage() {
 
       {/* Footer note */}
       {activeTab === 'active' && (
-        <div className="flex items-center gap-2 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-sm text-red-700 dark:text-red-300">
+        <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
           <AlertCircle size={15} />
           Escalation projects are those that have been delayed, breached SLA, or escalated by customers.
         </div>
@@ -693,19 +715,19 @@ export default function EscalationProjectsPage() {
       {/* Add Escalation Modal */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-md p-6 mx-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 mx-4">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+              <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
                 <Siren size={18} className="text-red-600" /> Add Escalation
               </h2>
-              <button onClick={() => { setShowModal(false); setModalError(''); setProjectSearch(''); setShowProjectDropdown(false); }} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+              <button onClick={() => { setShowModal(false); setModalError(''); setProjectSearch(''); setShowProjectDropdown(false); }} className="text-gray-400 hover:text-gray-600">
                 <X size={20} />
               </button>
             </div>
 
             <div className="space-y-4">
               <div className="relative">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Project <span className="text-red-500">*</span></label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Project <span className="text-red-500">*</span></label>
                 <input
                   type="text"
                   value={projectSearch}
@@ -716,11 +738,11 @@ export default function EscalationProjectsPage() {
                   }}
                   onFocus={() => setShowProjectDropdown(true)}
                   placeholder="Type to search a project..."
-                  className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-900"
                   autoComplete="off"
                 />
                 {showProjectDropdown && (
-                  <div className="absolute z-10 w-full mt-1 max-h-48 overflow-y-auto bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg">
+                  <div className="absolute z-10 w-full mt-1 max-h-48 overflow-y-auto bg-white border border-gray-300 rounded-lg shadow-lg">
                     {nonEscalated
                       .filter((p: any) =>
                         !projectSearch ||
@@ -737,7 +759,7 @@ export default function EscalationProjectsPage() {
                             setProjectSearch(`${p.name} — ${p.customerName}`);
                             setShowProjectDropdown(false);
                           }}
-                          className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-900 dark:text-white"
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 text-gray-900"
                         >
                           <span className="font-medium">{p.name}</span>
                           <span className="text-gray-400 ml-1 text-xs">— {p.customerName}</span>
@@ -755,18 +777,18 @@ export default function EscalationProjectsPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Escalation Type</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Escalation Type</label>
                 <select
                   value={form.escalationType}
                   onChange={(e) => setForm({ ...form, escalationType: e.target.value })}
-                  className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-900"
                 >
                   {ESCALATION_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Priority</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
                 <div className="flex gap-2">
                   {(['LOW', 'MEDIUM', 'HIGH'] as const).map((p) => (
                     <button
@@ -777,7 +799,7 @@ export default function EscalationProjectsPage() {
                           ? p === 'HIGH' ? 'bg-red-600 text-white border-red-600'
                             : p === 'MEDIUM' ? 'bg-orange-500 text-white border-orange-500'
                             : 'bg-yellow-500 text-white border-yellow-500'
-                          : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                          : 'border-gray-300 text-gray-600 hover:bg-gray-50'
                       }`}
                     >
                       {p}
@@ -787,25 +809,25 @@ export default function EscalationProjectsPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Notes (optional)</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Notes (optional)</label>
                 <textarea
                   value={form.notes}
                   onChange={(e) => setForm({ ...form, notes: e.target.value })}
                   rows={3}
                   placeholder="Describe the escalation reason..."
-                  className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white resize-none"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-900 resize-none"
                 />
               </div>
 
               {modalError && (
-                <p className="text-sm text-red-600 dark:text-red-400 flex items-center gap-1"><AlertCircle size={13} /> {modalError}</p>
+                <p className="text-sm text-red-600 flex items-center gap-1"><AlertCircle size={13} /> {modalError}</p>
               )}
             </div>
 
             <div className="flex gap-3 mt-6">
               <button
                 onClick={() => { setShowModal(false); setModalError(''); setProjectSearch(''); setShowProjectDropdown(false); }}
-                className="flex-1 px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                className="flex-1 px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
               >
                 Cancel
               </button>
@@ -823,7 +845,7 @@ export default function EscalationProjectsPage() {
       {/* Escalation History Modal */}
       {historyProject && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => setHistoryProject(null)}>
-          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
             {/* Header */}
             <div className="flex items-center justify-between p-5 bg-red-600 text-white">
               <div className="flex items-center gap-3">
@@ -844,20 +866,20 @@ export default function EscalationProjectsPage() {
             <div className="flex-1 overflow-y-auto p-5 space-y-3">
               {(historyProject.escalationHistory && historyProject.escalationHistory.length > 0) ? (
                 historyProject.escalationHistory.map((h: any, idx: number) => (
-                  <div key={h.id || idx} className="flex items-start gap-3 text-sm bg-gray-50 dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
+                  <div key={h.id || idx} className="flex items-start gap-3 text-sm bg-gray-50 rounded-xl p-4 border border-gray-200">
                     <div className="flex flex-col items-center gap-1 flex-shrink-0 pt-1">
                       <span className={`w-2.5 h-2.5 rounded-full ${h.resolvedDate ? 'bg-green-400' : 'bg-red-500'}`} />
                     </div>
                     <div className="flex-1">
                       <div className="flex items-center gap-2 flex-wrap mb-1">
-                        <span className="font-semibold text-gray-800 dark:text-gray-200 text-xs">
+                        <span className="font-semibold text-gray-800 text-xs">
                           {format(new Date(h.escalatedAt), 'MMM d, yyyy HH:mm')}
                         </span>
                         <span className={`px-1.5 py-0.5 rounded text-xs font-semibold ${h.priority === 'HIGH' ? 'bg-red-100 text-red-700' : h.priority === 'MEDIUM' ? 'bg-orange-100 text-orange-700' : 'bg-yellow-100 text-yellow-700'}`}>
                           {h.priority}
                         </span>
                         {h.escalationType && (
-                          <span className="px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 text-xs">{h.escalationType}</span>
+                          <span className="px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 text-xs">{h.escalationType}</span>
                         )}
                         {h.resolvedDate ? (
                           <span className="px-1.5 py-0.5 rounded bg-green-100 text-green-700 text-xs font-medium">Resolved {format(new Date(h.resolvedDate), 'MMM d, yyyy')}</span>
@@ -865,7 +887,7 @@ export default function EscalationProjectsPage() {
                           <span className="px-1.5 py-0.5 rounded bg-red-50 text-red-600 text-xs border border-red-200">Open</span>
                         )}
                       </div>
-                      {h.notes && <p className="text-gray-600 dark:text-gray-400 text-xs mt-1">{h.notes}</p>}
+                      {h.notes && <p className="text-gray-600 text-xs mt-1">{h.notes}</p>}
                     </div>
                   </div>
                 ))
@@ -878,21 +900,21 @@ export default function EscalationProjectsPage() {
             </div>
 
             {/* Add new note */}
-            <div className="border-t border-gray-200 dark:border-gray-700 p-5 space-y-3 bg-gray-50 dark:bg-gray-800/50">
-              <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">Add New Note</p>
+            <div className="border-t border-gray-200 p-5 space-y-3 bg-gray-50">
+              <p className="text-sm font-semibold text-gray-700">Add New Note</p>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Escalation Type</label>
+                  <label className="block text-xs text-gray-500 mb-1">Escalation Type</label>
                   <select
                     value={newNoteType}
                     onChange={(e) => setNewNoteType(e.target.value)}
-                    className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-900"
                   >
                     {ESCALATION_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Priority</label>
+                  <label className="block text-xs text-gray-500 mb-1">Priority</label>
                   <div className="flex gap-1.5">
                     {(['LOW', 'MEDIUM', 'HIGH'] as const).map((p) => (
                       <button
@@ -902,7 +924,7 @@ export default function EscalationProjectsPage() {
                           ? p === 'HIGH' ? 'bg-red-600 text-white border-red-600'
                             : p === 'MEDIUM' ? 'bg-orange-500 text-white border-orange-500'
                             : 'bg-yellow-500 text-white border-yellow-500'
-                          : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                          : 'border-gray-300 text-gray-600 hover:bg-gray-50'
                         }`}
                       >{p}</button>
                     ))}
@@ -914,10 +936,10 @@ export default function EscalationProjectsPage() {
                 onChange={(e) => setNewNoteText(e.target.value)}
                 placeholder="Write a note about this escalation…"
                 rows={3}
-                className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white resize-none focus:outline-none focus:ring-2 focus:ring-red-400"
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-900 resize-none focus:outline-none focus:ring-2 focus:ring-red-400"
               />
               <div className="flex justify-end gap-3">
-                <button onClick={() => setHistoryProject(null)} className="px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                <button onClick={() => setHistoryProject(null)} className="px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">
                   Close
                 </button>
                 <button
@@ -936,7 +958,7 @@ export default function EscalationProjectsPage() {
       {/* Calendar Timeline Popup */}
       {calendarProject && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => setCalendarProject(null)}>
-          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-5 py-4 bg-blue-600 text-white">
               <div className="flex items-center gap-2">
                 <Calendar size={18} />
@@ -950,21 +972,21 @@ export default function EscalationProjectsPage() {
               </button>
             </div>
             <div className="p-5 space-y-4">
-              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Escalation Timeline</p>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Escalation Timeline</p>
               {/* Timeline */}
               <div className="relative">
                 {/* Vertical line */}
-                <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-gray-200 dark:bg-gray-700" />
+                <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-gray-200" />
                 <div className="space-y-4">
                   {/* SOW End Date */}
                   {calendarProject.plannedEnd && (
                     <div className="flex items-start gap-4">
-                      <div className="w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-700 border-2 border-gray-300 dark:border-gray-600 flex items-center justify-center flex-shrink-0 z-10">
+                      <div className="w-8 h-8 rounded-full bg-gray-100 border-2 border-gray-300 flex items-center justify-center flex-shrink-0 z-10">
                         <Calendar size={13} className="text-gray-500" />
                       </div>
                       <div className="pt-1">
-                        <p className="text-xs font-semibold text-gray-700 dark:text-gray-300">SOW End Date</p>
-                        <p className="text-sm font-bold text-gray-900 dark:text-white">{format(new Date(calendarProject.plannedEnd), 'MMM d, yyyy')}</p>
+                        <p className="text-xs font-semibold text-gray-700">SOW End Date</p>
+                        <p className="text-sm font-bold text-gray-900">{format(new Date(calendarProject.plannedEnd), 'MMM d, yyyy')}</p>
                       </div>
                     </div>
                   )}
@@ -977,7 +999,7 @@ export default function EscalationProjectsPage() {
                         </div>
                         <div className="pt-1">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <p className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                            <p className="text-xs font-semibold text-gray-700">
                               {h.resolvedDate ? 'Resolved' : 'Escalated'}
                             </p>
                             <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${h.priority === 'HIGH' ? 'bg-red-100 text-red-700' : h.priority === 'MEDIUM' ? 'bg-orange-100 text-orange-700' : 'bg-yellow-100 text-yellow-700'}`}>
@@ -987,7 +1009,7 @@ export default function EscalationProjectsPage() {
                               <span className="px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 text-[10px]">{h.escalationType}</span>
                             )}
                           </div>
-                          <p className="text-sm font-bold text-gray-900 dark:text-white">
+                          <p className="text-sm font-bold text-gray-900">
                             {format(new Date(h.resolvedDate || h.escalatedAt), 'MMM d, yyyy')}
                           </p>
                           {h.notes && <p className="text-xs text-gray-500 mt-0.5">{h.notes}</p>}
@@ -1000,8 +1022,8 @@ export default function EscalationProjectsPage() {
                         <AlertTriangle size={13} className="text-red-600" />
                       </div>
                       <div className="pt-1">
-                        <p className="text-xs font-semibold text-gray-700 dark:text-gray-300">Escalated</p>
-                        <p className="text-sm font-bold text-gray-900 dark:text-white">
+                        <p className="text-xs font-semibold text-gray-700">Escalated</p>
+                        <p className="text-sm font-bold text-gray-900">
                           {calendarProject.escalatedAt ? format(new Date(calendarProject.escalatedAt), 'MMM d, yyyy') : '—'}
                         </p>
                         {calendarProject.escalationNotes && <p className="text-xs text-gray-500 mt-0.5">{calendarProject.escalationNotes}</p>}
@@ -1015,8 +1037,8 @@ export default function EscalationProjectsPage() {
                         <CheckCircle2 size={13} className="text-green-600" />
                       </div>
                       <div className="pt-1">
-                        <p className="text-xs font-semibold text-gray-700 dark:text-gray-300">Resolved</p>
-                        <p className="text-sm font-bold text-green-700 dark:text-green-400">{format(new Date(calendarProject.resolvedDate), 'MMM d, yyyy')}</p>
+                        <p className="text-xs font-semibold text-gray-700">Resolved</p>
+                        <p className="text-sm font-bold text-green-700">{format(new Date(calendarProject.resolvedDate), 'MMM d, yyyy')}</p>
                       </div>
                     </div>
                   )}
@@ -1024,9 +1046,111 @@ export default function EscalationProjectsPage() {
               </div>
             </div>
             <div className="px-5 pb-5">
-              <button onClick={() => setCalendarProject(null)} className="w-full px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+              <button onClick={() => setCalendarProject(null)} className="w-full px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">
                 Close
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Daily Notes Modal */}
+      {dailyNotesProject && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => setDailyNotesProject(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 bg-teal-600 text-white flex-shrink-0">
+              <div className="flex items-center gap-2">
+                <BookOpen size={18} />
+                <div>
+                  <p className="font-bold text-sm">{dailyNotesProject.name}</p>
+                  <p className="text-xs opacity-80">{dailyNotesProject.customerName} · Daily Tracking Notes</p>
+                </div>
+              </div>
+              <button onClick={() => setDailyNotesProject(null)} className="p-1.5 rounded hover:bg-white/20 transition-colors">
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Notes list */}
+            <div className="flex-1 overflow-y-auto p-5 space-y-3">
+              {loadingNotes ? (
+                <div className="flex justify-center py-8"><Loader2 className="animate-spin text-teal-600" size={24} /></div>
+              ) : dailyNotes.length === 0 ? (
+                <div className="text-center py-10 text-gray-400">
+                  <BookOpen size={32} className="mx-auto mb-2 opacity-30" />
+                  <p className="text-sm">No daily notes yet. Add the first note below.</p>
+                </div>
+              ) : (
+                (() => {
+                  // Group by date
+                  const grouped: Record<string, any[]> = {};
+                  dailyNotes.forEach((n: any) => {
+                    const d = n.noteDate?.split('T')[0] || n.noteDate;
+                    if (!grouped[d]) grouped[d] = [];
+                    grouped[d].push(n);
+                  });
+                  return Object.entries(grouped).map(([date, notes]) => (
+                    <div key={date}>
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-xs font-bold text-teal-700 bg-teal-50 px-2 py-0.5 rounded-full">
+                          {format(new Date(date + 'T12:00:00'), 'EEE, MMM d, yyyy')}
+                        </span>
+                        <div className="flex-1 h-px bg-gray-100" />
+                      </div>
+                      <div className="space-y-2 pl-2">
+                        {notes.map((n: any) => (
+                          <div key={n.id} className="flex items-start gap-3 bg-gray-50 rounded-lg p-3 group border border-gray-100">
+                            <div className="w-1.5 h-1.5 rounded-full bg-teal-400 mt-1.5 flex-shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm text-gray-800 whitespace-pre-wrap">{n.note}</p>
+                              {n.author && <p className="text-xs text-gray-400 mt-1">— {n.author} · {n.createdAt ? format(new Date(n.createdAt), 'HH:mm') : ''}</p>}
+                            </div>
+                            <button
+                              onClick={() => deleteDailyNote.mutate({ projectId: dailyNotesProject.id, noteId: n.id })}
+                              className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-all flex-shrink-0 p-0.5"
+                              title="Delete note"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ));
+                })()
+              )}
+            </div>
+
+            {/* Add note form */}
+            <div className="border-t border-gray-200 p-4 bg-gray-50 flex-shrink-0">
+              <div className="flex items-center gap-2 mb-2">
+                <label className="text-xs font-medium text-gray-600">Date:</label>
+                <input
+                  type="date"
+                  value={dailyNoteDate}
+                  onChange={(e) => setDailyNoteDate(e.target.value)}
+                  className="text-xs border border-gray-300 rounded-lg px-2 py-1 bg-white text-gray-900"
+                />
+              </div>
+              <div className="flex gap-2">
+                <textarea
+                  value={newDailyNote}
+                  onChange={(e) => setNewDailyNote(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleAddDailyNote(); }}
+                  placeholder="Write today's tracking note… (Ctrl+Enter to submit)"
+                  rows={3}
+                  className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-900 resize-none focus:outline-none focus:ring-2 focus:ring-teal-400"
+                />
+                <button
+                  onClick={handleAddDailyNote}
+                  disabled={addDailyNote.isPending || !newDailyNote.trim()}
+                  className="px-3 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-60 transition-colors self-end flex items-center gap-1.5 text-sm font-medium"
+                >
+                  {addDailyNote.isPending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                  Add
+                </button>
+              </div>
             </div>
           </div>
         </div>

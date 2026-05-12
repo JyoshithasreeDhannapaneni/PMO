@@ -21,7 +21,7 @@ class CommentService {
       `SELECT c.*, u.id as u_id, u.name as u_name, u.email as u_email, u.avatar as u_avatar
        FROM comments c
        JOIN users u ON c.user_id = u.id
-       WHERE c.entity_type = ? AND c.entity_id = ? AND c.parent_id IS NULL
+       WHERE c.entity_type = $1 AND c.entity_id = $2 AND c.parent_id IS NULL
        ORDER BY c.created_at DESC`,
       [entityType, entityId]
     );
@@ -32,7 +32,7 @@ class CommentService {
         `SELECT c.*, u.id as u_id, u.name as u_name, u.email as u_email, u.avatar as u_avatar
          FROM comments c
          JOIN users u ON c.user_id = u.id
-         WHERE c.parent_id = ?
+         WHERE c.parent_id = $1
          ORDER BY c.created_at ASC`,
         [row.id]
       );
@@ -71,7 +71,7 @@ class CommentService {
       `SELECT c.*, u.id as u_id, u.name as u_name, u.email as u_email, u.avatar as u_avatar
        FROM comments c
        JOIN users u ON c.user_id = u.id
-       WHERE c.id = ?`,
+       WHERE c.id = $1`,
       [id]
     );
 
@@ -82,7 +82,7 @@ class CommentService {
       `SELECT c.*, u.id as u_id, u.name as u_name, u.email as u_email, u.avatar as u_avatar
        FROM comments c
        JOIN users u ON c.user_id = u.id
-       WHERE c.parent_id = ?
+       WHERE c.parent_id = $1
        ORDER BY c.created_at ASC`,
       [id]
     );
@@ -113,14 +113,14 @@ class CommentService {
     const commentId = uuidv4();
     await execute(
       `INSERT INTO comments (id, user_id, entity_type, entity_id, content, parent_id)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+       VALUES ($1, $2, $3, $4, $5, $6)`,
       [commentId, data.userId, data.entityType, data.entityId, data.content, data.parentId]
     );
 
-    const result = await query(`SELECT * FROM comments WHERE id = ?`, [commentId]);
+    const result = await query(`SELECT * FROM comments WHERE id = $1`, [commentId]);
     const row = result.rows[0];
     const userResult = await query(
-      `SELECT id, name, email, avatar FROM users WHERE id = ?`,
+      `SELECT id, name, email, avatar FROM users WHERE id = $1`,
       [data.userId]
     );
 
@@ -143,7 +143,7 @@ class CommentService {
   }
 
   async update(id: string, userId: string, data: UpdateCommentInput) {
-    const existing = await query(`SELECT * FROM comments WHERE id = ?`, [id]);
+    const existing = await query(`SELECT * FROM comments WHERE id = $1`, [id]);
 
     if (existing.rows.length === 0) {
       throw new Error('Comment not found');
@@ -154,14 +154,14 @@ class CommentService {
     }
 
     await execute(
-      `UPDATE comments SET content = ?, is_edited = true WHERE id = ?`,
+      `UPDATE comments SET content = $1, is_edited = true WHERE id = $2`,
       [data.content, id]
     );
 
-    const result = await query(`SELECT * FROM comments WHERE id = ?`, [id]);
+    const result = await query(`SELECT * FROM comments WHERE id = $1`, [id]);
     const row = result.rows[0];
     const userResult = await query(
-      `SELECT id, name, email, avatar FROM users WHERE id = ?`,
+      `SELECT id, name, email, avatar FROM users WHERE id = $1`,
       [row.user_id]
     );
 
@@ -182,7 +182,7 @@ class CommentService {
   }
 
   async delete(id: string, userId: string, isAdmin = false) {
-    const existing = await query(`SELECT * FROM comments WHERE id = ?`, [id]);
+    const existing = await query(`SELECT * FROM comments WHERE id = $1`, [id]);
 
     if (existing.rows.length === 0) {
       throw new Error('Comment not found');
@@ -192,13 +192,13 @@ class CommentService {
       throw new Error('Not authorized to delete this comment');
     }
 
-    await query(`DELETE FROM comments WHERE id = ?`, [id]);
+    await query(`DELETE FROM comments WHERE id = $1`, [id]);
     logger.info(`Comment deleted: ${id}`);
   }
 
   async getCount(entityType: string, entityId: string) {
     const result = await query(
-      `SELECT COUNT(*) as count FROM comments WHERE entity_type = ? AND entity_id = ?`,
+      `SELECT COUNT(*) as count FROM comments WHERE entity_type = $1 AND entity_id = $2`,
       [entityType, entityId]
     );
     return parseInt(result.rows[0].count || result.rows[0]['COUNT(*)'] || 0);

@@ -123,42 +123,42 @@ function GanttChart({
   }, [todayOffset]);
 
   return (
-    <div className="flex border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
+    <div className="flex border border-gray-200 rounded-xl overflow-hidden">
       {/* Fixed left columns */}
       <div className="flex-shrink-0 w-[520px]">
         {/* Header row */}
-        <div className="flex border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50 h-[54px]">
-          <div className="w-[200px] px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 border-r border-gray-200 dark:border-gray-700 flex items-center">Project / Manager</div>
-          <div className="w-[80px] px-2 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 border-r border-gray-200 dark:border-gray-700 flex items-center">Type</div>
-          <div className="w-[90px] px-2 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 border-r border-gray-200 dark:border-gray-700 flex items-center">Status</div>
-          <div className="w-[80px] px-2 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 border-r border-gray-200 dark:border-gray-700 flex items-center">Start Date</div>
-          <div className="w-[80px] px-2 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 flex items-center">End Date</div>
+        <div className="flex border-b border-gray-200 bg-gray-50 h-[54px]">
+          <div className="w-[200px] px-3 py-2 text-xs font-semibold text-gray-500 border-r border-gray-200 flex items-center">Project / Manager</div>
+          <div className="w-[80px] px-2 py-2 text-xs font-semibold text-gray-500 border-r border-gray-200 flex items-center">Type</div>
+          <div className="w-[90px] px-2 py-2 text-xs font-semibold text-gray-500 border-r border-gray-200 flex items-center">Status</div>
+          <div className="w-[80px] px-2 py-2 text-xs font-semibold text-gray-500 border-r border-gray-200 flex items-center">Start Date</div>
+          <div className="w-[80px] px-2 py-2 text-xs font-semibold text-gray-500 flex items-center">End Date</div>
         </div>
         {/* Rows */}
         {projects.map((p, i) => {
           const statusLabel = getStatusLabel(p);
           const badge = getMigrationBadge(p.migrationTypes);
           return (
-            <div key={p.id} className={`flex border-b border-gray-100 dark:border-gray-700 h-[52px] ${i % 2 === 0 ? 'bg-white dark:bg-gray-900' : 'bg-gray-50/50 dark:bg-gray-800/30'}`}>
-              <div className="w-[200px] px-3 py-2 border-r border-gray-200 dark:border-gray-700 flex flex-col justify-center min-w-0">
-                <Link href={`/portfolio/${p.id}`} className="text-xs font-semibold text-gray-900 dark:text-white hover:text-primary-600 truncate">{p.name}</Link>
+            <div key={p.id} className={`flex border-b border-gray-100 h-[52px] ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
+              <div className="w-[200px] px-3 py-2 border-r border-gray-200 flex flex-col justify-center min-w-0">
+                <Link href={`/portfolio/${p.id}`} className="text-xs font-semibold text-gray-900 hover:text-primary-600 truncate">{p.name}</Link>
                 <div className="flex items-center gap-1 mt-0.5">
                   <User size={10} className="text-gray-400 flex-shrink-0" />
-                  <span className="text-xs text-gray-500 dark:text-gray-400 truncate">{p.projectManager}</span>
+                  <span className="text-xs text-gray-500 truncate">{p.projectManager}</span>
                 </div>
               </div>
-              <div className="w-[80px] px-2 py-2 border-r border-gray-200 dark:border-gray-700 flex items-center">
+              <div className="w-[80px] px-2 py-2 border-r border-gray-200 flex items-center">
                 {badge && <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${badge.cls}`}>{badge.label}</span>}
               </div>
-              <div className="w-[90px] px-2 py-2 border-r border-gray-200 dark:border-gray-700 flex items-center gap-1.5">
+              <div className="w-[90px] px-2 py-2 border-r border-gray-200 flex items-center gap-1.5">
                 <span className={`w-2 h-2 rounded-full flex-shrink-0 ${getStatusDot(statusLabel)}`} />
                 <span className={`text-xs font-medium ${statusLabel === 'On Track' ? 'text-green-600' : statusLabel === 'Delayed' ? 'text-red-600' : statusLabel === 'At Risk' ? 'text-orange-500' : statusLabel === 'Completed' ? 'text-blue-600' : 'text-gray-500'}`}>{statusLabel}</span>
               </div>
-              <div className="w-[80px] px-2 py-2 border-r border-gray-200 dark:border-gray-700 flex items-center">
-                <span className="text-xs text-gray-600 dark:text-gray-400">{format(new Date(p.plannedStart), 'MMM dd, yyyy')}</span>
+              <div className="w-[80px] px-2 py-2 border-r border-gray-200 flex items-center">
+                <span className="text-xs text-gray-600">{format(new Date(p.plannedStart), 'MMM dd, yyyy')}</span>
               </div>
               <div className="w-[80px] px-2 py-2 flex items-center">
-                <span className="text-xs text-gray-600 dark:text-gray-400">{format(new Date(p.plannedEnd), 'MMM dd, yyyy')}</span>
+                <span className="text-xs text-gray-600">{format(new Date(p.plannedEnd), 'MMM dd, yyyy')}</span>
               </div>
             </div>
           );
@@ -169,7 +169,7 @@ function GanttChart({
       <div className="flex-1 overflow-x-auto" ref={scrollRef}>
         <div style={{ width: totalWidth, minWidth: totalWidth }}>
           {/* Month + day header (2 rows totalling 54px) */}
-          <div className="relative h-[54px] bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700">
+          <div className="relative h-[54px] bg-gray-50 border-b border-gray-200">
             {/* Month labels */}
             <div className="absolute inset-x-0 top-0 h-[27px] flex">
               {months.map((m) => {
@@ -178,8 +178,8 @@ function GanttChart({
                 const leftPx = differenceInDays(mStart, rangeStart) * px;
                 const widthPx = (differenceInDays(mEnd, mStart) + 1) * px;
                 return (
-                  <div key={m.toISOString()} className="absolute border-r border-gray-200 dark:border-gray-600 flex items-center px-2 overflow-hidden" style={{ left: leftPx, width: widthPx, height: 27 }}>
-                    <span className="text-xs font-semibold text-gray-700 dark:text-gray-300 whitespace-nowrap">{format(m, 'MMM yyyy')}</span>
+                  <div key={m.toISOString()} className="absolute border-r border-gray-200 flex items-center px-2 overflow-hidden" style={{ left: leftPx, width: widthPx, height: 27 }}>
+                    <span className="text-xs font-semibold text-gray-700 whitespace-nowrap">{format(m, 'MMM yyyy')}</span>
                   </div>
                 );
               })}
@@ -190,8 +190,8 @@ function GanttChart({
                 const d = addDays(rangeStart, wi * 7);
                 const leftPx = wi * 7 * px;
                 return (
-                  <div key={wi} className="absolute border-r border-gray-100 dark:border-gray-700 flex items-center px-1" style={{ left: leftPx, width: 7 * px, height: 27 }}>
-                    <span className="text-xs text-gray-400 dark:text-gray-500">{format(d, 'd')}</span>
+                  <div key={wi} className="absolute border-r border-gray-100 flex items-center px-1" style={{ left: leftPx, width: 7 * px, height: 27 }}>
+                    <span className="text-xs text-gray-400">{format(d, 'd')}</span>
                   </div>
                 );
               })}
@@ -210,10 +210,10 @@ function GanttChart({
             const lighterColor = color + '40';
 
             return (
-              <div key={p.id} className={`relative border-b border-gray-100 dark:border-gray-700 h-[52px] ${i % 2 === 0 ? 'bg-white dark:bg-gray-900' : 'bg-gray-50/50 dark:bg-gray-800/30'}`}>
+              <div key={p.id} className={`relative border-b border-gray-100 h-[52px] ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
                 {/* Week grid lines */}
                 {Array.from({ length: Math.ceil(totalDays / 7) }).map((_, wi) => (
-                  <div key={wi} className="absolute top-0 bottom-0 border-r border-gray-100 dark:border-gray-700/50" style={{ left: wi * 7 * px }} />
+                  <div key={wi} className="absolute top-0 bottom-0 border-r border-gray-100" style={{ left: wi * 7 * px }} />
                 ))}
 
                 {/* Today line */}
@@ -264,17 +264,17 @@ function ListView({ projects, phaseProgress }: { projects: Project[]; phaseProgr
       <div className="flex justify-end">
         <button
           onClick={() => downloadPortfolioCSV(projects, 'portfolio-all.csv')}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-600 rounded-lg text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 transition-colors"
+          className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-gray-200 rounded-lg text-gray-600 bg-white hover:bg-gray-50 transition-colors"
         >
           <Download size={14} /> Download All ({projects.length})
         </button>
       </div>
-    <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
+    <div className="overflow-x-auto rounded-xl border border-gray-200">
       <table className="w-full text-sm">
-        <thead className="bg-gray-50 dark:bg-gray-700/50">
+        <thead className="bg-blue-50/60">
           <tr>
             {['Project / Manager', 'Type', 'Status', 'Start Date', 'End Date', 'Progress', 'Tasks', ''].map((h) => (
-              <th key={h} className={`py-3 px-4 font-medium text-gray-500 dark:text-gray-400 ${h === 'Project / Manager' ? 'text-left' : 'text-center'}`}>{h}</th>
+              <th key={h} className={`py-3 px-4 font-medium text-gray-500 ${h === 'Project / Manager' ? 'text-left' : 'text-center'}`}>{h}</th>
             ))}
           </tr>
         </thead>
@@ -285,12 +285,12 @@ function ListView({ projects, phaseProgress }: { projects: Project[]; phaseProgr
             const progress = getProgress(p, phaseProgress);
             const color = getBarColor(p);
             return (
-              <tr key={p.id} className="border-t border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
+              <tr key={p.id} className="border-t border-gray-100 hover:bg-gray-50 transition-colors">
                 <td className="py-3 px-4">
-                  <Link href={`/portfolio/${p.id}`} className="font-semibold text-gray-900 dark:text-white hover:text-primary-600 text-sm">{p.name}</Link>
+                  <Link href={`/portfolio/${p.id}`} className="font-semibold text-gray-900 hover:text-primary-600 text-sm">{p.name}</Link>
                   <div className="flex items-center gap-1 mt-0.5">
                     <User size={11} className="text-gray-400" />
-                    <span className="text-xs text-gray-500 dark:text-gray-400">{p.projectManager}</span>
+                    <span className="text-xs text-gray-500">{p.projectManager}</span>
                   </div>
                 </td>
                 <td className="py-3 px-4 text-center">
@@ -302,31 +302,31 @@ function ListView({ projects, phaseProgress }: { projects: Project[]; phaseProgr
                     <span className={`text-xs font-medium ${statusLabel === 'On Track' ? 'text-green-600' : statusLabel === 'Delayed' ? 'text-red-600' : statusLabel === 'At Risk' ? 'text-orange-500' : statusLabel === 'Completed' ? 'text-blue-600' : 'text-gray-500'}`}>{statusLabel}</span>
                   </div>
                 </td>
-                <td className="py-3 px-4 text-center text-xs text-gray-600 dark:text-gray-400">{format(new Date(p.plannedStart), 'MMM dd, yyyy')}</td>
-                <td className="py-3 px-4 text-center text-xs text-gray-600 dark:text-gray-400">{format(new Date(p.plannedEnd), 'MMM dd, yyyy')}</td>
+                <td className="py-3 px-4 text-center text-xs text-gray-600">{format(new Date(p.plannedStart), 'MMM dd, yyyy')}</td>
+                <td className="py-3 px-4 text-center text-xs text-gray-600">{format(new Date(p.plannedEnd), 'MMM dd, yyyy')}</td>
                 <td className="py-3 px-4">
                   <div className="flex items-center gap-2 justify-center">
-                    <div className="w-24 h-2 bg-gray-200 dark:bg-gray-600 rounded-full overflow-hidden">
+                    <div className="w-24 h-2 bg-gray-200 rounded-full overflow-hidden">
                       <div className="h-full rounded-full" style={{ width: `${progress}%`, background: color }} />
                     </div>
                     <span className="text-xs font-semibold" style={{ color }}>{progress}%</span>
                   </div>
                 </td>
                 <td className="py-3 px-4 text-center">
-                  <Link href={`/projects/${p.id}/tasks`} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 transition-colors text-xs font-medium">
+                  <Link href={`/projects/${p.id}/tasks`} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-colors text-xs font-medium">
                     <LayoutList size={12} /> Tasks
                   </Link>
                 </td>
                 <td className="py-3 px-4 text-center">
                   <div className="flex items-center justify-center gap-1">
                     <Link href={`/portfolio/${p.id}`}>
-                      <button className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-700 transition-colors">
+                      <button className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors">
                         <MoreVertical size={15} />
                       </button>
                     </Link>
                     <button
                       onClick={() => downloadPortfolioCSV([p], `${p.name.replace(/[^a-z0-9]/gi, '_')}.csv`)}
-                      className="p-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 text-gray-400 hover:text-blue-600 transition-colors"
+                      className="p-1.5 rounded-lg hover:bg-blue-50 text-gray-400 hover:text-blue-600 transition-colors"
                       title="Download project data"
                     >
                       <Download size={15} />
@@ -433,15 +433,15 @@ export default function PortfolioPage() {
     </div>
   );
 
-  const selectCls = 'px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-primary-500 cursor-pointer appearance-none pr-7';
+  const selectCls = 'px-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary-500 cursor-pointer appearance-none pr-7';
 
   return (
     <div className="space-y-5">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Portfolio</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
+          <h1 className="text-2xl font-bold text-gray-900">Portfolio</h1>
+          <p className="text-sm text-gray-500">
             {isManager
               ? `Your project portfolio — ${user?.name}`
               : isAdmin
@@ -454,18 +454,18 @@ export default function PortfolioPage() {
           <div className="relative">
             <button
               onClick={() => setShowWeeklyDropdown(!showWeeklyDropdown)}
-              className="flex items-center gap-2 px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+              className="flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors"
             >
               <Calendar size={14} className="text-primary-600" />
               Weekly Report
               <ChevronDown size={14} />
             </button>
             {showWeeklyDropdown && (
-              <div className="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg z-20 py-1">
-                <Link href="/?report=weekly" onClick={() => setShowWeeklyDropdown(false)} className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">
+              <div className="absolute right-0 top-full mt-1 w-48 bg-white border border-gray-200 rounded-xl shadow-lg z-20 py-1">
+                <Link href="/?report=weekly" onClick={() => setShowWeeklyDropdown(false)} className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
                   <FileText size={14} /> View Weekly Report
                 </Link>
-                <Link href="/?report=monthly" onClick={() => setShowWeeklyDropdown(false)} className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">
+                <Link href="/?report=monthly" onClick={() => setShowWeeklyDropdown(false)} className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
                   <BarChart2 size={14} /> View Monthly Report
                 </Link>
               </div>
@@ -482,7 +482,7 @@ export default function PortfolioPage() {
 
       {/* Manager scope banner — for MANAGER role */}
       {isManager && (
-        <div className="flex items-center gap-3 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl text-xs text-blue-700 dark:text-blue-300">
+        <div className="flex items-center gap-3 p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-700">
           <User size={14} className="flex-shrink-0" />
           <span><strong>Manager View</strong> — Showing your portfolio: projects assigned to <strong>{user?.name}</strong>.</span>
         </div>
@@ -490,10 +490,10 @@ export default function PortfolioPage() {
 
       {/* Admin: individual manager selector tabs */}
       {isAdmin && allManagers.length > 0 && (
-        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-3">
+        <div className="bg-white border border-gray-200 rounded-xl p-3">
           <div className="flex items-center gap-2 mb-2">
             <User size={14} className="text-gray-400" />
-            <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Manager View</span>
+            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Manager View</span>
           </div>
           <div className="flex flex-wrap gap-2">
             <button
@@ -501,12 +501,12 @@ export default function PortfolioPage() {
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
                 selectedManager === ''
                   ? 'bg-primary-600 text-white border-primary-600 shadow-sm'
-                  : 'bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:border-primary-400 hover:text-primary-600'
+                  : 'bg-gray-50 text-gray-600 border-gray-200 hover:border-primary-400 hover:text-primary-600'
               }`}
             >
               <FolderKanban size={12} />
               All Managers
-              <span className={`ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold ${selectedManager === '' ? 'bg-white/20 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300'}`}>
+              <span className={`ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold ${selectedManager === '' ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-600'}`}>
                 {projects.length}
               </span>
             </button>
@@ -521,14 +521,14 @@ export default function PortfolioPage() {
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
                     isSelected
                       ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
-                      : 'bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:border-indigo-400 hover:text-indigo-600'
+                      : 'bg-gray-50 text-gray-600 border-gray-200 hover:border-indigo-400 hover:text-indigo-600'
                   }`}
                 >
-                  <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold ${isSelected ? 'bg-white/20' : 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600'}`}>
+                  <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold ${isSelected ? 'bg-white/20' : 'bg-indigo-100 text-indigo-600'}`}>
                     {mgr.split(' ').map(n => n[0]).join('').toUpperCase().slice(0,2)}
                   </div>
                   {mgr}
-                  <span className={`ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold ${isSelected ? 'bg-white/20 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300'}`}>
+                  <span className={`ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold ${isSelected ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-600'}`}>
                     {mgrProjects.length}
                   </span>
                   {mgrDelayed > 0 && (
@@ -544,12 +544,12 @@ export default function PortfolioPage() {
       )}
 
       {/* View Tabs */}
-      <div className="flex border-b border-gray-200 dark:border-gray-700 gap-0">
+      <div className="flex border-b border-gray-200 gap-0">
         {(['list', 'gantt'] as ViewMode[]).map((v) => (
           <button
             key={v}
             onClick={() => setViewMode(v)}
-            className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${viewMode === v ? 'border-primary-600 text-primary-600 dark:text-primary-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'}`}
+            className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${viewMode === v ? 'border-primary-600 text-primary-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
           >
             {v === 'list' ? <List size={15} /> : <BarChart2 size={15} />}
             {v === 'list' ? 'List View' : 'Gantt View'}
@@ -562,35 +562,35 @@ export default function PortfolioPage() {
         {[
           {
             label: 'Total Projects', value: stats.total, sub: 'All portfolios',
-            icon: <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center"><FolderKanban size={20} className="text-blue-600" /></div>,
-            valueColor: 'text-gray-900 dark:text-white',
+            icon: <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center"><FolderKanban size={20} className="text-blue-600" /></div>,
+            valueColor: 'text-gray-900',
           },
           {
             label: 'Active Projects', value: stats.active,
             sub: stats.total > 0 ? `${Math.round((stats.active / stats.total) * 100)}% of total` : '0% of total',
             subColor: 'text-green-600',
-            icon: <div className="w-10 h-10 rounded-xl bg-green-100 dark:bg-green-900/40 flex items-center justify-center"><Activity size={20} className="text-green-600" /></div>,
-            valueColor: 'text-gray-900 dark:text-white',
+            icon: <div className="w-10 h-10 rounded-xl bg-green-100 flex items-center justify-center"><Activity size={20} className="text-green-600" /></div>,
+            valueColor: 'text-gray-900',
           },
           {
             label: 'Completed', value: stats.completed,
             sub: stats.total > 0 ? `${Math.round((stats.completed / stats.total) * 100)}% of total` : '0% of total',
             subColor: 'text-purple-600',
-            icon: <div className="w-10 h-10 rounded-xl bg-purple-100 dark:bg-purple-900/40 flex items-center justify-center"><CheckCircle size={20} className="text-purple-600" /></div>,
-            valueColor: 'text-gray-900 dark:text-white',
+            icon: <div className="w-10 h-10 rounded-xl bg-purple-100 flex items-center justify-center"><CheckCircle size={20} className="text-purple-600" /></div>,
+            valueColor: 'text-gray-900',
           },
           {
             label: 'Delayed Projects', value: stats.delayed,
             sub: stats.total > 0 ? `${Math.round((stats.delayed / stats.total) * 100)}% of total` : '0% of total',
             subColor: 'text-red-600',
-            icon: <div className="w-10 h-10 rounded-xl bg-red-100 dark:bg-red-900/40 flex items-center justify-center"><AlertTriangle size={20} className="text-red-600" /></div>,
-            valueColor: stats.delayed > 0 ? 'text-red-600' : 'text-gray-900 dark:text-white',
+            icon: <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center"><AlertTriangle size={20} className="text-red-600" /></div>,
+            valueColor: stats.delayed > 0 ? 'text-red-600' : 'text-gray-900',
           },
         ].map((item) => (
           <Card key={item.label} className="flex items-center gap-4 py-4">
             {item.icon}
             <div>
-              <p className="text-sm text-gray-500 dark:text-gray-400">{item.label}</p>
+              <p className="text-sm text-gray-500">{item.label}</p>
               <p className={`text-3xl font-bold mt-0.5 ${item.valueColor}`}>{item.value}</p>
               <p className={`text-xs mt-0.5 ${item.subColor || 'text-gray-400'}`}>{item.sub}</p>
             </div>
@@ -600,7 +600,7 @@ export default function PortfolioPage() {
 
       {/* Filters + Zoom */}
       <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-sm text-gray-500 dark:text-gray-400 font-medium">Filters:</span>
+        <span className="text-sm text-gray-500 font-medium">Filters:</span>
 
         <div className="relative">
           <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className={selectCls}>
@@ -625,7 +625,7 @@ export default function PortfolioPage() {
         </div>
 
         {/* Date Range */}
-        <div className="flex items-center gap-1.5 text-sm text-gray-600 dark:text-gray-400">
+        <div className="flex items-center gap-1.5 text-sm text-gray-600">
           <Calendar size={13} className="text-gray-400" />
           <input
             type="date"
@@ -649,13 +649,13 @@ export default function PortfolioPage() {
 
         {/* Manager scope badge — shown when a manager tab is selected (admin) or for manager role */}
         {(isManager || selectedManager) && (
-          <span className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded-lg">
+          <span className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg">
             <User size={12} /> {isManager ? user?.name : selectedManager}
           </span>
         )}
 
         {viewMode === 'gantt' && (
-          <div className="flex items-center gap-1.5 px-2.5 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-sm text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-800">
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm text-gray-600 bg-white">
             <Calendar size={13} />
             <span>{format(rangeStart, 'MMM dd, yyyy')} - {format(rangeEnd, 'MMM dd, yyyy')}</span>
           </div>
@@ -671,23 +671,23 @@ export default function PortfolioPage() {
                     // Reset range to center on today
                   }
                 }}
-                className="px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 transition-colors"
+                className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg text-gray-700 bg-white hover:bg-gray-50 transition-colors"
               >
                 Today
               </button>
               <div className="flex items-center gap-0.5">
-                <span className="text-sm text-gray-500 dark:text-gray-400 mr-1">Zoom:</span>
+                <span className="text-sm text-gray-500 mr-1">Zoom:</span>
                 {(['Month', 'Week', 'Day'] as ZoomLevel[]).map((z) => (
                   <button
                     key={z}
                     onClick={() => setZoom(z)}
-                    className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${zoom === z ? 'bg-primary-600 text-white' : 'border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50'}`}
+                    className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${zoom === z ? 'bg-primary-600 text-white' : 'border border-gray-200 text-gray-700 bg-white hover:bg-gray-50'}`}
                   >
                     {z}
                   </button>
                 ))}
               </div>
-              <button className="p-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-500 hover:bg-gray-50 dark:bg-gray-800 transition-colors">
+              <button className="p-1.5 border border-gray-200 rounded-lg text-gray-500 hover:bg-gray-50 transition-colors">
                 <Maximize2 size={15} />
               </button>
             </>
@@ -720,11 +720,11 @@ export default function PortfolioPage() {
           ].map((item) => (
             <div key={item.label} className="flex items-center gap-1.5">
               <span className={`w-2.5 h-2.5 rounded-full ${item.color}`} />
-              <span className="text-xs text-gray-600 dark:text-gray-400">{item.label}</span>
+              <span className="text-xs text-gray-600">{item.label}</span>
             </div>
           ))}
         </div>
-        <span className="text-xs text-gray-500 dark:text-gray-400">
+        <span className="text-xs text-gray-500">
           Showing 1 to {filtered.length} of {projects.length} projects
         </span>
       </div>

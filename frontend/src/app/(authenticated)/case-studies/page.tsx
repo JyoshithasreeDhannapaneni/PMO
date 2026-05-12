@@ -156,7 +156,7 @@ export default function CaseStudiesPage() {
         {isAdmin && (
           <Link
             href="/case-studies/template"
-            className="flex items-center gap-2 px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50 transition-colors"
           >
             <Settings size={14} />
             Manage Template
@@ -166,7 +166,7 @@ export default function CaseStudiesPage() {
 
       {/* Manager scope banner */}
       {isManager && (
-        <div className="flex items-center gap-3 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl text-xs text-blue-700 dark:text-blue-300">
+        <div className="flex items-center gap-3 p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-700">
           <AlertCircle size={14} className="flex-shrink-0" />
           <span><strong>Manager View</strong> — Showing case studies for your projects (<strong>{user?.name}</strong>).</span>
         </div>

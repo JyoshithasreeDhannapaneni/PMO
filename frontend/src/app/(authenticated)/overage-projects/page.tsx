@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, Fragment } from 'react';
 import { useOveragedProjects, useMarkOverageProject, useUnmarkOverageProject, useProjects } from '@/hooks/useProjects';
 import { useAuth } from '@/context/AuthContext';
 import { Card } from '@/components/ui/Card';
@@ -8,7 +8,7 @@ import Link from 'next/link';
 import {
   DollarSign, Clock, TrendingUp, Calendar, Search,
   RotateCcw, Eye, Download, ChevronLeft, ChevronRight, AlertCircle,
-  Plus, X, Trash2,
+  Plus, X, Trash2, ChevronDown, ChevronUp,
 } from 'lucide-react';
 import { format, isThisWeek } from 'date-fns';
 import { StatusBadge } from '@/components/ui/StatusBadge';
@@ -30,7 +30,7 @@ export default function OverageProjectsPage() {
   const { data, isLoading, refetch } = useOveragedProjects(managerFilter);
   const projects: any[] = data?.data || [];
 
-  const { data: allProjectsData } = useProjects({ limit: 1000, status: 'ACTIVE' });
+  const { data: allProjectsData } = useProjects({ limit: 1000 });
   const allProjects: any[] = allProjectsData?.data || [];
 
   const markOverage = useMarkOverageProject();
@@ -49,6 +49,15 @@ export default function OverageProjectsPage() {
   const [modalError, setModalError] = useState('');
   const [projectSearch, setProjectSearch] = useState('');
   const [showProjectDropdown, setShowProjectDropdown] = useState(false);
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+
+  function toggleRow(id: string) {
+    setExpandedRows((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
 
   // All active projects can be re-added to overage (history table tracks multiple entries)
   const nonOveraged = allProjects;
@@ -138,23 +147,23 @@ export default function OverageProjectsPage() {
       {/* Breadcrumb + Header */}
       <div className="flex items-center justify-between">
         <div>
-          <nav className="text-xs text-gray-500 dark:text-gray-400 mb-1 flex items-center gap-1">
+          <nav className="text-xs text-gray-500 mb-1 flex items-center gap-1">
             <Link href="/" className="hover:text-primary-600">Dashboard</Link>
             <span>/</span>
-            <span className="text-gray-700 dark:text-gray-300">Overage Projects</span>
+            <span className="text-gray-700">Overage Projects</span>
           </nav>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Overage Projects</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Overage Projects</h1>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={() => refetch()}
-            className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
           >
             <RotateCcw size={14} /> Refresh
           </button>
           <button
             onClick={downloadCSV}
-            className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
           >
             <Download size={14} /> Export
           </button>
@@ -166,47 +175,47 @@ export default function OverageProjectsPage() {
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="border-orange-200 dark:border-orange-800">
+        <Card className="border-orange-200">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-orange-100 dark:bg-orange-900/40 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center">
               <Clock size={20} className="text-orange-600" />
             </div>
             <div>
-              <p className="text-xs text-gray-500 dark:text-gray-400">Overaged Projects</p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white">{projects.length}</p>
+              <p className="text-xs text-gray-500">Overaged Projects</p>
+              <p className="text-2xl font-bold text-gray-900">{projects.length}</p>
             </div>
           </div>
         </Card>
-        <Card className="border-green-200 dark:border-green-800">
+        <Card className="border-green-200">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-green-100 dark:bg-green-900/40 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
               <DollarSign size={20} className="text-green-600" />
             </div>
             <div>
-              <p className="text-xs text-gray-500 dark:text-gray-400">Total Overage Amount</p>
-              <p className="text-xl font-bold text-gray-900 dark:text-white">{formatCurrency(totalOverageAmount) || '—'}</p>
+              <p className="text-xs text-gray-500">Total Overage Amount</p>
+              <p className="text-xl font-bold text-gray-900">{formatCurrency(totalOverageAmount) || '—'}</p>
             </div>
           </div>
         </Card>
-        <Card className="border-blue-200 dark:border-blue-800">
+        <Card className="border-blue-200">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
               <Calendar size={20} className="text-blue-600" />
             </div>
             <div>
-              <p className="text-xs text-gray-500 dark:text-gray-400">Extended Projects</p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white">{projects.filter((p) => p.isOveraged).length}</p>
+              <p className="text-xs text-gray-500">Extended Projects</p>
+              <p className="text-2xl font-bold text-gray-900">{projects.filter((p) => p.isOveraged).length}</p>
             </div>
           </div>
         </Card>
-        <Card className="border-purple-200 dark:border-purple-800">
+        <Card className="border-purple-200">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-purple-100 dark:bg-purple-900/40 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center">
               <TrendingUp size={20} className="text-purple-600" />
             </div>
             <div>
-              <p className="text-xs text-gray-500 dark:text-gray-400">New This Week</p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white">{newThisWeek}</p>
+              <p className="text-xs text-gray-500">New This Week</p>
+              <p className="text-2xl font-bold text-gray-900">{newThisWeek}</p>
             </div>
           </div>
         </Card>
@@ -221,14 +230,14 @@ export default function OverageProjectsPage() {
               value={search}
               onChange={(e) => { setSearch(e.target.value); setPage(1); }}
               placeholder="Search project, customer, manager..."
-              className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-900"
             />
           </div>
           {isAdmin && (
             <select
               value={managerSel}
               onChange={(e) => { setManagerSel(e.target.value); setPage(1); }}
-              className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-900"
             >
               <option value="">All Managers</option>
               {managers.map((m) => <option key={m} value={m}>{m}</option>)}
@@ -237,14 +246,14 @@ export default function OverageProjectsPage() {
           <select
             value={typeSel}
             onChange={(e) => { setTypeSel(e.target.value); setPage(1); }}
-            className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+            className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-900"
           >
             <option value="">All Migration Types</option>
             {types.map((t) => <option key={t} value={t}>{t}</option>)}
           </select>
           <button
             onClick={() => { setSearch(''); setManagerSel(''); setTypeSel(''); setPage(1); }}
-            className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700"
+            className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
           >
             <RotateCcw size={13} /> Reset
           </button>
@@ -264,92 +273,151 @@ export default function OverageProjectsPage() {
           <>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50 dark:bg-gray-700/50">
+                <thead className="bg-blue-50/60">
                   <tr>
-                    {['Project Name', 'Project Manager', 'Account Manager', 'Migration Type', 'Overage Amount', 'Days Overdue', 'Current Phase', 'Status', 'Planned End', 'Action'].map((h) => (
-                      <th key={h} className={`py-3 px-4 text-xs font-semibold text-gray-500 dark:text-gray-400 ${h === 'Project Name' ? 'text-left' : 'text-center'}`}>{h}</th>
+                    <th className="py-3 px-4 text-xs font-semibold text-gray-500 text-left">Project Name</th>
+                    {['Project Manager', 'Account Manager', 'Migration Type', 'Overage Amount', 'Days Overdue', 'Current Phase', 'Status'].map((h) => (
+                      <th key={h} className="py-3 px-4 text-xs font-semibold text-gray-500 text-center">{h}</th>
                     ))}
+                    <th className="py-3 px-4 text-xs font-semibold text-gray-500 text-center">
+                      Planned End <span className="text-gray-400 font-normal">(Updated when extended)</span>
+                    </th>
+                    <th className="py-3 px-4 text-xs font-semibold text-gray-500 text-center">Extended Start</th>
+                    <th className="py-3 px-4 text-xs font-semibold text-gray-500 text-center">Extended End</th>
+                    <th className="py-3 px-4 text-xs font-semibold text-gray-500 text-center">Action</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                <tbody className="divide-y divide-gray-100">
                   {paged.map((p) => (
-                    <tr key={p.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
-                      <td className="py-3 px-4">
-                        <Link href={`/projects/${p.id}`} className="font-medium text-primary-600 hover:underline">{p.name}</Link>
-                        <div className="text-xs text-gray-400">{p.customerName}</div>
-                      </td>
-                      <td className="py-3 px-4 text-center text-gray-700 dark:text-gray-300">{p.projectManager || '—'}</td>
-                      <td className="py-3 px-4 text-center text-gray-700 dark:text-gray-300">{p.accountManager || '—'}</td>
-                      <td className="py-3 px-4 text-center">
-                        {(p.migrationTypes || '').split(',').filter(Boolean).map((t: string, i: number) => (
-                          <span key={i} className="inline-block mr-1 px-2 py-0.5 rounded-full text-xs bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">{t.trim()}</span>
-                        ))}
-                        {!p.migrationTypes && <span className="text-gray-400">—</span>}
-                      </td>
-                      <td className="py-3 px-4 text-center font-semibold text-green-700 dark:text-green-400">
-                        {formatCurrency(p.overageAmount)}
-                      </td>
-                      <td className="py-3 px-4 text-center">
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${p.daysOverdue > 14 ? 'bg-red-100 text-red-700' : p.daysOverdue > 7 ? 'bg-orange-100 text-orange-700' : 'bg-yellow-100 text-yellow-700'}`}>
-                          {daysLabel(p.daysOverdue)}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 text-center">
-                        <StatusBadge status={p.phase} variant="phase" />
-                      </td>
-                      <td className="py-3 px-4 text-center">
-                        <StatusBadge status={p.status} variant="status" />
-                      </td>
-                      <td className="py-3 px-4 text-center text-gray-500 dark:text-gray-400">
-                        {p.plannedEnd ? format(new Date(p.plannedEnd), 'MMM d, yyyy') : '—'}
-                      </td>
-                      <td className="py-3 px-4 text-center">
-                        <div className="flex items-center justify-center gap-1">
-                          <Link href={`/projects/${p.id}`} className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-primary-100 hover:text-primary-700 transition-colors">
-                            <Eye size={14} />
-                          </Link>
-                          {isAdmin && p.isOveraged && (
-                            <button
-                              onClick={() => handleUnmarkOverage(p.id)}
-                              title="Remove overage flag"
-                              className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 dark:bg-gray-700 text-orange-500 hover:bg-orange-100 transition-colors"
-                            >
-                              <X size={14} />
-                            </button>
-                          )}
-                          {isAdmin && (
-                            <button
-                              onClick={() => handleDeleteProject(p.id)}
-                              title="Remove from overage"
-                              className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 dark:bg-gray-700 text-red-500 hover:bg-red-100 transition-colors"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
+                    <Fragment key={p.id}>
+                      <tr className="hover:bg-gray-50 cursor-pointer" onClick={() => toggleRow(p.id)}>
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-1">
+                            {expandedRows.has(p.id) ? <ChevronUp size={14} className="text-gray-400 shrink-0" /> : <ChevronDown size={14} className="text-gray-400 shrink-0" />}
+                            <div>
+                              <Link href={`/projects/${p.id}`} className="font-medium text-primary-600 hover:underline" onClick={(e) => e.stopPropagation()}>{p.name}</Link>
+                              <div className="text-xs text-gray-400">{p.customerName}</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-3 px-4 text-center text-gray-700">{p.projectManager || '—'}</td>
+                        <td className="py-3 px-4 text-center text-gray-700">{p.accountManager || '—'}</td>
+                        <td className="py-3 px-4 text-center">
+                          {(p.migrationTypes || '').split(',').filter(Boolean).map((t: string, i: number) => (
+                            <span key={i} className="inline-block mr-1 px-2 py-0.5 rounded-full text-xs bg-blue-100 text-blue-700">{t.trim()}</span>
+                          ))}
+                          {!p.migrationTypes && <span className="text-gray-400">—</span>}
+                        </td>
+                        <td className="py-3 px-4 text-center font-semibold text-green-700">
+                          {formatCurrency(p.overageAmount)}
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${p.daysOverdue > 14 ? 'bg-red-100 text-red-700' : p.daysOverdue > 7 ? 'bg-orange-100 text-orange-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                            {daysLabel(p.daysOverdue)}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          <StatusBadge status={p.phase} variant="phase" />
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          <StatusBadge status={p.status} variant="status" />
+                        </td>
+                        <td className="py-3 px-4 text-center text-gray-500">
+                          {p.plannedEnd ? format(new Date(p.plannedEnd), 'MMM d, yyyy') : '—'}
+                        </td>
+                        <td className="py-3 px-4 text-center text-gray-500">
+                          {p.extendedStartDate ? format(new Date(p.extendedStartDate), 'MMM d, yyyy') : '—'}
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          {p.extendedEndDate ? (
+                            <span className={p.extendedEndDate !== p.plannedEnd ? 'text-orange-600 font-medium' : 'text-gray-500'}>
+                              {format(new Date(p.extendedEndDate), 'MMM d, yyyy')}
+                            </span>
+                          ) : <span className="text-gray-400">—</span>}
+                        </td>
+                        <td className="py-3 px-4 text-center" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center justify-center gap-1">
+                            <Link href={`/projects/${p.id}`} className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 text-gray-600 hover:bg-primary-100 hover:text-primary-700 transition-colors">
+                              <Eye size={14} />
+                            </Link>
+                            {isAdmin && p.isOveraged && (
+                              <button
+                                onClick={() => handleUnmarkOverage(p.id)}
+                                title="Remove overage flag"
+                                className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 text-orange-500 hover:bg-orange-100 transition-colors"
+                              >
+                                <X size={14} />
+                              </button>
+                            )}
+                            {isAdmin && (
+                              <button
+                                onClick={() => handleDeleteProject(p.id)}
+                                title="Remove from overage"
+                                className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 text-red-500 hover:bg-red-100 transition-colors"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                      {expandedRows.has(p.id) && (
+                        <tr>
+                          <td colSpan={12} className="px-4 pb-4 pt-0 bg-orange-50/40">
+                            <div className="pl-6">
+                              <p className="text-xs font-semibold text-gray-500 mb-2 mt-2">Overage History</p>
+                              {(!p.overageHistory || p.overageHistory.length === 0) ? (
+                                <p className="text-xs text-gray-400 italic">No overage history recorded.</p>
+                              ) : (
+                                <table className="w-full text-xs border-collapse">
+                                  <thead>
+                                    <tr className="text-gray-500 border-b border-gray-200">
+                                      <th className="text-left py-1 pr-3 font-medium">Date Added</th>
+                                      <th className="text-left py-1 pr-3 font-medium">Amount</th>
+                                      <th className="text-left py-1 pr-3 font-medium">Extended Start</th>
+                                      <th className="text-left py-1 pr-3 font-medium">Extended End</th>
+                                      <th className="text-left py-1 pr-3 font-medium">Notes</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {p.overageHistory.map((h: any) => (
+                                      <tr key={h.id} className="border-b border-gray-100 last:border-0">
+                                        <td className="py-1 pr-3 text-gray-600">{h.createdAt ? format(new Date(h.createdAt), 'MMM d, yyyy') : '—'}</td>
+                                        <td className="py-1 pr-3 text-green-700 font-medium">{formatCurrency(h.overageAmount)}</td>
+                                        <td className="py-1 pr-3 text-gray-600">{h.extendedStartDate ? format(new Date(h.extendedStartDate), 'MMM d, yyyy') : '—'}</td>
+                                        <td className="py-1 pr-3 text-orange-600">{h.extendedEndDate ? format(new Date(h.extendedEndDate), 'MMM d, yyyy') : '—'}</td>
+                                        <td className="py-1 pr-3 text-gray-600">{h.notes || '—'}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
                   ))}
                 </tbody>
               </table>
             </div>
 
             {/* Pagination */}
-            <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
-              <p className="text-xs text-gray-500 dark:text-gray-400">
+            <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">
+              <p className="text-xs text-gray-500">
                 Showing {(page - 1) * PER_PAGE + 1}–{Math.min(page * PER_PAGE, filtered.length)} of {filtered.length} entries
               </p>
               <div className="flex items-center gap-1">
-                <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="p-1 rounded text-gray-500 disabled:opacity-40 hover:bg-gray-100 dark:hover:bg-gray-700">
+                <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="p-1 rounded text-gray-500 disabled:opacity-40 hover:bg-gray-100">
                   <ChevronLeft size={16} />
                 </button>
                 {Array.from({ length: totalPages }, (_, i) => i + 1).map((n) => (
                   <button key={n} onClick={() => setPage(n)}
-                    className={`w-7 h-7 rounded text-xs font-medium ${n === page ? 'bg-primary-600 text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'}`}>
+                    className={`w-7 h-7 rounded text-xs font-medium ${n === page ? 'bg-primary-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
                     {n}
                   </button>
                 ))}
-                <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="p-1 rounded text-gray-500 disabled:opacity-40 hover:bg-gray-100 dark:hover:bg-gray-700">
+                <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="p-1 rounded text-gray-500 disabled:opacity-40 hover:bg-gray-100">
                   <ChevronRight size={16} />
                 </button>
               </div>
@@ -359,7 +427,7 @@ export default function OverageProjectsPage() {
       </Card>
 
       {/* Footer note */}
-      <div className="flex items-center gap-2 p-3 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg text-sm text-orange-700 dark:text-orange-300">
+      <div className="flex items-center gap-2 p-3 bg-orange-50 border border-orange-200 rounded-lg text-sm text-orange-700">
         <AlertCircle size={15} />
         Overage projects are those that require additional payment or extension beyond the original scope.
       </div>
@@ -367,19 +435,19 @@ export default function OverageProjectsPage() {
       {/* Add Overage Modal */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-md p-6 mx-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 mx-4">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+              <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
                 <DollarSign size={18} className="text-orange-600" /> Add Overage
               </h2>
-              <button onClick={() => { setShowModal(false); setModalError(''); setProjectSearch(''); setShowProjectDropdown(false); }} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+              <button onClick={() => { setShowModal(false); setModalError(''); setProjectSearch(''); setShowProjectDropdown(false); }} className="text-gray-400 hover:text-gray-600">
                 <X size={20} />
               </button>
             </div>
 
             <div className="space-y-4">
               <div className="relative">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Project <span className="text-red-500">*</span></label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Project <span className="text-red-500">*</span></label>
                 <input
                   type="text"
                   value={projectSearch}
@@ -390,11 +458,11 @@ export default function OverageProjectsPage() {
                   }}
                   onFocus={() => setShowProjectDropdown(true)}
                   placeholder="Type to search a project..."
-                  className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-900"
                   autoComplete="off"
                 />
                 {showProjectDropdown && (
-                  <div className="absolute z-10 w-full mt-1 max-h-48 overflow-y-auto bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg">
+                  <div className="absolute z-10 w-full mt-1 max-h-48 overflow-y-auto bg-white border border-gray-300 rounded-lg shadow-lg">
                     {nonOveraged
                       .filter((p: any) =>
                         !projectSearch ||
@@ -411,7 +479,7 @@ export default function OverageProjectsPage() {
                             setProjectSearch(`${p.name} — ${p.customerName}`);
                             setShowProjectDropdown(false);
                           }}
-                          className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-900 dark:text-white"
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 text-gray-900"
                         >
                           <span className="font-medium">{p.name}</span>
                           <span className="text-gray-400 ml-1 text-xs">— {p.customerName}</span>
@@ -429,7 +497,7 @@ export default function OverageProjectsPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Overage Amount (optional)</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Overage Amount (optional)</label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
                   <input
@@ -439,52 +507,52 @@ export default function OverageProjectsPage() {
                     value={overageForm.overageAmount}
                     onChange={(e) => setOverageForm({ ...overageForm, overageAmount: e.target.value })}
                     placeholder="0.00"
-                    className="w-full pl-7 pr-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                    className="w-full pl-7 pr-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-900"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Extended Start Date (optional)</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Extended Start Date (optional)</label>
                   <input
                     type="date"
                     value={overageForm.extendedStartDate}
                     onChange={(e) => setOverageForm({ ...overageForm, extendedStartDate: e.target.value })}
-                    className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-900"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Extended End Date (optional)</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Extended End Date (optional)</label>
                   <input
                     type="date"
                     value={overageForm.extendedEndDate}
                     onChange={(e) => setOverageForm({ ...overageForm, extendedEndDate: e.target.value })}
-                    className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-900"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Notes (optional)</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Notes (optional)</label>
                 <textarea
                   value={overageForm.notes}
                   onChange={(e) => setOverageForm({ ...overageForm, notes: e.target.value })}
                   rows={3}
                   placeholder="Describe the overage reason..."
-                  className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white resize-none"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-900 resize-none"
                 />
               </div>
 
               {modalError && (
-                <p className="text-sm text-red-600 dark:text-red-400 flex items-center gap-1"><AlertCircle size={13} /> {modalError}</p>
+                <p className="text-sm text-red-600 flex items-center gap-1"><AlertCircle size={13} /> {modalError}</p>
               )}
             </div>
 
             <div className="flex gap-3 mt-6">
               <button
                 onClick={() => { setShowModal(false); setModalError(''); setProjectSearch(''); setShowProjectDropdown(false); }}
-                className="flex-1 px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                className="flex-1 px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
               >
                 Cancel
               </button>

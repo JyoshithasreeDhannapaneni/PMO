@@ -173,40 +173,40 @@ function SectionModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between p-5 border-b border-gray-200 dark:border-gray-700">
-          <h3 className="text-base font-semibold text-gray-900 dark:text-white">{isNew ? 'Add Section' : 'Edit Section'}</h3>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between p-5 border-b border-gray-200">
+          <h3 className="text-base font-semibold text-gray-900">{isNew ? 'Add Section' : 'Edit Section'}</h3>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100">
             <X size={16} className="text-gray-500" />
           </button>
         </div>
 
         <div className="p-5 space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Section Title *</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Section Title *</label>
             <input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500"
               placeholder="e.g. Client Background"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Description</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
             <input
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500"
               placeholder="Brief description of what goes here"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Fields</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Fields</label>
             <div className="space-y-2 mb-2">
               {fields.map((f, i) => (
                 <div key={i} className="flex items-center gap-2">
-                  <span className="flex-1 text-sm px-3 py-1.5 bg-gray-50 dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300">{f}</span>
+                  <span className="flex-1 text-sm px-3 py-1.5 bg-gray-50 rounded-lg border border-gray-200 text-gray-700">{f}</span>
                   <button onClick={() => removeField(i)} className="p-1 text-red-400 hover:text-red-600"><X size={14} /></button>
                 </div>
               ))}
@@ -216,7 +216,7 @@ function SectionModal({
                 value={newField}
                 onChange={(e) => setNewField(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && addField()}
-                className="flex-1 border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500"
                 placeholder="Add a field name..."
               />
               <button
@@ -229,18 +229,18 @@ function SectionModal({
           </div>
 
           <div className="flex items-center justify-between pt-1">
-            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Required Section</span>
+            <span className="text-sm font-medium text-gray-700">Required Section</span>
             <button
               onClick={() => setRequired((p) => !p)}
-              className={`relative w-11 h-6 rounded-full transition-colors ${required ? 'bg-primary-600' : 'bg-gray-300 dark:bg-gray-600'}`}
+              className={`relative w-11 h-6 rounded-full transition-colors ${required ? 'bg-primary-600' : 'bg-gray-300'}`}
             >
               <span className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${required ? 'translate-x-6' : 'translate-x-1'}`} />
             </button>
           </div>
         </div>
 
-        <div className="flex justify-end gap-3 p-5 border-t border-gray-200 dark:border-gray-700">
-          <button onClick={onClose} className="px-4 py-2 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-700">
+        <div className="flex justify-end gap-3 p-5 border-t border-gray-200">
+          <button onClick={onClose} className="px-4 py-2 border border-gray-200 text-gray-700 rounded-lg text-sm hover:bg-gray-50">
             Cancel
           </button>
           <button
@@ -276,8 +276,8 @@ export default function TemplateManagementPage() {
       <div className="flex items-center justify-center h-64">
         <div className="text-center">
           <AlertCircle className="w-14 h-14 text-red-400 mx-auto mb-3" />
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Access Restricted</h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Only administrators can manage case study templates.</p>
+          <h2 className="text-lg font-semibold text-gray-900">Access Restricted</h2>
+          <p className="text-sm text-gray-500 mt-1">Only administrators can manage case study templates.</p>
         </div>
       </div>
     );
@@ -389,18 +389,18 @@ export default function TemplateManagementPage() {
     <div className="animate-fadeIn">
       {/* Breadcrumb + Header */}
       <div className="mb-5">
-        <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 mb-2">
+        <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
           <Link href="/case-studies" className="hover:text-primary-600 transition-colors">Case Studies</Link>
           <span>›</span>
-          <span className="text-gray-700 dark:text-gray-300">Template Management</span>
+          <span className="text-gray-700">Template Management</span>
           <span>›</span>
-          <span className="text-gray-700 dark:text-gray-300">Edit Template</span>
+          <span className="text-gray-700">Edit Template</span>
         </div>
 
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Case Study Template</h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Customize the sections and fields for case studies</p>
+            <h1 className="text-2xl font-bold text-gray-900">Case Study Template</h1>
+            <p className="text-sm text-gray-500 mt-0.5">Customize the sections and fields for case studies</p>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
             {saved && (
@@ -410,7 +410,7 @@ export default function TemplateManagementPage() {
             )}
             <Link
               href="/case-studies"
-              className="flex items-center gap-1.5 px-3 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+              className="flex items-center gap-1.5 px-3 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50 transition-colors"
             >
               <Eye size={14} />
               Preview
@@ -422,7 +422,7 @@ export default function TemplateManagementPage() {
               <Save size={14} />
               Save Template
             </button>
-            <button className="p-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-500">
+            <button className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-500">
               <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor"><circle cx="8" cy="2" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="8" cy="14" r="1.5"/></svg>
             </button>
           </div>
@@ -431,11 +431,11 @@ export default function TemplateManagementPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         {/* ── Left: Template Builder ───────────────────────────────────────── */}
-        <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700">
+        <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
             <div>
-              <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Template Builder</h2>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Drag and drop to reorder sections</p>
+              <h2 className="text-sm font-semibold text-gray-900">Template Builder</h2>
+              <p className="text-xs text-gray-500 mt-0.5">Drag and drop to reorder sections</p>
             </div>
             <button
               onClick={openAddModal}
@@ -446,7 +446,7 @@ export default function TemplateManagementPage() {
             </button>
           </div>
 
-          <div className="divide-y divide-gray-100 dark:divide-gray-700">
+          <div className="divide-y divide-gray-100">
             {visibleSections.map((section, i) => {
               const isDragging = dragIdx === i;
               const isDragOver = dragOverIdx === i;
@@ -460,10 +460,10 @@ export default function TemplateManagementPage() {
                   onDragEnd={handleDragEnd}
                   className={`flex items-center gap-3 px-4 py-3.5 transition-all ${
                     isDragging ? 'opacity-40' : ''
-                  } ${isDragOver ? 'bg-primary-50 dark:bg-primary-900/20 border-l-2 border-primary-400' : 'hover:bg-gray-50 dark:hover:bg-gray-700/30'}`}
+                  } ${isDragOver ? 'bg-primary-50 border-l-2 border-primary-400' : 'hover:bg-gray-50'}`}
                 >
                   {/* Drag handle */}
-                  <div className="cursor-grab active:cursor-grabbing text-gray-300 dark:text-gray-600 flex-shrink-0">
+                  <div className="cursor-grab active:cursor-grabbing text-gray-300 flex-shrink-0">
                     <GripVertical size={16} />
                   </div>
 
@@ -477,17 +477,17 @@ export default function TemplateManagementPage() {
 
                   {/* Info */}
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{section.title}</p>
+                    <p className="text-sm font-medium text-gray-900 truncate">{section.title}</p>
                     <p className="text-xs text-gray-400">{section.fields.length} field{section.fields.length !== 1 ? 's' : ''}</p>
                   </div>
 
                   {/* Required label */}
-                  <span className="text-xs text-gray-500 dark:text-gray-400 flex-shrink-0">Required</span>
+                  <span className="text-xs text-gray-500 flex-shrink-0">Required</span>
 
                   {/* Toggle */}
                   <button
                     onClick={() => handleToggleRequired(section.id)}
-                    className={`relative w-10 h-5 rounded-full transition-colors flex-shrink-0 ${section.required ? 'bg-primary-600' : 'bg-gray-300 dark:bg-gray-600'}`}
+                    className={`relative w-10 h-5 rounded-full transition-colors flex-shrink-0 ${section.required ? 'bg-primary-600' : 'bg-gray-300'}`}
                   >
                     <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${section.required ? 'translate-x-5' : 'translate-x-0.5'}`} />
                   </button>
@@ -496,19 +496,19 @@ export default function TemplateManagementPage() {
                   <div className="flex items-center gap-0.5 flex-shrink-0">
                     <button
                       onClick={() => openEditModal(section)}
-                      className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-600"
+                      className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600"
                     >
                       <Edit2 size={13} />
                     </button>
                     {!section.required && (
                       <button
                         onClick={() => handleDeleteSection(section.id)}
-                        className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-gray-400 hover:text-red-500"
+                        className="p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-500"
                       >
                         <Trash2 size={13} />
                       </button>
                     )}
-                    <button className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-300 dark:text-gray-600 cursor-grab">
+                    <button className="p-1 rounded hover:bg-gray-100 text-gray-300 cursor-grab">
                       <GripVertical size={13} />
                     </button>
                   </div>
@@ -518,17 +518,17 @@ export default function TemplateManagementPage() {
           </div>
 
           {/* Show Optional Toggle */}
-          <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/20">
+          <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 bg-gray-50">
             <button
               onClick={() => setShowOptional((p) => !p)}
-              className="flex items-center gap-1.5 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+              className="flex items-center gap-1.5 text-sm text-gray-600 hover:text-gray-900"
             >
               Show Optional Sections
               <ChevronDown size={14} className={`transition-transform ${showOptional ? 'rotate-180' : ''}`} />
             </button>
             <button
               onClick={() => setShowOptional((p) => !p)}
-              className={`relative w-10 h-5 rounded-full transition-colors ${showOptional ? 'bg-primary-600' : 'bg-gray-300 dark:bg-gray-600'}`}
+              className={`relative w-10 h-5 rounded-full transition-colors ${showOptional ? 'bg-primary-600' : 'bg-gray-300'}`}
             >
               <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${showOptional ? 'translate-x-5' : 'translate-x-0.5'}`} />
             </button>
@@ -536,26 +536,26 @@ export default function TemplateManagementPage() {
         </div>
 
         {/* ── Right: Section Preview ────────────────────────────────────────── */}
-        <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700">
+        <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
             <div>
-              <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Section Preview</h2>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">This is how the case study will appear</p>
+              <h2 className="text-sm font-semibold text-gray-900">Section Preview</h2>
+              <p className="text-xs text-gray-500 mt-0.5">This is how the case study will appear</p>
             </div>
             <div className="flex items-center gap-2">
-              <span className="flex items-center gap-1 text-xs text-orange-600 bg-orange-50 dark:bg-orange-900/20 px-2 py-0.5 rounded-full border border-orange-200 dark:border-orange-800">
+              <span className="flex items-center gap-1 text-xs text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full border border-orange-200">
                 <span className="text-orange-500">★</span> Required
               </span>
-              <span className="flex items-center gap-1 text-xs text-gray-500 bg-gray-50 dark:bg-gray-700 px-2 py-0.5 rounded-full border border-gray-200 dark:border-gray-600">
+              <span className="flex items-center gap-1 text-xs text-gray-500 bg-gray-50 px-2 py-0.5 rounded-full border border-gray-200">
                 <CheckCircle size={11} className="text-gray-400" /> Optional
               </span>
-              <span className="flex items-center gap-1 text-xs text-green-600 bg-green-50 dark:bg-green-900/20 px-2 py-0.5 rounded-full border border-green-200 dark:border-green-800">
+              <span className="flex items-center gap-1 text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full border border-green-200">
                 <CheckCircle size={11} className="text-green-500" /> Configured Field
               </span>
             </div>
           </div>
 
-          <div className="divide-y divide-gray-100 dark:divide-gray-700 max-h-[600px] overflow-y-auto">
+          <div className="divide-y divide-gray-100 max-h-[600px] overflow-y-auto">
             {visibleSections.map((section) => {
               const isExpanded = previewExpanded.has(section.id);
               const shownFields = section.fields.slice(0, 3);
@@ -573,22 +573,22 @@ export default function TemplateManagementPage() {
                       </div>
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5">
-                          <p className="text-sm font-semibold text-gray-900 dark:text-white">{section.title}</p>
+                          <p className="text-sm font-semibold text-gray-900">{section.title}</p>
                           {section.required && <span className="text-red-500 text-xs">*</span>}
                         </div>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{section.description}</p>
+                        <p className="text-xs text-gray-500 mt-0.5">{section.description}</p>
                         {/* Field tags */}
                         {(isExpanded ? section.fields : shownFields).length > 0 && (
                           <div className="flex flex-wrap gap-1.5 mt-2">
                             {(isExpanded ? section.fields : shownFields).map((f) => (
-                              <span key={f} className="text-xs px-2 py-0.5 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 rounded-full border border-gray-200 dark:border-gray-600">
+                              <span key={f} className="text-xs px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full border border-gray-200">
                                 {f}
                               </span>
                             ))}
                             {!isExpanded && extraCount > 0 && (
                               <button
                                 onClick={() => togglePreview(section.id)}
-                                className="text-xs px-2 py-0.5 bg-primary-50 dark:bg-primary-900/20 text-primary-600 rounded-full border border-primary-200 dark:border-primary-800 hover:bg-primary-100"
+                                className="text-xs px-2 py-0.5 bg-primary-50 text-primary-600 rounded-full border border-primary-200 hover:bg-primary-100"
                               >
                                 +{extraCount} more
                               </button>
@@ -600,13 +600,13 @@ export default function TemplateManagementPage() {
                     <div className="flex items-center gap-1 flex-shrink-0">
                       <button
                         onClick={() => openEditModal(section)}
-                        className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-600 transition-colors"
+                        className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
                       >
                         <Edit2 size={14} />
                       </button>
                       <button
                         onClick={() => togglePreview(section.id)}
-                        className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 transition-colors"
+                        className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 transition-colors"
                       >
                         {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                       </button>
@@ -621,13 +621,13 @@ export default function TemplateManagementPage() {
 
       {/* Footer */}
       <div className="flex items-center justify-between mt-4 pt-2">
-        <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
+        <p className="text-xs text-gray-500 flex items-center gap-1.5">
           <span className="text-red-400">*</span>
           Required sections cannot be removed
         </p>
         <button
           onClick={handleReset}
-          className="flex items-center gap-1.5 px-4 py-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+          className="flex items-center gap-1.5 px-4 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm hover:bg-gray-50 transition-colors"
         >
           <RotateCcw size={13} />
           Reset to Default Template

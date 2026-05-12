@@ -231,7 +231,7 @@ export const authController = {
 
     // Send email with temporary password to new user
     try {
-      await emailService.sendNewUserCredentialsEmail(name, email, tempPassword);
+      await emailService.sendNewUserCredentials(name, email, tempPassword);
     } catch (error) {
       console.error(`Failed to send credentials email to ${email}:`, error);
       // Don't throw - user is already created, just log the error
@@ -317,5 +317,42 @@ export const authController = {
 
     await authService.deleteUserById(id);
     res.json({ success: true, message: 'User deleted' });
+  }),
+
+  /**
+   * GET /api/auth/microsoft
+   * Redirect user to Microsoft login
+   */
+  microsoftLogin: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const { url } = authService.getMicrosoftAuthUrl();
+    res.redirect(url);
+  }),
+
+  /**
+   * GET /api/auth/microsoft/callback
+   * Handle Microsoft OAuth callback
+   */
+  microsoftCallback: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const { code, state, error: oauthError } = req.query as Record<string, string>;
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+
+    if (oauthError) {
+      return res.redirect(`${frontendUrl}/login?error=${encodeURIComponent(oauthError)}`);
+    }
+
+    if (!code || !state) {
+      return res.redirect(`${frontendUrl}/login?error=missing_params`);
+    }
+
+    const codeVerifier = authService.getCodeVerifier(state);
+    if (!codeVerifier) {
+      return res.redirect(`${frontendUrl}/login?error=invalid_state`);
+    }
+
+    const { accessToken } = await authService.exchangeMicrosoftCode(code, codeVerifier);
+    const microsoftUser = await authService.getMicrosoftUserInfo(accessToken);
+    const result = await authService.loginWithMicrosoft(microsoftUser);
+
+    res.redirect(`${frontendUrl}/auth/callback?token=${result.token}&name=${encodeURIComponent(result.user.name)}&email=${encodeURIComponent(result.user.email)}&role=${result.user.role}&id=${result.user.id}`);
   }),
 };

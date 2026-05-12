@@ -55,10 +55,10 @@ const icons: Record<ToastType, React.ComponentType<any>> = {
 };
 
 const styles: Record<ToastType, string> = {
-  success: 'border-green-400 bg-green-50 dark:bg-green-900/20',
-  error: 'border-red-400 bg-red-50 dark:bg-red-900/20',
-  warning: 'border-orange-400 bg-orange-50 dark:bg-orange-900/20',
-  info: 'border-blue-400 bg-blue-50 dark:bg-blue-900/20',
+  success: 'border-green-400 bg-green-50',
+  error: 'border-red-400 bg-red-50',
+  warning: 'border-orange-400 bg-orange-50',
+  info: 'border-blue-400 bg-blue-50',
 };
 
 const iconColors: Record<ToastType, string> = {
@@ -80,8 +80,8 @@ function ToastContainer({ toasts, onRemove }: { toasts: Toast[]; onRemove: (id: 
           >
             <Icon size={18} className={`flex-shrink-0 mt-0.5 ${iconColors[toast.type]}`} />
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-gray-900 dark:text-white">{toast.title}</p>
-              {toast.message && <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">{toast.message}</p>}
+              <p className="text-sm font-semibold text-gray-900">{toast.title}</p>
+              {toast.message && <p className="text-xs text-gray-600 mt-0.5">{toast.message}</p>}
             </div>
             <button
               onClick={() => onRemove(toast.id)}

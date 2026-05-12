@@ -11,6 +11,7 @@ import {
   Calendar, BarChart3, List, RefreshCw, Zap, AlertCircle,
   CalendarDays, Flag, ChevronsLeft, ChevronsRight, Plus, Pencil, X, Trash2,
 } from 'lucide-react';
+import { useToast } from '@/context/ToastContext';
 
 /* ── Types ─────────────────────────────────────────────────────────── */
 interface ProjectTask {
@@ -49,6 +50,7 @@ interface Project {
   customerName: string;
   plannedStart: string;
   plannedEnd: string;
+  migrationTypes?: string | null;
 }
 
 interface GanttData {
@@ -111,6 +113,7 @@ export default function ProjectTasksPage() {
   const params = useParams();
   const projectId = params.id as string;
   const { settings } = useSettings();
+  const { showToast } = useToast();
 
   const leftRef  = useRef<HTMLDivElement>(null);
   const rightRef = useRef<HTMLDivElement>(null);
@@ -196,20 +199,38 @@ export default function ProjectTasksPage() {
         body: JSON.stringify({ templateCode, startDate: ganttData?.project.plannedStart }),
       });
       const json = await res.json();
-      if (json.success) await fetchData();
-    } catch { /* silent */ } finally { setIsApplyingTpl(false); }
+      if (json.success) {
+        await fetchData();
+        showToast('success', 'Template applied', 'Tasks and phases generated successfully');
+      } else {
+        showToast('error', 'Template apply failed', json.error?.message || json.message || `No template found for code "${templateCode}"`);
+      }
+    } catch (err: any) {
+      showToast('error', 'Template apply failed', 'Could not connect to server');
+    } finally { setIsApplyingTpl(false); }
   };
 
   const triggerSync = async () => {
     try {
       setIsAutoUpdating(true);
       const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
-      await fetch(`${API_URL}/api/tasks/project/${projectId}/auto-update`, {
+      const res = await fetch(`${API_URL}/api/tasks/project/${projectId}/auto-update`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        showToast('error', 'Sync failed', json.error?.message || json.message || 'Could not sync task statuses');
+        return;
+      }
       await fetchData();
-    } catch { /* silent */ } finally { setIsAutoUpdating(false); }
+      const count = json.data?.updatedPhases ?? 0;
+      showToast('success', 'Sync complete', count > 0 ? `Updated ${count} phase(s) based on current dates` : 'All tasks are already up to date');
+    } catch (err: any) {
+      showToast('error', 'Sync failed', 'Could not connect to server');
+    } finally {
+      setIsAutoUpdating(false);
+    }
   };
 
   const updateTaskStatus = async (taskId: string, status: string) => {
@@ -297,20 +318,15 @@ export default function ProjectTasksPage() {
       }
       await fetchData();
       setTaskModal(null);
-    } catch { /* silent */ } finally {
+      showToast('success', taskModal?.mode === 'add' ? 'Task added' : 'Task updated');
+    } catch (err: any) {
+      showToast('error', 'Failed to save task', err?.message || 'Could not save task');
+    } finally {
       setSavingTask(false);
     }
   };
 
-  const deleteTask = async (taskId: string, taskName: string) => {
-    if (!confirm(`Delete task "${taskName}"? This cannot be undone.`)) return;
-    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
-    await fetch(`${API_URL}/api/tasks/${taskId}`, {
-      method: 'DELETE',
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
-    await fetchData();
-  };
+
 
   const togglePhase = (id: string) => {
     setExpandedPhases(prev => {
@@ -424,10 +440,10 @@ export default function ProjectTasksPage() {
     <div className="flex flex-col items-center justify-center h-64 gap-4">
       <AlertCircle className="w-14 h-14 text-red-400" />
       <div className="text-center">
-        <p className="text-lg font-semibold text-gray-800 dark:text-white">
+        <p className="text-lg font-semibold text-gray-800">
           {errorStatus === 404 ? 'Project Not Found' : 'Something went wrong'}
         </p>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+        <p className="text-sm text-gray-500 mt-1">
           {errorStatus === 404
             ? 'This project may have been deleted or the link is no longer valid.'
             : error}
@@ -489,23 +505,23 @@ export default function ProjectTasksPage() {
 
       {/* ── Back + Title ─────────────────────────────────────────────── */}
       <Link href={`/projects/${projectId}`}
-        className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 mb-2">
+        className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800 mb-2">
         <ArrowLeft size={14}/> Back to Project
       </Link>
 
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
         <div>
-          <h1 className="text-xl font-bold text-gray-900 dark:text-white">{ganttData.project.name}</h1>
+          <h1 className="text-xl font-bold text-gray-900">{ganttData.project.name}</h1>
           <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-            <p className="text-xs text-gray-500 dark:text-gray-400">
+            <p className="text-xs text-gray-500">
               {ganttData.project.customerName} · {fmtShort(ganttData.project.plannedStart)} – {fmtShort(ganttData.project.plannedEnd)}
             </p>
             {projectMigrationTypes.map((mt, idx) => {
               const badgeCls = [
-                'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
-                'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300',
-                'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300',
-                'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300',
+                'bg-blue-100 text-blue-700',
+                'bg-green-100 text-green-700',
+                'bg-purple-100 text-purple-700',
+                'bg-orange-100 text-orange-700',
               ][idx % 4];
               return (
                 <span key={mt.code} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold ${badgeCls}`}>
@@ -515,21 +531,33 @@ export default function ProjectTasksPage() {
             })}
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Button variant="outline" size="sm" onClick={triggerSync} disabled={isAutoUpdating}>
             {isAutoUpdating ? <Loader2 size={13} className="animate-spin mr-1"/> : <Zap size={13} className="mr-1"/>}Sync
           </Button>
+          {projectMigrationTypes.length > 0 && (
+            <div className="flex items-center gap-1">
+              {projectMigrationTypes.map((mt) => (
+                <button key={mt.code} onClick={() => applyTemplate(mt.code)} disabled={isApplyingTpl}
+                  title={`Re-apply ${mt.name} template (replaces all tasks)`}
+                  className="flex items-center gap-1 px-2 py-1.5 bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-semibold rounded-lg hover:bg-indigo-100 transition-colors disabled:opacity-50">
+                  {isApplyingTpl ? <Loader2 size={12} className="animate-spin"/> : <span>{mt.icon}</span>}
+                  {mt.name}
+                </button>
+              ))}
+            </div>
+          )}
           <Button variant="outline" size="sm" onClick={fetchData} disabled={isLoading}>
             <RefreshCw size={13} className={isLoading?'animate-spin':''}/>
           </Button>
           {/* View toggle */}
-          <div className="flex items-center bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5">
+          <div className="flex items-center bg-gray-100 rounded-lg p-0.5">
             <button onClick={()=>setViewMode('list')}
-              className={`flex items-center gap-1 px-3 py-1.5 rounded text-xs font-medium transition-all ${viewMode==='list'?'bg-white dark:bg-gray-700 shadow-sm text-gray-900 dark:text-white':'text-gray-500'}`}>
+              className={`flex items-center gap-1 px-3 py-1.5 rounded text-xs font-medium transition-all ${viewMode==='list'?'bg-white shadow-sm text-gray-900':'text-gray-500'}`}>
               <List size={13}/> List
             </button>
             <button onClick={()=>setViewMode('gantt')}
-              className={`flex items-center gap-1 px-3 py-1.5 rounded text-xs font-medium transition-all ${viewMode==='gantt'?'bg-white dark:bg-gray-700 shadow-sm text-gray-900 dark:text-white':'text-gray-500'}`}>
+              className={`flex items-center gap-1 px-3 py-1.5 rounded text-xs font-medium transition-all ${viewMode==='gantt'?'bg-white shadow-sm text-gray-900':'text-gray-500'}`}>
               <BarChart3 size={13}/> Gantt
             </button>
           </div>
@@ -538,10 +566,10 @@ export default function ProjectTasksPage() {
 
       {/* ── Template picker (no tasks yet) ───────────────────────────── */}
       {hasNoTasks && projectMigrationTypes.length > 0 && (
-        <div className="mb-4 p-4 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-xl flex flex-col sm:flex-row sm:items-center gap-3">
+        <div className="mb-4 p-4 bg-indigo-50 border border-indigo-200 rounded-xl flex flex-col sm:flex-row sm:items-center gap-3">
           <div className="flex-1">
-            <p className="text-sm font-semibold text-indigo-800 dark:text-indigo-200">No tasks yet — apply a template to get started</p>
-            <p className="text-xs text-indigo-500 dark:text-indigo-400 mt-0.5">Click a migration type to auto-generate phases and tasks from its template</p>
+            <p className="text-sm font-semibold text-indigo-800">No tasks yet — apply a template to get started</p>
+            <p className="text-xs text-indigo-500 mt-0.5">Click a migration type to auto-generate phases and tasks from its template</p>
           </div>
           <div className="flex flex-wrap gap-2">
             {projectMigrationTypes.map((mt, idx) => {
@@ -568,16 +596,16 @@ export default function ProjectTasksPage() {
       )}
 
       {/* ── Stats bar ─────────────────────────────────────────────────── */}
-      <div className="flex gap-4 mb-4 p-3 bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 flex-wrap">
+      <div className="flex gap-4 mb-4 p-3 bg-white rounded-xl border border-gray-200 flex-wrap">
         {[
-          { label:'Total',    value: stats.total,    icon: <CalendarDays size={18} className="text-gray-500"/>,    color:'text-gray-800 dark:text-gray-100' },
+          { label:'Total',    value: stats.total,    icon: <CalendarDays size={18} className="text-gray-500"/>,    color:'text-gray-800' },
           { label:'Done',     value: stats.done,     icon: <CheckCircle  size={18} className="text-green-500"/>,   color:'text-green-600' },
           { label:'Active',   value: stats.active,   icon: <Play         size={18} className="text-blue-500"/>,    color:'text-blue-600' },
           { label:'Overdue',  value: stats.overdue,  icon: <Clock        size={18} className="text-red-500"/>,     color:'text-red-600' },
           { label:'Blocked',  value: stats.blocked,  icon: <AlertTriangle size={18} className="text-orange-500"/>, color:'text-orange-600' },
           { label:'Progress', value:`${stats.progress}%`, icon: <Flag    size={18} className="text-primary-500"/>, color:'text-primary-600' },
         ].map(s => (
-          <div key={s.label} className="flex items-center gap-2 pr-4 border-r border-gray-100 dark:border-gray-700 last:border-0">
+          <div key={s.label} className="flex items-center gap-2 pr-4 border-r border-gray-100 last:border-0">
             {s.icon}
             <div>
               <p className={`text-xl font-bold leading-none ${s.color}`}>{s.value}</p>
@@ -591,23 +619,23 @@ export default function ProjectTasksPage() {
       {/* GANTT VIEW */}
       {/* ══════════════════════════════════════════════════════════════ */}
       {viewMode === 'gantt' && (
-        <div className="flex-1 bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden">
+        <div className="flex-1 bg-white rounded-xl border border-gray-200 flex flex-col overflow-hidden">
 
           {/* Toolbar */}
-          <div className="flex-shrink-0 flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex-wrap gap-2">
+          <div className="flex-shrink-0 flex items-center justify-between px-3 py-2 bg-gray-50 border-b border-gray-200 flex-wrap gap-2">
             <div className="flex items-center gap-2">
               {/* Nav arrows + Today */}
-              <div className="flex items-center rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 overflow-hidden">
-                <button onClick={()=>scrollTimeline('left')}  className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-600"><ChevronsLeft  size={15}/></button>
+              <div className="flex items-center rounded-lg border border-gray-200 bg-white overflow-hidden">
+                <button onClick={()=>scrollTimeline('left')}  className="p-1.5 hover:bg-gray-100"><ChevronsLeft  size={15}/></button>
                 <button onClick={()=>{ const t=new Date(); t.setDate(t.getDate()-7); setViewStartDate(t); }}
-                  className="px-2.5 py-1 text-xs font-semibold border-x border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600">Today</button>
-                <button onClick={()=>scrollTimeline('right')} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-600"><ChevronsRight size={15}/></button>
+                  className="px-2.5 py-1 text-xs font-semibold border-x border-gray-200 hover:bg-gray-100">Today</button>
+                <button onClick={()=>scrollTimeline('right')} className="p-1.5 hover:bg-gray-100"><ChevronsRight size={15}/></button>
               </div>
               {/* Zoom */}
-              <div className="flex items-center rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 overflow-hidden p-0.5 gap-0.5">
+              <div className="flex items-center rounded-lg border border-gray-200 bg-white overflow-hidden p-0.5 gap-0.5">
                 {(['day','week','month','quarter','year'] as ZoomLevel[]).map(z => (
                   <button key={z} onClick={()=>setZoomLevel(z)}
-                    className={`px-2.5 py-1 text-xs font-medium rounded transition-all ${zoomLevel===z?'bg-primary-600 text-white':'hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300'}`}>
+                    className={`px-2.5 py-1 text-xs font-medium rounded transition-all ${zoomLevel===z?'bg-primary-600 text-white':'hover:bg-gray-100 text-gray-600'}`}>
                     {z.charAt(0).toUpperCase()+z.slice(1)}
                   </button>
                 ))}
@@ -623,10 +651,10 @@ export default function ProjectTasksPage() {
           <div className="flex-1 flex overflow-hidden">
 
             {/* Left: task names */}
-            <div className="w-72 flex-shrink-0 border-r border-gray-200 dark:border-gray-700 flex flex-col">
+            <div className="w-72 flex-shrink-0 border-r border-gray-200 flex flex-col">
               {/* Header */}
-              <div className="flex-shrink-0 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700" style={{height: PH_H+8}}>
-                <div className="h-8 flex items-center px-3 border-b border-gray-200 dark:border-gray-700">
+              <div className="flex-shrink-0 bg-gray-50 border-b border-gray-200" style={{height: PH_H+8}}>
+                <div className="h-8 flex items-center px-3 border-b border-gray-200">
                   <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">TASK</span>
                 </div>
                 <div className="h-7 flex items-center px-3">
@@ -641,13 +669,13 @@ export default function ProjectTasksPage() {
                   <div key={ph.id}>
                     {/* Phase row */}
                     <div style={{height:PH_H}}
-                      className="flex items-center px-2 gap-1.5 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                      className="flex items-center px-2 gap-1.5 bg-gray-50 border-b border-gray-200 cursor-pointer hover:bg-gray-100 transition-colors"
                       onClick={()=>togglePhase(ph.id)}>
                       {expandedPhases.has(ph.id) ? <ChevronDown size={13} className="text-gray-400 flex-shrink-0"/> : <ChevronRight size={13} className="text-gray-400 flex-shrink-0"/>}
                       <div className="w-4 h-4 rounded-sm flex-shrink-0 flex items-center justify-center" style={{backgroundColor: PHASE_COLORS[phIdx % PHASE_COLORS.length]}}>
                         <span className="text-[9px] font-bold text-white">{phIdx+1}</span>
                       </div>
-                      <span className="font-semibold text-xs text-gray-800 dark:text-gray-100 truncate flex-1">{ph.phaseName}</span>
+                      <span className="font-semibold text-xs text-gray-800 truncate flex-1">{ph.phaseName}</span>
                       <span className="text-[10px] text-gray-400 flex-shrink-0">{ph.progress}%</span>
                     </div>
 
@@ -657,11 +685,11 @@ export default function ProjectTasksPage() {
                       const overdue = t.status!=='DONE' && t.status!=='SKIPPED' && new Date(t.plannedEnd) < today;
                       return (
                         <div key={t.id} style={{height:ROW_H}}
-                          className={`flex items-center pl-8 pr-2 gap-1.5 border-b border-gray-100 dark:border-gray-800 ${overdue?'bg-red-50/40 dark:bg-red-900/10':''}`}>
+                          className={`flex items-center pl-8 pr-2 gap-1.5 border-b border-gray-100 ${overdue?'bg-red-50/40':''}`}>
                           <div className="w-2 h-2 rounded-full flex-shrink-0"
                             style={{backgroundColor: STATUS_CFG[t.status]?.barColor ?? '#9CA3AF'}}/>
                           {t.isMilestone && <Flag size={10} className="text-amber-500 flex-shrink-0"/>}
-                          <span className={`text-xs flex-1 truncate ${t.status==='DONE'?'line-through text-gray-400':overdue?'text-red-600 dark:text-red-400':'text-gray-700 dark:text-gray-300'}`}>
+                          <span className={`text-xs flex-1 truncate ${t.status==='DONE'?'line-through text-gray-400':overdue?'text-red-600':'text-gray-700'}`}>
                             {t.name}
                           </span>
                           <span className={`text-[10px] flex-shrink-0 font-medium ${t.progress===100?'text-green-600':t.progress>0?'text-blue-600':'text-gray-400'}`}>
@@ -680,11 +708,11 @@ export default function ProjectTasksPage() {
               <div style={{width: totalWidth, minWidth:'100%'}}>
 
                 {/* Month header */}
-                <div className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-                  <div className="h-8 flex border-b border-gray-200 dark:border-gray-700">
+                <div className="sticky top-0 z-10 bg-gray-50 border-b border-gray-200">
+                  <div className="h-8 flex border-b border-gray-200">
                     {monthHeaders.map((h,i)=>(
                       <div key={i} style={{width:h.width}}
-                        className="border-r border-gray-200 dark:border-gray-700 flex items-center justify-center text-xs font-semibold text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800">
+                        className="border-r border-gray-200 flex items-center justify-center text-xs font-semibold text-gray-700 bg-gray-100">
                         {h.label}
                       </div>
                     ))}
@@ -693,7 +721,7 @@ export default function ProjectTasksPage() {
                   <div className="flex" style={{height: PH_H - 8}}>
                     {timelineCells.map((c,i)=>(
                       <div key={i} style={{width:zoomCfg.cellWidth}}
-                        className={`flex flex-col items-center justify-center text-[10px] border-r border-gray-200 dark:border-gray-700 ${c.isToday?'bg-blue-500 text-white font-bold':c.isWeekend&&zoomLevel==='day'?'bg-gray-100 dark:bg-gray-800 text-gray-400':'text-gray-500 dark:text-gray-400'}`}>
+                        className={`flex flex-col items-center justify-center text-[10px] border-r border-gray-200 ${c.isToday?'bg-blue-500 text-white font-bold':c.isWeekend&&zoomLevel==='day'?'bg-gray-100 text-gray-400':'text-gray-500'}`}>
                         <span>{c.label}</span>
                         {c.sub && <span className="text-[8px] opacity-70">{c.sub}</span>}
                       </div>
@@ -710,7 +738,7 @@ export default function ProjectTasksPage() {
                   <div className="absolute inset-0 flex pointer-events-none">
                     {timelineCells.map((c,i)=>(
                       <div key={i} style={{width:zoomCfg.cellWidth}}
-                        className={`h-full border-r border-gray-100 dark:border-gray-800 ${c.isWeekend&&zoomLevel==='day'?'bg-gray-50 dark:bg-gray-800/30':''}`}/>
+                        className={`h-full border-r border-gray-100 ${c.isWeekend&&zoomLevel==='day'?'bg-gray-50':''}`}/>
                     ))}
                   </div>
 
@@ -757,7 +785,7 @@ export default function ProjectTasksPage() {
                                 {pos.left+pos.width > 0 && pos.left < totalWidth && (
                                   t.isMilestone ? (
                                     <div className="absolute top-1/2 -translate-y-1/2 z-10" style={{left:pos.left}}>
-                                      <div className="w-4 h-4 rotate-45 border-2 border-white dark:border-gray-900 shadow-lg" style={{backgroundColor:cfg.barColor}}/>
+                                      <div className="w-4 h-4 rotate-45 border-2 border-white shadow-lg" style={{backgroundColor:cfg.barColor}}/>
                                     </div>
                                   ) : (
                                     <div className={`absolute top-1.5 rounded-full overflow-hidden cursor-pointer ${overdue?'ring-1 ring-red-400':''}`}
@@ -765,7 +793,7 @@ export default function ProjectTasksPage() {
                                       <div className="absolute inset-0 rounded-full" style={{backgroundColor:cfg.barBg}}/>
                                       <div className="absolute inset-y-0 left-0 rounded-full" style={{width:`${t.progress}%`, backgroundColor:cfg.barColor}}/>
                                       <div className="absolute inset-0 flex items-center px-2 overflow-hidden">
-                                        <span className={`text-[10px] font-medium truncate ${t.progress>40?'text-white':'text-gray-700 dark:text-gray-200'}`}>
+                                        <span className={`text-[10px] font-medium truncate ${t.progress>40?'text-white':'text-gray-700'}`}>
                                           {t.name}
                                         </span>
                                       </div>
@@ -775,7 +803,7 @@ export default function ProjectTasksPage() {
 
                                 {/* Tooltip */}
                                 {hoveredTask === t.id && (
-                                  <div className="absolute z-50 bg-gray-900 text-white text-[10px] rounded-lg p-2.5 shadow-xl pointer-events-none"
+                                  <div className="absolute z-50 bg-white text-white text-[10px] rounded-lg p-2.5 shadow-xl pointer-events-none"
                                     style={{left: Math.min(pos.left+pos.width/2, totalWidth-200), bottom:'100%', marginBottom:4, transform:'translateX(-50%)', minWidth:180}}>
                                     <p className="font-semibold text-xs mb-1">{t.name}</p>
                                     <div className="space-y-0.5 text-gray-300">
@@ -801,7 +829,7 @@ export default function ProjectTasksPage() {
           </div>
 
           {/* Legend */}
-          <div className="flex-shrink-0 border-t border-gray-200 dark:border-gray-700 px-3 py-1.5 bg-gray-50 dark:bg-gray-800 flex items-center gap-4 text-[10px] flex-wrap">
+          <div className="flex-shrink-0 border-t border-gray-200 px-3 py-1.5 bg-gray-50 flex items-center gap-4 text-[10px] flex-wrap">
             <span className="font-semibold text-gray-500">Legend:</span>
             {Object.entries(STATUS_CFG).slice(0,5).map(([k,v])=>(
               <div key={k} className="flex items-center gap-1">
@@ -825,10 +853,10 @@ export default function ProjectTasksPage() {
       {/* LIST VIEW */}
       {/* ══════════════════════════════════════════════════════════════ */}
       {viewMode === 'list' && (
-        <div className="flex-1 flex flex-col bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+        <div className="flex-1 flex flex-col bg-white rounded-xl border border-gray-200 overflow-hidden">
           {/* List toolbar */}
-          <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-200 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-800/60">
-            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{flatTasks.length} tasks</span>
+          <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-200 bg-gray-50/80">
+            <span className="text-sm font-medium text-gray-700">{flatTasks.length} tasks</span>
             {ganttData && (
               <button
                 onClick={openAddTask}
@@ -840,10 +868,10 @@ export default function ProjectTasksPage() {
           </div>
           <div className="flex-1 overflow-auto">
             <table className="w-full text-sm min-w-[900px]">
-              <thead className="bg-gray-50 dark:bg-gray-800 sticky top-0 z-10">
+              <thead className="bg-blue-50/60 sticky top-0 z-10">
                 <tr>
                   {['TASK','TYPE','ASSIGNEE','START DATE','DUE DATE','DURATION','STATUS','PROGRESS','PRIORITY',''].map(h=>(
-                    <th key={h} className={`py-3 px-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap border-b border-gray-200 dark:border-gray-700 ${h==='TASK'?'text-left':'text-center'}`}>
+                    <th key={h} className={`py-3 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap border-b border-gray-200 ${h==='TASK'?'text-left':'text-center'}`}>
                       {h}
                     </th>
                   ))}
@@ -856,12 +884,12 @@ export default function ProjectTasksPage() {
                   const overdue = t.status!=='DONE' && t.status!=='SKIPPED' && new Date(t.plannedEnd)<today;
                   const pri = t.priority ? PRIORITY_CFG[t.priority] : null;
                   return (
-                    <tr key={t.id} className={`border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors ${overdue?'bg-red-50/30 dark:bg-red-900/10':''}`}>
+                    <tr key={t.id} className={`border-b border-gray-100 hover:bg-gray-50 transition-colors ${overdue?'bg-red-50/30':''}`}>
                       {/* Task name */}
                       <td className="py-3 px-3 max-w-[220px]">
                         <div className="flex items-center gap-1.5">
                           {t.isMilestone && <Flag size={11} className="text-amber-500 flex-shrink-0"/>}
-                          <span className={`font-medium truncate ${t.status==='DONE'?'line-through text-gray-400':overdue?'text-red-600 dark:text-red-400':'text-gray-900 dark:text-white'}`}>
+                          <span className={`font-medium truncate ${t.status==='DONE'?'line-through text-gray-400':overdue?'text-red-600':'text-gray-900'}`}>
                             {t.name}
                           </span>
                           {overdue && <AlertCircle size={11} className="text-red-500 flex-shrink-0"/>}
@@ -882,24 +910,24 @@ export default function ProjectTasksPage() {
                               style={{backgroundColor: avatarColor(t.assignee)}}>
                               {initials(t.assignee)}
                             </div>
-                            <span className="text-xs text-gray-600 dark:text-gray-400 truncate max-w-[80px]">{t.assignee}</span>
+                            <span className="text-xs text-gray-600 truncate max-w-[80px]">{t.assignee}</span>
                           </div>
                         ) : (
                           <span className="text-xs text-gray-300">—</span>
                         )}
                       </td>
                       {/* Start */}
-                      <td className="py-3 px-3 text-center text-xs text-gray-600 dark:text-gray-400 whitespace-nowrap">
+                      <td className="py-3 px-3 text-center text-xs text-gray-600 whitespace-nowrap">
                         {fmtDate(t.plannedStart)}
                       </td>
                       {/* Due */}
                       <td className="py-3 px-3 text-center text-xs whitespace-nowrap">
-                        <span className={overdue?'text-red-600 font-semibold':'text-gray-600 dark:text-gray-400'}>
+                        <span className={overdue?'text-red-600 font-semibold':'text-gray-600'}>
                           {fmtDate(t.plannedEnd)}
                         </span>
                       </td>
                       {/* Duration */}
-                      <td className="py-3 px-3 text-center text-xs text-gray-600 dark:text-gray-400">
+                      <td className="py-3 px-3 text-center text-xs text-gray-600">
                         {t.duration} {t.duration===1?'day':'days'}
                       </td>
                       {/* Status */}
@@ -920,7 +948,7 @@ export default function ProjectTasksPage() {
                       {/* Progress */}
                       <td className="py-3 px-3">
                         <div className="flex items-center gap-2 justify-center">
-                          <div className="w-20 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                          <div className="w-20 h-1.5 bg-gray-200 rounded-full overflow-hidden">
                             <div className="h-full rounded-full" style={{width:`${t.progress}%`, backgroundColor:cfg.barColor}}/>
                           </div>
                           <span className="text-[11px] font-semibold" style={{color:cfg.barColor}}>{t.progress}%</span>
@@ -937,10 +965,10 @@ export default function ProjectTasksPage() {
                       {/* Actions */}
                       <td className="py-3 px-2 text-center">
                         <div className="flex items-center justify-center gap-1">
-                          <button onClick={() => openEditTask(t)} title="Edit task" className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-primary-600 transition-colors">
+                          <button onClick={() => openEditTask(t)} title="Edit task" className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-primary-600 transition-colors">
                             <Pencil size={13} />
                           </button>
-                          <button onClick={() => deleteTask(t.id, t.name)} title="Delete task" className="p-1.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-gray-400 hover:text-red-600 transition-colors">
+                          <button onClick={() => deleteTask(t.id, t.name)} title="Delete task" className="p-1.5 rounded hover:bg-red-100 text-gray-400 hover:text-red-600 transition-colors">
                             <Trash2 size={13} />
                           </button>
                         </div>
@@ -953,21 +981,21 @@ export default function ProjectTasksPage() {
           </div>
 
           {/* Pagination */}
-          <div className="flex-shrink-0 flex items-center justify-between px-4 py-2.5 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+          <div className="flex-shrink-0 flex items-center justify-between px-4 py-2.5 border-t border-gray-200 bg-gray-50">
             <p className="text-xs text-gray-500">
               Showing {Math.min((listPage-1)*PAGE_SIZE+1, flatTasks.length)}–{Math.min(listPage*PAGE_SIZE, flatTasks.length)} of {flatTasks.length} tasks
             </p>
             <div className="flex items-center gap-1">
               <button onClick={()=>setListPage(p=>Math.max(1,p-1))} disabled={listPage===1}
-                className="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-30"><ChevronsLeft size={14}/></button>
+                className="p-1.5 rounded hover:bg-gray-200 disabled:opacity-30"><ChevronsLeft size={14}/></button>
               {Array.from({length:listPages},(_,i)=>i+1).map(pg=>(
                 <button key={pg} onClick={()=>setListPage(pg)}
-                  className={`w-7 h-7 rounded text-xs font-medium transition-all ${pg===listPage?'bg-primary-600 text-white':'hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400'}`}>
+                  className={`w-7 h-7 rounded text-xs font-medium transition-all ${pg===listPage?'bg-primary-600 text-white':'hover:bg-gray-200 text-gray-600'}`}>
                   {pg}
                 </button>
               ))}
               <button onClick={()=>setListPage(p=>Math.min(listPages,p+1))} disabled={listPage===listPages}
-                className="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-30"><ChevronsRight size={14}/></button>
+                className="p-1.5 rounded hover:bg-gray-200 disabled:opacity-30"><ChevronsRight size={14}/></button>
               <span className="text-xs text-gray-400 ml-2">{PAGE_SIZE}/page</span>
             </div>
           </div>
@@ -977,12 +1005,12 @@ export default function ProjectTasksPage() {
       {/* Add / Edit Task Modal */}
       {taskModal && ganttData && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => setTaskModal(null)}>
-          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
-              <h2 className="text-base font-semibold text-gray-900 dark:text-white">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+              <h2 className="text-base font-semibold text-gray-900">
                 {taskModal.mode === 'add' ? 'Add Task' : 'Edit Task'}
               </h2>
-              <button onClick={() => setTaskModal(null)} className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400">
+              <button onClick={() => setTaskModal(null)} className="p-1.5 rounded hover:bg-gray-100 text-gray-400">
                 <X size={16} />
               </button>
             </div>
@@ -990,23 +1018,23 @@ export default function ProjectTasksPage() {
             <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
               {/* Task name */}
               <div>
-                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Task Name <span className="text-red-500">*</span></label>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Task Name <span className="text-red-500">*</span></label>
                 <input
                   value={taskForm.name}
                   onChange={e => setTaskForm(f => ({ ...f, name: e.target.value }))}
                   placeholder="Enter task name…"
-                  className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-400"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-400"
                 />
               </div>
 
               {/* Phase (only on add) */}
               {taskModal.mode === 'add' && (
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Phase <span className="text-red-500">*</span></label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Phase <span className="text-red-500">*</span></label>
                   <select
                     value={taskForm.phaseRecordId}
                     onChange={e => setTaskForm(f => ({ ...f, phaseRecordId: e.target.value }))}
-                    className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-900"
                   >
                     {ganttData.phases.map(ph => (
                       <option key={ph.id} value={ph.id}>{ph.phaseName}</option>
@@ -1018,33 +1046,33 @@ export default function ProjectTasksPage() {
               {/* Dates */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Start Date <span className="text-red-500">*</span></label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Start Date <span className="text-red-500">*</span></label>
                   <input type="date" value={taskForm.plannedStart}
                     onChange={e => setTaskForm(f => ({ ...f, plannedStart: e.target.value }))}
-                    className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-900" />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">End Date <span className="text-red-500">*</span></label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">End Date <span className="text-red-500">*</span></label>
                   <input type="date" value={taskForm.plannedEnd}
                     onChange={e => setTaskForm(f => ({ ...f, plannedEnd: e.target.value }))}
-                    className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-900" />
                 </div>
               </div>
 
               {/* Assignee + Priority */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Assignee</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Assignee</label>
                   <input value={taskForm.assignee}
                     onChange={e => setTaskForm(f => ({ ...f, assignee: e.target.value }))}
                     placeholder="Name…"
-                    className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-900" />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Priority</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Priority</label>
                   <select value={taskForm.priority}
                     onChange={e => setTaskForm(f => ({ ...f, priority: e.target.value as any }))}
-                    className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-900">
                     <option value="LOW">Low</option>
                     <option value="MEDIUM">Medium</option>
                     <option value="HIGH">High</option>
@@ -1057,10 +1085,10 @@ export default function ProjectTasksPage() {
               {taskModal.mode === 'edit' && (
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Status</label>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Status</label>
                     <select value={taskForm.status}
                       onChange={e => setTaskForm(f => ({ ...f, status: e.target.value }))}
-                      className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-900">
                       <option value="TODO">To Do</option>
                       <option value="IN_PROGRESS">In Progress</option>
                       <option value="DONE">Done</option>
@@ -1069,7 +1097,7 @@ export default function ProjectTasksPage() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Progress ({taskForm.progress}%)</label>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Progress ({taskForm.progress}%)</label>
                     <input type="range" min={0} max={100} value={taskForm.progress}
                       onChange={e => setTaskForm(f => ({ ...f, progress: Number(e.target.value) }))}
                       className="w-full mt-2" />
@@ -1082,20 +1110,20 @@ export default function ProjectTasksPage() {
                 <input type="checkbox" id="isMilestone" checked={taskForm.isMilestone}
                   onChange={e => setTaskForm(f => ({ ...f, isMilestone: e.target.checked }))}
                   className="rounded border-gray-300" />
-                <label htmlFor="isMilestone" className="text-xs text-gray-600 dark:text-gray-400">Mark as milestone</label>
+                <label htmlFor="isMilestone" className="text-xs text-gray-600">Mark as milestone</label>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Notes</label>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Notes</label>
                 <textarea value={taskForm.notes}
                   onChange={e => setTaskForm(f => ({ ...f, notes: e.target.value }))}
                   rows={2} placeholder="Optional notes…"
-                  className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white resize-none" />
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-900 resize-none" />
               </div>
             </div>
 
-            <div className="flex gap-3 px-5 py-4 border-t border-gray-200 dark:border-gray-700">
+            <div className="flex gap-3 px-5 py-4 border-t border-gray-200">
               <button onClick={() => setTaskModal(null)}
-                className="flex-1 px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                className="flex-1 px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">
                 Cancel
               </button>
               <button onClick={saveTask} disabled={savingTask || !taskForm.name.trim()}

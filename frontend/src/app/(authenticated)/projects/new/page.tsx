@@ -16,22 +16,22 @@ function SuccessModal({ projectName, onViewProjects, onCreateAnother }: {
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-fadeIn">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-fadeIn">
         <div className="flex flex-col items-center p-8 text-center">
-          <div className="w-20 h-20 rounded-full bg-green-100 dark:bg-green-900/40 flex items-center justify-center mb-4">
-            <CheckCircle size={42} className="text-green-600 dark:text-green-400" />
+          <div className="w-20 h-20 rounded-full bg-green-100 flex items-center justify-center mb-4">
+            <CheckCircle size={42} className="text-green-600" />
           </div>
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Project Created!</h2>
-          <p className="text-gray-500 dark:text-gray-400 mb-1">
-            <span className="font-semibold text-gray-700 dark:text-gray-200">"{projectName}"</span>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Project Created!</h2>
+          <p className="text-gray-500 mb-1">
+            <span className="font-semibold text-gray-700">"{projectName}"</span>
           </p>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mb-8">
+          <p className="text-sm text-gray-500 mb-8">
             has been added successfully to your portfolio.
           </p>
           <div className="flex flex-col sm:flex-row gap-3 w-full">
             <button
               onClick={onCreateAnother}
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-xl text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-50 transition-colors"
             >
               <Plus size={16} /> Create Another
             </button>
@@ -87,8 +87,8 @@ export default function NewProjectPage() {
       )}
 
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Create New Project</h1>
-        <p className="text-gray-500 mt-1">Fill in the details to create a new migration project</p>
+        <h1 className="text-2xl font-bold text-slate-900">Create New Project</h1>
+        <p className="text-slate-500 mt-1">Fill in the details to create a new migration project</p>
       </div>
 
       <ProjectForm

@@ -65,13 +65,13 @@ function ResetPasswordForm() {
 
   if (success) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 py-12 px-4">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4">
         <div className="max-w-md w-full text-center">
-          <div className="w-16 h-16 bg-green-100 dark:bg-green-900 rounded-full flex items-center justify-center mx-auto mb-6">
-            <CheckCircle className="w-8 h-8 text-green-600 dark:text-green-400" />
+          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
+            <CheckCircle className="w-8 h-8 text-green-600" />
           </div>
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">Password Reset!</h2>
-          <p className="text-gray-600 dark:text-gray-400 mb-6">
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Password Reset!</h2>
+          <p className="text-gray-600 mb-6">
             Your password has been reset successfully. Redirecting to login...
           </p>
           <Link href="/login">
@@ -84,13 +84,13 @@ function ResetPasswordForm() {
 
   if (!token) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 py-12 px-4">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4">
         <div className="max-w-md w-full text-center">
-          <div className="w-16 h-16 bg-red-100 dark:bg-red-900 rounded-full flex items-center justify-center mx-auto mb-6">
-            <XCircle className="w-8 h-8 text-red-600 dark:text-red-400" />
+          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
+            <XCircle className="w-8 h-8 text-red-600" />
           </div>
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">Invalid Link</h2>
-          <p className="text-gray-600 dark:text-gray-400 mb-6">
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Invalid Link</h2>
+          <p className="text-gray-600 mb-6">
             This password reset link is invalid or has expired.
           </p>
           <Link href="/forgot-password">
@@ -102,24 +102,24 @@ function ResetPasswordForm() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 py-12 px-4">
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4">
       <div className="max-w-md w-full space-y-8">
         <div className="text-center">
-          <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100">Reset Password</h2>
-          <p className="mt-2 text-gray-600 dark:text-gray-400">
+          <h2 className="text-3xl font-bold text-gray-900">Reset Password</h2>
+          <p className="mt-2 text-gray-600">
             Enter your new password
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="mt-8 space-y-6">
           {error && (
-            <div className="p-3 bg-red-50 dark:bg-red-900/50 border border-red-200 dark:border-red-800 rounded-lg text-red-600 dark:text-red-400 text-sm">
+            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">
               {error}
             </div>
           )}
 
           <div>
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
               New Password
             </label>
             <div className="relative">
@@ -130,7 +130,7 @@ function ResetPasswordForm() {
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 dark:bg-gray-800 dark:text-gray-100"
+                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
                 placeholder="Enter new password"
                 minLength={6}
               />
@@ -138,7 +138,7 @@ function ResetPasswordForm() {
           </div>
 
           <div>
-            <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-1">
               Confirm Password
             </label>
             <div className="relative">
@@ -149,7 +149,7 @@ function ResetPasswordForm() {
                 required
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 dark:bg-gray-800 dark:text-gray-100"
+                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
                 placeholder="Confirm new password"
               />
             </div>

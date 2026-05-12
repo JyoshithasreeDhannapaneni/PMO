@@ -130,40 +130,40 @@ function RichTextEditor({
       onMouseDown={(e) => { e.preventDefault(); exec(cmd, val); }}
       title={title}
       disabled={disabled}
-      className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400 disabled:opacity-40 transition-colors"
+      className="p-1.5 rounded hover:bg-gray-100 text-gray-600 disabled:opacity-40 transition-colors"
     >
       {icon}
     </button>
   );
 
   return (
-    <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+    <div className="border border-gray-200 rounded-lg overflow-hidden">
       {/* Toolbar */}
-      <div className="flex items-center gap-0.5 px-2 py-1.5 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 flex-wrap">
+      <div className="flex items-center gap-0.5 px-2 py-1.5 border-b border-gray-200 bg-gray-50 flex-wrap">
         {/* Paragraph style */}
         <select
           onMouseDown={(e) => e.stopPropagation()}
           onChange={(e) => exec('formatBlock', e.target.value)}
           disabled={disabled}
-          className="text-xs border border-gray-200 dark:border-gray-600 rounded px-1.5 py-1 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 mr-1 focus:outline-none"
+          className="text-xs border border-gray-200 rounded px-1.5 py-1 bg-white text-gray-700 mr-1 focus:outline-none"
         >
           <option value="p">Paragraph</option>
           <option value="h1">Heading 1</option>
           <option value="h2">Heading 2</option>
           <option value="h3">Heading 3</option>
         </select>
-        <div className="w-px h-5 bg-gray-200 dark:bg-gray-600 mx-1" />
+        <div className="w-px h-5 bg-gray-200 mx-1" />
         {toolbarBtn(<Bold size={14} />, 'bold', undefined, 'Bold')}
         {toolbarBtn(<Italic size={14} />, 'italic', undefined, 'Italic')}
         {toolbarBtn(<Underline size={14} />, 'underline', undefined, 'Underline')}
-        <div className="w-px h-5 bg-gray-200 dark:bg-gray-600 mx-1" />
+        <div className="w-px h-5 bg-gray-200 mx-1" />
         {toolbarBtn(<List size={14} />, 'insertUnorderedList', undefined, 'Bullet List')}
         {toolbarBtn(<ListOrdered size={14} />, 'insertOrderedList', undefined, 'Numbered List')}
-        <div className="w-px h-5 bg-gray-200 dark:bg-gray-600 mx-1" />
+        <div className="w-px h-5 bg-gray-200 mx-1" />
         {toolbarBtn(<AlignLeft size={14} />, 'justifyLeft', undefined, 'Align Left')}
         {toolbarBtn(<AlignCenter size={14} />, 'justifyCenter', undefined, 'Align Center')}
         {toolbarBtn(<AlignRight size={14} />, 'justifyRight', undefined, 'Align Right')}
-        <div className="w-px h-5 bg-gray-200 dark:bg-gray-600 mx-1" />
+        <div className="w-px h-5 bg-gray-200 mx-1" />
         <button
           type="button"
           onMouseDown={(e) => {
@@ -173,7 +173,7 @@ function RichTextEditor({
           }}
           title="Link"
           disabled={disabled}
-          className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400 disabled:opacity-40 transition-colors"
+          className="p-1.5 rounded hover:bg-gray-100 text-gray-600 disabled:opacity-40 transition-colors"
         >
           <Link2 size={14} />
         </button>
@@ -186,7 +186,7 @@ function RichTextEditor({
           }}
           title="Image"
           disabled={disabled}
-          className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400 disabled:opacity-40 transition-colors"
+          className="p-1.5 rounded hover:bg-gray-100 text-gray-600 disabled:opacity-40 transition-colors"
         >
           <Image size={14} />
         </button>
@@ -198,11 +198,11 @@ function RichTextEditor({
           }}
           title="Table"
           disabled={disabled}
-          className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400 disabled:opacity-40 transition-colors"
+          className="p-1.5 rounded hover:bg-gray-100 text-gray-600 disabled:opacity-40 transition-colors"
         >
           <Table size={14} />
         </button>
-        <div className="w-px h-5 bg-gray-200 dark:bg-gray-600 mx-1" />
+        <div className="w-px h-5 bg-gray-200 mx-1" />
         {toolbarBtn(<Undo size={14} />, 'undo', undefined, 'Undo')}
         {toolbarBtn(<Redo size={14} />, 'redo', undefined, 'Redo')}
       </div>
@@ -215,7 +215,7 @@ function RichTextEditor({
           suppressContentEditableWarning
           onInput={handleInput}
           onBlur={handleInput}
-          className="min-h-[160px] px-4 py-3 text-sm text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-900 focus:outline-none prose prose-sm max-w-none"
+          className="min-h-[160px] px-4 py-3 text-sm text-gray-900 bg-white focus:outline-none prose prose-sm max-w-none"
           style={{ wordBreak: 'break-word' }}
           data-placeholder={placeholder}
         />
@@ -227,7 +227,7 @@ function RichTextEditor({
       </div>
 
       {/* Word count */}
-      <div className="px-4 py-1.5 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 flex justify-end">
+      <div className="px-4 py-1.5 border-t border-gray-100 bg-gray-50 flex justify-end">
         <span className="text-xs text-gray-400">{wordCount} words</span>
       </div>
     </div>
@@ -437,28 +437,28 @@ export default function CaseStudyEditorPage() {
     <div className="animate-fadeIn">
       {/* Breadcrumb + Header */}
       <div className="mb-5">
-        <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 mb-3">
+        <div className="flex items-center gap-2 text-sm text-gray-500 mb-3">
           <Link href="/case-studies" className="hover:text-primary-600 transition-colors">Case Studies</Link>
           <span>›</span>
-          <span className="text-gray-700 dark:text-gray-300">{isPublished ? 'View Case Study' : 'Edit Case Study'}</span>
+          <span className="text-gray-700">{isPublished ? 'View Case Study' : 'Edit Case Study'}</span>
         </div>
 
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
             <button
               onClick={() => router.back()}
-              className="p-1.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 flex-shrink-0"
+              className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 flex-shrink-0"
             >
-              <ArrowLeft size={16} className="text-gray-600 dark:text-gray-400" />
+              <ArrowLeft size={16} className="text-gray-600" />
             </button>
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <h1 className="text-xl font-bold text-gray-900 dark:text-white truncate">{title || 'Untitled Case Study'}</h1>
+                <h1 className="text-xl font-bold text-gray-900 truncate">{title || 'Untitled Case Study'}</h1>
                 <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${STATUS_BADGE[caseStudy.status] || STATUS_BADGE.PENDING}`}>
                   {caseStudy.status.charAt(0) + caseStudy.status.slice(1).toLowerCase().replace('_', ' ')}
                 </span>
               </div>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+              <p className="text-sm text-gray-500 mt-0.5">
                 {caseStudy.project?.customerName} · Created on {createdDate} by {caseStudy.project?.projectManager}
               </p>
             </div>
@@ -479,7 +479,7 @@ export default function CaseStudyEditorPage() {
 
             <Link
               href={`/case-studies/${caseStudyId}/preview`}
-              className="flex items-center gap-1.5 px-3 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+              className="flex items-center gap-1.5 px-3 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50 transition-colors"
             >
               <Eye size={14} />
               Preview
@@ -487,7 +487,7 @@ export default function CaseStudyEditorPage() {
             <button
               onClick={() => handleExport('pdf')}
               disabled={isExporting}
-              className="flex items-center gap-1.5 px-3 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
+              className="flex items-center gap-1.5 px-3 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50 transition-colors disabled:opacity-50"
             >
               {isExporting ? <Loader2 size={14} className="animate-spin" /> : <FileDown size={14} />}
               PDF
@@ -495,7 +495,7 @@ export default function CaseStudyEditorPage() {
             <button
               onClick={() => handleExport('word')}
               disabled={isExporting}
-              className="flex items-center gap-1.5 px-3 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
+              className="flex items-center gap-1.5 px-3 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50 transition-colors disabled:opacity-50"
             >
               {isExporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
               Word
@@ -518,10 +518,10 @@ export default function CaseStudyEditorPage() {
         {/* ── Left Sidebar ────────────────────────────────────────────────── */}
         <div className="lg:col-span-1 space-y-4">
           {/* Progress */}
-          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Case Study Progress</h3>
+          <div className="bg-white rounded-xl border border-gray-200 p-4">
+            <h3 className="text-sm font-semibold text-gray-900 mb-3">Case Study Progress</h3>
             <div className="flex items-center gap-3 mb-1.5">
-              <div className="flex-1 bg-gray-100 dark:bg-gray-700 rounded-full h-2.5 overflow-hidden">
+              <div className="flex-1 bg-gray-100 rounded-full h-2.5 overflow-hidden">
                 <div
                   className="h-full rounded-full transition-all duration-500"
                   style={{
@@ -530,17 +530,17 @@ export default function CaseStudyEditorPage() {
                   }}
                 />
               </div>
-              <span className="text-sm font-bold text-gray-700 dark:text-gray-300">{completion}%</span>
+              <span className="text-sm font-bold text-gray-700">{completion}%</span>
             </div>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
+            <p className="text-xs text-gray-500">
               {completion === 100 ? 'All required sections completed!' : 'Complete all required sections to publish'}
             </p>
           </div>
 
           {/* Case Study Details */}
-          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+          <div className="bg-white rounded-xl border border-gray-200 p-4">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Case Study Details</h3>
+              <h3 className="text-sm font-semibold text-gray-900">Case Study Details</h3>
               <button className="text-xs text-primary-600 hover:text-primary-700 flex items-center gap-1">
                 <Edit size={12} />
                 Edit
@@ -548,24 +548,24 @@ export default function CaseStudyEditorPage() {
             </div>
             <div className="space-y-2.5 text-sm">
               <div>
-                <span className="text-xs text-gray-500 dark:text-gray-400 block">Customer</span>
-                <span className="font-semibold text-gray-900 dark:text-white">{caseStudy.project?.customerName || 'N/A'}</span>
+                <span className="text-xs text-gray-500 block">Customer</span>
+                <span className="font-semibold text-gray-900">{caseStudy.project?.customerName || 'N/A'}</span>
               </div>
               <div>
-                <span className="text-xs text-gray-500 dark:text-gray-400 block">Project Manager</span>
-                <span className="font-semibold text-gray-900 dark:text-white">{caseStudy.project?.projectManager || 'N/A'}</span>
+                <span className="text-xs text-gray-500 block">Project Manager</span>
+                <span className="font-semibold text-gray-900">{caseStudy.project?.projectManager || 'N/A'}</span>
               </div>
               <div>
-                <span className="text-xs text-gray-500 dark:text-gray-400 block">Source</span>
-                <span className="font-semibold text-gray-900 dark:text-white">{caseStudy.project?.sourcePlatform || 'N/A'}</span>
+                <span className="text-xs text-gray-500 block">Source</span>
+                <span className="font-semibold text-gray-900">{caseStudy.project?.sourcePlatform || 'N/A'}</span>
               </div>
               <div>
-                <span className="text-xs text-gray-500 dark:text-gray-400 block">Target</span>
-                <span className="font-semibold text-gray-900 dark:text-white">{caseStudy.project?.targetPlatform || 'N/A'}</span>
+                <span className="text-xs text-gray-500 block">Target</span>
+                <span className="font-semibold text-gray-900">{caseStudy.project?.targetPlatform || 'N/A'}</span>
               </div>
               {migrationBadge && (
                 <div>
-                  <span className="text-xs text-gray-500 dark:text-gray-400 block mb-1">Migration Type</span>
+                  <span className="text-xs text-gray-500 block mb-1">Migration Type</span>
                   <span className={`text-xs px-2 py-0.5 rounded font-medium ${migrationBadge.cls}`}>{migrationBadge.label}</span>
                 </div>
               )}
@@ -573,8 +573,8 @@ export default function CaseStudyEditorPage() {
           </div>
 
           {/* Template Sections nav */}
-          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Template Sections</h3>
+          <div className="bg-white rounded-xl border border-gray-200 p-4">
+            <h3 className="text-sm font-semibold text-gray-900 mb-3">Template Sections</h3>
             <div className="space-y-1">
               {TEMPLATE_SECTIONS.map((section) => {
                 const raw = sectionContent[section.id] || '';
@@ -586,28 +586,28 @@ export default function CaseStudyEditorPage() {
                       setExpandedSections((prev) => new Set([...prev, section.id]));
                       document.getElementById(`section-${section.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                     }}
-                    className="w-full text-left px-2 py-1.5 rounded-lg text-xs flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                    className="w-full text-left px-2 py-1.5 rounded-lg text-xs flex items-center gap-2 hover:bg-gray-50 transition-colors"
                   >
                     <span className={`w-2 h-2 rounded-full flex-shrink-0 border-2 ${
                       hasContent
                         ? 'bg-primary-500 border-primary-500'
                         : section.required
                           ? 'bg-transparent border-orange-400'
-                          : 'bg-transparent border-gray-300 dark:border-gray-600'
+                          : 'bg-transparent border-gray-300'
                     }`} />
-                    <span className={`truncate ${hasContent ? 'text-gray-900 dark:text-white font-medium' : 'text-gray-500 dark:text-gray-400'}`}>
+                    <span className={`truncate ${hasContent ? 'text-gray-900 font-medium' : 'text-gray-500'}`}>
                       {section.title}
                     </span>
                   </button>
                 );
               })}
             </div>
-            <div className="flex items-center gap-4 mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
-              <span className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+            <div className="flex items-center gap-4 mt-3 pt-3 border-t border-gray-100">
+              <span className="flex items-center gap-1.5 text-xs text-gray-500">
                 <span className="w-2 h-2 rounded-full bg-orange-400 border-2 border-orange-400 inline-block" />
                 Required
               </span>
-              <span className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+              <span className="flex items-center gap-1.5 text-xs text-gray-500">
                 <span className="w-2 h-2 rounded-full border-2 border-gray-300 inline-block" />
                 Optional
               </span>
@@ -618,8 +618,8 @@ export default function CaseStudyEditorPage() {
         {/* ── Main Editor ──────────────────────────────────────────────────── */}
         <div className="lg:col-span-3 space-y-4">
           {/* Title */}
-          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+          <div className="bg-white rounded-xl border border-gray-200 p-4">
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">
               Case Study Title <span className="text-red-500">*</span>
             </label>
             <input
@@ -628,7 +628,7 @@ export default function CaseStudyEditorPage() {
               onChange={(e) => setTitle(e.target.value)}
               placeholder="Enter a compelling title for this case study"
               disabled={isPublished}
-              className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-60"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-60"
             />
           </div>
 
@@ -642,24 +642,24 @@ export default function CaseStudyEditorPage() {
               <div
                 key={section.id}
                 id={`section-${section.id}`}
-                className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden"
+                className="bg-white rounded-xl border border-gray-200 overflow-hidden"
               >
                 <button
                   onClick={() => toggleSection(section.id)}
-                  className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors"
+                  className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-gray-50 transition-colors"
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     <span className="text-base">{section.icon}</span>
                     <div className="text-left min-w-0">
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                        <span className="text-sm font-semibold text-gray-900">
                           {section.title}
                           {section.required && <span className="text-red-500 ml-1">*</span>}
                         </span>
                         {hasContent && <CheckCircle size={14} className="text-green-500 flex-shrink-0" />}
-                        {section.required && !hasContent && <span className="text-xs text-orange-500 bg-orange-50 dark:bg-orange-900/20 px-1.5 py-0.5 rounded">Required</span>}
+                        {section.required && !hasContent && <span className="text-xs text-orange-500 bg-orange-50 px-1.5 py-0.5 rounded">Required</span>}
                       </div>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">{section.description}</p>
+                      <p className="text-xs text-gray-500 mt-0.5 truncate">{section.description}</p>
                     </div>
                   </div>
                   {isExpanded
@@ -688,7 +688,7 @@ export default function CaseStudyEditorPage() {
               <button
                 onClick={() => handleSave()}
                 disabled={isSaving}
-                className="flex items-center gap-2 px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
+                className="flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50 transition-colors disabled:opacity-50"
               >
                 {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
                 Save Draft

@@ -17,20 +17,19 @@ class DashboardService {
   // Build a WHERE clause fragment for manager filtering
   private managerWhere(managerName?: string): { clause: string; params: string[] } {
     if (managerName) {
-      return { clause: `WHERE project_manager = ?`, params: [managerName] };
+      return { clause: `WHERE project_manager = $1`, params: [managerName] };
     }
     return { clause: '', params: [] };
   }
 
-  private andManagerWhere(managerName?: string): { clause: string; params: string[] } {
+  private andManagerWhere(managerName?: string, existingParamCount = 0): { clause: string; params: string[] } {
     if (managerName) {
-      return { clause: `AND project_manager = ?`, params: [managerName] };
+      return { clause: `AND project_manager = $${existingParamCount + 1}`, params: [managerName] };
     }
     return { clause: '', params: [] };
   }
 
   async getStats(managerName?: string): Promise<DashboardStats> {
-    const { clause: w, params: p } = this.managerWhere(managerName);
     const { clause: aw, params: ap } = this.andManagerWhere(managerName);
 
     const [
@@ -54,7 +53,7 @@ class DashboardService {
       query(`SELECT COUNT(*) as count FROM projects WHERE delay_status = 'AT_RISK' ${aw}`, ap),
       query(`SELECT COUNT(*) as count FROM case_studies cs JOIN projects p ON cs.project_id = p.id WHERE cs.status = 'PENDING' ${aw.replace(/^AND /, 'AND p.')}`, ap),
       query(`SELECT AVG(delay_days) as avg FROM projects WHERE delay_days > 0 ${aw}`, ap),
-      query(`SELECT COUNT(*) as count FROM projects WHERE is_overaged = 1`, []),
+      query(`SELECT COUNT(*) as count FROM projects WHERE is_overaged = true`, []),
     ]);
 
     return {
@@ -162,7 +161,7 @@ class DashboardService {
      FROM projects
      WHERE status = 'ACTIVE'
        AND planned_end >= NOW()
-       AND planned_end <= DATE_ADD(NOW(), INTERVAL ${safeDays} DAY)
+       AND planned_end <= NOW() + (${safeDays} || ' days')::INTERVAL
        ${aw}
      ORDER BY planned_end ASC`,
     ap
@@ -181,7 +180,7 @@ class DashboardService {
     const { clause: w, params: p } = this.managerWhere(managerName);
     const [projectsResult, templatesResult] = await Promise.all([
       query(`SELECT id, migration_types, status, delay_status, planned_end, created_at FROM projects ${w}`, p),
-      query(`SELECT id, code, name FROM migration_templates WHERE is_active = 1 ORDER BY name ASC`, []),
+      query(`SELECT id, code, name FROM migration_templates WHERE is_active = true ORDER BY name ASC`, []),
     ]);
 
     const allProjects = projectsResult.rows;
@@ -279,8 +278,9 @@ class DashboardService {
   }
 
   async getWeeklyReport(managerName?: string, startDate?: string, endDate?: string) {
-    const { clause: w, params: p } = this.managerWhere(managerName);
-    const { clause: aw, params: ap } = this.andManagerWhere(managerName);
+    // Build manager filter with correct param index (date params $1,$2 come first in each query)
+    const managerClause = managerName ? `AND project_manager = $3` : '';
+    const managerParam = managerName ? [managerName] : [];
 
     const now = endDate ? new Date(endDate) : new Date();
     const weekStart = startDate ? new Date(startDate) : new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -291,91 +291,104 @@ class DashboardService {
     const pwStr = prevWeekStart.toISOString();
     const nowStr = now.toISOString();
 
-    const [newlyAdded, prevNewlyAdded, closedThisWeek, prevClosed, changedThisWeek, prevChanged] =
+    const [newlyAddedRes, prevNewlyAddedRes, closedRes, prevClosedRes, changedRes, prevChangedRes] =
       await Promise.all([
+        // Newly created in period
         query(
-          `SELECT id, name, customer_name, project_manager, migration_types, created_at
-           FROM projects WHERE created_at >= ? AND created_at < ? ${aw}`,
-          [wsStr, nowStr, ...ap]
+          `SELECT id, name, customer_name, project_manager, migration_types, status, created_at
+           FROM projects WHERE created_at >= $1 AND created_at <= $2 ${managerClause}
+           ORDER BY created_at DESC`,
+          [wsStr, nowStr, ...managerParam]
         ),
         query(
-          `SELECT COUNT(*) as count FROM projects WHERE created_at >= ? AND created_at < ? ${aw}`,
-          [pwStr, wsStr, ...ap]
+          `SELECT COUNT(*) as count FROM projects WHERE created_at >= $1 AND created_at <= $2 ${managerClause}`,
+          [pwStr, wsStr, ...managerParam]
         ),
+        // Closed/cancelled: status changed to COMPLETED or CANCELLED in period (not newly created this period)
         query(
           `SELECT id, name, customer_name, project_manager, migration_types, status, updated_at
-           FROM projects WHERE status IN ('COMPLETED','CANCELLED') AND updated_at >= ? AND updated_at < ? ${aw}`,
-          [wsStr, nowStr, ...ap]
+           FROM projects
+           WHERE status IN ('COMPLETED','CANCELLED')
+             AND updated_at >= $1 AND updated_at <= $2
+             AND created_at < $1
+             ${managerClause}
+           ORDER BY updated_at DESC`,
+          [wsStr, nowStr, ...managerParam]
         ),
         query(
-          `SELECT COUNT(*) as count FROM projects WHERE status IN ('COMPLETED','CANCELLED') AND updated_at >= ? AND updated_at < ? ${aw}`,
-          [pwStr, wsStr, ...ap]
+          `SELECT COUNT(*) as count FROM projects
+           WHERE status IN ('COMPLETED','CANCELLED')
+             AND updated_at >= $1 AND updated_at <= $2
+             AND created_at < $1
+             ${managerClause}`,
+          [pwStr, wsStr, ...managerParam]
+        ),
+        // Changed: updated but not newly created this period and not completed/cancelled
+        query(
+          `SELECT id, name, customer_name, project_manager, migration_types, status, updated_at, delay_status, phase
+           FROM projects
+           WHERE updated_at >= $1 AND updated_at <= $2
+             AND created_at < $1
+             AND status NOT IN ('COMPLETED','CANCELLED')
+             ${managerClause}
+           ORDER BY updated_at DESC`,
+          [wsStr, nowStr, ...managerParam]
         ),
         query(
-          `SELECT id, name, customer_name, project_manager, migration_types, updated_at
-           FROM projects WHERE updated_at >= ? AND updated_at < ? AND status = 'ACTIVE' ${aw}`,
-          [wsStr, nowStr, ...ap]
-        ),
-        query(
-          `SELECT COUNT(*) as count FROM projects WHERE updated_at >= ? AND updated_at < ? AND status = 'ACTIVE' ${aw}`,
-          [pwStr, wsStr, ...ap]
+          `SELECT COUNT(*) as count FROM projects
+           WHERE updated_at >= $1 AND updated_at <= $2
+             AND created_at < $1
+             AND status NOT IN ('COMPLETED','CANCELLED')
+             ${managerClause}`,
+          [pwStr, wsStr, ...managerParam]
         ),
       ]);
 
-    const newlyAddedRows = newlyAdded.rows;
-    const closedRows = closedThisWeek.rows;
-    const changedRows = changedThisWeek.rows;
+    const newlyAdded = newlyAddedRes.rows;
+    const closed = closedRes.rows;
+    const changed = changedRes.rows;
 
-    // Change types breakdown from migration_types across all changed projects
-    const allChanged = [...newlyAddedRows, ...closedRows, ...changedRows];
-    const uniqueProjectIds = new Set(allChanged.map((r) => r.id));
-    const managersInvolved = new Set(allChanged.map((r) => r.project_manager).filter(Boolean));
+    const newlyAddedIds = new Set(newlyAdded.map((r: any) => r.id));
+    const closedIds = new Set(closed.map((r: any) => r.id));
 
-    const changeTypeCounts: Record<string, number> = { Configuration: 0, Content: 0, Access: 0, Others: 0 };
-    changedRows.forEach((r) => {
-      const mt = (r.migration_types || '').toUpperCase();
-      if (mt.includes('EMAIL')) changeTypeCounts['Configuration']++;
-      else if (mt.includes('CONTENT')) changeTypeCounts['Content']++;
-      else if (mt.includes('MESSAGING')) changeTypeCounts['Access']++;
-      else changeTypeCounts['Others']++;
-    });
+    // Build per-manager breakdown
+    const managerMap: Record<string, { added: number; closed: number; changed: number }> = {};
+    const ensure = (m: string) => { if (!managerMap[m]) managerMap[m] = { added: 0, closed: 0, changed: 0 }; };
+    newlyAdded.forEach((r: any) => { const m = r.project_manager || 'Unassigned'; ensure(m); managerMap[m].added++; });
+    closed.forEach((r: any) => { const m = r.project_manager || 'Unassigned'; ensure(m); managerMap[m].closed++; });
+    changed.forEach((r: any) => { const m = r.project_manager || 'Unassigned'; ensure(m); managerMap[m].changed++; });
 
-    // Group changes by manager
-    const changesByManager: Record<string, number> = {};
-    changedRows.forEach((r) => {
-      const mgr = r.project_manager || 'Unassigned';
-      changesByManager[mgr] = (changesByManager[mgr] || 0) + 1;
-    });
+    const byManager = Object.entries(managerMap).map(([manager, counts]) => ({ manager, ...counts }))
+      .sort((a, b) => (b.added + b.closed + b.changed) - (a.added + a.closed + a.changed));
+
+    const managersWithChanges = new Set([
+      ...newlyAdded.map((r: any) => r.project_manager),
+      ...closed.map((r: any) => r.project_manager),
+      ...changed.map((r: any) => r.project_manager),
+    ].filter(Boolean)).size;
 
     return {
-      weekRange: {
-        start: weekStart.toISOString(),
-        end: now.toISOString(),
-      },
+      weekRange: { start: weekStart.toISOString(), end: now.toISOString() },
       summary: {
-        newlyAdded: newlyAddedRows.length,
-        newlyAddedVsLastWeek: newlyAddedRows.length - parseInt(prevNewlyAdded.rows[0].count || 0),
-        closedDecommissioned: closedRows.length,
-        closedVsLastWeek: closedRows.length - parseInt(prevClosed.rows[0].count || 0),
-        changesByManagers: changedRows.length,
-        changesVsLastWeek: changedRows.length - parseInt(prevChanged.rows[0].count || 0),
-        totalProjectsImpacted: uniqueProjectIds.size,
-        managersInvolved: managersInvolved.size,
-        applicationsModified: uniqueProjectIds.size,
+        newlyAdded: newlyAdded.length,
+        newlyAddedVsLastWeek: newlyAdded.length - parseInt(prevNewlyAddedRes.rows[0].count || '0'),
+        closedDecommissioned: closed.length,
+        closedVsLastWeek: closed.length - parseInt(prevClosedRes.rows[0].count || '0'),
+        changedProjects: changed.length,
+        changesVsLastWeek: changed.length - parseInt(prevChangedRes.rows[0].count || '0'),
+        managersWithChanges,
+        byManager,
       },
-      changeTypes: Object.entries(changeTypeCounts)
-        .filter(([, v]) => v > 0)
-        .map(([label, count]) => ({ label, count })),
-      changesByManager: Object.entries(changesByManager).map(([manager, count]) => ({ manager, count })),
-      newlyAddedProjects: newlyAddedRows.map((r) => ({
+      newlyAdded: newlyAdded.map((r: any) => ({
         id: r.id,
         name: r.name,
         customerName: r.customer_name,
         projectManager: r.project_manager,
         migrationTypes: r.migration_types,
+        status: r.status,
         createdAt: r.created_at,
       })),
-      closedProjects: closedRows.map((r) => ({
+      closedThisWeek: closed.map((r: any) => ({
         id: r.id,
         name: r.name,
         customerName: r.customer_name,
@@ -384,30 +397,34 @@ class DashboardService {
         status: r.status,
         updatedAt: r.updated_at,
       })),
-      changedProjects: changedRows.map((r) => ({
+      changedThisWeek: changed.map((r: any) => ({
         id: r.id,
         name: r.name,
         customerName: r.customer_name,
         projectManager: r.project_manager,
         migrationTypes: r.migration_types,
+        status: r.status,
+        delayStatus: r.delay_status,
+        phase: r.phase,
         updatedAt: r.updated_at,
       })),
     };
   }
 
   async getOveragedProjects(managerName?: string) {
+    await this.ensureOverageHistoryTable();
     const { clause: aw, params: ap } = this.andManagerWhere(managerName);
     const result = await query(
       `SELECT id, name, customer_name, project_manager, account_manager, status, phase,
               planned_end, delay_days, delay_status, migration_types, is_overaged, overage_amount, overage_notes,
               extended_start_date, extended_end_date
        FROM projects
-       WHERE is_overaged = 1 AND status NOT IN ('COMPLETED','CANCELLED') ${aw}
+       WHERE is_overaged = true AND status NOT IN ('COMPLETED','CANCELLED') ${aw}
        ORDER BY planned_end ASC`,
       ap
     );
     const now = new Date();
-    return result.rows.map((r: any) => ({
+    const projects = result.rows.map((r: any) => ({
       id: r.id,
       name: r.name,
       customerName: r.customer_name,
@@ -424,24 +441,51 @@ class DashboardService {
       overageNotes: r.overage_notes ?? null,
       extendedStartDate: r.extended_start_date ?? null,
       extendedEndDate: r.extended_end_date ?? null,
+      overageHistory: [] as any[],
     }));
+    if (projects.length > 0) {
+      const ids = projects.map((p) => p.id);
+      const histResult = await query(
+        `SELECT oh.*, p.name as project_name FROM overage_history oh
+         JOIN projects p ON p.id = oh.project_id
+         WHERE oh.project_id = ANY($1)
+         ORDER BY oh.created_at DESC`,
+        [ids]
+      );
+      const histMap: Record<string, any[]> = {};
+      for (const oh of histResult.rows) {
+        if (!histMap[oh.project_id]) histMap[oh.project_id] = [];
+        histMap[oh.project_id].push({
+          id: oh.id,
+          overageAmount: oh.overage_amount,
+          notes: oh.notes,
+          extendedStartDate: oh.extended_start_date,
+          extendedEndDate: oh.extended_end_date,
+          createdAt: oh.created_at,
+        });
+      }
+      for (const p of projects) {
+        p.overageHistory = histMap[p.id] || [];
+      }
+    }
+    return projects;
   }
 
   private _escalationHistoryReady = false;
   async ensureEscalationHistoryTable() {
     if (this._escalationHistoryReady) return;
     await execute(`CREATE TABLE IF NOT EXISTS escalation_history (
-      id CHAR(36) PRIMARY KEY DEFAULT (UUID()),
-      project_id CHAR(36) NOT NULL,
-      priority ENUM('LOW','MEDIUM','HIGH') NOT NULL DEFAULT 'MEDIUM',
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      project_id UUID NOT NULL,
+      priority VARCHAR(20) NOT NULL DEFAULT 'MEDIUM',
       escalation_type VARCHAR(100),
       notes TEXT,
-      escalated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      resolved_date DATETIME NULL,
-      INDEX idx_esc_hist_project (project_id)
+      escalated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      resolved_date TIMESTAMP NULL
     )`, []);
-    try { await execute(`ALTER TABLE projects ADD COLUMN resolved_date DATETIME NULL`, []); } catch (_) { /* exists */ }
-    try { await execute(`ALTER TABLE projects ADD COLUMN escalation_archived TINYINT(1) NOT NULL DEFAULT 0`, []); } catch (_) { /* exists */ }
+    try { await execute(`CREATE INDEX IF NOT EXISTS idx_esc_hist_project ON escalation_history(project_id)`, []); } catch (_) {}
+    try { await execute(`ALTER TABLE projects ADD COLUMN resolved_date TIMESTAMP NULL`, []); } catch (_) { /* exists */ }
+    try { await execute(`ALTER TABLE projects ADD COLUMN escalation_archived BOOLEAN NOT NULL DEFAULT false`, []); } catch (_) { /* exists */ }
     this._escalationHistoryReady = true;
   }
 
@@ -453,9 +497,9 @@ class DashboardService {
               planned_end, delay_days, delay_status, migration_types,
               is_escalated, escalation_priority, escalated_at, escalation_notes, resolved_date
        FROM projects
-       WHERE is_escalated = 1 AND status NOT IN ('COMPLETED','CANCELLED')
-             AND (escalation_archived IS NULL OR escalation_archived = 0) ${aw}
-       ORDER BY FIELD(escalation_priority,'HIGH','MEDIUM','LOW'), delay_days DESC`,
+       WHERE is_escalated = true AND status NOT IN ('COMPLETED','CANCELLED')
+             AND (escalation_archived IS NULL OR escalation_archived = false) ${aw}
+       ORDER BY CASE WHEN escalation_priority='HIGH' THEN 1 WHEN escalation_priority='MEDIUM' THEN 2 ELSE 3 END, delay_days DESC`,
       ap
     );
     const projects = result.rows.map((r: any) => ({
@@ -480,11 +524,10 @@ class DashboardService {
     // Fetch history for all projects
     if (projects.length > 0) {
       const ids = projects.map((p) => p.id);
-      const placeholders = ids.map(() => '?').join(',');
       const histResult = await query(
         `SELECT id, project_id, priority, escalation_type, notes, escalated_at, resolved_date
-         FROM escalation_history WHERE project_id IN (${placeholders}) ORDER BY escalated_at DESC`,
-        ids
+         FROM escalation_history WHERE project_id = ANY($1) ORDER BY escalated_at DESC`,
+        [ids]
       );
       const histMap: Record<string, any[]> = {};
       for (const h of histResult.rows) {
@@ -509,12 +552,15 @@ class DashboardService {
     await this.ensureEscalationHistoryTable();
     const { clause: aw, params: ap } = this.andManagerWhere(managerName);
     const result = await query(
-      `SELECT id, name, customer_name, project_manager, account_manager, status, phase,
-              planned_end, delay_days, delay_status, migration_types,
-              is_escalated, escalation_priority, escalated_at, escalation_notes, resolved_date, escalation_archived
-       FROM projects
-       WHERE is_escalated = 1 AND (status IN ('COMPLETED','CANCELLED') OR escalation_archived = 1) ${aw}
-       ORDER BY COALESCE(resolved_date, escalated_at) DESC`,
+      `SELECT DISTINCT p.id, p.name, p.customer_name, p.project_manager, p.account_manager, p.status, p.phase,
+              p.planned_end, p.delay_days, p.delay_status, p.migration_types,
+              p.is_escalated, p.escalation_priority, p.escalated_at, p.escalation_notes, p.resolved_date,
+              COALESCE(p.escalation_archived, false) as escalation_archived
+       FROM projects p
+       INNER JOIN escalation_history eh ON eh.project_id = p.id
+       WHERE (p.status IN ('COMPLETED','CANCELLED') OR p.escalation_archived = true)
+       ${aw}
+       ORDER BY COALESCE(p.resolved_date, p.escalated_at) DESC`,
       ap
     );
     const projects = result.rows.map((r: any) => ({
@@ -539,11 +585,10 @@ class DashboardService {
     }));
     if (projects.length > 0) {
       const ids = projects.map((p) => p.id);
-      const placeholders = ids.map(() => '?').join(',');
       const histResult = await query(
         `SELECT id, project_id, priority, escalation_type, notes, escalated_at, resolved_date
-         FROM escalation_history WHERE project_id IN (${placeholders}) ORDER BY escalated_at DESC`,
-        ids
+         FROM escalation_history WHERE project_id = ANY($1) ORDER BY escalated_at DESC`,
+        [ids]
       );
       const histMap: Record<string, any[]> = {};
       for (const h of histResult.rows) {
@@ -566,48 +611,48 @@ class DashboardService {
 
   async archiveEscalation(projectId: string) {
     await this.ensureEscalationHistoryTable();
-    await execute(`UPDATE projects SET escalation_archived = 1 WHERE id = ?`, [projectId]);
+    await execute(`UPDATE projects SET escalation_archived = true WHERE id = $1`, [projectId]);
   }
 
   async unarchiveEscalation(projectId: string) {
-    await execute(`UPDATE projects SET escalation_archived = 0 WHERE id = ?`, [projectId]);
+    await execute(`UPDATE projects SET escalation_archived = false WHERE id = $1`, [projectId]);
   }
 
   private _overageHistoryReady = false;
   async ensureOverageHistoryTable() {
     if (this._overageHistoryReady) return;
     await execute(`CREATE TABLE IF NOT EXISTS overage_history (
-      id CHAR(36) PRIMARY KEY DEFAULT (UUID()),
-      project_id CHAR(36) NOT NULL,
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      project_id UUID NOT NULL,
       overage_amount DECIMAL(15,2) NULL,
       notes TEXT NULL,
-      extended_start_date DATETIME NULL,
-      extended_end_date DATETIME NULL,
-      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      INDEX idx_overage_hist_project (project_id)
+      extended_start_date TIMESTAMP NULL,
+      extended_end_date TIMESTAMP NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
     )`, []);
-    // Add extended_start_date and extended_end_date columns to projects if missing
-    try { await execute(`ALTER TABLE projects ADD COLUMN extended_start_date DATETIME NULL`, []); } catch (_) { /* exists */ }
-    try { await execute(`ALTER TABLE projects ADD COLUMN extended_end_date DATETIME NULL`, []); } catch (_) { /* exists */ }
+    try { await execute(`CREATE INDEX IF NOT EXISTS idx_overage_hist_project ON overage_history(project_id)`, []); } catch (_) {}
+    try { await execute(`ALTER TABLE projects ADD COLUMN extended_start_date TIMESTAMP NULL`, []); } catch (_) { /* exists */ }
+    try { await execute(`ALTER TABLE projects ADD COLUMN extended_end_date TIMESTAMP NULL`, []); } catch (_) { /* exists */ }
     this._overageHistoryReady = true;
   }
 
   async markOverageProject(projectId: string, overageAmount?: number, notes?: string, extendedStartDate?: string, extendedEndDate?: string) {
     await this.ensureOverageHistoryTable();
-    const updates: string[] = ['is_overaged = 1', 'overage_amount = ?', 'overage_notes = ?'];
-    const params: any[] = [overageAmount || null, notes || null];
-    if (extendedStartDate) { updates.push('extended_start_date = ?'); params.push(new Date(extendedStartDate)); }
+    const updates: string[] = [];
+    const params: any[] = [];
+    updates.push(`is_overaged = true`);
+    updates.push(`overage_amount = $${params.length + 1}`); params.push(overageAmount || null);
+    updates.push(`overage_notes = $${params.length + 1}`); params.push(notes || null);
+    if (extendedStartDate) { updates.push(`extended_start_date = $${params.length + 1}`); params.push(new Date(extendedStartDate)); }
     if (extendedEndDate) {
-      updates.push('extended_end_date = ?'); params.push(new Date(extendedEndDate));
-      // Sync extended end date into the SOW End Date (planned_end) so project timeline reflects it
-      updates.push('planned_end = ?'); params.push(new Date(extendedEndDate));
+      updates.push(`extended_end_date = $${params.length + 1}`); params.push(new Date(extendedEndDate));
+      updates.push(`planned_end = $${params.length + 1}`); params.push(new Date(extendedEndDate));
     }
-    params.push(projectId);
-    await execute(`UPDATE projects SET ${updates.join(', ')} WHERE id = ?`, params);
+    await execute(`UPDATE projects SET ${updates.join(', ')} WHERE id = $${params.length + 1}`, [...params, projectId]);
     // Insert into overage_history so multiple overage events are tracked
     await execute(
-      `INSERT INTO overage_history (id, project_id, overage_amount, notes, extended_start_date, extended_end_date, created_at)
-       VALUES (UUID(), ?, ?, ?, ?, ?, NOW())`,
+      `INSERT INTO overage_history (project_id, overage_amount, notes, extended_start_date, extended_end_date)
+       VALUES ($1, $2, $3, $4, $5)`,
       [
         projectId,
         overageAmount || null,
@@ -620,7 +665,7 @@ class DashboardService {
 
   async unmarkOverageProject(projectId: string) {
     await execute(
-      `UPDATE projects SET is_overaged = 0, overage_amount = NULL, overage_notes = NULL WHERE id = ?`,
+      `UPDATE projects SET is_overaged = false, overage_amount = NULL, overage_notes = NULL WHERE id = $1`,
       [projectId]
     );
   }
@@ -639,11 +684,11 @@ class DashboardService {
       if (TYPES.includes(notes)) { escalationType = notes; userNotes = null; }
     }
     await execute(
-      `UPDATE projects SET is_escalated = 1, escalation_priority = ?, escalated_at = NOW(), escalation_notes = ?, resolved_date = NULL WHERE id = ?`,
+      `UPDATE projects SET is_escalated = true, escalation_priority = $1, escalated_at = NOW(), escalation_notes = $2, resolved_date = NULL WHERE id = $3`,
       [priority, notes || null, projectId]
     );
     await execute(
-      `INSERT INTO escalation_history (project_id, priority, escalation_type, notes, escalated_at) VALUES (?, ?, ?, ?, NOW())`,
+      `INSERT INTO escalation_history (project_id, priority, escalation_type, notes, escalated_at) VALUES ($1, $2, $3, $4, NOW())`,
       [projectId, priority, escalationType, userNotes]
     );
   }
@@ -651,16 +696,18 @@ class DashboardService {
   async setResolvedDate(projectId: string, resolvedDate: string | null) {
     await this.ensureEscalationHistoryTable();
     const rd = resolvedDate ? new Date(resolvedDate) : null;
-    await execute(`UPDATE projects SET resolved_date = ? WHERE id = ?`, [rd, projectId]);
+    await execute(`UPDATE projects SET resolved_date = $1 WHERE id = $2`, [rd, projectId]);
     if (rd) {
       // Mark the most recent open history record as resolved
       await execute(
-        `UPDATE escalation_history SET resolved_date = ? WHERE project_id = ? AND resolved_date IS NULL ORDER BY escalated_at DESC LIMIT 1`,
+        `UPDATE escalation_history SET resolved_date = $1 WHERE id = (
+           SELECT id FROM escalation_history WHERE project_id = $2 AND resolved_date IS NULL ORDER BY escalated_at DESC LIMIT 1
+         )`,
         [rd, projectId]
       );
     } else {
       await execute(
-        `UPDATE escalation_history SET resolved_date = NULL WHERE project_id = ? AND resolved_date IS NOT NULL`,
+        `UPDATE escalation_history SET resolved_date = NULL WHERE project_id = $1 AND resolved_date IS NOT NULL`,
         [projectId]
       );
     }
@@ -669,11 +716,11 @@ class DashboardService {
   async deescalateProject(projectId: string) {
     await this.ensureEscalationHistoryTable();
     await execute(
-      `UPDATE escalation_history SET resolved_date = NOW() WHERE project_id = ? AND resolved_date IS NULL`,
+      `UPDATE escalation_history SET resolved_date = NOW() WHERE project_id = $1 AND resolved_date IS NULL`,
       [projectId]
     );
     await execute(
-      `UPDATE projects SET is_escalated = 0, escalation_priority = NULL, escalated_at = NULL, escalation_notes = NULL, resolved_date = NOW() WHERE id = ?`,
+      `UPDATE projects SET is_escalated = false, escalation_priority = NULL, escalated_at = NULL, escalation_notes = NULL, resolved_date = NOW() WHERE id = $1`,
       [projectId]
     );
   }
@@ -683,19 +730,20 @@ class DashboardService {
 
     // Find the 1-based index of this type in the templates table (for legacy numeric IDs)
     const tplResult = await query(
-      `SELECT code FROM migration_templates WHERE is_active = 1 ORDER BY name ASC`, []
+      `SELECT code FROM migration_templates WHERE is_active = true ORDER BY name ASC`, []
     );
     const tplCodes: string[] = tplResult.rows.map((r: any) => r.code.toUpperCase());
     const legacyIdx = tplCodes.indexOf(code) + 1; // 1-based; 0 means not found
 
     let sql = `SELECT id, name, customer_name, project_manager, status, phase, delay_status, delay_days, planned_end, migration_types
                FROM projects
-               WHERE migration_types LIKE ?`;
+               WHERE migration_types LIKE $1`;
     const params: any[] = [`%${code}%`];
 
     // Also match legacy numeric ID
     if (legacyIdx > 0) {
-      sql += ` OR migration_types = ? OR migration_types LIKE ? OR migration_types LIKE ?`;
+      const n = params.length + 1;
+      sql += ` OR migration_types = $${n} OR migration_types LIKE $${n + 1} OR migration_types LIKE $${n + 2}`;
       params.push(
         String(legacyIdx),
         `${legacyIdx},%`,
@@ -718,6 +766,57 @@ class DashboardService {
       plannedEnd: r.planned_end,
       migrationTypes: r.migration_types,
     }));
+  }
+
+  private _dailyNotesReady = false;
+  private async ensureDailyNotesTable() {
+    if (this._dailyNotesReady) return;
+    await execute(`CREATE TABLE IF NOT EXISTS escalation_daily_notes (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      note_date DATE NOT NULL DEFAULT CURRENT_DATE,
+      author VARCHAR(200),
+      note TEXT NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`, []);
+    try { await execute(`CREATE INDEX IF NOT EXISTS idx_daily_notes_project ON escalation_daily_notes(project_id, note_date DESC)`, []); } catch (_) {}
+    this._dailyNotesReady = true;
+  }
+
+  async getEscalationDailyNotes(projectId: string) {
+    await this.ensureDailyNotesTable();
+    const result = await query(
+      `SELECT * FROM escalation_daily_notes WHERE project_id = $1 ORDER BY note_date DESC, created_at DESC`,
+      [projectId]
+    );
+    return result.rows.map((r: any) => ({
+      id: r.id,
+      projectId: r.project_id,
+      noteDate: r.note_date,
+      author: r.author,
+      note: r.note,
+      createdAt: r.created_at,
+    }));
+  }
+
+  async addEscalationDailyNote(projectId: string, note: string, author?: string, noteDate?: string) {
+    await this.ensureDailyNotesTable();
+    const date = noteDate || new Date().toISOString().split('T')[0];
+    const result = await query(
+      `INSERT INTO escalation_daily_notes (project_id, note_date, author, note)
+       VALUES ($1, $2, $3, $4) RETURNING *`,
+      [projectId, date, author || null, note]
+    );
+    const r = result.rows[0];
+    return { id: r.id, projectId: r.project_id, noteDate: r.note_date, author: r.author, note: r.note, createdAt: r.created_at };
+  }
+
+  async deleteEscalationDailyNote(projectId: string, noteId: string) {
+    await this.ensureDailyNotesTable();
+    await execute(
+      `DELETE FROM escalation_daily_notes WHERE id = $1 AND project_id = $2`,
+      [noteId, projectId]
+    );
   }
 }
 

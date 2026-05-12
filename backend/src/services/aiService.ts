@@ -1,5 +1,18 @@
-import { Project } from '../types/database';
 import { logger } from '../utils/logger';
+
+// Minimal Project shape needed by this service
+interface Project {
+  id: string;
+  customerName: string;
+  sourcePlatform?: string;
+  targetPlatform?: string;
+  plannedStart: string;
+  plannedEnd: string;
+  planType: string;
+  status: string;
+  phase: string;
+  delayDays: number;
+}
 
 /**
  * AI Service - Placeholder for future AI agent integrations

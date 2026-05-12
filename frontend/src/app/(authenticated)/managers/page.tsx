@@ -46,20 +46,20 @@ function AddGoalModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={onClose}>
-      <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between p-5 border-b border-gray-200 dark:border-gray-700">
-          <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between p-5 border-b border-gray-200">
+          <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
             <Target size={18} className="text-primary-600" /> Add / Update Manager Goal
           </h2>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"><X size={17} className="text-gray-500" /></button>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100"><X size={17} className="text-gray-500" /></button>
         </div>
         <div className="p-5 space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Manager</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Manager</label>
             <select
               value={managerName}
               onChange={(e) => setManagerName(e.target.value)}
-              className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500"
             >
               <option value="">Select a manager...</option>
               {managers.map((m) => <option key={m} value={m}>{m}</option>)}
@@ -68,18 +68,18 @@ function AddGoalModal({
           </div>
           {managerName === '__custom__' && (
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Manager Name</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Manager Name</label>
               <input
                 type="text"
                 value={customManager}
                 onChange={(e) => setCustomManager(e.target.value)}
                 placeholder="Enter manager name..."
-                className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500"
               />
             </div>
           )}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label className="block text-sm font-medium text-gray-700 mb-1">
               Goal Percentage: <span className="text-primary-600 font-bold">{goalPct}%</span>
             </label>
             <input
@@ -98,7 +98,7 @@ function AddGoalModal({
           <div className="flex gap-3 pt-2">
             <button
               onClick={onClose}
-              className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+              className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50 transition-colors"
             >
               Cancel
             </button>
@@ -170,8 +170,8 @@ export default function ManagersPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Managers & Goals</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Track manager performance and set completion goals</p>
+          <h1 className="text-2xl font-bold text-gray-900">Managers & Goals</h1>
+          <p className="text-sm text-gray-500 mt-0.5">Track manager performance and set completion goals</p>
         </div>
         {isAdmin && (
           <button
@@ -185,7 +185,7 @@ export default function ManagersPage() {
 
       {/* Role scope banner */}
       {isManager && (
-        <div className="flex items-center gap-3 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl text-xs text-blue-700 dark:text-blue-300">
+        <div className="flex items-center gap-3 p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-700">
           <AlertCircle size={14} className="flex-shrink-0" />
           <span><strong>Manager View</strong> — Showing your project tracker (<strong>{user?.name}</strong>).</span>
         </div>
@@ -194,17 +194,17 @@ export default function ManagersPage() {
       {/* Summary cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { label: 'Total Managers', value: (statsData?.data || []).length, icon: Users, color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-900/40' },
-          { label: 'On Target', value: (statsData?.data || []).filter((s: ManagerStat) => s.achievedPct >= s.goalPct).length, icon: TrendingUp, color: 'text-green-600', bg: 'bg-green-50 dark:bg-green-900/40' },
-          { label: 'Below Target', value: (statsData?.data || []).filter((s: ManagerStat) => s.achievedPct < s.goalPct).length, icon: TrendingDown, color: 'text-red-600', bg: 'bg-red-50 dark:bg-red-900/40' },
-          { label: 'Custom Goals Set', value: goals.length, icon: Target, color: 'text-purple-600', bg: 'bg-purple-50 dark:bg-purple-900/40' },
+          { label: 'Total Managers', value: (statsData?.data || []).length, icon: Users, color: 'text-blue-600', bg: 'bg-blue-50' },
+          { label: 'On Target', value: (statsData?.data || []).filter((s: ManagerStat) => s.achievedPct >= s.goalPct).length, icon: TrendingUp, color: 'text-green-600', bg: 'bg-green-50' },
+          { label: 'Below Target', value: (statsData?.data || []).filter((s: ManagerStat) => s.achievedPct < s.goalPct).length, icon: TrendingDown, color: 'text-red-600', bg: 'bg-red-50' },
+          { label: 'Custom Goals Set', value: goals.length, icon: Target, color: 'text-purple-600', bg: 'bg-purple-50' },
         ].map((item) => (
           <Card key={item.label} className="text-center py-4">
             <div className={`w-10 h-10 rounded-lg ${item.bg} flex items-center justify-center mx-auto mb-2`}>
               <item.icon size={20} className={item.color} />
             </div>
-            <p className="text-2xl font-bold text-gray-900 dark:text-white">{item.value}</p>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{item.label}</p>
+            <p className="text-2xl font-bold text-gray-900">{item.value}</p>
+            <p className="text-xs text-gray-500 mt-0.5">{item.label}</p>
           </Card>
         ))}
       </div>
@@ -212,7 +212,7 @@ export default function ManagersPage() {
       {/* Manager Tracker Table */}
       <Card>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+          <h2 className="text-base font-semibold text-gray-900 flex items-center gap-2">
             <FolderKanban size={16} className="text-primary-600" /> Manager Project Tracker
           </h2>
           {isAdmin && (
@@ -237,10 +237,10 @@ export default function ManagersPage() {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 dark:bg-gray-700/50">
+              <thead className="bg-blue-50/60">
                 <tr>
                   {['Manager', 'Total Projects', 'Active', 'Inactive', 'Completed', 'Delayed', 'Goal (%)', 'Achieved (%)', 'Variance (%)', 'Metrics'].map((h) => (
-                    <th key={h} className={`py-2.5 px-3 font-medium text-gray-500 dark:text-gray-400 ${h === 'Manager' ? 'text-left' : 'text-center'}`}>{h}</th>
+                    <th key={h} className={`py-2.5 px-3 font-medium text-gray-500 ${h === 'Manager' ? 'text-left' : 'text-center'}`}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -253,19 +253,19 @@ export default function ManagersPage() {
                   const inactiveOk = inactivePct <= 5;
                   const achievementOk = m.achievedPct >= 25;
                   return (
-                    <tr key={m.manager} className="border-t border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
+                    <tr key={m.manager} className="border-t border-gray-100 hover:bg-gray-50 transition-colors">
                       <td className="py-3 px-3">
                         <div className="flex items-center gap-2">
-                          <div className="w-7 h-7 rounded-full bg-primary-100 dark:bg-primary-900/40 flex items-center justify-center text-xs font-bold text-primary-700 dark:text-primary-300 flex-shrink-0">
+                          <div className="w-7 h-7 rounded-full bg-primary-100 flex items-center justify-center text-xs font-bold text-primary-700 flex-shrink-0">
                             {m.manager.charAt(0).toUpperCase()}
                           </div>
-                          <Link href={`/projects?projectManager=${encodeURIComponent(m.manager)}`} className="font-medium text-gray-800 dark:text-gray-200 hover:text-primary-600 hover:underline">
+                          <Link href={`/projects?projectManager=${encodeURIComponent(m.manager)}`} className="font-medium text-gray-800 hover:text-primary-600 hover:underline">
                             {m.manager}
                           </Link>
                         </div>
                       </td>
                       <td className="text-center py-3 px-3">
-                        <Link href={`/projects?projectManager=${encodeURIComponent(m.manager)}`} className="font-semibold text-gray-700 dark:text-gray-300 hover:text-primary-600">
+                        <Link href={`/projects?projectManager=${encodeURIComponent(m.manager)}`} className="font-semibold text-gray-700 hover:text-primary-600">
                           {m.total}
                         </Link>
                       </td>
@@ -293,13 +293,13 @@ export default function ManagersPage() {
                       <td className="text-center py-3 px-3">
                         <span className={`inline-flex items-center justify-center min-w-[22px] h-5 px-1 rounded-full text-xs font-semibold ${m.delayed > 0 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-400'}`}>{m.delayed}</span>
                       </td>
-                      <td className="text-center py-3 px-3 text-gray-700 dark:text-gray-300">{m.goalPct}%</td>
+                      <td className="text-center py-3 px-3 text-gray-700">{m.goalPct}%</td>
                       <td className="text-center py-3 px-3">
                         <div className="flex items-center justify-center gap-2">
-                          <div className="w-16 bg-gray-200 dark:bg-gray-600 rounded-full h-1.5">
+                          <div className="w-16 bg-gray-200 rounded-full h-1.5">
                             <div className="bg-primary-500 h-1.5 rounded-full" style={{ width: `${Math.min(m.achievedPct, 100)}%` }} />
                           </div>
-                          <span className="font-semibold text-gray-900 dark:text-white text-xs">{m.achievedPct}%</span>
+                          <span className="font-semibold text-gray-900 text-xs">{m.achievedPct}%</span>
                         </div>
                       </td>
                       <td className="text-center py-3 px-3">
@@ -333,23 +333,23 @@ export default function ManagersPage() {
       {/* Custom Goals List — admin only */}
       {isAdmin && goals.length > 0 && (
         <Card>
-          <h2 className="text-base font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+          <h2 className="text-base font-semibold text-gray-900 mb-4 flex items-center gap-2">
             <Target size={16} className="text-primary-600" /> Custom Goal Settings
           </h2>
           <div className="space-y-2">
             {goals.map((g) => (
-              <div key={g.id} className="flex items-center justify-between p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50 border border-gray-100 dark:border-gray-700">
+              <div key={g.id} className="flex items-center justify-between p-3 rounded-lg bg-gray-50 border border-gray-100">
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-primary-100 dark:bg-primary-900/40 flex items-center justify-center text-sm font-bold text-primary-700 dark:text-primary-300">
+                  <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center text-sm font-bold text-primary-700">
                     {g.managerName.charAt(0).toUpperCase()}
                   </div>
-                  <span className="text-sm font-medium text-gray-800 dark:text-gray-200">{g.managerName}</span>
+                  <span className="text-sm font-medium text-gray-800">{g.managerName}</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="text-sm font-bold text-primary-600">{g.goalPct}% goal</span>
                   <button
                     onClick={() => deleteMutation.mutate(g.id)}
-                    className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600 text-gray-400 transition-colors"
+                    className="p-1.5 rounded-lg hover:bg-red-50 hover:text-red-600 text-gray-400 transition-colors"
                     title="Remove custom goal"
                   >
                     <Trash2 size={14} />

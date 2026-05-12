@@ -136,17 +136,17 @@ export function CommentSection({ entityType, entityId }: CommentSectionProps) {
     return (
       <div className={`${isReply ? 'ml-10 mt-3' : ''}`}>
         <div className="flex items-start gap-3">
-          <div className="w-8 h-8 bg-primary-100 dark:bg-primary-900 rounded-full flex items-center justify-center text-primary-600 dark:text-primary-400 text-sm font-medium">
+          <div className="w-8 h-8 bg-primary-100 rounded-full flex items-center justify-center text-primary-600 text-sm font-medium">
             {comment.user.name.charAt(0).toUpperCase()}
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <span className="font-medium text-gray-900 dark:text-gray-100">{comment.user.name}</span>
-              <span className="text-xs text-gray-500 dark:text-gray-400">
+              <span className="font-medium text-gray-900">{comment.user.name}</span>
+              <span className="text-xs text-gray-500">
                 {formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true })}
               </span>
               {comment.isEdited && (
-                <span className="text-xs text-gray-400 dark:text-gray-500">(edited)</span>
+                <span className="text-xs text-gray-400">(edited)</span>
               )}
             </div>
 
@@ -155,7 +155,7 @@ export function CommentSection({ entityType, entityId }: CommentSectionProps) {
                 <textarea
                   value={editContent}
                   onChange={(e) => setEditContent(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 dark:bg-gray-800 dark:text-gray-100"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500"
                   rows={2}
                 />
                 <div className="flex gap-2 mt-2">
@@ -166,7 +166,7 @@ export function CommentSection({ entityType, entityId }: CommentSectionProps) {
                 </div>
               </div>
             ) : (
-              <p className="text-sm text-gray-700 dark:text-gray-300 mt-1 whitespace-pre-wrap">
+              <p className="text-sm text-gray-700 mt-1 whitespace-pre-wrap">
                 {comment.content}
               </p>
             )}
@@ -176,7 +176,7 @@ export function CommentSection({ entityType, entityId }: CommentSectionProps) {
                 {!isReply && (
                   <button
                     onClick={() => setReplyingTo(replyingTo === comment.id ? null : comment.id)}
-                    className="text-xs text-gray-500 dark:text-gray-400 hover:text-primary-600 dark:hover:text-primary-400 flex items-center gap-1"
+                    className="text-xs text-gray-500 hover:text-primary-600 flex items-center gap-1"
                   >
                     <Reply size={12} />
                     Reply
@@ -186,14 +186,14 @@ export function CommentSection({ entityType, entityId }: CommentSectionProps) {
                   <>
                     <button
                       onClick={() => { setEditingId(comment.id); setEditContent(comment.content); }}
-                      className="text-xs text-gray-500 dark:text-gray-400 hover:text-primary-600 dark:hover:text-primary-400 flex items-center gap-1"
+                      className="text-xs text-gray-500 hover:text-primary-600 flex items-center gap-1"
                     >
                       <Edit2 size={12} />
                       Edit
                     </button>
                     <button
                       onClick={() => handleDelete(comment.id)}
-                      className="text-xs text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 flex items-center gap-1"
+                      className="text-xs text-gray-500 hover:text-red-600 flex items-center gap-1"
                     >
                       <Trash2 size={12} />
                       Delete
@@ -211,7 +211,7 @@ export function CommentSection({ entityType, entityId }: CommentSectionProps) {
                   value={newComment}
                   onChange={(e) => setNewComment(e.target.value)}
                   placeholder="Write a reply..."
-                  className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 dark:bg-gray-800 dark:text-gray-100"
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500"
                   onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSubmit(comment.id)}
                 />
                 <Button size="sm" onClick={() => handleSubmit(comment.id)} disabled={submitting}>
@@ -236,7 +236,7 @@ export function CommentSection({ entityType, entityId }: CommentSectionProps) {
 
   if (loading) {
     return (
-      <div className="p-4 text-center text-gray-500 dark:text-gray-400">
+      <div className="p-4 text-center text-gray-500">
         Loading comments...
       </div>
     );
@@ -244,14 +244,14 @@ export function CommentSection({ entityType, entityId }: CommentSectionProps) {
 
   return (
     <div className="space-y-4">
-      <h3 className="font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+      <h3 className="font-semibold text-gray-900 flex items-center gap-2">
         <MessageSquare size={18} />
         Comments ({comments.length})
       </h3>
 
       {/* New Comment Form */}
       <div className="flex gap-3">
-        <div className="w-8 h-8 bg-primary-100 dark:bg-primary-900 rounded-full flex items-center justify-center text-primary-600 dark:text-primary-400 text-sm font-medium">
+        <div className="w-8 h-8 bg-primary-100 rounded-full flex items-center justify-center text-primary-600 text-sm font-medium">
           {user?.name?.charAt(0).toUpperCase() || 'U'}
         </div>
         <div className="flex-1">
@@ -259,7 +259,7 @@ export function CommentSection({ entityType, entityId }: CommentSectionProps) {
             value={newComment}
             onChange={(e) => setNewComment(e.target.value)}
             placeholder="Write a comment..."
-            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 dark:bg-gray-800 dark:text-gray-100"
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500"
             rows={2}
           />
           <div className="flex justify-end mt-2">
@@ -273,8 +273,8 @@ export function CommentSection({ entityType, entityId }: CommentSectionProps) {
 
       {/* Comments List */}
       {comments.length === 0 ? (
-        <div className="p-8 text-center text-gray-500 dark:text-gray-400">
-          <MessageSquare className="w-12 h-12 mx-auto mb-4 text-gray-300 dark:text-gray-600" />
+        <div className="p-8 text-center text-gray-500">
+          <MessageSquare className="w-12 h-12 mx-auto mb-4 text-gray-300" />
           <p>No comments yet</p>
           <p className="text-sm">Be the first to comment</p>
         </div>

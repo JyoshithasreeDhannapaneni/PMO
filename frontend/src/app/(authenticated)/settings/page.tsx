@@ -69,7 +69,8 @@ interface PlanType {
   id: string;
   name: string;
   color: string;
-  amount :number;
+  amount?: number;
+  slaHours?: number;
 }
 
 interface ProjectPhase {
@@ -1261,7 +1262,7 @@ export default function SettingsPage() {
           {/* Add custom notification modal */}
           {showAddNotifModal && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setShowAddNotifModal(false)}>
-              <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
                 <div className="flex items-center justify-between p-5 border-b border-gray-200">
                   <h2 className="text-base font-bold text-gray-900">New Custom Notification</h2>
                   <button onClick={() => setShowAddNotifModal(false)} className="p-1.5 rounded-lg hover:bg-gray-100"><X size={16} className="text-gray-500" /></button>
@@ -1914,7 +1915,7 @@ export default function SettingsPage() {
         {/* Add Rule Modal */}
         {showAddRule && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setShowAddRule(false)}>
-            <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between p-5 border-b border-gray-200">
                 <h2 className="text-base font-bold text-gray-900 flex items-center gap-2"><Workflow size={16} className="text-primary-600" /> New Automation Rule</h2>
                 <button onClick={() => setShowAddRule(false)} className="p-1.5 rounded-lg hover:bg-gray-100"><X size={16} className="text-gray-500" /></button>

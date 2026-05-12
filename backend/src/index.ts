@@ -1,8 +1,10 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
-import dotenv from 'dotenv';
 
 import { errorHandler } from './middleware/errorHandler';
 import { notFoundHandler } from './middleware/notFoundHandler';
@@ -31,8 +33,6 @@ import { initializeCronJobs } from './jobs';
 import { logger } from './utils/logger';
 import { authService } from './services/authService';
 import { templateService } from './services/templateService';
-
-dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -89,50 +89,51 @@ app.use(errorHandler);
 async function columnExists(table: string, column: string): Promise<boolean> {
   try {
     const result = await query(
-      `SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS
-       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
+      `SELECT COUNT(*) as cnt FROM information_schema.columns
+       WHERE table_catalog = current_database() AND table_schema = 'public'
+       AND table_name = $1 AND column_name = $2`,
       [table, column]
     );
-    return Number(result.rows[0]?.cnt ?? result.rows[0]?.['COUNT(*)'] ?? 0) > 0;
+    return Number(result.rows[0]?.cnt ?? 0) > 0;
   } catch {
     return false;
   }
 }
 
 async function runMigrations() {
-  // MODIFY existing columns — safe to retry (errors caught below)
-  const modifyStatements = [
-    `ALTER TABLE projects MODIFY COLUMN phase VARCHAR(50) NOT NULL DEFAULT 'KICKOFF'`,
-    `ALTER TABLE projects MODIFY COLUMN plan_type VARCHAR(50) NOT NULL DEFAULT 'SILVER'`,
-    `ALTER TABLE projects MODIFY COLUMN migration_types VARCHAR(500)`,
-    `ALTER TABLE projects MODIFY COLUMN source_platform VARCHAR(500)`,
-    `ALTER TABLE projects MODIFY COLUMN target_platform VARCHAR(500)`,
+  // ALTER existing columns to wider types — safe to retry
+  const alterStatements = [
+    `ALTER TABLE projects ALTER COLUMN phase TYPE VARCHAR(50)`,
+    `ALTER TABLE projects ALTER COLUMN plan_type TYPE VARCHAR(50)`,
+    `ALTER TABLE projects ALTER COLUMN migration_types TYPE VARCHAR(500)`,
+    `ALTER TABLE projects ALTER COLUMN source_platform TYPE VARCHAR(500)`,
+    `ALTER TABLE projects ALTER COLUMN target_platform TYPE VARCHAR(500)`,
   ];
-  for (const sql of modifyStatements) {
+  for (const sql of alterStatements) {
     try { await execute(sql); } catch { /* already correct type — ignore */ }
   }
 
-  // ADD new columns only if they don't exist (MySQL 5.7 compatible)
+  // ADD new columns only if they don't exist
   if (!await columnExists('projects', 'number_of_servers')) {
-    try { await execute(`ALTER TABLE projects ADD COLUMN number_of_servers INT`); } catch {}
+    try { await execute(`ALTER TABLE projects ADD COLUMN number_of_servers INTEGER`); } catch {}
   }
   if (!await columnExists('projects', 'project_memory')) {
     try { await execute(`ALTER TABLE projects ADD COLUMN project_memory VARCHAR(100)`); } catch {}
   }
   if (!await columnExists('projects', 'is_escalated')) {
-    try { await execute(`ALTER TABLE projects ADD COLUMN is_escalated TINYINT(1) NOT NULL DEFAULT 0`); } catch {}
+    try { await execute(`ALTER TABLE projects ADD COLUMN is_escalated BOOLEAN NOT NULL DEFAULT false`); } catch {}
   }
   if (!await columnExists('projects', 'escalation_priority')) {
-    try { await execute(`ALTER TABLE projects ADD COLUMN escalation_priority ENUM('LOW','MEDIUM','HIGH') DEFAULT NULL`); } catch {}
+    try { await execute(`ALTER TABLE projects ADD COLUMN escalation_priority VARCHAR(20) DEFAULT NULL`); } catch {}
   }
   if (!await columnExists('projects', 'escalated_at')) {
-    try { await execute(`ALTER TABLE projects ADD COLUMN escalated_at DATETIME DEFAULT NULL`); } catch {}
+    try { await execute(`ALTER TABLE projects ADD COLUMN escalated_at TIMESTAMP DEFAULT NULL`); } catch {}
   }
   if (!await columnExists('projects', 'escalation_notes')) {
     try { await execute(`ALTER TABLE projects ADD COLUMN escalation_notes TEXT DEFAULT NULL`); } catch {}
   }
   if (!await columnExists('projects', 'is_overaged')) {
-    try { await execute(`ALTER TABLE projects ADD COLUMN is_overaged TINYINT(1) NOT NULL DEFAULT 0`); } catch {}
+    try { await execute(`ALTER TABLE projects ADD COLUMN is_overaged BOOLEAN NOT NULL DEFAULT false`); } catch {}
   }
   if (!await columnExists('projects', 'overage_amount')) {
     try { await execute(`ALTER TABLE projects ADD COLUMN overage_amount DECIMAL(15,2) DEFAULT NULL`); } catch {}
