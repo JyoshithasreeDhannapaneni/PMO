@@ -33,7 +33,7 @@ class SearchService {
     const [projects, tasks, risks, teamMembers, documents, caseStudies, users] = await Promise.all([
       safeQuery(
         `SELECT id, name, customer_name, status, project_manager, account_manager FROM projects
-         WHERE name LIKE ? OR customer_name LIKE ? OR project_manager LIKE ? OR account_manager LIKE ? OR description LIKE ?
+         WHERE name LIKE $1 OR customer_name LIKE $2 OR project_manager LIKE $3 OR account_manager LIKE $4 OR description LIKE $5
          LIMIT ${lim}`,
         [searchTerm, searchTerm, searchTerm, searchTerm, searchTerm]
       ),
@@ -41,7 +41,7 @@ class SearchService {
         `SELECT t.id, t.name, t.project_id, t.status, p.name as project_name
          FROM project_tasks t
          JOIN projects p ON t.project_id = p.id
-         WHERE t.name LIKE ? OR t.notes LIKE ? OR t.assignee LIKE ?
+         WHERE t.name LIKE $1 OR t.notes LIKE $2 OR t.assignee LIKE $3
          LIMIT ${lim}`,
         [searchTerm, searchTerm, searchTerm]
       ),
@@ -49,7 +49,7 @@ class SearchService {
         `SELECT r.id, r.title, r.project_id, r.status, p.name as project_name
          FROM project_risks r
          JOIN projects p ON r.project_id = p.id
-         WHERE r.title LIKE ? OR r.description LIKE ? OR r.owner LIKE ?
+         WHERE r.title LIKE $1 OR r.description LIKE $2 OR r.owner LIKE $3
          LIMIT ${lim}`,
         [searchTerm, searchTerm, searchTerm]
       ),
@@ -57,7 +57,7 @@ class SearchService {
         `SELECT m.id, m.name, m.email, m.project_id, m.role, p.name as project_name
          FROM project_team_members m
          JOIN projects p ON m.project_id = p.id
-         WHERE m.name LIKE ? OR m.email LIKE ? OR m.department LIKE ?
+         WHERE m.name LIKE $1 OR m.email LIKE $2 OR m.department LIKE $3
          LIMIT ${lim}`,
         [searchTerm, searchTerm, searchTerm]
       ),
@@ -65,7 +65,7 @@ class SearchService {
         `SELECT d.id, d.name, d.project_id, d.category, p.name as project_name
          FROM project_documents d
          JOIN projects p ON d.project_id = p.id
-         WHERE d.name LIKE ? OR d.description LIKE ?
+         WHERE d.name LIKE $1 OR d.description LIKE $2
          LIMIT ${lim}`,
         [searchTerm, searchTerm]
       ),
@@ -73,13 +73,13 @@ class SearchService {
         `SELECT cs.id, cs.title, cs.status, p.name as project_name, p.customer_name
          FROM case_studies cs
          JOIN projects p ON cs.project_id = p.id
-         WHERE cs.title LIKE ? OR cs.content LIKE ?
+         WHERE cs.title LIKE $1 OR cs.content LIKE $2
          LIMIT ${lim}`,
         [searchTerm, searchTerm]
       ),
       safeQuery(
         `SELECT id, name, email, role FROM users
-         WHERE name LIKE ? OR email LIKE ? OR username LIKE ?
+         WHERE name LIKE $1 OR email LIKE $2 OR username LIKE $3
          LIMIT ${lim}`,
         [searchTerm, searchTerm, searchTerm]
       ),
@@ -168,21 +168,21 @@ class SearchService {
 
   async searchProjects(searchQuery: string, filters?: { status?: string; phase?: string; migrationType?: string }) {
     const conditions: string[] = [
-      `(name LIKE ? OR customer_name LIKE ? OR project_manager LIKE ? OR account_manager LIKE ?)`
+      `(name LIKE $1 OR customer_name LIKE $2 OR project_manager LIKE $3 OR account_manager LIKE $4)`
     ];
     const searchTerm = `%${searchQuery}%`;
     const params: any[] = [searchTerm, searchTerm, searchTerm, searchTerm];
 
     if (filters?.status) {
-      conditions.push(`status = ?`);
+      conditions.push(`status = $${params.length + 1}`);
       params.push(filters.status);
     }
     if (filters?.phase) {
-      conditions.push(`phase = ?`);
+      conditions.push(`phase = $${params.length + 1}`);
       params.push(filters.phase);
     }
     if (filters?.migrationType) {
-      conditions.push(`migration_types LIKE ?`);
+      conditions.push(`migration_types LIKE $${params.length + 1}`);
       params.push(`%${filters.migrationType}%`);
     }
 

@@ -22,7 +22,7 @@ class AuditService {
       const logId = uuidv4();
       await execute(
         `INSERT INTO audit_logs (id, user_id, action, entity_type, entity_id, entity_name, old_values, new_values, ip_address, user_agent)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
         [
           logId,
           data.userId,
@@ -36,7 +36,7 @@ class AuditService {
           data.userAgent,
         ]
       );
-      const result = await query(`SELECT * FROM audit_logs WHERE id = ?`, [logId]);
+      const result = await query(`SELECT * FROM audit_logs WHERE id = $1`, [logId]);
       return result.rows[0];
     } catch (error) {
       logger.error('Failed to create audit log:', error);
@@ -60,12 +60,12 @@ class AuditService {
     const conditions: string[] = [];
     const params: any[] = [];
 
-    if (userId) { conditions.push(`a.user_id = ?`); params.push(userId); }
-    if (entityType) { conditions.push(`a.entity_type = ?`); params.push(entityType); }
-    if (entityId) { conditions.push(`a.entity_id = ?`); params.push(entityId); }
-    if (action) { conditions.push(`a.action = ?`); params.push(action); }
-    if (startDate) { conditions.push(`a.created_at >= ?`); params.push(startDate); }
-    if (endDate) { conditions.push(`a.created_at <= ?`); params.push(endDate); }
+    if (userId) { conditions.push(`a.user_id = $${params.length + 1}`); params.push(userId); }
+    if (entityType) { conditions.push(`a.entity_type = $${params.length + 1}`); params.push(entityType); }
+    if (entityId) { conditions.push(`a.entity_id = $${params.length + 1}`); params.push(entityId); }
+    if (action) { conditions.push(`a.action = $${params.length + 1}`); params.push(action); }
+    if (startDate) { conditions.push(`a.created_at >= $${params.length + 1}`); params.push(startDate); }
+    if (endDate) { conditions.push(`a.created_at <= $${params.length + 1}`); params.push(endDate); }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
@@ -111,7 +111,7 @@ class AuditService {
       `SELECT a.*, u.id as u_id, u.name as u_name, u.email as u_email
        FROM audit_logs a
        LEFT JOIN users u ON a.user_id = u.id
-       WHERE a.entity_type = ? AND a.entity_id = ?
+       WHERE a.entity_type = $1 AND a.entity_id = $2
        ORDER BY a.created_at DESC`,
       [entityType, entityId]
     );
@@ -135,7 +135,7 @@ class AuditService {
   async getByUser(userId: string, limit = 50) {
     const safeLimit = Math.max(1, Math.min(200, Math.floor(limit)));
     const result = await query(
-      `SELECT * FROM audit_logs WHERE user_id = ? ORDER BY created_at DESC LIMIT ${safeLimit}`,
+      `SELECT * FROM audit_logs WHERE user_id = $1 ORDER BY created_at DESC LIMIT ${safeLimit}`,
       [userId]
     );
 

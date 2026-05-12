@@ -273,28 +273,28 @@ export default function PreviewCaseStudyPage() {
     <div className="animate-fadeIn">
       {/* Breadcrumb + Header */}
       <div className="mb-5">
-        <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 mb-3">
+        <div className="flex items-center gap-2 text-sm text-gray-500 mb-3">
           <Link href="/case-studies" className="hover:text-primary-600 transition-colors">Case Studies</Link>
           <span>›</span>
-          <span className="text-gray-700 dark:text-gray-300">Preview Case Study</span>
+          <span className="text-gray-700">Preview Case Study</span>
         </div>
 
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
             <button
               onClick={() => router.back()}
-              className="p-1.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 flex-shrink-0"
+              className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 flex-shrink-0"
             >
-              <ArrowLeft size={16} className="text-gray-600 dark:text-gray-400" />
+              <ArrowLeft size={16} className="text-gray-600" />
             </button>
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <h1 className="text-xl font-bold text-gray-900 dark:text-white truncate">{title}</h1>
+                <h1 className="text-xl font-bold text-gray-900 truncate">{title}</h1>
                 <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${STATUS_BADGE[status] || STATUS_BADGE.PENDING}`}>
                   {status.charAt(0) + status.slice(1).toLowerCase().replace('_', ' ')}
                 </span>
               </div>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+              <p className="text-sm text-gray-500 mt-0.5">
                 {caseStudy.project?.customerName} · Created on {createdDate} by {caseStudy.project?.projectManager}
               </p>
             </div>
@@ -303,7 +303,7 @@ export default function PreviewCaseStudyPage() {
           <div className="flex items-center gap-2 flex-shrink-0">
             <Link
               href={`/case-studies/${caseStudyId}`}
-              className="flex items-center gap-1.5 px-3 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+              className="flex items-center gap-1.5 px-3 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50 transition-colors"
             >
               <Edit size={14} />
               Edit Case Study
@@ -319,16 +319,16 @@ export default function PreviewCaseStudyPage() {
                 <ChevronDown size={14} />
               </button>
               {showDownloadMenu && (
-                <div className="absolute right-0 top-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-20 min-w-[140px]">
+                <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 min-w-[140px]">
                   <button
                     onClick={() => handleExport('pdf')}
-                    className="w-full text-left px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2"
+                    className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
                   >
                     <FileText size={14} /> Export as PDF
                   </button>
                   <button
                     onClick={() => handleExport('word')}
-                    className="w-full text-left px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2"
+                    className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
                   >
                     <FileText size={14} /> Export as Word
                   </button>
@@ -340,18 +340,18 @@ export default function PreviewCaseStudyPage() {
       </div>
 
       {/* Preview document */}
-      <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden shadow-sm">
+      <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
         <div className="p-8 max-w-4xl mx-auto">
           {/* Document header */}
           <div className="flex items-start justify-between mb-8">
             <div>
-              <h2 className="text-3xl font-bold text-primary-700 dark:text-primary-400">{caseStudy.project?.customerName || 'Client'}</h2>
-              <p className="text-xl font-medium text-gray-600 dark:text-gray-400 mt-1">Case Study</p>
+              <h2 className="text-3xl font-bold text-primary-700">{caseStudy.project?.customerName || 'Client'}</h2>
+              <p className="text-xl font-medium text-gray-600 mt-1">Case Study</p>
             </div>
             {/* Company logo placeholder */}
             <div className="flex flex-col items-end">
-              <div className="w-24 h-12 border border-gray-200 dark:border-gray-600 rounded-lg flex items-center justify-center bg-gray-50 dark:bg-gray-700">
-                <span className="text-sm font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
+              <div className="w-24 h-12 border border-gray-200 rounded-lg flex items-center justify-center bg-gray-50">
+                <span className="text-sm font-bold text-gray-400 uppercase tracking-wider">
                   {(caseStudy.project?.customerName || 'CO').slice(0, 4)}
                 </span>
               </div>
@@ -359,32 +359,32 @@ export default function PreviewCaseStudyPage() {
           </div>
 
           {/* Meta info cards */}
-          <div className="grid grid-cols-3 gap-4 mb-8 p-4 border border-gray-100 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-900/30">
+          <div className="grid grid-cols-3 gap-4 mb-8 p-4 border border-gray-100 rounded-xl bg-gray-50">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center">
+              <div className="w-8 h-8 rounded-lg bg-primary-100 flex items-center justify-center">
                 <svg className="w-4 h-4 text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
               </div>
               <div>
-                <p className="text-xs text-gray-500 dark:text-gray-400">Customer</p>
-                <p className="text-sm font-semibold text-gray-900 dark:text-white">{caseStudy.project?.customerName || '—'}</p>
+                <p className="text-xs text-gray-500">Customer</p>
+                <p className="text-sm font-semibold text-gray-900">{caseStudy.project?.customerName || '—'}</p>
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
+              <div className="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center">
                 <svg className="w-4 h-4 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
               </div>
               <div>
-                <p className="text-xs text-gray-500 dark:text-gray-400">Project Manager</p>
-                <p className="text-sm font-semibold text-gray-900 dark:text-white">{caseStudy.project?.projectManager || '—'}</p>
+                <p className="text-xs text-gray-500">Project Manager</p>
+                <p className="text-sm font-semibold text-gray-900">{caseStudy.project?.projectManager || '—'}</p>
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+              <div className="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center">
                 <svg className="w-4 h-4 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
               </div>
               <div>
-                <p className="text-xs text-gray-500 dark:text-gray-400">Date</p>
-                <p className="text-sm font-semibold text-gray-900 dark:text-white">{createdDate}</p>
+                <p className="text-xs text-gray-500">Date</p>
+                <p className="text-sm font-semibold text-gray-900">{createdDate}</p>
               </div>
             </div>
           </div>
@@ -399,7 +399,7 @@ export default function PreviewCaseStudyPage() {
               if (!html || html.replace(/<[^>]+>/g, '').trim() === '') return null;
 
               return (
-                <div key={sectionId} className="border-b border-gray-100 dark:border-gray-700 pb-7 last:border-0">
+                <div key={sectionId} className="border-b border-gray-100 pb-7 last:border-0">
                   <div className="flex items-center gap-3 mb-3">
                     <div
                       className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"

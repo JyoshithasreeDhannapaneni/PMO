@@ -20,7 +20,7 @@ class ActivityService {
       const activityId = uuidv4();
       await execute(
         `INSERT INTO activities (id, user_id, type, entity_type, entity_id, entity_name, description, metadata)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
         [
           activityId,
           data.userId,
@@ -33,12 +33,12 @@ class ActivityService {
         ]
       );
 
-      const result = await query(`SELECT * FROM activities WHERE id = ?`, [activityId]);
+      const result = await query(`SELECT * FROM activities WHERE id = $1`, [activityId]);
       const row = result.rows[0];
 
       if (data.userId) {
         const userResult = await query(
-          `SELECT id, name, email, avatar FROM users WHERE id = ?`,
+          `SELECT id, name, email, avatar FROM users WHERE id = $1`,
           [data.userId]
         );
 
@@ -81,8 +81,8 @@ class ActivityService {
     const conditions: string[] = [];
     const params: any[] = [];
 
-    if (entityType) { conditions.push(`a.entity_type = ?`); params.push(entityType); }
-    if (entityId) { conditions.push(`a.entity_id = ?`); params.push(entityId); }
+    if (entityType) { conditions.push(`a.entity_type = $${params.length + 1}`); params.push(entityType); }
+    if (entityId) { conditions.push(`a.entity_id = $${params.length + 1}`); params.push(entityId); }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
@@ -127,7 +127,7 @@ class ActivityService {
       `SELECT a.*, u.id as u_id, u.name as u_name, u.email as u_email, u.avatar as u_avatar
        FROM activities a
        LEFT JOIN users u ON a.user_id = u.id
-       WHERE a.entity_type = ? AND a.entity_id = ?
+       WHERE a.entity_type = $1 AND a.entity_id = $2
        ORDER BY a.created_at DESC
        LIMIT ${safeLimit}`,
       [entityType, entityId]
@@ -174,7 +174,7 @@ class ActivityService {
   async getByUser(userId: string, limit = 30) {
     const safeLimit = Math.max(1, Math.min(100, Math.floor(limit)));
     const result = await query(
-      `SELECT * FROM activities WHERE user_id = ? ORDER BY created_at DESC LIMIT ${safeLimit}`,
+      `SELECT * FROM activities WHERE user_id = $1 ORDER BY created_at DESC LIMIT ${safeLimit}`,
       [userId]
     );
 

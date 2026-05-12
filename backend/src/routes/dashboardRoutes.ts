@@ -69,4 +69,13 @@ router.post('/archive-escalation/:id', dashboardController.archiveEscalation);
 // POST /api/dashboard/unarchive-escalation/:id - Restore to active escalations
 router.post('/unarchive-escalation/:id', dashboardController.unarchiveEscalation);
 
+// GET /api/dashboard/escalation-daily-notes/:projectId - Get daily notes for an escalated project
+router.get('/escalation-daily-notes/:projectId', dashboardController.getEscalationDailyNotes);
+
+// POST /api/dashboard/escalation-daily-notes/:projectId - Add a daily note
+router.post('/escalation-daily-notes/:projectId', dashboardController.addEscalationDailyNote);
+
+// DELETE /api/dashboard/escalation-daily-notes/:projectId/:noteId - Delete a daily note
+router.delete('/escalation-daily-notes/:projectId/:noteId', dashboardController.deleteEscalationDailyNote);
+
 export default router;

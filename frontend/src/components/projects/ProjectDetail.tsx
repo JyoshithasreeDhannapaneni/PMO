@@ -21,7 +21,8 @@ import {
   FileText,
   Server,
   Database,
-  Layers
+  Layers,
+  Siren,
 } from 'lucide-react';
 import Link from 'next/link';
 import { WeeklyReport } from './WeeklyReport';
@@ -242,6 +243,70 @@ export function ProjectDetail({ project }: ProjectDetailProps) {
               </div>
             </div>
           </Card>
+
+          {/* Escalation Status */}
+          {(project.isEscalated || project.escalatedAt) && (
+            <Card className="border-red-200">
+              <div className="flex items-center gap-2 mb-3">
+                <Siren size={16} className="text-red-600" />
+                <span className="font-semibold text-gray-900 text-sm">Escalation Status</span>
+              </div>
+              <div className="space-y-2">
+                {project.escalationPriority && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-500">Priority</span>
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                      project.escalationPriority === 'HIGH' ? 'bg-red-100 text-red-700' :
+                      project.escalationPriority === 'MEDIUM' ? 'bg-orange-100 text-orange-700' :
+                      'bg-yellow-100 text-yellow-700'
+                    }`}>
+                      {project.escalationPriority}
+                    </span>
+                  </div>
+                )}
+                {project.escalatedAt && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-500">Escalated At</span>
+                    <span className="text-sm text-gray-900">{formatDate(project.escalatedAt)}</span>
+                  </div>
+                )}
+                {project.escalationNotes && (
+                  <div className="pt-1">
+                    <span className="text-xs text-gray-500">Notes</span>
+                    <p className="text-sm text-gray-700 mt-0.5">{project.escalationNotes}</p>
+                  </div>
+                )}
+                <div className="pt-2">
+                  <Link href="/escalation-projects" className="text-xs text-red-600 hover:underline font-medium">
+                    View in Escalation Hub →
+                  </Link>
+                </div>
+              </div>
+            </Card>
+          )}
+
+          {/* Overage */}
+          {project.isOveraged && (
+            <Card className="border-orange-200">
+              <div className="flex items-center gap-2 mb-3">
+                <DollarSign size={16} className="text-orange-600" />
+                <span className="font-semibold text-gray-900 text-sm">Overage</span>
+              </div>
+              <div className="space-y-2">
+                {project.overageAmount != null && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-500">Amount</span>
+                    <span className="text-sm font-semibold text-green-700">{formatCurrency(project.overageAmount)}</span>
+                  </div>
+                )}
+                <div className="pt-2">
+                  <Link href="/overage-projects" className="text-xs text-orange-600 hover:underline font-medium">
+                    View in Overage Projects →
+                  </Link>
+                </div>
+              </div>
+            </Card>
+          )}
         </div>
       </div>
     </div>

@@ -33,6 +33,8 @@ export interface Project {
   isOveraged?: boolean;
   isEscalated?: boolean;
   escalationPriority?: string | null;
+  escalatedAt?: string | null;
+  escalationNotes?: string | null;
   overageAmount?: number | null;
   createdAt: string;
   updatedAt: string;
@@ -75,12 +77,14 @@ export interface Notification {
 export interface DashboardStats {
   totalProjects: number;
   activeProjects: number;
+  inactiveProjects?: number;
   completedProjects: number;
   onHoldProjects: number;
   delayedProjects: number;
   atRiskProjects: number;
   pendingCaseStudies: number;
   avgDelayDays: number;
+  overagedCount?: number;
 }
 
 export interface ProjectsByStatus {

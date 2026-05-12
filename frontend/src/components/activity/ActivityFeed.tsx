@@ -44,13 +44,13 @@ const activityIcons: Record<string, any> = {
 };
 
 const activityColors: Record<string, string> = {
-  PROJECT_CREATED: 'bg-blue-100 text-blue-600 dark:bg-blue-900 dark:text-blue-400',
-  PROJECT_COMPLETED: 'bg-green-100 text-green-600 dark:bg-green-900 dark:text-green-400',
-  TASK_COMPLETED: 'bg-green-100 text-green-600 dark:bg-green-900 dark:text-green-400',
-  RISK_IDENTIFIED: 'bg-red-100 text-red-600 dark:bg-red-900 dark:text-red-400',
-  RISK_RESOLVED: 'bg-green-100 text-green-600 dark:bg-green-900 dark:text-green-400',
-  MILESTONE_REACHED: 'bg-purple-100 text-purple-600 dark:bg-purple-900 dark:text-purple-400',
-  CHANGE_REQUEST_APPROVED: 'bg-green-100 text-green-600 dark:bg-green-900 dark:text-green-400',
+  PROJECT_CREATED: 'bg-blue-100 text-blue-600',
+  PROJECT_COMPLETED: 'bg-green-100 text-green-600',
+  TASK_COMPLETED: 'bg-green-100 text-green-600',
+  RISK_IDENTIFIED: 'bg-red-100 text-red-600',
+  RISK_RESOLVED: 'bg-green-100 text-green-600',
+  MILESTONE_REACHED: 'bg-purple-100 text-purple-600',
+  CHANGE_REQUEST_APPROVED: 'bg-green-100 text-green-600',
 };
 
 interface ActivityFeedProps {
@@ -88,7 +88,7 @@ export function ActivityFeed({ entityType, entityId, limit = 20, showHeader = tr
 
   if (loading) {
     return (
-      <div className="p-4 text-center text-gray-500 dark:text-gray-400">
+      <div className="p-4 text-center text-gray-500">
         <Clock className="w-6 h-6 animate-spin mx-auto mb-2" />
         <p className="text-sm">Loading activity...</p>
       </div>
@@ -97,8 +97,8 @@ export function ActivityFeed({ entityType, entityId, limit = 20, showHeader = tr
 
   if (activities.length === 0) {
     return (
-      <div className="p-8 text-center text-gray-500 dark:text-gray-400">
-        <Clock className="w-12 h-12 mx-auto mb-4 text-gray-300 dark:text-gray-600" />
+      <div className="p-8 text-center text-gray-500">
+        <Clock className="w-12 h-12 mx-auto mb-4 text-gray-300" />
         <p>No activity yet</p>
       </div>
     );
@@ -107,13 +107,13 @@ export function ActivityFeed({ entityType, entityId, limit = 20, showHeader = tr
   return (
     <div className="space-y-4">
       {showHeader && (
-        <h3 className="font-semibold text-gray-900 dark:text-gray-100">Recent Activity</h3>
+        <h3 className="font-semibold text-gray-900">Recent Activity</h3>
       )}
       
       <div className="space-y-3">
         {activities.map((activity) => {
           const Icon = activityIcons[activity.type] || Clock;
-          const colorClass = activityColors[activity.type] || 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400';
+          const colorClass = activityColors[activity.type] || 'bg-gray-100 text-gray-600';
           
           return (
             <div key={activity.id} className="flex items-start gap-3">
@@ -121,13 +121,13 @@ export function ActivityFeed({ entityType, entityId, limit = 20, showHeader = tr
                 <Icon size={16} />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm text-gray-900 dark:text-gray-100">
+                <p className="text-sm text-gray-900">
                   {activity.user && (
                     <span className="font-medium">{activity.user.name}</span>
                   )}{' '}
                   {activity.description}
                 </p>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                <p className="text-xs text-gray-500 mt-0.5">
                   {formatDistanceToNow(new Date(activity.createdAt), { addSuffix: true })}
                 </p>
               </div>

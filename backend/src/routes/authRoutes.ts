@@ -40,4 +40,11 @@ router.put('/users/:id/toggle-active', authController.toggleUserActive);
 // DELETE /api/auth/users/:id - Remove a user
 router.delete('/users/:id', authController.deleteUser);
 
+// ── Microsoft OAuth ─────────────────────────────────────────────────
+// GET /api/auth/microsoft - Redirect to Microsoft login
+router.get('/microsoft', authController.microsoftLogin);
+
+// GET /api/auth/microsoft/callback - Handle Microsoft OAuth callback
+router.get('/microsoft/callback', authController.microsoftCallback);
+
 export default router;

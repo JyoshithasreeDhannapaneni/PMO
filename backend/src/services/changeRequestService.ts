@@ -58,7 +58,7 @@ function mapChangeRequestRow(row: any) {
 class ChangeRequestService {
   async getByProject(projectId: string) {
     const result = await query(
-      `SELECT * FROM change_requests WHERE project_id = ? 
+      `SELECT * FROM change_requests WHERE project_id = $1 
        ORDER BY status ASC, priority DESC, requested_date DESC`,
       [projectId]
     );
@@ -70,7 +70,7 @@ class ChangeRequestService {
       `SELECT cr.*, p.name as project_name
        FROM change_requests cr
        JOIN projects p ON cr.project_id = p.id
-       WHERE cr.id = ?`,
+       WHERE cr.id = $1`,
       [id]
     );
 
@@ -104,7 +104,7 @@ class ChangeRequestService {
       `INSERT INTO change_requests (
         id, project_id, title, description, change_type, priority, status, impact, justification,
         requested_by, requested_date, cost_impact, schedule_impact
-      ) VALUES (?, ?, ?, ?, ?, ?, 'PENDING', ?, ?, ?, NOW(), ?, ?)`,
+      ) VALUES ($1, $2, $3, $4, $5, $6, 'PENDING', $7, $8, $9, NOW(), $10, $11)`,
       [
         crId,
         data.projectId,
@@ -120,7 +120,7 @@ class ChangeRequestService {
       ]
     );
 
-    const result = await query(`SELECT * FROM change_requests WHERE id = ?`, [crId]);
+    const result = await query(`SELECT * FROM change_requests WHERE id = $1`, [crId]);
     const cr = mapChangeRequestRow(result.rows[0]);
     logger.info(`Change request created: ${cr.id} for project ${data.projectId}`);
     return cr;
@@ -144,11 +144,11 @@ class ChangeRequestService {
     params.push(id);
 
     await execute(
-      `UPDATE change_requests SET ${updates.join(', ')} WHERE id = ?`,
+      `UPDATE change_requests SET ${updates.join(', ')} WHERE id = $${paramIndex}`,
       params
     );
 
-    const result = await query(`SELECT * FROM change_requests WHERE id = ?`, [id]);
+    const result = await query(`SELECT * FROM change_requests WHERE id = $1`, [id]);
     const cr = mapChangeRequestRow(result.rows[0]);
     logger.info(`Change request updated: ${cr.id}`);
     return cr;
@@ -156,12 +156,12 @@ class ChangeRequestService {
 
   async review(id: string, reviewedBy: string) {
     await execute(
-      `UPDATE change_requests SET status = 'UNDER_REVIEW', reviewed_by = ?, reviewed_date = NOW() 
-       WHERE id = ?`,
+      `UPDATE change_requests SET status = 'UNDER_REVIEW', reviewed_by = $1, reviewed_date = NOW() 
+       WHERE id = $2`,
       [reviewedBy, id]
     );
 
-    const result = await query(`SELECT * FROM change_requests WHERE id = ?`, [id]);
+    const result = await query(`SELECT * FROM change_requests WHERE id = $1`, [id]);
     const cr = mapChangeRequestRow(result.rows[0]);
     logger.info(`Change request under review: ${cr.id}`);
     return cr;
@@ -169,12 +169,12 @@ class ChangeRequestService {
 
   async approve(id: string, approvedBy: string) {
     await execute(
-      `UPDATE change_requests SET status = 'APPROVED', approved_by = ?, approved_date = NOW() 
-       WHERE id = ?`,
+      `UPDATE change_requests SET status = 'APPROVED', approved_by = $1, approved_date = NOW() 
+       WHERE id = $2`,
       [approvedBy, id]
     );
 
-    const result = await query(`SELECT * FROM change_requests WHERE id = ?`, [id]);
+    const result = await query(`SELECT * FROM change_requests WHERE id = $1`, [id]);
     const cr = mapChangeRequestRow(result.rows[0]);
     logger.info(`Change request approved: ${cr.id}`);
     return cr;
@@ -182,12 +182,12 @@ class ChangeRequestService {
 
   async reject(id: string, reviewedBy: string) {
     await execute(
-      `UPDATE change_requests SET status = 'REJECTED', reviewed_by = ?, reviewed_date = NOW() 
-       WHERE id = ?`,
+      `UPDATE change_requests SET status = 'REJECTED', reviewed_by = $1, reviewed_date = NOW() 
+       WHERE id = $2`,
       [reviewedBy, id]
     );
 
-    const result = await query(`SELECT * FROM change_requests WHERE id = ?`, [id]);
+    const result = await query(`SELECT * FROM change_requests WHERE id = $1`, [id]);
     const cr = mapChangeRequestRow(result.rows[0]);
     logger.info(`Change request rejected: ${cr.id}`);
     return cr;
@@ -195,28 +195,28 @@ class ChangeRequestService {
 
   async implement(id: string) {
     await execute(
-      `UPDATE change_requests SET status = 'IMPLEMENTED' WHERE id = ?`,
+      `UPDATE change_requests SET status = 'IMPLEMENTED' WHERE id = $1`,
       [id]
     );
 
-    const result = await query(`SELECT * FROM change_requests WHERE id = ?`, [id]);
+    const result = await query(`SELECT * FROM change_requests WHERE id = $1`, [id]);
     const cr = mapChangeRequestRow(result.rows[0]);
     logger.info(`Change request implemented: ${cr.id}`);
     return cr;
   }
 
   async delete(id: string) {
-    await query(`DELETE FROM change_requests WHERE id = ?`, [id]);
+    await query(`DELETE FROM change_requests WHERE id = $1`, [id]);
     logger.info(`Change request deleted: ${id}`);
   }
 
   async getSummary(projectId: string) {
     const [total, pending, approved, rejected, implemented] = await Promise.all([
-      query(`SELECT COUNT(*) FROM change_requests WHERE project_id = ?`, [projectId]),
-      query(`SELECT COUNT(*) FROM change_requests WHERE project_id = ? AND status IN ('PENDING', 'UNDER_REVIEW')`, [projectId]),
-      query(`SELECT COUNT(*) FROM change_requests WHERE project_id = ? AND status = 'APPROVED'`, [projectId]),
-      query(`SELECT COUNT(*) FROM change_requests WHERE project_id = ? AND status = 'REJECTED'`, [projectId]),
-      query(`SELECT COUNT(*) FROM change_requests WHERE project_id = ? AND status = 'IMPLEMENTED'`, [projectId]),
+      query(`SELECT COUNT(*) FROM change_requests WHERE project_id = $1`, [projectId]),
+      query(`SELECT COUNT(*) FROM change_requests WHERE project_id = $1 AND status IN ('PENDING', 'UNDER_REVIEW')`, [projectId]),
+      query(`SELECT COUNT(*) FROM change_requests WHERE project_id = $1 AND status = 'APPROVED'`, [projectId]),
+      query(`SELECT COUNT(*) FROM change_requests WHERE project_id = $1 AND status = 'REJECTED'`, [projectId]),
+      query(`SELECT COUNT(*) FROM change_requests WHERE project_id = $1 AND status = 'IMPLEMENTED'`, [projectId]),
     ]);
 
     return {

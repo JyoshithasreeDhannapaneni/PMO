@@ -30,8 +30,8 @@ class CaseStudyReminderJob {
       for (const project of allProjectsNeedingReminder) {
         const recentReminder = await query(
           `SELECT id FROM notifications 
-           WHERE project_id = ? AND type = 'CASE_STUDY_REMINDER' 
-           AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+           WHERE project_id = $1 AND type = 'CASE_STUDY_REMINDER'
+           AND created_at >= NOW() - INTERVAL '7 days'
            LIMIT 1`,
           [project.id]
         );

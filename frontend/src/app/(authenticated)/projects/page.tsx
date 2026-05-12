@@ -155,7 +155,7 @@ export default function ProjectsPage() {
     
     return (
       <div className="relative">
-        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+        <label className="block text-xs font-medium text-gray-500 mb-1">
           {label}
         </label>
         <div className="relative">
@@ -164,13 +164,13 @@ export default function ProjectsPage() {
             onChange={(e) => onChange(e.target.value)}
             className={`
               appearance-none w-full px-3 py-2 pr-8 text-sm font-medium rounded-lg border
-              bg-white dark:bg-gray-800 
-              border-gray-200 dark:border-gray-700
-              text-gray-900 dark:text-gray-100
-              hover:border-primary-400 dark:hover:border-primary-500
+              bg-white 
+              border-gray-200
+              text-gray-900
+              hover:border-primary-400
               focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500
               transition-all cursor-pointer
-              ${value ? 'border-primary-300 bg-primary-50 dark:bg-primary-900/20' : ''}
+              ${value ? 'border-primary-300 bg-primary-50' : ''}
             `}
           >
             {options.map((option) => (
@@ -189,7 +189,7 @@ export default function ProjectsPage() {
                 e.stopPropagation();
                 onChange('');
               }}
-              className="absolute right-7 top-1/2 -translate-y-1/2 p-0.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              className="absolute right-7 top-1/2 -translate-y-1/2 p-0.5 text-gray-400 hover:text-gray-600"
             >
               <X size={14} />
             </button>
@@ -217,11 +217,11 @@ export default function ProjectsPage() {
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Projects</h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1">
+          <h1 className="text-2xl font-bold text-gray-900">Projects</h1>
+          <p className="text-gray-500 mt-1">
             {isManager ? `Your projects as ${user?.name}` : 'Manage and track all migration projects'}
             {data?.pagination?.total !== undefined && (
-              <span className="ml-2 text-primary-600 dark:text-primary-400 font-medium">
+              <span className="ml-2 text-primary-600 font-medium">
                 ({data.pagination.total} total)
               </span>
             )}
@@ -248,7 +248,7 @@ export default function ProjectsPage() {
 
       {/* Manager View Banner */}
       {isManager && (
-        <div className="flex items-center gap-3 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl text-xs text-blue-700 dark:text-blue-300">
+        <div className="flex items-center gap-3 p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-700">
           <User size={14} className="flex-shrink-0" />
           <span>
             <strong>Manager View</strong> — Showing only projects where you ({user?.name}) are the Project Manager.
@@ -258,18 +258,18 @@ export default function ProjectsPage() {
       )}
 
       {/* Filters Section */}
-      <Card padding="sm" className="dark:bg-gray-800">
+      <Card padding="sm" className="bg-white">
         {/* Filter Header */}
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setShowFilters(!showFilters)}
-              className="flex items-center gap-2 text-gray-700 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+              className="flex items-center gap-2 text-gray-700 hover:text-primary-600 transition-colors"
             >
               <SlidersHorizontal size={18} />
               <span className="font-medium">Filters</span>
               {activeFilterCount > 0 && (
-                <span className="px-2 py-0.5 text-xs font-semibold bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300 rounded-full">
+                <span className="px-2 py-0.5 text-xs font-semibold bg-primary-100 text-primary-700 rounded-full">
                   {activeFilterCount}
                 </span>
               )}
@@ -279,7 +279,7 @@ export default function ProjectsPage() {
           {activeFilterCount > 0 && (
             <button
               onClick={clearAllFilters}
-              className="flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+              className="flex items-center gap-1 text-sm text-gray-500 hover:text-red-600 transition-colors"
             >
               <X size={14} />
               Clear all
@@ -298,7 +298,7 @@ export default function ProjectsPage() {
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
                 placeholder="Search by project name, customer, or manager..."
-                className="w-full pl-10 pr-4 py-2.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all"
+                className="w-full pl-10 pr-4 py-2.5 text-sm rounded-lg border border-gray-200 bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all"
               />
               {searchInput && (
                 <button
@@ -306,7 +306,7 @@ export default function ProjectsPage() {
                     setSearchInput('');
                     setFilters(prev => ({ ...prev, search: '' }));
                   }}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                 >
                   <X size={16} />
                 </button>
@@ -343,10 +343,10 @@ export default function ProjectsPage() {
 
             {/* Active Filters Tags */}
             {activeFilterCount > 0 && (
-              <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-gray-200 dark:border-gray-700">
-                <span className="text-xs text-gray-500 dark:text-gray-400">Active filters:</span>
+              <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-gray-200">
+                <span className="text-xs text-gray-500">Active filters:</span>
                 {filters.status && (
-                  <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded-full">
+                  <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-green-100 text-green-700 rounded-full">
                     Status: {statusOptions.find(o => o.value === filters.status)?.label}
                     <button onClick={() => handleFilterChange('status', '')} className="hover:text-green-900">
                       <X size={12} />
@@ -354,7 +354,7 @@ export default function ProjectsPage() {
                   </span>
                 )}
                 {filters.phase && (
-                  <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-full">
+                  <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-blue-100 text-blue-700 rounded-full">
                     Phase: {phaseOptions.find(o => o.value === filters.phase)?.label}
                     <button onClick={() => handleFilterChange('phase', '')} className="hover:text-blue-900">
                       <X size={12} />
@@ -362,7 +362,7 @@ export default function ProjectsPage() {
                   </span>
                 )}
                 {filters.delayStatus && (
-                  <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 rounded-full">
+                  <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-orange-100 text-orange-700 rounded-full">
                     Delay: {delayOptions.find(o => o.value === filters.delayStatus)?.label}
                     <button onClick={() => handleFilterChange('delayStatus', '')} className="hover:text-orange-900">
                       <X size={12} />
@@ -370,7 +370,7 @@ export default function ProjectsPage() {
                   </span>
                 )}
                 {filters.planType && (
-                  <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded-full">
+                  <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-purple-100 text-purple-700 rounded-full">
                     Plan: {planOptions.find(o => o.value === filters.planType)?.label}
                     <button onClick={() => handleFilterChange('planType', '')} className="hover:text-purple-900">
                       <X size={12} />
@@ -378,7 +378,7 @@ export default function ProjectsPage() {
                   </span>
                 )}
                 {filters.search && (
-                  <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-full">
+                  <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-gray-100 text-gray-700 rounded-full">
                     Search: "{filters.search}"
                     <button onClick={() => { setSearchInput(''); handleFilterChange('search', ''); }} className="hover:text-gray-900">
                       <X size={12} />
@@ -396,17 +396,17 @@ export default function ProjectsPage() {
         <Card>
           <div className="flex flex-col items-center justify-center h-64">
             <Loader2 className="w-10 h-10 animate-spin text-primary-600" />
-            <p className="mt-4 text-gray-500 dark:text-gray-400">Loading projects...</p>
+            <p className="mt-4 text-gray-500">Loading projects...</p>
           </div>
         </Card>
       ) : error ? (
         <Card>
           <div className="text-center py-12">
-            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
-              <X size={32} className="text-red-600 dark:text-red-400" />
+            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-red-100 flex items-center justify-center">
+              <X size={32} className="text-red-600" />
             </div>
-            <p className="text-red-600 dark:text-red-400 font-medium">Failed to load projects</p>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">Please check if the backend server is running</p>
+            <p className="text-red-600 font-medium">Failed to load projects</p>
+            <p className="text-sm text-gray-500 mt-2">Please check if the backend server is running</p>
             <Button variant="outline" onClick={() => refetch()} className="mt-4">
               <RefreshCw size={16} className="mr-2" />
               Try Again
@@ -416,11 +416,11 @@ export default function ProjectsPage() {
       ) : data?.data?.length === 0 ? (
         <Card>
           <div className="text-center py-12">
-            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
+            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-100 flex items-center justify-center">
               <Filter size={32} className="text-gray-400" />
             </div>
-            <p className="text-gray-600 dark:text-gray-300 font-medium">No projects found</p>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+            <p className="text-gray-600 font-medium">No projects found</p>
+            <p className="text-sm text-gray-500 mt-2">
               {activeFilterCount > 0 
                 ? 'Try adjusting your filters or search criteria'
                 : 'Get started by creating your first project'

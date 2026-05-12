@@ -308,7 +308,7 @@ export function MigrationTypeStats({ stats }: MigrationTypeStatsProps) {
                       </span>
                     </td>
                     <td className="text-center py-3 px-4">
-                      <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-gray-800 text-white font-semibold">
+                      <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-white text-white font-semibold">
                         {stat.total}
                       </span>
                     </td>

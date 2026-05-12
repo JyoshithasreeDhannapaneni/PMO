@@ -62,7 +62,7 @@ function mapReportRow(row: any) {
 class StatusReportService {
   async getByProject(projectId: string) {
     const result = await query(
-      `SELECT * FROM project_status_reports WHERE project_id = ? ORDER BY report_date DESC`,
+      `SELECT * FROM project_status_reports WHERE project_id = $1 ORDER BY report_date DESC`,
       [projectId]
     );
     return result.rows.map(mapReportRow);
@@ -73,7 +73,7 @@ class StatusReportService {
       `SELECT r.*, p.name as project_name
        FROM project_status_reports r
        JOIN projects p ON r.project_id = p.id
-       WHERE r.id = ?`,
+       WHERE r.id = $1`,
       [id]
     );
 
@@ -88,7 +88,7 @@ class StatusReportService {
 
   async getLatest(projectId: string) {
     const result = await query(
-      `SELECT * FROM project_status_reports WHERE project_id = ? ORDER BY report_date DESC LIMIT 1`,
+      `SELECT * FROM project_status_reports WHERE project_id = $1 ORDER BY report_date DESC LIMIT 1`,
       [projectId]
     );
     return result.rows.length > 0 ? mapReportRow(result.rows[0]) : null;
@@ -99,7 +99,7 @@ class StatusReportService {
       `SELECT p.*, 
               (SELECT COUNT(*) FROM project_tasks WHERE project_id = p.id AND status = 'DONE') as tasks_done,
               (SELECT COUNT(*) FROM project_tasks WHERE project_id = p.id) as tasks_total
-       FROM projects p WHERE p.id = ?`,
+       FROM projects p WHERE p.id = $1`,
       [data.projectId]
     );
 
@@ -111,7 +111,7 @@ class StatusReportService {
     let risksSummary = data.risks;
     if (!risksSummary) {
       const risksResult = await query(
-        `SELECT title, impact FROM project_risks WHERE project_id = ? AND status = 'OPEN'`,
+        `SELECT title, impact FROM project_risks WHERE project_id = $1 AND status = 'OPEN'`,
         [data.projectId]
       );
       if (risksResult.rows.length > 0) {
@@ -125,7 +125,7 @@ class StatusReportService {
         id, project_id, report_date, report_type, overall_status, schedule_status, budget_status, resource_status,
         completion_percentage, tasks_completed, tasks_total, accomplishments, planned_activities, issues, risks, decisions,
         budget_planned, budget_actual, created_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
       [
         reportId,
         data.projectId,
@@ -149,7 +149,7 @@ class StatusReportService {
       ]
     );
 
-    const result = await query(`SELECT * FROM project_status_reports WHERE id = ?`, [reportId]);
+    const result = await query(`SELECT * FROM project_status_reports WHERE id = $1`, [reportId]);
     const report = mapReportRow(result.rows[0]);
     logger.info(`Status report created: ${report.id} for project ${data.projectId}`);
     return report;
@@ -173,24 +173,24 @@ class StatusReportService {
     params.push(id);
 
     await execute(
-      `UPDATE project_status_reports SET ${updates.join(', ')} WHERE id = ?`,
+      `UPDATE project_status_reports SET ${updates.join(', ')} WHERE id = $${paramIndex}`,
       params
     );
 
-    const result = await query(`SELECT * FROM project_status_reports WHERE id = ?`, [id]);
+    const result = await query(`SELECT * FROM project_status_reports WHERE id = $1`, [id]);
     const report = mapReportRow(result.rows[0]);
     logger.info(`Status report updated: ${report.id}`);
     return report;
   }
 
   async delete(id: string) {
-    await query(`DELETE FROM project_status_reports WHERE id = ?`, [id]);
+    await query(`DELETE FROM project_status_reports WHERE id = $1`, [id]);
     logger.info(`Status report deleted: ${id}`);
   }
 
   async generateWeeklyReport(projectId: string, createdBy?: string) {
     const projectResult = await query(
-      `SELECT * FROM projects WHERE id = ?`,
+      `SELECT * FROM projects WHERE id = $1`,
       [projectId]
     );
 
@@ -199,9 +199,9 @@ class StatusReportService {
     const project = projectResult.rows[0];
 
     const [tasksResult, risksResult, phasesResult] = await Promise.all([
-      query(`SELECT * FROM project_tasks WHERE project_id = ?`, [projectId]),
-      query(`SELECT * FROM project_risks WHERE project_id = ? AND status IN ('OPEN', 'MITIGATING')`, [projectId]),
-      query(`SELECT * FROM project_phases WHERE project_id = ? ORDER BY order_index ASC`, [projectId]),
+      query(`SELECT * FROM project_tasks WHERE project_id = $1`, [projectId]),
+      query(`SELECT * FROM project_risks WHERE project_id = $1 AND status IN ('OPEN', 'MITIGATING')`, [projectId]),
+      query(`SELECT * FROM project_phases WHERE project_id = $1 ORDER BY order_index ASC`, [projectId]),
     ]);
 
     const tasks = tasksResult.rows;

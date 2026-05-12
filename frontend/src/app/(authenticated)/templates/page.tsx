@@ -313,14 +313,14 @@ export default function TemplatesPage() {
     <div className="animate-fadeIn h-full flex flex-col">
       {/* Page header */}
       <div className="mb-5">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Templates</h1>
-        <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">
+        <h1 className="text-2xl font-bold text-gray-900">Templates</h1>
+        <p className="text-gray-500 text-sm mt-0.5">
           Manage migration documents per source-to-destination combination.
         </p>
       </div>
 
       {/* Sub-tabs */}
-      <div className="flex gap-2 mb-5 border-b border-gray-200 dark:border-gray-700">
+      <div className="flex gap-2 mb-5 border-b border-gray-200">
         {SUB_TABS.map((t) => (
           <button
             key={t.id}
@@ -328,7 +328,7 @@ export default function TemplatesPage() {
             className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-t-lg border-b-2 transition-colors -mb-px ${
               activeTab === t.id
                 ? `${t.color} ${t.bg} ${t.border.replace('border-', 'border-b-')} border-b-2`
-                : 'text-gray-500 dark:text-gray-400 border-b-transparent hover:text-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700'
+                : 'text-gray-500 border-b-transparent hover:text-gray-700 hover:bg-gray-50'
             }`}
           >
             {t.icon}
@@ -438,7 +438,7 @@ export default function TemplatesPage() {
                   className={`relative group rounded-xl border transition-all ${
                     isSelected
                       ? `${tab.bg} ${tab.border} border-2 shadow-sm`
-                      : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-gray-300 hover:shadow-sm'
+                      : 'bg-white border-gray-200 hover:border-gray-300 hover:shadow-sm'
                   }`}
                 >
                   {/* Main clickable area */}
@@ -450,19 +450,19 @@ export default function TemplatesPage() {
                       <div className="flex items-center gap-2 min-w-0">
                         <span className="text-lg flex-shrink-0">{c.sourceIcon}</span>
                         <div className="min-w-0">
-                          <p className={`text-xs font-semibold truncate ${isSelected ? tab.color : 'text-gray-700 dark:text-gray-200'}`}>
+                          <p className={`text-xs font-semibold truncate ${isSelected ? tab.color : 'text-gray-700'}`}>
                             {c.source}
                           </p>
                           <div className="flex items-center gap-1 mt-0.5">
                             <ArrowRight size={10} className="text-gray-400 flex-shrink-0" />
                             <span className="text-lg flex-shrink-0">{c.targetIcon}</span>
-                            <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{c.target}</p>
+                            <p className="text-xs text-gray-500 truncate">{c.target}</p>
                           </div>
                         </div>
                       </div>
                       <div className="flex items-center gap-1.5 flex-shrink-0 ml-1">
                         {count > 0 && (
-                          <span className={`text-xs px-1.5 py-0.5 rounded-full font-semibold ${isSelected ? `${tab.bg} ${tab.color}` : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'}`}>
+                          <span className={`text-xs px-1.5 py-0.5 rounded-full font-semibold ${isSelected ? `${tab.bg} ${tab.color}` : 'bg-gray-100 text-gray-500'}`}>
                             {count}
                           </span>
                         )}
@@ -482,15 +482,15 @@ export default function TemplatesPage() {
                     </button>
                   ) : (
                     /* Confirm delete overlay */
-                    <div className="absolute inset-0 bg-red-50 dark:bg-red-900/30 border-2 border-red-300 rounded-xl flex flex-col items-center justify-center gap-2 z-10 p-3">
-                      <p className="text-xs font-semibold text-red-700 dark:text-red-300 text-center">
+                    <div className="absolute inset-0 bg-red-50 border-2 border-red-300 rounded-xl flex flex-col items-center justify-center gap-2 z-10 p-3">
+                      <p className="text-xs font-semibold text-red-700 text-center">
                         Delete "{c.source} → {c.target}"?
                       </p>
                       <p className="text-xs text-red-500 text-center">This will also delete all uploaded documents.</p>
                       <div className="flex gap-2">
                         <button
                           onClick={() => setConfirmDelete(null)}
-                          className="px-3 py-1 text-xs font-medium bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 text-gray-600 dark:text-gray-300 transition-colors"
+                          className="px-3 py-1 text-xs font-medium bg-white border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-600 transition-colors"
                         >
                           Cancel
                         </button>
@@ -516,8 +516,8 @@ export default function TemplatesPage() {
               <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-4 ${tab.bg}`}>
                 <span className="text-3xl">{activeTab === 'content' ? '📁' : activeTab === 'messaging' ? '💬' : '📧'}</span>
               </div>
-              <p className="text-gray-500 dark:text-gray-400 font-medium">Select a combination</p>
-              <p className="text-gray-400 dark:text-gray-500 text-sm mt-1">
+              <p className="text-gray-500 font-medium">Select a combination</p>
+              <p className="text-gray-400 text-sm mt-1">
                 Choose a source → destination pair from the left to manage its documents.
               </p>
               {!showAddForm && (
@@ -541,7 +541,7 @@ export default function TemplatesPage() {
                 <ArrowRight size={22} className="text-gray-400 mx-2" />
                 <span className="text-3xl">{combo.targetIcon}</span>
                 <div>
-                  <p className="font-bold text-base text-gray-800 dark:text-white">{combo.target}</p>
+                  <p className="font-bold text-base text-gray-800">{combo.target}</p>
                   <p className="text-xs text-gray-500">Target Platform</p>
                 </div>
                 {combo.custom && (
@@ -549,7 +549,7 @@ export default function TemplatesPage() {
                 )}
                 <div className="ml-auto flex items-center gap-3">
                   <div className="text-right">
-                    <p className="text-2xl font-bold text-gray-800 dark:text-white">{comboDocs.length}</p>
+                    <p className="text-2xl font-bold text-gray-800">{comboDocs.length}</p>
                     <p className="text-xs text-gray-500">Documents</p>
                   </div>
                   {/* Delete this combination from the right panel too */}
@@ -565,9 +565,9 @@ export default function TemplatesPage() {
 
               {/* Confirm delete (triggered from right panel header) */}
               {confirmDelete === combo.id && (
-                <div className="flex items-center justify-between p-4 bg-red-50 dark:bg-red-900/20 border-2 border-red-300 rounded-xl">
+                <div className="flex items-center justify-between p-4 bg-red-50 border-2 border-red-300 rounded-xl">
                   <div>
-                    <p className="text-sm font-semibold text-red-700 dark:text-red-300">Delete this combination?</p>
+                    <p className="text-sm font-semibold text-red-700">Delete this combination?</p>
                     <p className="text-xs text-red-500 mt-0.5">All {comboDocs.length} uploaded document(s) will be permanently removed.</p>
                   </div>
                   <div className="flex gap-2 ml-4">
@@ -578,9 +578,9 @@ export default function TemplatesPage() {
               )}
 
               {/* Upload bar */}
-              <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm overflow-hidden">
+              <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
                 {/* Doc-type management header */}
-                <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50">
+                <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100 bg-gray-50">
                   <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Document Type</span>
                   <button
                     onClick={() => { setShowAddDocType((v) => !v); setDocTypeError(''); }}
@@ -592,7 +592,7 @@ export default function TemplatesPage() {
 
                 {/* Add doc-type inline form */}
                 {showAddDocType && (
-                  <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100 dark:border-gray-700 bg-primary-50 dark:bg-primary-900/20">
+                  <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100 bg-primary-50">
                     <input
                       type="text"
                       value={newDocTypeIcon}
@@ -618,9 +618,9 @@ export default function TemplatesPage() {
                 )}
 
                 {/* Doc-type pills */}
-                <div className="flex flex-wrap gap-2 px-3 py-2 border-b border-gray-100 dark:border-gray-700">
+                <div className="flex flex-wrap gap-2 px-3 py-2 border-b border-gray-100">
                   {docTypes.map((dt) => (
-                    <div key={dt.id} className={`flex items-center gap-1 rounded-full border text-xs font-medium transition-colors ${selectedDocType === dt.id ? `${tab.border} border-2 ${tab.color} ${tab.bg}` : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-700'}`}>
+                    <div key={dt.id} className={`flex items-center gap-1 rounded-full border text-xs font-medium transition-colors ${selectedDocType === dt.id ? `${tab.border} border-2 ${tab.color} ${tab.bg}` : 'border-gray-200 text-gray-600 bg-gray-50'}`}>
                       {renamingTypeId === dt.id ? (
                         <>
                           <input
@@ -628,7 +628,7 @@ export default function TemplatesPage() {
                             value={renameTypeValue}
                             onChange={(e) => setRenameTypeValue(e.target.value)}
                             onKeyDown={(e) => { if (e.key === 'Enter') commitRenameDocType(); if (e.key === 'Escape') setRenamingTypeId(null); }}
-                            className="w-28 text-xs px-2 py-1 rounded-full border border-primary-400 outline-none bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                            className="w-28 text-xs px-2 py-1 rounded-full border border-primary-400 outline-none bg-white text-gray-900"
                           />
                           <button onClick={commitRenameDocType} className="p-0.5 text-green-600 hover:text-green-700" title="Save"><Check size={11} /></button>
                           <button onClick={() => setRenamingTypeId(null)} className="p-0.5 text-gray-400 hover:text-gray-600 pr-1" title="Cancel"><X size={11} /></button>
@@ -685,10 +685,10 @@ export default function TemplatesPage() {
 
               {/* Documents list grouped by type */}
               {comboDocs.length === 0 ? (
-                <div className="text-center py-14 bg-white dark:bg-gray-800 border border-dashed border-gray-300 dark:border-gray-600 rounded-xl">
-                  <FileText size={36} className="mx-auto text-gray-300 dark:text-gray-600 mb-3" />
-                  <p className="text-gray-500 dark:text-gray-400 font-medium">No documents yet</p>
-                  <p className="text-gray-400 dark:text-gray-500 text-sm mt-1">Upload a Kickoff Deck, Runbook, or any other template document above.</p>
+                <div className="text-center py-14 bg-white border border-dashed border-gray-300 rounded-xl">
+                  <FileText size={36} className="mx-auto text-gray-300 mb-3" />
+                  <p className="text-gray-500 font-medium">No documents yet</p>
+                  <p className="text-gray-400 text-sm mt-1">Upload a Kickoff Deck, Runbook, or any other template document above.</p>
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -696,17 +696,17 @@ export default function TemplatesPage() {
                     const files = comboDocs.filter((d) => d.docType === dt.id);
                     if (files.length === 0) return null;
                     return (
-                      <div key={dt.id} className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden shadow-sm">
-                        <div className="flex items-center gap-2 px-4 py-3 bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700">
+                      <div key={dt.id} className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+                        <div className="flex items-center gap-2 px-4 py-3 bg-gray-50 border-b border-gray-200">
                           <span className="text-base">{dt.icon}</span>
-                          <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">{dt.label}</span>
-                          <span className="ml-auto text-xs bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300 px-2 py-0.5 rounded-full font-medium">{files.length}</span>
+                          <span className="text-sm font-semibold text-gray-700">{dt.label}</span>
+                          <span className="ml-auto text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full font-medium">{files.length}</span>
                         </div>
-                        <div className="divide-y divide-gray-100 dark:divide-gray-700">
+                        <div className="divide-y divide-gray-100">
                           {files.map((doc) => (
-                            <div key={doc.id} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors group">
-                              <div className="w-9 h-9 rounded-lg bg-gray-100 dark:bg-gray-700 flex items-center justify-center flex-shrink-0">
-                                <span className="text-xs font-bold text-gray-500 dark:text-gray-400">{doc.ext}</span>
+                            <div key={doc.id} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors group">
+                              <div className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
+                                <span className="text-xs font-bold text-gray-500">{doc.ext}</span>
                               </div>
                               <div className="flex-1 min-w-0">
                                 {renamingDocId === doc.id ? (
@@ -719,7 +719,7 @@ export default function TemplatesPage() {
                                         if (e.key === 'Enter') commitRename(selectedCombo!);
                                         if (e.key === 'Escape') setRenamingDocId(null);
                                       }}
-                                      className="flex-1 text-sm px-2 py-1 border border-primary-400 rounded-lg outline-none focus:ring-1 focus:ring-primary-400 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                                      className="flex-1 text-sm px-2 py-1 border border-primary-400 rounded-lg outline-none focus:ring-1 focus:ring-primary-400 bg-white text-gray-900"
                                     />
                                     <button onClick={() => commitRename(selectedCombo!)} className="p-1 text-green-600 hover:bg-green-50 rounded-lg transition-colors" title="Save name">
                                       <Check size={14} />
@@ -729,7 +729,7 @@ export default function TemplatesPage() {
                                     </button>
                                   </div>
                                 ) : (
-                                  <p className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">{doc.name}</p>
+                                  <p className="text-sm font-medium text-gray-800 truncate">{doc.name}</p>
                                 )}
                                 <p className="text-xs text-gray-400">{doc.size} · {format(new Date(doc.uploadedAt), 'MMM d, yyyy')}</p>
                               </div>

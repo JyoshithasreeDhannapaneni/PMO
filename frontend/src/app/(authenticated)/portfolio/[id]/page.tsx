@@ -133,7 +133,7 @@ function MiniGantt({ project }: { project: any }) {
               );
               const width = daysInMonth * dayWidth;
               return (
-                <div key={m.toISOString()} className="absolute text-xs font-semibold text-gray-700 dark:text-gray-300" style={{ left, width }}>
+                <div key={m.toISOString()} className="absolute text-xs font-semibold text-gray-700" style={{ left, width }}>
                   {format(m, 'MMM yyyy')}
                 </div>
               );
@@ -157,7 +157,7 @@ function MiniGantt({ project }: { project: any }) {
                 {/* Phase header */}
                 <div className="flex items-center mb-1">
                   <div className="w-[180px] flex-shrink-0 flex items-center gap-1.5">
-                    <span className="text-xs font-semibold text-gray-800 dark:text-gray-200">
+                    <span className="text-xs font-semibold text-gray-800">
                       {pi + 1}. {PHASE_LABELS[phase] || phase}
                     </span>
                   </div>
@@ -178,7 +178,7 @@ function MiniGantt({ project }: { project: any }) {
                     <div key={task} className="flex items-center mb-1">
                       <div className="w-[180px] flex-shrink-0 pl-5 flex items-center gap-1">
                         <ChevronRight size={10} className="text-gray-400" />
-                        <span className="text-xs text-gray-600 dark:text-gray-400">{task}</span>
+                        <span className="text-xs text-gray-600">{task}</span>
                       </div>
                       <div style={{ marginLeft: 0, width: Math.max(taskWidth * dayWidth, 40), height: 16 }} className="relative rounded overflow-hidden">
                         <div className="absolute inset-0 rounded" style={{ background: color + '15' }} />
@@ -226,8 +226,8 @@ function OverviewTab({ project, risks, team }: { project: any; risks: any[]; tea
     <div className="space-y-5">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         {/* Project Details */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Project Details</h3>
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <h3 className="text-sm font-semibold text-gray-900 mb-4">Project Details</h3>
           <div className="space-y-3">
             {[
               { label: 'Portfolio / Project Name', value: project.name },
@@ -238,36 +238,36 @@ function OverviewTab({ project, risks, team }: { project: any; risks: any[]; tea
               { label: 'Priority', value: null, badge: priority, badgeStyle: getPriorityStyle(priority) },
             ].map((item) => (
               <div key={item.label} className="flex items-start gap-3">
-                <span className="text-xs text-gray-500 dark:text-gray-400 w-44 flex-shrink-0 pt-0.5">{item.label}</span>
-                <span className="text-gray-300 dark:text-gray-600">:</span>
+                <span className="text-xs text-gray-500 w-44 flex-shrink-0 pt-0.5">{item.label}</span>
+                <span className="text-gray-300">:</span>
                 {item.badge ? (
                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium border ${item.badgeStyle}`}>{item.badge}</span>
                 ) : (
-                  <span className="text-sm text-gray-800 dark:text-gray-200 flex-1">{item.value}</span>
+                  <span className="text-sm text-gray-800 flex-1">{item.value}</span>
                 )}
               </div>
             ))}
             {project.description && (
               <div className="flex items-start gap-3">
-                <span className="text-xs text-gray-500 dark:text-gray-400 w-44 flex-shrink-0 pt-0.5">Description</span>
-                <span className="text-gray-300 dark:text-gray-600">:</span>
-                <span className="text-xs text-gray-600 dark:text-gray-400 flex-1 italic">{project.description}</span>
+                <span className="text-xs text-gray-500 w-44 flex-shrink-0 pt-0.5">Description</span>
+                <span className="text-gray-300">:</span>
+                <span className="text-xs text-gray-600 flex-1 italic">{project.description}</span>
               </div>
             )}
           </div>
         </div>
 
         {/* Timeline Gantt */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Timeline (Gantt Chart)</h3>
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <h3 className="text-sm font-semibold text-gray-900 mb-4">Timeline (Gantt Chart)</h3>
           <MiniGantt project={project} />
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
         {/* Progress Summary */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Progress Summary</h3>
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <h3 className="text-sm font-semibold text-gray-900 mb-4">Progress Summary</h3>
           <div className="space-y-3">
             {[
               { label: 'Completed Tasks', value: `${completedTasks} / ${totalTasks}`, bar: (completedTasks / totalTasks) * 100, color: 'bg-green-500' },
@@ -277,10 +277,10 @@ function OverviewTab({ project, risks, team }: { project: any; risks: any[]; tea
             ].map((item) => (
               <div key={item.label}>
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs text-gray-600 dark:text-gray-400">{item.label}</span>
-                  <span className="text-xs font-semibold text-gray-900 dark:text-white">{item.value}</span>
+                  <span className="text-xs text-gray-600">{item.label}</span>
+                  <span className="text-xs font-semibold text-gray-900">{item.value}</span>
                 </div>
-                <div className="w-full h-1.5 bg-gray-200 dark:bg-gray-600 rounded-full overflow-hidden">
+                <div className="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden">
                   <div className={`h-full rounded-full ${item.color}`} style={{ width: `${item.bar}%` }} />
                 </div>
               </div>
@@ -289,9 +289,9 @@ function OverviewTab({ project, risks, team }: { project: any; risks: any[]; tea
         </div>
 
         {/* Risks & Issues */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Risks & Issues</h3>
+            <h3 className="text-sm font-semibold text-gray-900">Risks & Issues</h3>
             <Link href={`/projects/${project.id}/manage`} className="text-xs text-primary-600 hover:text-primary-700 font-medium">View All</Link>
           </div>
           {risks.length === 0 ? (
@@ -307,7 +307,7 @@ function OverviewTab({ project, risks, team }: { project: any; risks: any[]; tea
                     {r.riskLevel === 'CRITICAL' ? 'High' : r.riskLevel?.charAt(0) + r.riskLevel?.slice(1).toLowerCase()}
                   </span>
                   <div>
-                    <p className="text-xs font-medium text-gray-800 dark:text-gray-200">{r.title || r.description?.slice(0, 50)}</p>
+                    <p className="text-xs font-medium text-gray-800">{r.title || r.description?.slice(0, 50)}</p>
                     <p className="text-xs text-gray-400 mt-0.5">Reported on {r.createdAt ? format(new Date(r.createdAt), 'MMM dd, yyyy') : 'N/A'}</p>
                   </div>
                 </div>
@@ -317,9 +317,9 @@ function OverviewTab({ project, risks, team }: { project: any; risks: any[]; tea
         </div>
 
         {/* Team Members */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Team Members</h3>
+            <h3 className="text-sm font-semibold text-gray-900">Team Members</h3>
             <Link href={`/projects/${project.id}/manage`} className="text-xs text-primary-600 hover:text-primary-700 font-medium">View All</Link>
           </div>
           {team.length === 0 ? (
@@ -331,17 +331,17 @@ function OverviewTab({ project, risks, team }: { project: any; risks: any[]; tea
               ].filter(Boolean).map((m: any) => (
                 <div key={m.name} className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-full bg-primary-100 dark:bg-primary-900/40 flex items-center justify-center text-sm font-bold text-primary-700 dark:text-primary-300">
+                    <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center text-sm font-bold text-primary-700">
                       {m.name?.charAt(0)?.toUpperCase()}
                     </div>
                     <div>
-                      <p className="text-xs font-medium text-gray-800 dark:text-gray-200">{m.name}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">{m.role}</p>
+                      <p className="text-xs font-medium text-gray-800">{m.name}</p>
+                      <p className="text-xs text-gray-500">{m.role}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${m.badgeCls}`}>{m.badge}</span>
-                    <button className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400"><Mail size={13} /></button>
+                    <button className="p-1 rounded-lg hover:bg-gray-100 text-gray-400"><Mail size={13} /></button>
                   </div>
                 </div>
               ))}
@@ -351,17 +351,17 @@ function OverviewTab({ project, risks, team }: { project: any; risks: any[]; tea
               {team.slice(0, 4).map((m: any) => (
                 <div key={m.id} className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-full bg-primary-100 dark:bg-primary-900/40 flex items-center justify-center text-sm font-bold text-primary-700 dark:text-primary-300">
+                    <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center text-sm font-bold text-primary-700">
                       {(m.memberName || m.name || '?').charAt(0).toUpperCase()}
                     </div>
                     <div>
-                      <p className="text-xs font-medium text-gray-800 dark:text-gray-200">{m.memberName || m.name}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">{m.role?.replace(/_/g, ' ')?.charAt(0) + m.role?.slice(1)?.toLowerCase().replace(/_/g, ' ')}</p>
+                      <p className="text-xs font-medium text-gray-800">{m.memberName || m.name}</p>
+                      <p className="text-xs text-gray-500">{m.role?.replace(/_/g, ' ')?.charAt(0) + m.role?.slice(1)?.toLowerCase().replace(/_/g, ' ')}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-blue-100 text-blue-700">{m.role === 'PROJECT_MANAGER' ? 'Owner' : 'Member'}</span>
-                    <button className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400"><Mail size={13} /></button>
+                    <button className="p-1 rounded-lg hover:bg-gray-100 text-gray-400"><Mail size={13} /></button>
                   </div>
                 </div>
               ))}
@@ -422,21 +422,21 @@ export default function PortfolioDetailPage({ params }: { params: { id: string }
       <nav className="flex items-center gap-1.5 text-sm">
         <Link href="/portfolio" className="text-primary-600 hover:text-primary-700 font-medium">Portfolio</Link>
         <ChevronRight size={14} className="text-gray-400" />
-        <span className="text-gray-900 dark:text-white font-medium">{project.name}</span>
+        <span className="text-gray-900 font-medium">{project.name}</span>
       </nav>
 
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-start gap-3">
-          <div className="w-10 h-10 rounded-xl bg-primary-100 dark:bg-primary-900/40 flex items-center justify-center flex-shrink-0 mt-0.5">
+          <div className="w-10 h-10 rounded-xl bg-primary-100 flex items-center justify-center flex-shrink-0 mt-0.5">
             <Zap size={20} className="text-primary-600" />
           </div>
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{project.name}</h1>
+              <h1 className="text-2xl font-bold text-gray-900">{project.name}</h1>
               <span className={`text-xs px-2.5 py-1 rounded-full font-semibold border ${badgeStyle}`}>{statusLabel}</span>
             </div>
-            <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 mt-1 flex-wrap">
+            <div className="flex items-center gap-2 text-xs text-gray-500 mt-1 flex-wrap">
               <span>{getMigrationLabel(project.migrationTypes)}</span>
               <span className="text-gray-300">•</span>
               <span>Code: {projectCode}</span>
@@ -447,7 +447,7 @@ export default function PortfolioDetailPage({ params }: { params: { id: string }
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           <Link href={`/projects/${project.id}/edit`}
-            className="flex items-center gap-1.5 px-3 py-2 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+            className="flex items-center gap-1.5 px-3 py-2 border border-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors">
             <Edit size={14} /> Edit Project
           </Link>
           <div className="relative">
@@ -458,14 +458,14 @@ export default function PortfolioDetailPage({ params }: { params: { id: string }
               Actions <ChevronDown size={14} />
             </button>
             {showActions && (
-              <div className="absolute right-0 top-full mt-1 w-44 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg z-20 py-1">
-                <Link href={`/projects/${project.id}/tasks`} onClick={() => setShowActions(false)} className="block px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">View Tasks</Link>
-                <Link href={`/projects/${project.id}/manage`} onClick={() => setShowActions(false)} className="block px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">Manage Project</Link>
-                <Link href={`/projects/${project.id}/edit`} onClick={() => setShowActions(false)} className="block px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">Edit Project</Link>
+              <div className="absolute right-0 top-full mt-1 w-44 bg-white border border-gray-200 rounded-xl shadow-lg z-20 py-1">
+                <Link href={`/projects/${project.id}/tasks`} onClick={() => setShowActions(false)} className="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">View Tasks</Link>
+                <Link href={`/projects/${project.id}/manage`} onClick={() => setShowActions(false)} className="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Manage Project</Link>
+                <Link href={`/projects/${project.id}/edit`} onClick={() => setShowActions(false)} className="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Edit Project</Link>
               </div>
             )}
           </div>
-          <button className="p-2 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+          <button className="p-2 border border-gray-200 rounded-lg text-gray-500 hover:bg-gray-50 transition-colors">
             <MoreVertical size={16} />
           </button>
         </div>
@@ -474,10 +474,10 @@ export default function PortfolioDetailPage({ params }: { params: { id: string }
       {/* Metrics Bar */}
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
         {/* Overall Progress */}
-        <div className="col-span-2 sm:col-span-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-3">
-          <p className="text-xs text-gray-500 dark:text-gray-400">Overall Progress</p>
-          <p className="text-2xl font-bold text-gray-900 dark:text-white mt-0.5">{progress}%</p>
-          <div className="w-full h-1.5 bg-gray-200 dark:bg-gray-600 rounded-full mt-1.5 overflow-hidden">
+        <div className="col-span-2 sm:col-span-1 bg-white border border-gray-200 rounded-xl p-3">
+          <p className="text-xs text-gray-500">Overall Progress</p>
+          <p className="text-2xl font-bold text-gray-900 mt-0.5">{progress}%</p>
+          <div className="w-full h-1.5 bg-gray-200 rounded-full mt-1.5 overflow-hidden">
             <div className="h-full bg-primary-500 rounded-full" style={{ width: `${progress}%` }} />
           </div>
         </div>
@@ -490,24 +490,24 @@ export default function PortfolioDetailPage({ params }: { params: { id: string }
           { label: 'Manager', icon: User, value: project.projectManager },
           { label: 'Budget', icon: DollarSign, value: project.estimatedCost ? `$${Number(project.estimatedCost).toLocaleString()}` : 'N/A' },
         ].map((item) => (
-          <div key={item.label} className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-3">
+          <div key={item.label} className="bg-white border border-gray-200 rounded-xl p-3">
             <div className="flex items-center gap-1.5 mb-1">
               <item.icon size={13} className="text-gray-400" />
-              <p className="text-xs text-gray-500 dark:text-gray-400">{item.label}</p>
+              <p className="text-xs text-gray-500">{item.label}</p>
             </div>
-            {item.valueEl || <p className="text-sm font-semibold text-gray-900 dark:text-white">{item.value}</p>}
+            {item.valueEl || <p className="text-sm font-semibold text-gray-900">{item.value}</p>}
           </div>
         ))}
       </div>
 
       {/* Tabs */}
-      <div className="border-b border-gray-200 dark:border-gray-700">
+      <div className="border-b border-gray-200">
         <div className="flex gap-0 overflow-x-auto">
           {TABS.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-1.5 px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap flex-shrink-0 ${activeTab === tab.id ? 'border-primary-600 text-primary-600 dark:text-primary-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'}`}
+              className={`flex items-center gap-1.5 px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap flex-shrink-0 ${activeTab === tab.id ? 'border-primary-600 text-primary-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
             >
               <tab.icon size={14} />
               {tab.label}
@@ -520,10 +520,10 @@ export default function PortfolioDetailPage({ params }: { params: { id: string }
       {activeTab === 'overview' && <OverviewTab project={project} risks={risks} team={team} />}
 
       {activeTab === 'gantt' && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Project Gantt Chart</h3>
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <h3 className="text-sm font-semibold text-gray-900 mb-4">Project Gantt Chart</h3>
           <MiniGantt project={project} />
-          <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700 text-center">
+          <div className="mt-4 pt-4 border-t border-gray-100 text-center">
             <Link href={`/projects/${project.id}/tasks`} className="text-sm text-primary-600 hover:text-primary-700 font-medium">
               View Full Gantt Chart →
             </Link>
@@ -532,19 +532,19 @@ export default function PortfolioDetailPage({ params }: { params: { id: string }
       )}
 
       {activeTab === 'tasks' && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Tasks</h3>
+            <h3 className="text-sm font-semibold text-gray-900">Tasks</h3>
             <Link href={`/projects/${project.id}/tasks`} className="text-xs text-primary-600 hover:text-primary-700 font-medium">Open Task Manager →</Link>
           </div>
           {Object.entries(PHASE_TASKS).map(([phase, tasks]) => (
             <div key={phase} className="mb-4">
-              <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2 uppercase tracking-wide">{PHASE_LABELS[phase]}</p>
+              <p className="text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">{PHASE_LABELS[phase]}</p>
               <div className="space-y-1.5">
                 {tasks.map((t) => (
-                  <div key={t} className="flex items-center gap-2 p-2 rounded-lg bg-gray-50 dark:bg-gray-700/50">
+                  <div key={t} className="flex items-center gap-2 p-2 rounded-lg bg-gray-50">
                     <CheckCircle2 size={14} className={PHASE_ORDER.indexOf(phase) < PHASE_ORDER.indexOf(project.phase) ? 'text-green-500' : 'text-gray-300'} />
-                    <span className="text-sm text-gray-700 dark:text-gray-300">{t}</span>
+                    <span className="text-sm text-gray-700">{t}</span>
                   </div>
                 ))}
               </div>
@@ -554,8 +554,8 @@ export default function PortfolioDetailPage({ params }: { params: { id: string }
       )}
 
       {activeTab === 'risks' && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Risks & Issues</h3>
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <h3 className="text-sm font-semibold text-gray-900 mb-4">Risks & Issues</h3>
           {risks.length === 0 ? (
             <div className="text-center py-12 text-gray-400">
               <Shield size={36} className="mx-auto mb-2 opacity-30" />
@@ -565,12 +565,12 @@ export default function PortfolioDetailPage({ params }: { params: { id: string }
           ) : (
             <div className="space-y-3">
               {risks.map((r: any) => (
-                <div key={r.id} className="flex items-start gap-3 p-3 rounded-xl border border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/30">
+                <div key={r.id} className="flex items-start gap-3 p-3 rounded-xl border border-gray-100 bg-gray-50">
                   <span className={`text-xs px-2 py-0.5 rounded font-semibold flex-shrink-0 mt-0.5 ${r.riskLevel === 'HIGH' || r.riskLevel === 'CRITICAL' ? 'bg-red-100 text-red-700' : r.riskLevel === 'MEDIUM' ? 'bg-orange-100 text-orange-700' : 'bg-green-100 text-green-700'}`}>
                     {r.riskLevel?.charAt(0) + r.riskLevel?.slice(1)?.toLowerCase()}
                   </span>
                   <div>
-                    <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{r.title || r.description}</p>
+                    <p className="text-sm font-medium text-gray-800">{r.title || r.description}</p>
                     <p className="text-xs text-gray-400 mt-0.5">Reported on {r.createdAt ? format(new Date(r.createdAt), 'MMM dd, yyyy') : 'N/A'}</p>
                   </div>
                 </div>
@@ -581,24 +581,24 @@ export default function PortfolioDetailPage({ params }: { params: { id: string }
       )}
 
       {activeTab === 'team' && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Team Members</h3>
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <h3 className="text-sm font-semibold text-gray-900 mb-4">Team Members</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {(team.length > 0 ? team : [
               { id: '1', memberName: project.projectManager, role: 'PROJECT_MANAGER' },
               project.accountManager ? { id: '2', memberName: project.accountManager, role: 'ACCOUNT_MANAGER' } : null,
             ].filter(Boolean)).map((m: any) => (
-              <div key={m.id} className="flex items-center justify-between p-3 rounded-xl border border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/30">
+              <div key={m.id} className="flex items-center justify-between p-3 rounded-xl border border-gray-100 bg-gray-50">
                 <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-full bg-primary-100 dark:bg-primary-900/40 flex items-center justify-center text-sm font-bold text-primary-700 dark:text-primary-300">
+                  <div className="w-9 h-9 rounded-full bg-primary-100 flex items-center justify-center text-sm font-bold text-primary-700">
                     {(m.memberName || m.name || '?').charAt(0).toUpperCase()}
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{m.memberName || m.name}</p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">{m.role?.replace(/_/g, ' ')}</p>
+                    <p className="text-sm font-medium text-gray-800">{m.memberName || m.name}</p>
+                    <p className="text-xs text-gray-500">{m.role?.replace(/_/g, ' ')}</p>
                   </div>
                 </div>
-                <button className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400"><Mail size={14} /></button>
+                <button className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400"><Mail size={14} /></button>
               </div>
             ))}
           </div>
@@ -606,9 +606,9 @@ export default function PortfolioDetailPage({ params }: { params: { id: string }
       )}
 
       {['documents', 'milestones', 'history'].includes(activeTab) && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-8 text-center">
+        <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
           <BookOpen size={36} className="mx-auto mb-3 text-gray-300" />
-          <p className="text-sm text-gray-500 dark:text-gray-400">
+          <p className="text-sm text-gray-500">
             {activeTab === 'documents' ? 'Documents' : activeTab === 'milestones' ? 'Milestones' : 'History'} are managed in the project detail view.
           </p>
           <Link href={`/projects/${project.id}/manage`} className="mt-3 inline-block text-sm text-primary-600 hover:underline">

@@ -1,6 +1,6 @@
 import { query, execute } from '../config/database';
 import { logger } from '../utils/logger';
-import nodemailer from 'nodemailer';
+import { emailService } from './emailService';
 import { v4 as uuidv4 } from 'uuid';
 
 type NotificationType = 'DELAY_DETECTED' | 'PROJECT_COMPLETED' | 'CASE_STUDY_REMINDER' | 'PHASE_COMPLETED' | 'GENERAL';
@@ -17,36 +17,30 @@ interface Project {
   phase: string;
 }
 
-interface EmailOptions {
-  to: string[];
-  subject: string;
-  html: string;
+/** Look up real email addresses for the project managers/account managers by name. */
+async function resolveRecipients(project: Project): Promise<string[]> {
+  try {
+    const names = [project.projectManager, project.accountManager].filter(Boolean);
+    if (names.length === 0) return [];
+
+    const placeholders = names.map((_, i) => `$${i + 1}`).join(', ');
+    const result = await query(
+      `SELECT email FROM users WHERE name = ANY(ARRAY[${placeholders}]) AND email IS NOT NULL`,
+      names
+    );
+    const emails = result.rows.map((r: any) => r.email).filter(Boolean);
+
+    if (emails.length === 0) {
+      logger.warn(`No user emails found for project managers: ${names.join(', ')}`);
+    }
+    return emails;
+  } catch (err) {
+    logger.error(`Failed to resolve recipients: ${err}`);
+    return [];
+  }
 }
 
 class NotificationService {
-  private transporter: nodemailer.Transporter | null = null;
-
-  constructor() {
-    this.initializeTransporter();
-  }
-
-  private initializeTransporter(): void {
-    if (process.env.SMTP_HOST && process.env.SMTP_USER) {
-      this.transporter = nodemailer.createTransport({
-        host: process.env.SMTP_HOST,
-        port: parseInt(process.env.SMTP_PORT || '587'),
-        secure: process.env.SMTP_PORT === '465',
-        auth: {
-          user: process.env.SMTP_USER,
-          pass: process.env.SMTP_PASS,
-        },
-      });
-      logger.info('Email transporter initialized');
-    } else {
-      logger.warn('Email configuration not found - notifications will be logged only');
-    }
-  }
-
   async createNotification(
     type: NotificationType,
     title: string,
@@ -57,26 +51,30 @@ class NotificationService {
     const notificationId = uuidv4();
     await execute(
       `INSERT INTO notifications (id, type, title, message, recipients, project_id, status)
-       VALUES (?, ?, ?, ?, ?, ?, 'PENDING')`,
-      [notificationId, type, title, message, JSON.stringify(recipients), projectId]
+       VALUES ($1, $2, $3, $4, $5, $6, 'PENDING')`,
+      [notificationId, type, title, message, JSON.stringify(recipients), projectId ?? null]
     );
 
+    if (recipients.length === 0) {
+      logger.warn(`Notification ${type} created with no recipients — skipping email send`);
+      return;
+    }
+
     try {
-      await this.sendEmail({
+      await emailService.sendEmail({
         to: recipients,
         subject: title,
-        html: this.formatEmailHtml(type, title, message),
+        html: message, // callers already pass branded HTML
       });
 
-      await query(
-        `UPDATE notifications SET status = 'SENT', sent_at = NOW() WHERE id = ?`,
+      await execute(
+        `UPDATE notifications SET status = 'SENT', sent_at = NOW() WHERE id = $1`,
         [notificationId]
       );
-
-      logger.info(`Notification sent: ${type} - ${title}`);
+      logger.info(`Notification sent: ${type} — ${title}`);
     } catch (error) {
-      await query(
-        `UPDATE notifications SET status = 'FAILED' WHERE id = ?`,
+      await execute(
+        `UPDATE notifications SET status = 'FAILED' WHERE id = $1`,
         [notificationId]
       );
       logger.error(`Failed to send notification: ${error}`);
@@ -84,57 +82,95 @@ class NotificationService {
   }
 
   async notifyDelayDetected(project: Project): Promise<void> {
-    const recipients = this.getProjectRecipients(project);
+    const recipients = await resolveRecipients(project);
     const title = `⚠️ Project Delay Detected: ${project.name}`;
-    const message = `
-      Project "${project.name}" is now delayed by ${project.delayDays} days.
-      
-      Customer: ${project.customerName}
-      Project Manager: ${project.projectManager}
-      Planned End Date: ${new Date(project.plannedEnd).toLocaleDateString()}
-      Current Phase: ${project.phase}
-      
-      Please review and take necessary action.
-    `;
+    const projectUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/projects/${project.id}`;
 
-    await this.createNotification('DELAY_DETECTED', title, message, recipients, project.id);
+    await emailService.sendNotification({
+      to: recipients,
+      type: 'DELAY_DETECTED',
+      title,
+      rows: [
+        { label: 'Project', value: project.name },
+        { label: 'Customer', value: project.customerName },
+        { label: 'Project Manager', value: project.projectManager },
+        { label: 'Planned End', value: new Date(project.plannedEnd).toLocaleDateString() },
+        { label: 'Delay', value: `${project.delayDays} day(s)` },
+        { label: 'Phase', value: project.phase },
+      ],
+      note: `This project is <strong>${project.delayDays} day(s) past its planned end date</strong>. Please review and take necessary action.`,
+      projectUrl,
+    });
+
+    // Also store in notifications table
+    const notificationId = uuidv4();
+    await execute(
+      `INSERT INTO notifications (id, type, title, message, recipients, project_id, status)
+       VALUES ($1, $2, $3, $4, $5, $6, 'SENT')`,
+      [notificationId, 'DELAY_DETECTED', title,
+       `Project "${project.name}" is delayed by ${project.delayDays} day(s). Customer: ${project.customerName}`,
+       JSON.stringify(recipients), project.id]
+    );
   }
 
   async notifyProjectCompleted(project: Project): Promise<void> {
-    const recipients = this.getProjectRecipients(project);
+    const recipients = await resolveRecipients(project);
     const title = `✅ Project Completed: ${project.name}`;
-    const message = `
-      Project "${project.name}" has been marked as completed.
-      
-      Customer: ${project.customerName}
-      Project Manager: ${project.projectManager}
-      Completion Date: ${project.actualEnd ? new Date(project.actualEnd).toLocaleDateString() : 'N/A'}
-      
-      ${project.delayDays > 0
-        ? `Note: Project was completed ${project.delayDays} days behind schedule.`
-        : 'Project was completed on time!'
-      }
-      
-      Please ensure a case study is created for this project.
-    `;
+    const projectUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/projects/${project.id}`;
 
-    await this.createNotification('PROJECT_COMPLETED', title, message, recipients, project.id);
+    await emailService.sendNotification({
+      to: recipients,
+      type: 'PROJECT_COMPLETED',
+      title,
+      rows: [
+        { label: 'Project', value: project.name },
+        { label: 'Customer', value: project.customerName },
+        { label: 'Project Manager', value: project.projectManager },
+        { label: 'Completion Date', value: project.actualEnd ? new Date(project.actualEnd).toLocaleDateString() : 'N/A' },
+      ],
+      note: project.delayDays > 0
+        ? `Project was completed <strong>${project.delayDays} day(s) behind schedule</strong>. Please create a case study.`
+        : `Project was completed <strong>on time</strong>! Please create a case study to document the success.`,
+      projectUrl,
+    });
+
+    const notificationId = uuidv4();
+    await execute(
+      `INSERT INTO notifications (id, type, title, message, recipients, project_id, status)
+       VALUES ($1, $2, $3, $4, $5, $6, 'SENT')`,
+      [notificationId, 'PROJECT_COMPLETED', title,
+       `Project "${project.name}" has been completed. Please create a case study.`,
+       JSON.stringify(recipients), project.id]
+    );
   }
 
   async notifyCaseStudyReminder(project: Project): Promise<void> {
-    const recipients = this.getProjectRecipients(project);
+    const recipients = await resolveRecipients(project);
     const title = `📝 Case Study Reminder: ${project.name}`;
-    const message = `
-      Project "${project.name}" was completed but doesn't have a case study yet.
-      
-      Customer: ${project.customerName}
-      Project Manager: ${project.projectManager}
-      Completion Date: ${project.actualEnd ? new Date(project.actualEnd).toLocaleDateString() : 'N/A'}
-      
-      Please create a case study for this successful project.
-    `;
+    const projectUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/projects/${project.id}`;
 
-    await this.createNotification('CASE_STUDY_REMINDER', title, message, recipients, project.id);
+    await emailService.sendNotification({
+      to: recipients,
+      type: 'CASE_STUDY_REMINDER',
+      title,
+      rows: [
+        { label: 'Project', value: project.name },
+        { label: 'Customer', value: project.customerName },
+        { label: 'Project Manager', value: project.projectManager },
+        { label: 'Completion Date', value: project.actualEnd ? new Date(project.actualEnd).toLocaleDateString() : 'N/A' },
+      ],
+      note: 'This completed project does not have a case study yet. Please document it to share learnings with the team.',
+      projectUrl,
+    });
+
+    const notificationId = uuidv4();
+    await execute(
+      `INSERT INTO notifications (id, type, title, message, recipients, project_id, status)
+       VALUES ($1, $2, $3, $4, $5, $6, 'SENT')`,
+      [notificationId, 'CASE_STUDY_REMINDER', title,
+       `Project "${project.name}" is missing a case study.`,
+       JSON.stringify(recipients), project.id]
+    );
   }
 
   async getNotifications(
@@ -144,122 +180,54 @@ class NotificationService {
   ): Promise<{ notifications: any[]; total: number }> {
     const safeLimit = Math.max(1, Math.min(100, Math.floor(limit)));
     const safeOffset = Math.max(0, Math.floor((page - 1) * safeLimit));
-    
-    let queryStr = `
-      SELECT n.*, p.id as p_id, p.name as p_name 
-      FROM notifications n
-      LEFT JOIN projects p ON n.project_id = p.id
-    `;
-    const params: any[] = [];
 
-    if (projectId) {
-      queryStr += ` WHERE n.project_id = ?`;
-      params.push(projectId);
-    }
-
-    queryStr += ` ORDER BY n.created_at DESC LIMIT ${safeLimit} OFFSET ${safeOffset}`;
+    const whereClause = projectId ? `WHERE n.project_id = $1` : '';
+    const params: any[] = projectId ? [projectId] : [];
 
     const [notificationsResult, countResult] = await Promise.all([
-      query(queryStr, params),
       query(
-        projectId
-          ? `SELECT COUNT(*) as count FROM notifications WHERE project_id = ?`
-          : `SELECT COUNT(*) as count FROM notifications`,
-        projectId ? [projectId] : []
+        `SELECT n.*, p.id as p_id, p.name as p_name
+         FROM notifications n
+         LEFT JOIN projects p ON n.project_id = p.id
+         ${whereClause}
+         ORDER BY n.created_at DESC
+         LIMIT ${safeLimit} OFFSET ${safeOffset}`,
+        params
+      ),
+      query(
+        `SELECT COUNT(*) as count FROM notifications n ${whereClause}`,
+        params
       ),
     ]);
 
     return {
-      notifications: notificationsResult.rows.map((row) => ({
+      notifications: notificationsResult.rows.map((row: any) => ({
         id: row.id,
         projectId: row.project_id,
         type: row.type,
         title: row.title,
         message: row.message,
-        recipients: JSON.parse(row.recipients || '[]'),
+        recipients: (() => { try { return JSON.parse(row.recipients || '[]'); } catch { return []; } })(),
         status: row.status,
         sentAt: row.sent_at,
         createdAt: row.created_at,
         project: row.p_id ? { id: row.p_id, name: row.p_name } : null,
       })),
-      total: parseInt(countResult.rows[0].count || countResult.rows[0]['COUNT(*)'] || 0),
+      total: parseInt(countResult.rows[0].count || 0),
     };
   }
 
   async markAsRead(id: string): Promise<void> {
-    await query(
-      `UPDATE notifications SET status = 'SENT', sent_at = NOW() WHERE id = ?`,
+    await execute(
+      `UPDATE notifications SET status = 'SENT', sent_at = NOW() WHERE id = $1`,
       [id]
     );
-    logger.info(`Notification marked as read: ${id}`);
   }
 
   async markAllAsRead(): Promise<void> {
-    await query(
+    await execute(
       `UPDATE notifications SET status = 'SENT', sent_at = NOW() WHERE status = 'PENDING'`
     );
-    logger.info('All notifications marked as read');
-  }
-
-  private async sendEmail(options: EmailOptions): Promise<void> {
-    if (!this.transporter) {
-      logger.info(`[MOCK EMAIL] To: ${options.to.join(', ')}`);
-      logger.info(`[MOCK EMAIL] Subject: ${options.subject}`);
-      logger.info(`[MOCK EMAIL] Body: ${options.html.substring(0, 200)}...`);
-      return;
-    }
-
-    await this.transporter.sendMail({
-      from: process.env.SMTP_FROM || 'noreply@pmo-tracker.com',
-      to: options.to.join(', '),
-      subject: options.subject,
-      html: options.html,
-    });
-  }
-
-  private formatEmailHtml(type: NotificationType, title: string, message: string): string {
-    const typeColors: Record<NotificationType, string> = {
-      DELAY_DETECTED: '#ef4444',
-      PROJECT_COMPLETED: '#22c55e',
-      CASE_STUDY_REMINDER: '#3b82f6',
-      PHASE_COMPLETED: '#8b5cf6',
-      GENERAL: '#6b7280',
-    };
-
-    return `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <style>
-            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-            .header { background: ${typeColors[type]}; color: white; padding: 20px; border-radius: 8px 8px 0 0; }
-            .content { background: #f9fafb; padding: 20px; border-radius: 0 0 8px 8px; }
-            .footer { text-align: center; padding: 20px; color: #6b7280; font-size: 12px; }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="header">
-              <h2 style="margin: 0;">${title}</h2>
-            </div>
-            <div class="content">
-              <pre style="white-space: pre-wrap; font-family: inherit;">${message}</pre>
-            </div>
-            <div class="footer">
-              <p>PMO Tracker - Project Migration Tracking System</p>
-            </div>
-          </div>
-        </body>
-      </html>
-    `;
-  }
-
-  private getProjectRecipients(project: Project): string[] {
-    return [
-      `${project.projectManager.toLowerCase().replace(/\s+/g, '.')}@company.com`,
-      `${project.accountManager.toLowerCase().replace(/\s+/g, '.')}@company.com`,
-    ];
   }
 }
 

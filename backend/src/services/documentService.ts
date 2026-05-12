@@ -46,7 +46,7 @@ function mapDocumentRow(row: any) {
 class DocumentService {
   async getByProject(projectId: string) {
     const result = await query(
-      `SELECT * FROM project_documents WHERE project_id = ? ORDER BY category ASC, created_at DESC`,
+      `SELECT * FROM project_documents WHERE project_id = $1 ORDER BY category ASC, created_at DESC`,
       [projectId]
     );
     return result.rows.map(mapDocumentRow);
@@ -57,7 +57,7 @@ class DocumentService {
       `SELECT d.*, p.name as project_name
        FROM project_documents d
        JOIN projects p ON d.project_id = p.id
-       WHERE d.id = ?`,
+       WHERE d.id = $1`,
       [id]
     );
 
@@ -72,7 +72,7 @@ class DocumentService {
 
   async getByCategory(projectId: string, category: DocumentCategory) {
     const result = await query(
-      `SELECT * FROM project_documents WHERE project_id = ? AND category = ? ORDER BY created_at DESC`,
+      `SELECT * FROM project_documents WHERE project_id = $1 AND category = $2 ORDER BY created_at DESC`,
       [projectId, category]
     );
     return result.rows.map(mapDocumentRow);
@@ -82,7 +82,7 @@ class DocumentService {
     const docId = uuidv4();
     await execute(
       `INSERT INTO project_documents (id, project_id, name, description, category, file_url, file_size, mime_type, version, uploaded_by)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
      [
         docId,
         data.projectId,
@@ -97,7 +97,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ]
     );
 
-    const result = await query(`SELECT * FROM project_documents WHERE id = ?`, [docId]);
+    const result = await query(`SELECT * FROM project_documents WHERE id = $1`, [docId]);
     const doc = mapDocumentRow(result.rows[0]);
     logger.info(`Document created: ${doc.id} for project ${data.projectId}`);
     return doc;
@@ -123,20 +123,20 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       params
     );
 
-    const result = await query(`SELECT * FROM project_documents WHERE id = ?`, [id]);
+    const result = await query(`SELECT * FROM project_documents WHERE id = $1`, [id]);
     const doc = mapDocumentRow(result.rows[0]);
     logger.info(`Document updated: ${doc.id}`);
     return doc;
   }
 
   async delete(id: string) {
-    await query(`DELETE FROM project_documents WHERE id = ?`, [id]);
+    await query(`DELETE FROM project_documents WHERE id = $1`, [id]);
     logger.info(`Document deleted: ${id}`);
   }
 
   async getSummary(projectId: string) {
     const result = await query(
-      `SELECT * FROM project_documents WHERE project_id = ?`,
+      `SELECT * FROM project_documents WHERE project_id = $1`,
       [projectId]
     );
 

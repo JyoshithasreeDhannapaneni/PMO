@@ -46,7 +46,7 @@ function mapTeamMemberRow(row: any) {
 class TeamService {
   async getByProject(projectId: string) {
     const result = await query(
-      `SELECT * FROM project_team_members WHERE project_id = ? ORDER BY role ASC, name ASC`,
+      `SELECT * FROM project_team_members WHERE project_id = $1 ORDER BY role ASC, name ASC`,
       [projectId]
     );
     return result.rows.map(mapTeamMemberRow);
@@ -57,7 +57,7 @@ class TeamService {
       `SELECT m.*, p.name as project_name
        FROM project_team_members m
        JOIN projects p ON m.project_id = p.id
-       WHERE m.id = ?`,
+       WHERE m.id = $1`,
       [id]
     );
 
@@ -74,7 +74,7 @@ class TeamService {
     const memberId = uuidv4();
     await execute(
       `INSERT INTO project_team_members (id, project_id, name, email, role, department, allocation, start_date, end_date, is_active)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, true)`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true)`,
       [
         memberId,
         data.projectId,
@@ -88,7 +88,7 @@ class TeamService {
       ]
     );
 
-    const result = await query(`SELECT * FROM project_team_members WHERE id = ?`, [memberId]);
+    const result = await query(`SELECT * FROM project_team_members WHERE id = $1`, [memberId]);
     const member = mapTeamMemberRow(result.rows[0]);
     logger.info(`Team member added: ${member.name} to project ${data.projectId}`);
     return member;
@@ -108,27 +108,25 @@ class TeamService {
     if (data.endDate !== undefined) { updates.push(`end_date = $${paramIndex++}`); params.push(data.endDate); }
     if (data.isActive !== undefined) { updates.push(`is_active = $${paramIndex++}`); params.push(data.isActive); }
 
-    params.push(id);
-
     await execute(
-      `UPDATE project_team_members SET ${updates.join(', ')} WHERE id = ?`,
-      params
+      `UPDATE project_team_members SET ${updates.join(', ')} WHERE id = $${paramIndex}`,
+      [...params, id]
     );
 
-    const result = await query(`SELECT * FROM project_team_members WHERE id = ?`, [id]);
+    const result = await query(`SELECT * FROM project_team_members WHERE id = $1`, [id]);
     const member = mapTeamMemberRow(result.rows[0]);
     logger.info(`Team member updated: ${member.id}`);
     return member;
   }
 
   async delete(id: string) {
-    await query(`DELETE FROM project_team_members WHERE id = ?`, [id]);
+    await query(`DELETE FROM project_team_members WHERE id = $1`, [id]);
     logger.info(`Team member removed: ${id}`);
   }
 
   async getTeamSummary(projectId: string) {
     const result = await query(
-      `SELECT * FROM project_team_members WHERE project_id = ? AND is_active = true`,
+      `SELECT * FROM project_team_members WHERE project_id = $1 AND is_active = true`,
       [projectId]
     );
 

@@ -71,15 +71,15 @@ class ExportService {
 
   async exportProjectDetailToJSON(projectId: string) {
     const [projectResult, phasesResult, tasksResult, risksResult, teamResult, docsResult, reportsResult, crResult, caseStudyResult] = await Promise.all([
-      query(`SELECT * FROM projects WHERE id = ?`, [projectId]),
-      query(`SELECT * FROM project_phases WHERE project_id = ? ORDER BY order_index ASC`, [projectId]),
-      query(`SELECT * FROM project_tasks WHERE project_id = ? ORDER BY order_index ASC`, [projectId]),
-      query(`SELECT * FROM project_risks WHERE project_id = ?`, [projectId]),
-      query(`SELECT * FROM project_team_members WHERE project_id = ?`, [projectId]),
-      query(`SELECT * FROM project_documents WHERE project_id = ?`, [projectId]),
-      query(`SELECT * FROM project_status_reports WHERE project_id = ? ORDER BY report_date DESC LIMIT 5`, [projectId]),
-      query(`SELECT * FROM change_requests WHERE project_id = ?`, [projectId]),
-      query(`SELECT * FROM case_studies WHERE project_id = ?`, [projectId]),
+      query(`SELECT * FROM projects WHERE id = $1`, [projectId]),
+      query(`SELECT * FROM project_phases WHERE project_id = $1 ORDER BY order_index ASC`, [projectId]),
+      query(`SELECT * FROM project_tasks WHERE project_id = $1 ORDER BY order_index ASC`, [projectId]),
+      query(`SELECT * FROM project_risks WHERE project_id = $1`, [projectId]),
+      query(`SELECT * FROM project_team_members WHERE project_id = $1`, [projectId]),
+      query(`SELECT * FROM project_documents WHERE project_id = $1`, [projectId]),
+      query(`SELECT * FROM project_status_reports WHERE project_id = $1 ORDER BY report_date DESC LIMIT 5`, [projectId]),
+      query(`SELECT * FROM change_requests WHERE project_id = $1`, [projectId]),
+      query(`SELECT * FROM case_studies WHERE project_id = $1`, [projectId]),
     ]);
 
     if (projectResult.rows.length === 0) {
@@ -107,7 +107,7 @@ class ExportService {
       `SELECT r.*, p.name as project_name, p.customer_name, p.project_manager
        FROM project_status_reports r
        JOIN projects p ON r.project_id = p.id
-       WHERE r.id = ?`,
+       WHERE r.id = $1`,
       [reportId]
     );
 
@@ -242,7 +242,7 @@ class ExportService {
       `SELECT t.*, ph.phase_name
        FROM project_tasks t
        JOIN project_phases ph ON t.phase_record_id = ph.id
-       WHERE t.project_id = ?
+       WHERE t.project_id = $1
        ORDER BY ph.order_index ASC, t.order_index ASC`,
       [projectId]
     );
@@ -282,7 +282,7 @@ class ExportService {
 
   async exportRisksToCSV(projectId: string) {
     const result = await query(
-      `SELECT * FROM project_risks WHERE project_id = ? ORDER BY created_at DESC`,
+      `SELECT * FROM project_risks WHERE project_id = $1 ORDER BY created_at DESC`,
       [projectId]
     );
 

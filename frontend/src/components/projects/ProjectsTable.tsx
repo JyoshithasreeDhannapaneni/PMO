@@ -8,14 +8,15 @@ import { DelayIndicator } from '@/components/ui/DelayIndicator';
 import { formatDate, formatCurrency } from '@/lib/utils';
 import type { Project } from '@/types';
 import { useSettings } from '@/context/SettingsContext';
-import { 
-  Eye, 
-  Edit, 
-  Trash2, 
-  ChevronUp, 
-  ChevronDown, 
-  Check, 
-  X, 
+import { useToast } from '@/context/ToastContext';
+import {
+  Eye,
+  Edit,
+  Trash2,
+  ChevronUp,
+  ChevronDown,
+  Check,
+  X,
   Calendar,
   Loader2,
   ChevronLeft,
@@ -39,6 +40,7 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
   const router = useRouter();
   const updateProject = useUpdateProject();
   const { settings } = useSettings();
+  const { showToast } = useToast();
 
   const resolveMigrationTypes = (raw: string | null) => {
     if (!raw) return [];
@@ -123,18 +125,19 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
     try {
       const updateData: any = {};
       updateData[field] = editValue;
-      
       await updateProject.mutateAsync({ id: projectId, data: updateData });
       setEditingCell(null);
       setEditValue('');
-    } catch (error) {
-      console.error('Failed to update:', error);
+      showToast('success', 'Updated');
+    } catch (error: any) {
+      const msg = error?.response?.data?.error?.message || error?.message || 'Update failed';
+      showToast('error', 'Failed to update', msg);
     }
   };
 
   const SortHeader = ({ field, label }: { field: SortField; label: string }) => (
     <th 
-      className="px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 select-none"
+      className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
       onClick={() => handleSort(field)}
     >
       <div className="flex items-center gap-1">
@@ -175,7 +178,7 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
           <select
             value={editValue}
             onChange={(e) => setEditValue(e.target.value)}
-            className="text-xs px-2 py-1 border border-primary-300 rounded focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white dark:bg-gray-800"
+            className="text-xs px-2 py-1 border border-primary-300 rounded focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
             autoFocus
           >
             {options.map(opt => (
@@ -201,7 +204,7 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
 
     return (
       <div 
-        className="cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 rounded px-1 py-0.5 -mx-1 transition-colors"
+        className="cursor-pointer hover:bg-gray-100 rounded px-1 py-0.5 -mx-1 transition-colors"
         onClick={(e) => {
           e.stopPropagation();
           startEditing(projectId, field, value);
@@ -231,7 +234,7 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
             type="text"
             value={editValue}
             onChange={(e) => setEditValue(e.target.value)}
-            className="text-sm px-2 py-1 border border-primary-300 rounded focus:outline-none focus:ring-2 focus:ring-primary-500 w-32 bg-white dark:bg-gray-800"
+            className="text-sm px-2 py-1 border border-primary-300 rounded focus:outline-none focus:ring-2 focus:ring-primary-500 w-32 bg-white"
             autoFocus
             onKeyDown={(e) => {
               if (e.key === 'Enter') saveEdit(projectId, field);
@@ -257,7 +260,7 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
 
     return (
       <div 
-        className="cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 rounded px-1 py-0.5 -mx-1 transition-colors text-sm text-gray-900 dark:text-gray-100"
+        className="cursor-pointer hover:bg-gray-100 rounded px-1 py-0.5 -mx-1 transition-colors text-sm text-gray-900"
         onClick={(e) => {
           e.stopPropagation();
           startEditing(projectId, field, value);
@@ -288,7 +291,7 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
             type="date"
             value={editValue}
             onChange={(e) => setEditValue(e.target.value)}
-            className="text-xs px-2 py-1 border border-primary-300 rounded focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white dark:bg-gray-800"
+            className="text-xs px-2 py-1 border border-primary-300 rounded focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
             autoFocus
           />
           <button 
@@ -310,7 +313,7 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
 
     return (
       <div 
-        className="cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 rounded px-1 py-0.5 -mx-1 transition-colors flex items-center gap-1 text-sm"
+        className="cursor-pointer hover:bg-gray-100 rounded px-1 py-0.5 -mx-1 transition-colors flex items-center gap-1 text-sm"
         onClick={(e) => {
           e.stopPropagation();
           startEditing(projectId, field, dateValue);
@@ -357,37 +360,38 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
       {/* Table */}
       <div className="overflow-x-auto">
         <table className="w-full">
-          <thead className="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+          <thead className="bg-blue-50/60 border-b border-gray-200">
             <tr>
               <SortHeader field="name" label="Project Name" />
               <SortHeader field="projectManager" label="Project Manager" />
               <SortHeader field="accountManager" label="Account Manager" />
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Migration Types</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Source</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Target</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Budget</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Migration Types</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Source</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Target</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Budget</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Overage</th>
               <SortHeader field="planType" label="Plan" />
               <SortHeader field="delayStatus" label="Delay Status" />
               <SortHeader field="phase" label="Current Phase" />
               <SortHeader field="status" label="Status" />
               <SortHeader field="plannedStart" label="SOW Start" />
               <SortHeader field="plannedEnd" label="SOW End" />
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                 Kickoff Start Date
               </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                 Project End Date
               </th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
+              <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
                 Actions
               </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+          <tbody className="divide-y divide-gray-200">
             {paginatedProjects.map((project) => (
               <tr 
                 key={project.id} 
-                className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+                className="hover:bg-gray-50 transition-colors"
               >
                 {/* Project Name */}
                 <td className="px-4 py-3">
@@ -395,10 +399,10 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
                     className="cursor-pointer"
                     onClick={() => router.push(`/projects/${project.id}`)}
                   >
-                    <div className="font-medium text-gray-900 dark:text-gray-100 hover:text-primary-600 dark:hover:text-primary-400">
+                    <div className="font-medium text-gray-900 hover:text-primary-600">
                       {project.name}
                     </div>
-                    <div className="text-xs text-gray-500 dark:text-gray-400">{project.customerName}</div>
+                    <div className="text-xs text-gray-500">{project.customerName}</div>
                   </div>
                 </td>
 
@@ -456,6 +460,24 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
                     field="estimatedCost"
                     value={project.estimatedCost != null ? String(project.estimatedCost) : ''}
                   />
+                </td>
+
+                {/* Overage */}
+                <td className="px-4 py-3">
+                  {project.isOveraged ? (
+                    <div className="flex flex-col gap-0.5">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-orange-100 text-orange-700">
+                        Overaged
+                      </span>
+                      {project.overageAmount != null && (
+                        <span className="text-xs text-orange-600 font-medium">
+                          {formatCurrency(project.overageAmount)}
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="text-xs text-gray-400">—</span>
+                  )}
                 </td>
 
                 {/* Plan - Editable */}
@@ -544,7 +566,7 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
                         e.stopPropagation();
                         router.push(`/projects/${project.id}`);
                       }}
-                      className="p-1.5 text-gray-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded transition-colors"
+                      className="p-1.5 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded transition-colors"
                       title="View Details"
                     >
                       <Eye size={16} />
@@ -554,7 +576,7 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
                         e.stopPropagation();
                         router.push(`/projects/${project.id}/edit`);
                       }}
-                      className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors"
+                      className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
                       title="Full Edit"
                     >
                       <Edit size={16} />
@@ -567,7 +589,7 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
                             onDelete(project.id);
                           }
                         }}
-                        className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
+                        className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
                         title="Delete"
                       >
                         <Trash2 size={16} />
@@ -583,32 +605,32 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
 
       {/* Empty State */}
       {paginatedProjects.length === 0 && (
-        <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+        <div className="text-center py-12 text-gray-500">
           {searchTerm ? 'No projects match your search criteria' : 'No projects found'}
         </div>
       )}
 
       {/* Pagination */}
       {filteredAndSortedProjects.length > 0 && (
-        <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
-          <div className="text-sm text-gray-500 dark:text-gray-400">
+        <div className="px-4 py-3 border-t border-gray-200 flex items-center justify-between">
+          <div className="text-sm text-gray-500">
             Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, filteredAndSortedProjects.length)} of {filteredAndSortedProjects.length} results
           </div>
           <div className="flex items-center gap-2">
             <button
               onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
               disabled={currentPage === 1}
-              className="p-2 rounded-lg border border-gray-300 dark:border-gray-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+              className="p-2 rounded-lg border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 transition-colors"
             >
               <ChevronLeft size={16} />
             </button>
-            <span className="text-sm text-gray-600 dark:text-gray-300">
+            <span className="text-sm text-gray-600">
               Page {currentPage} of {totalPages}
             </span>
             <button
               onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
               disabled={currentPage === totalPages}
-              className="p-2 rounded-lg border border-gray-300 dark:border-gray-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+              className="p-2 rounded-lg border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 transition-colors"
             >
               <ChevronRight size={16} />
             </button>

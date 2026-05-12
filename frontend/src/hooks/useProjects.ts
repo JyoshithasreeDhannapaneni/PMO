@@ -316,3 +316,45 @@ export function useUnarchiveEscalation() {
     },
   });
 }
+
+export function useEscalationDailyNotes(projectId: string | null) {
+  return useQuery({
+    queryKey: ['escalationDailyNotes', projectId],
+    queryFn: () => authFetch(`${API_BASE}/api/dashboard/escalation-daily-notes/${projectId}`),
+    enabled: !!projectId,
+    staleTime: 0,
+  });
+}
+
+export function useAddEscalationDailyNote() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ projectId, note, author, noteDate }: { projectId: string; note: string; author?: string; noteDate?: string }) => {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
+      return fetch(`${API_BASE}/api/dashboard/escalation-daily-notes/${projectId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ note, author, noteDate }),
+      }).then(r => r.json());
+    },
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['escalationDailyNotes', vars.projectId] });
+    },
+  });
+}
+
+export function useDeleteEscalationDailyNote() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ projectId, noteId }: { projectId: string; noteId: string }) => {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
+      return fetch(`${API_BASE}/api/dashboard/escalation-daily-notes/${projectId}/${noteId}`, {
+        method: 'DELETE',
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      }).then(r => r.json());
+    },
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['escalationDailyNotes', vars.projectId] });
+    },
+  });
+}
