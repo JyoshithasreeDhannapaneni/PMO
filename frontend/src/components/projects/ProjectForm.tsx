@@ -59,8 +59,6 @@ export function ProjectForm({ project, onSubmit, isLoading, defaultManagerName }
   const { showToast } = useToast();
 
   const enabledMigrationTypes = settings.migrationTypes.filter((t) => t.enabled);
-  const sourcePlatforms = settings.sourcePlatforms;
-  const targetPlatforms = settings.targetPlatforms;
   const planTypes = settings.planTypes;
   const phases = settings.phases;
 
@@ -82,22 +80,17 @@ export function ProjectForm({ project, onSubmit, isLoading, defaultManagerName }
     authApi.getUsers().then((res) => { if (res.success) setUsers(res.data || []); }).catch(() => {});
   }, []);
 
+  const [selectedMigrationCategory, setSelectedMigrationCategory] = useState<string | null>(null);
   const [selectedMigrationTypes, setSelectedMigrationTypes] = useState<string[]>([]);
-  const [selectedSourcePlatforms, setSelectedSourcePlatforms] = useState<string[]>([]);
-  const [selectedTargetPlatforms, setSelectedTargetPlatforms] = useState<string[]>([]);
-  const [showSourceDropdown, setShowSourceDropdown] = useState(false);
-  const [showTargetDropdown, setShowTargetDropdown] = useState(false);
+  const [showMigrationTypeDropdown, setShowMigrationTypeDropdown] = useState(false);
+  const [migrationTypeSearch, setMigrationTypeSearch] = useState('');
   const [migrationTypeError, setMigrationTypeError] = useState('');
-  const [sourcePlatformError, setSourcePlatformError] = useState('');
-  const [targetPlatformError, setTargetPlatformError] = useState('');
 
-  const sourceDropdownRef = useRef<HTMLDivElement>(null);
-  const targetDropdownRef = useRef<HTMLDivElement>(null);
+  const migrationTypeDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (sourceDropdownRef.current && !sourceDropdownRef.current.contains(e.target as Node)) setShowSourceDropdown(false);
-      if (targetDropdownRef.current && !targetDropdownRef.current.contains(e.target as Node)) setShowTargetDropdown(false);
+      if (migrationTypeDropdownRef.current && !migrationTypeDropdownRef.current.contains(e.target as Node)) setShowMigrationTypeDropdown(false);
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
@@ -114,9 +107,9 @@ export function ProjectForm({ project, onSubmit, isLoading, defaultManagerName }
         return match ? match.id : storedName.toLowerCase();
       });
       setSelectedMigrationTypes(ids);
+      const firstMatch = enabledMigrationTypes.find((t) => ids.includes(t.id));
+      if (firstMatch) setSelectedMigrationCategory((firstMatch as any).category || null);
     }
-    if (project?.sourcePlatform) setSelectedSourcePlatforms(project.sourcePlatform.split(',').map((p: string) => p.trim()));
-    if (project?.targetPlatform) setSelectedTargetPlatforms(project.targetPlatform.split(',').map((p: string) => p.trim()));
   }, [project, enabledMigrationTypes.length]);
 
   const defaultPlanType = planTypes[0]?.code || 'SILVER';
@@ -166,11 +159,6 @@ export function ProjectForm({ project, onSubmit, isLoading, defaultManagerName }
   }, [planTypes, phases]); // eslint-disable-line
 
   const toggleMigrationType = (id: string) => { setSelectedMigrationTypes((p) => p.includes(id) ? p.filter((t) => t !== id) : [...p, id]); setMigrationTypeError(''); };
-  const toggleSourcePlatform = (name: string) => { setSelectedSourcePlatforms((p) => p.includes(name) ? p.filter((x) => x !== name) : [...p, name]); setSourcePlatformError(''); };
-  const toggleTargetPlatform = (name: string) => { setSelectedTargetPlatforms((p) => p.includes(name) ? p.filter((x) => x !== name) : [...p, name]); setTargetPlatformError(''); };
-
-  const sourceCategories = [...new Set(sourcePlatforms.map((p) => p.category))];
-  const targetCategories = [...new Set(targetPlatforms.map((p) => p.category))];
 
   const planOptions = planTypes.filter((p) => p.code).map((p) => ({ value: p.code, label: p.name }));
   const phaseOptions = [...phases].sort((a, b) => a.order - b.order).filter((p) => p.code).map((p) => ({ value: p.code, label: p.name }));
@@ -196,11 +184,8 @@ export function ProjectForm({ project, onSubmit, isLoading, defaultManagerName }
       const valid = await trigger(STEP_FIELDS[step]);
       if (!valid) { showToast('error', 'Please fix errors', 'Complete all required fields on this step first.'); return; }
       if (step === 'scope') {
-        let err = false;
-        if (selectedMigrationTypes.length === 0) { setMigrationTypeError('Select at least one migration type'); err = true; }
-        if (selectedSourcePlatforms.length === 0) { setSourcePlatformError('Select at least one source platform'); err = true; }
-        if (selectedTargetPlatforms.length === 0) { setTargetPlatformError('Select at least one target platform'); err = true; }
-        if (err) { showToast('error', 'Missing selections', 'Select migration type, source and target platforms.'); return; }
+        if (!selectedMigrationCategory) { setMigrationTypeError('Select a migration type'); showToast('error', 'Missing selection', 'Select a migration type.'); return; }
+        if (selectedMigrationTypes.length === 0) { setMigrationTypeError('Select at least one combination'); showToast('error', 'Missing selection', 'Select at least one migration combination.'); return; }
       }
     }
     setStep(target);
@@ -208,11 +193,12 @@ export function ProjectForm({ project, onSubmit, isLoading, defaultManagerName }
   };
 
   const handleFormSubmit = (data: ProjectFormData) => {
-    let hasError = false;
-    if (selectedMigrationTypes.length === 0) { setMigrationTypeError('Select at least one migration type'); hasError = true; }
-    if (selectedSourcePlatforms.length === 0) { setSourcePlatformError('Select at least one source platform'); hasError = true; }
-    if (selectedTargetPlatforms.length === 0) { setTargetPlatformError('Select at least one target platform'); hasError = true; }
-    if (hasError) { showToast('error', 'Missing selections', 'Select migration type, source and target platforms.'); setStep('scope'); return; }
+    if (!selectedMigrationCategory || selectedMigrationTypes.length === 0) {
+      setMigrationTypeError('Select a migration type and at least one combination');
+      showToast('error', 'Missing selections', 'Select a migration type and combination.');
+      setStep('scope');
+      return;
+    }
 
     const migrationTypes = selectedMigrationTypes.map((id) => {
       const type = enabledMigrationTypes.find((t) => t.id === id);
@@ -237,8 +223,8 @@ export function ProjectForm({ project, onSubmit, isLoading, defaultManagerName }
       notes: data.notes || '',
       phase: data.phase as any,
       status: data.status as any,
-      sourcePlatform: selectedSourcePlatforms.join(', '),
-      targetPlatform: selectedTargetPlatforms.join(', '),
+      sourcePlatform: '',
+      targetPlatform: '',
       migrationTypes,
       isOveraged: (data.isOveraged as any) === 'YES' || data.isOveraged === true ? true : ((data.isOveraged as any) === 'NO' ? false : undefined),
       isEscalated: (data.isEscalated as any) === 'YES' || data.isEscalated === true ? true : ((data.isEscalated as any) === 'NO' ? false : undefined),
@@ -321,29 +307,79 @@ export function ProjectForm({ project, onSubmit, isLoading, defaultManagerName }
 
         {/* STEP 2: Scope */}
         {step === 'scope' && (
-          <div className="space-y-4">
-            {/* Migration Types */}
+          <div className="space-y-5">
+
+            {/* Step 1: Category */}
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-2">
-                Migration Type(s) <span className="text-red-500">*</span>
+                Migration Type <span className="text-red-500">*</span>
               </label>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {enabledMigrationTypes.map((type) => (
-                  <button key={type.id} type="button" onClick={() => toggleMigrationType(type.id)}
-                    className={`p-3 border-2 rounded-lg text-left transition-all flex items-center gap-2 ${
-                      selectedMigrationTypes.includes(type.id)
-                        ? 'border-blue-500 bg-blue-50 text-blue-800'
-                        : 'border-slate-200 hover:border-blue-300 text-slate-700'}`}>
-                    <span className="text-lg">{type.icon}</span>
-                    <div className="min-w-0">
-                      <p className="text-xs font-semibold truncate">{type.name}</p>
-                      {selectedMigrationTypes.includes(type.id) && <p className="text-xs text-blue-600">✓ Selected</p>}
-                    </div>
+              <div className="grid grid-cols-3 gap-3">
+                {[
+                  { key: 'Content Migration', label: 'Content', icon: '📁', active: 'border-blue-500 bg-blue-50 text-blue-800', inactive: 'border-slate-200 hover:border-blue-300 text-slate-600' },
+                  { key: 'Messaging', label: 'Messaging', icon: '💬', active: 'border-purple-500 bg-purple-50 text-purple-800', inactive: 'border-slate-200 hover:border-purple-300 text-slate-600' },
+                  { key: 'Email', label: 'Email', icon: '📧', active: 'border-green-500 bg-green-50 text-green-800', inactive: 'border-slate-200 hover:border-green-300 text-slate-600' },
+                ].map((cat) => (
+                  <button key={cat.key} type="button"
+                    onClick={() => { setSelectedMigrationCategory(cat.key); setSelectedMigrationTypes([]); setMigrationTypeError(''); setShowMigrationTypeDropdown(false); setMigrationTypeSearch(''); }}
+                    className={`p-4 border-2 rounded-xl flex flex-col items-center gap-2 transition-all font-medium ${selectedMigrationCategory === cat.key ? cat.active : cat.inactive}`}>
+                    <span className="text-2xl">{cat.icon}</span>
+                    <span className="text-sm">{cat.label}</span>
                   </button>
                 ))}
               </div>
-              {migrationTypeError && <p className="mt-1 text-xs text-red-600">{migrationTypeError}</p>}
+              {migrationTypeError && !selectedMigrationCategory && <p className="mt-1 text-xs text-red-600">{migrationTypeError}</p>}
             </div>
+
+            {/* Step 2: Combinations (shown after category selected) */}
+            {selectedMigrationCategory && (
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  Migration Combination(s) <span className="text-red-500">*</span>
+                </label>
+                <div className="relative" ref={migrationTypeDropdownRef}>
+                  <div onClick={() => setShowMigrationTypeDropdown(!showMigrationTypeDropdown)}
+                    className={`min-h-[42px] px-3 py-2 border rounded-lg cursor-pointer bg-white flex items-start justify-between gap-2 ${migrationTypeError && selectedMigrationTypes.length === 0 ? 'border-red-400' : 'border-blue-200 hover:border-blue-400'}`}>
+                    <div className="flex flex-wrap gap-1 flex-1">
+                      {selectedMigrationTypes.length === 0
+                        ? <span className="text-slate-400 text-sm">Select combination(s)...</span>
+                        : selectedMigrationTypes.map((id) => {
+                            const type = enabledMigrationTypes.find((t) => t.id === id);
+                            return type ? (
+                              <span key={id} className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-800 text-xs rounded-full">
+                                {type.name}
+                                <button type="button" onClick={(e) => { e.stopPropagation(); toggleMigrationType(id); }}><X size={10} /></button>
+                              </span>
+                            ) : null;
+                          })}
+                    </div>
+                    {showMigrationTypeDropdown ? <ChevronUp size={16} className="text-slate-400 flex-shrink-0 mt-1" /> : <ChevronDown size={16} className="text-slate-400 flex-shrink-0 mt-1" />}
+                  </div>
+                  {migrationTypeError && selectedMigrationTypes.length === 0 && <p className="text-xs text-red-600 mt-1">{migrationTypeError}</p>}
+                  {showMigrationTypeDropdown && (
+                    <div className="absolute z-30 w-full mt-1 bg-white border border-blue-100 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                      <div className="sticky top-0 bg-white p-2 border-b border-slate-100">
+                        <input type="text" placeholder="Search combinations..."
+                          value={migrationTypeSearch}
+                          onChange={(e) => setMigrationTypeSearch(e.target.value)}
+                          onClick={(e) => e.stopPropagation()}
+                          className="w-full px-3 py-1.5 border border-blue-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                      </div>
+                      {enabledMigrationTypes
+                        .filter((t) => (t as any).category === selectedMigrationCategory || (t as any).category === 'Other')
+                        .filter((t) => !migrationTypeSearch || t.name.toLowerCase().includes(migrationTypeSearch.toLowerCase()))
+                        .map((type) => (
+                          <label key={type.id} className="flex items-center gap-2 px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm">
+                            <input type="checkbox" checked={selectedMigrationTypes.includes(type.id)} onChange={() => toggleMigrationType(type.id)}
+                              className="w-4 h-4 text-blue-600 rounded" />
+                            {type.name}
+                          </label>
+                        ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Template preview */}
             {templatePreview?.phases?.length > 0 && (
@@ -358,97 +394,6 @@ export function ProjectForm({ project, onSubmit, isLoading, defaultManagerName }
                     </span>
                   ))}
                 </div>
-              </div>
-            )}
-
-            {/* Platform pickers */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Source Platform */}
-              <div className="relative" ref={sourceDropdownRef}>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Source Platform(s) <span className="text-red-500">*</span></label>
-                <div onClick={() => setShowSourceDropdown(!showSourceDropdown)}
-                  className={`min-h-[42px] px-3 py-2 border rounded-lg cursor-pointer bg-white flex items-start justify-between gap-2 ${sourcePlatformError ? 'border-red-400' : 'border-blue-200 hover:border-blue-400'}`}>
-                  <div className="flex flex-wrap gap-1 flex-1">
-                    {selectedSourcePlatforms.length === 0
-                      ? <span className="text-slate-400 text-sm">Select source platform(s)</span>
-                      : selectedSourcePlatforms.map((p) => (
-                        <span key={p} className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-800 text-xs rounded-full">
-                          {p}
-                          <button type="button" onClick={(e) => { e.stopPropagation(); toggleSourcePlatform(p); }}><X size={10} /></button>
-                        </span>
-                      ))}
-                  </div>
-                  {showSourceDropdown ? <ChevronUp size={16} className="text-slate-400 flex-shrink-0 mt-1" /> : <ChevronDown size={16} className="text-slate-400 flex-shrink-0 mt-1" />}
-                </div>
-                {sourcePlatformError && <p className="text-xs text-red-600 mt-1">{sourcePlatformError}</p>}
-                {showSourceDropdown && (
-                  <div className="absolute z-30 w-full mt-1 bg-white border border-blue-100 rounded-lg shadow-lg max-h-52 overflow-y-auto">
-                    {sourceCategories.map((cat) => {
-                      const items = sourcePlatforms.filter((p) => p.category === cat);
-                      return items.length ? (
-                        <div key={cat}>
-                          <div className="px-3 py-1.5 bg-blue-50 text-xs font-semibold text-blue-600 uppercase tracking-wide">{cat}</div>
-                          {items.map((p) => (
-                            <label key={p.id} className="flex items-center gap-2 px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm">
-                              <input type="checkbox" checked={selectedSourcePlatforms.includes(p.name)} onChange={() => toggleSourcePlatform(p.name)}
-                                className="w-4 h-4 text-blue-600 rounded" />
-                              {p.name}
-                            </label>
-                          ))}
-                        </div>
-                      ) : null;
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {/* Target Platform */}
-              <div className="relative" ref={targetDropdownRef}>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Target Platform(s) <span className="text-red-500">*</span></label>
-                <div onClick={() => setShowTargetDropdown(!showTargetDropdown)}
-                  className={`min-h-[42px] px-3 py-2 border rounded-lg cursor-pointer bg-white flex items-start justify-between gap-2 ${targetPlatformError ? 'border-red-400' : 'border-blue-200 hover:border-blue-400'}`}>
-                  <div className="flex flex-wrap gap-1 flex-1">
-                    {selectedTargetPlatforms.length === 0
-                      ? <span className="text-slate-400 text-sm">Select target platform(s)</span>
-                      : selectedTargetPlatforms.map((p) => (
-                        <span key={p} className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-100 text-green-800 text-xs rounded-full">
-                          {p}
-                          <button type="button" onClick={(e) => { e.stopPropagation(); toggleTargetPlatform(p); }}><X size={10} /></button>
-                        </span>
-                      ))}
-                  </div>
-                  {showTargetDropdown ? <ChevronUp size={16} className="text-slate-400 flex-shrink-0 mt-1" /> : <ChevronDown size={16} className="text-slate-400 flex-shrink-0 mt-1" />}
-                </div>
-                {targetPlatformError && <p className="text-xs text-red-600 mt-1">{targetPlatformError}</p>}
-                {showTargetDropdown && (
-                  <div className="absolute z-30 w-full mt-1 bg-white border border-blue-100 rounded-lg shadow-lg max-h-52 overflow-y-auto">
-                    {targetCategories.map((cat) => {
-                      const items = targetPlatforms.filter((p) => p.category === cat);
-                      return items.length ? (
-                        <div key={cat}>
-                          <div className="px-3 py-1.5 bg-green-50 text-xs font-semibold text-green-600 uppercase tracking-wide">{cat}</div>
-                          {items.map((p) => (
-                            <label key={p.id} className="flex items-center gap-2 px-3 py-2 hover:bg-green-50 cursor-pointer text-sm">
-                              <input type="checkbox" checked={selectedTargetPlatforms.includes(p.name)} onChange={() => toggleTargetPlatform(p.name)}
-                                className="w-4 h-4 text-green-600 rounded" />
-                              {p.name}
-                            </label>
-                          ))}
-                        </div>
-                      ) : null;
-                    })}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Migration path summary */}
-            {(selectedSourcePlatforms.length > 0 || selectedTargetPlatforms.length > 0) && (
-              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
-                <strong>Migration Path:</strong>{' '}
-                {selectedSourcePlatforms.length > 0 ? selectedSourcePlatforms.join(', ') : '—'}
-                {' → '}
-                {selectedTargetPlatforms.length > 0 ? selectedTargetPlatforms.join(', ') : '—'}
               </div>
             )}
           </div>

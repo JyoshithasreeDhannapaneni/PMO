@@ -70,7 +70,7 @@ export default function AuthCallbackPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-indigo-50">
       <div className="flex flex-col items-center gap-4">
-        <Image src="/cloudfuze-logo.png" alt="CloudFuze" width={120} height={52} className="object-contain" />
+        <Image src="/cloudfuze-logo.png" alt="CloudFuze" width={120} height={52} style={{ height: 'auto' }} className="object-contain" />
         <div className="flex items-center gap-2 text-slate-500 text-sm">
           <Loader2 size={18} className="animate-spin text-blue-500" />
           Completing sign-in…

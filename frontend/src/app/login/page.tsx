@@ -77,6 +77,7 @@ export default function LoginPage() {
               alt="CloudFuze"
               width={130}
               height={56}
+              style={{ height: 'auto' }}
               className="object-contain mb-5"
               priority
             />
