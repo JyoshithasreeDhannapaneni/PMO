@@ -474,7 +474,9 @@ export default function SettingsPage() {
       const saved = localStorage.getItem('pmoSettings');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (parsed.migrationTypes?.length) setMigrationTypes(parsed.migrationTypes);
+        const OLD_CODES = new Set(['CONTENT', 'EMAIL', 'MESSAGING', 'IDENTITY', 'APPLICATION', 'DATABASE']);
+        const isOld = parsed.migrationTypes?.some((t: any) => OLD_CODES.has(t.code));
+        if (parsed.migrationTypes?.length && !isOld) setMigrationTypes(parsed.migrationTypes);
         if (parsed.planTypes?.length) setPlanTypes(parsed.planTypes);
         if (parsed.phases?.length) setPhases(parsed.phases);
         if (parsed.sourcePlatforms?.length) setSourcePlatforms(parsed.sourcePlatforms);

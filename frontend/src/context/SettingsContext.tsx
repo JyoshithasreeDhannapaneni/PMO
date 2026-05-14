@@ -237,6 +237,8 @@ const STORAGE_KEY = 'pmoSettings';
 const toCode = (name: string) =>
   name.toUpperCase().replace(/\s+/g, '_').replace(/[^A-Z0-9_]/g, '');
 
+const OLD_MIGRATION_CODES = new Set(['CONTENT', 'EMAIL', 'MESSAGING', 'IDENTITY', 'APPLICATION', 'DATABASE']);
+
 function mergeWithDefaults(saved: any): PMOSettings {
   const savedPlanTypes = saved?.planTypes?.length
     ? saved.planTypes.map((p: any) => ({ ...p, code: p.code || toCode(p.name) }))
@@ -244,10 +246,11 @@ function mergeWithDefaults(saved: any): PMOSettings {
   const savedPhases = saved?.phases?.length
     ? saved.phases.map((p: any) => ({ ...p, code: p.code || toCode(p.name) }))
     : defaultSettings.phases;
+  const isOldMigrationFormat = saved?.migrationTypes?.some((t: any) => OLD_MIGRATION_CODES.has(t.code));
   return {
     ...defaultSettings,
     ...saved,
-    migrationTypes: saved?.migrationTypes?.length ? saved.migrationTypes : defaultSettings.migrationTypes,
+    migrationTypes: (saved?.migrationTypes?.length && !isOldMigrationFormat) ? saved.migrationTypes : defaultSettings.migrationTypes,
     sourcePlatforms: saved?.sourcePlatforms?.length ? saved.sourcePlatforms : defaultSettings.sourcePlatforms,
     targetPlatforms: saved?.targetPlatforms?.length ? saved.targetPlatforms : defaultSettings.targetPlatforms,
     planTypes: savedPlanTypes,
