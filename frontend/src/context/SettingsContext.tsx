@@ -247,10 +247,11 @@ function mergeWithDefaults(saved: any): PMOSettings {
     ? saved.phases.map((p: any) => ({ ...p, code: p.code || toCode(p.name) }))
     : defaultSettings.phases;
   const isOldMigrationFormat = saved?.migrationTypes?.some((t: any) => OLD_MIGRATION_CODES.has(t.code));
+  const isMissingCategories = saved?.migrationTypes?.some((t: any) => !t.category);
   return {
     ...defaultSettings,
     ...saved,
-    migrationTypes: (saved?.migrationTypes?.length && !isOldMigrationFormat) ? saved.migrationTypes : defaultSettings.migrationTypes,
+    migrationTypes: (saved?.migrationTypes?.length && !isOldMigrationFormat && !isMissingCategories) ? saved.migrationTypes : defaultSettings.migrationTypes,
     sourcePlatforms: saved?.sourcePlatforms?.length ? saved.sourcePlatforms : defaultSettings.sourcePlatforms,
     targetPlatforms: saved?.targetPlatforms?.length ? saved.targetPlatforms : defaultSettings.targetPlatforms,
     planTypes: savedPlanTypes,
@@ -270,7 +271,11 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
-        setSettings(mergeWithDefaults(JSON.parse(saved)));
+        const parsed = JSON.parse(saved);
+        const merged = mergeWithDefaults(parsed);
+        // Write back so stale migration types (missing category) are permanently corrected
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...parsed, migrationTypes: merged.migrationTypes }));
+        setSettings(merged);
       }
     } catch {
       // ignore parse errors

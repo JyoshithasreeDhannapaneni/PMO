@@ -476,7 +476,8 @@ export default function SettingsPage() {
         const parsed = JSON.parse(saved);
         const OLD_CODES = new Set(['CONTENT', 'EMAIL', 'MESSAGING', 'IDENTITY', 'APPLICATION', 'DATABASE']);
         const isOld = parsed.migrationTypes?.some((t: any) => OLD_CODES.has(t.code));
-        if (parsed.migrationTypes?.length && !isOld) setMigrationTypes(parsed.migrationTypes);
+        const isMissingCategories = parsed.migrationTypes?.some((t: any) => !t.category);
+        if (parsed.migrationTypes?.length && !isOld && !isMissingCategories) setMigrationTypes(parsed.migrationTypes);
         if (parsed.planTypes?.length) setPlanTypes(parsed.planTypes);
         if (parsed.phases?.length) setPhases(parsed.phases);
         if (parsed.sourcePlatforms?.length) setSourcePlatforms(parsed.sourcePlatforms);
