@@ -13,7 +13,16 @@
       "Bash(cmd /c \"tasklist /FI \\\\\"PID eq 17432\\\\\"\")",
       "Bash(cmd /c \"tasklist /FI \\\\\"PID eq 17432\\\\\" 2>&1\")",
       "Bash(powershell -Command \"Stop-Process -Id 17432 -Force; Write-Host 'Killed'\")",
-      "Bash(powershell -Command \"netstat -ano | Select-String ':3001 '\")"
+      "Bash(powershell -Command \"netstat -ano | Select-String ':3001 '\")",
+      "Bash(xargs grep -l \"CONTENT.*EMAIL\\\\|EMAIL.*MESSAGING\\\\|type.*migration\")",
+      "Bash(Get-ChildItem -Recurse -Name \"*.ts\" \"c:\\\\Users\\\\BharathTummaganti\\\\OneDrive - CloudFuze, Inc\\\\Documents\\\\PMO\\\\PMO\\\\backend\\\\src\")",
+      "PowerShell(cmd /c \"dir /s /b \"c:\\\\Users\\\\BharathTummaganti\\\\OneDrive - CloudFuze, Inc\\\\Documents\\\\PMO\\\\PMO\\\\backend\\\\src\"\")",
+      "PowerShell(cmd /c \"dir /b \"c:\\\\Users\\\\BharathTummaganti\\\\OneDrive - CloudFuze, Inc\\\\Documents\\\\PMO\\\\PMO\\\\backend\"\")",
+      "PowerShell($env:PGPASSWORD = \"Bharath1708\"; psql -U postgres -d pmo_tracker -c \"UPDATE users SET password = '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9' WHERE username = 'admin'; SELECT id, name, username, email, role FROM users WHERE username = 'admin';\")",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git checkout *)",
+      "Bash(git merge *)"
     ]
   }
 }
