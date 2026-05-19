@@ -161,10 +161,10 @@ class DashboardService {
      FROM projects
      WHERE status = 'ACTIVE'
        AND planned_end >= NOW()
-       AND planned_end <= NOW() + (${safeDays} || ' days')::INTERVAL
+       AND planned_end <= NOW() + ($${ap.length + 1} * INTERVAL '1 day')
        ${aw}
      ORDER BY planned_end ASC`,
-    ap
+    [...ap, safeDays]
   );
 
   return result.rows.map((p) => ({
@@ -176,62 +176,103 @@ class DashboardService {
     delayStatus: p.delay_status,
   }));
 }
+  // Determine the top-level category for a migration template code/name.
+  // Categories: 'Content Migration', 'Messaging', 'Email'
+  private getMigrationCategory(codeOrName: string): string {
+    const u = codeOrName.toUpperCase();
+    const MESSAGING_KEYWORDS = [
+      'SLACK', 'TEAMS', 'CHAT', 'META_CHAT', 'META_VIVA', 'META_TEAMS',
+      'ZOOM_PHONE', 'ZOOMPHONE', 'RINGCENTRAL', 'CISCO', 'WEBEX',
+      'SKYPE', 'VIVA', 'META',
+    ];
+    const EMAIL_KEYWORDS = [
+      'GMAIL', 'OUTLOOK', 'EXCHANGE', 'OFFICE365', 'GOOGLE_WORKSPACE', 'GOOGLE WORKSPACE',
+      'GSUITE', 'G_SUITE', 'LOTUS', 'NOTES', 'NOVELL', 'IMAP', 'POP3', 'ZIMBRA',
+      'HOTMAIL', 'YAHOO', 'KERIO', 'GROUPWISE', 'DOMINO',
+    ];
+    if (MESSAGING_KEYWORDS.some(k => u.includes(k))) return 'Messaging';
+    if (EMAIL_KEYWORDS.some(k => u.includes(k))) return 'Email';
+    return 'Content Migration';
+  }
+
   async getMigrationTypeStats(managerName?: string) {
     const { clause: w, params: p } = this.managerWhere(managerName);
-    const [projectsResult, templatesResult] = await Promise.all([
-      query(`SELECT id, migration_types, status, delay_status, planned_end, created_at FROM projects ${w}`, p),
-      query(`SELECT id, code, name FROM migration_templates WHERE is_active = true ORDER BY name ASC`, []),
-    ]);
 
-    const allProjects = projectsResult.rows;
-    const templates: { id: string; code: string; name: string }[] = templatesResult.rows;
+    const CAT_DEFS = [
+      { key: 'Content Migration', icon: '📁', color: 'blue' },
+      { key: 'Messaging',         icon: '💬', color: 'green' },
+      { key: 'Email',             icon: '📧', color: 'purple' },
+    ] as const;
+
+    const makeEmpty = () => ({
+      byType: CAT_DEFS.map(({ key, icon, color }) => ({
+        type: key, name: key, icon, color,
+        total: 0, active: 0, inactive: 0, completed: 0, cancelled: 0,
+        newProjects: 0, overaged: 0, delayed: 0, atRisk: 0,
+      })),
+      totals: { total: 0, active: 0, inactive: 0, completed: 0, cancelled: 0, newProjects: 0, overaged: 0, delayed: 0, atRisk: 0 },
+    });
+
+    let allProjects: any[];
+    let templates: { id: string; code: string; name: string }[];
+    try {
+      const [pr, tr] = await Promise.all([
+        query(`SELECT id, migration_types, status, delay_status, planned_end, created_at FROM projects ${w}`, p),
+        query(`SELECT id, code, name FROM migration_templates WHERE is_active = true ORDER BY name ASC`, []).catch(() => ({ rows: [] as any[] })),
+      ]);
+      allProjects = pr.rows;
+      templates = tr.rows;
+    } catch (_) {
+      return makeEmpty();
+    }
+
     const now = new Date();
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-    // Normalise a stored migration_types value to a set of UPPERCASE codes.
-    // Handles: "CONTENT", "content", "CONTENT,EMAIL", and legacy numeric IDs like "1","2".
     const resolveToCode = (raw: string): string => {
       const up = raw.trim().toUpperCase();
-      // Direct code match
-      if (templates.some(t => t.code.toUpperCase() === up)) return up;
-      // Name match (e.g. stored "Content Migration" → template name "Content Migration" → code "CONTENT")
-      // Also handles legacy double-suffix like "Content Migration Migration"
+      if (templates.some((t) => t.code.toUpperCase() === up)) return up;
       const cleaned = up.replace(/ MIGRATION$/, '').replace(/ MIGRATION$/, '');
-      const byName = templates.find(t =>
+      const byName = templates.find((t) =>
         t.name.toUpperCase().replace(/\s+/g, '') === up.replace(/\s+/g, '') ||
         t.name.toUpperCase().replace(/\s+/g, '') === cleaned.replace(/\s+/g, '') ||
         t.code.toUpperCase() === cleaned.trim()
       );
       if (byName) return byName.code.toUpperCase();
-      // Legacy numeric index (1-based position in templates list)
       const idx = parseInt(up, 10);
-      if (!isNaN(idx) && idx >= 1 && idx <= templates.length) return templates[idx - 1].code.toUpperCase();
-      return up; // return as-is, may still match by includes below
+      if (!isNaN(idx) && idx >= 1 && idx <= templates.length) return templates[idx - 1]?.code?.toUpperCase() ?? up;
+      return up;
     };
 
-    const projectTypeCodes = (migTypes: string): string[] => {
-      if (!migTypes) return [];
-      return migTypes.split(',').map(s => resolveToCode(s.trim())).filter(Boolean);
+    const getProjectCategory = (migTypes: string): string => {
+      if (!migTypes) return 'Content Migration';
+      const parts = migTypes.split(',').map((s) => s.trim());
+      for (const part of parts) {
+        const code = resolveToCode(part);
+        const tpl = templates.find((t) => t.code.toUpperCase() === code);
+        const label = tpl ? `${tpl.code} ${tpl.name}` : part;
+        const cat = this.getMigrationCategory(label);
+        if (cat !== 'Content Migration') return cat;
+      }
+      const raw = migTypes.toUpperCase();
+      if (raw.includes('MESSAGING') || raw.includes('SLACK') || raw.includes('TEAMS')) return 'Messaging';
+      if (raw.includes('EMAIL') || raw.includes('EXCHANGE') || raw.includes('GMAIL')) return 'Email';
+      return 'Content Migration';
     };
 
-    const stats = templates.map((tpl) => {
-      const code = tpl.code.toUpperCase();
-      const projectsOfType = allProjects.filter((proj) =>
-        projectTypeCodes(proj.migration_types || '').includes(code)
-      );
-
+    const stats = CAT_DEFS.map(({ key, icon, color }) => {
+      const ofType = allProjects.filter((r: any) => getProjectCategory(r.migration_types || '') === key);
       return {
-        type: code,
-        name: tpl.name,
-        total: projectsOfType.length,
-        active:       projectsOfType.filter(proj => proj.status === 'ACTIVE').length,
-        inactive:     projectsOfType.filter(proj => proj.status === 'ON_HOLD').length,
-        completed:    projectsOfType.filter(proj => proj.status === 'COMPLETED').length,
-        cancelled:    projectsOfType.filter(proj => proj.status === 'CANCELLED').length,
-        newProjects:  projectsOfType.filter(proj => new Date(proj.created_at) >= thirtyDaysAgo).length,
-        overaged:     projectsOfType.filter(proj => proj.status === 'ACTIVE' && new Date(proj.planned_end) < now).length,
-        delayed:      projectsOfType.filter(proj => proj.delay_status === 'DELAYED').length,
-        atRisk:       projectsOfType.filter(proj => proj.delay_status === 'AT_RISK').length,
+        type: key, name: key, icon, color,
+        total:       ofType.length,
+        active:      ofType.filter((r: any) => r.status === 'ACTIVE').length,
+        inactive:    ofType.filter((r: any) => r.status === 'ON_HOLD').length,
+        completed:   ofType.filter((r: any) => r.status === 'COMPLETED').length,
+        cancelled:   ofType.filter((r: any) => r.status === 'CANCELLED').length,
+        newProjects: ofType.filter((r: any) => new Date(r.created_at) >= thirtyDaysAgo).length,
+        overaged:    ofType.filter((r: any) => r.status === 'ACTIVE' && new Date(r.planned_end) < now).length,
+        delayed:     ofType.filter((r: any) => r.delay_status === 'DELAYED').length,
+        atRisk:      ofType.filter((r: any) => r.delay_status === 'AT_RISK').length,
       };
     });
 
@@ -239,14 +280,14 @@ class DashboardService {
       byType: stats,
       totals: {
         total:       allProjects.length,
-        active:      allProjects.filter(proj => proj.status === 'ACTIVE').length,
-        inactive:    allProjects.filter(proj => proj.status === 'ON_HOLD').length,
-        completed:   allProjects.filter(proj => proj.status === 'COMPLETED').length,
-        cancelled:   allProjects.filter(proj => proj.status === 'CANCELLED').length,
-        newProjects: allProjects.filter(proj => new Date(proj.created_at) >= thirtyDaysAgo).length,
-        overaged:    allProjects.filter(proj => proj.status === 'ACTIVE' && new Date(proj.planned_end) < now).length,
-        delayed:     allProjects.filter(proj => proj.delay_status === 'DELAYED').length,
-        atRisk:      allProjects.filter(proj => proj.delay_status === 'AT_RISK').length,
+        active:      allProjects.filter((r: any) => r.status === 'ACTIVE').length,
+        inactive:    allProjects.filter((r: any) => r.status === 'ON_HOLD').length,
+        completed:   allProjects.filter((r: any) => r.status === 'COMPLETED').length,
+        cancelled:   allProjects.filter((r: any) => r.status === 'CANCELLED').length,
+        newProjects: allProjects.filter((r: any) => new Date(r.created_at) >= thirtyDaysAgo).length,
+        overaged:    allProjects.filter((r: any) => r.status === 'ACTIVE' && new Date(r.planned_end) < now).length,
+        delayed:     allProjects.filter((r: any) => r.delay_status === 'DELAYED').length,
+        atRisk:      allProjects.filter((r: any) => r.delay_status === 'AT_RISK').length,
       },
     };
   }
@@ -348,8 +389,6 @@ class DashboardService {
     const closed = closedRes.rows;
     const changed = changedRes.rows;
 
-    const newlyAddedIds = new Set(newlyAdded.map((r: any) => r.id));
-    const closedIds = new Set(closed.map((r: any) => r.id));
 
     // Build per-manager breakdown
     const managerMap: Record<string, { added: number; closed: number; changed: number }> = {};
@@ -555,12 +594,13 @@ class DashboardService {
       `SELECT DISTINCT p.id, p.name, p.customer_name, p.project_manager, p.account_manager, p.status, p.phase,
               p.planned_end, p.delay_days, p.delay_status, p.migration_types,
               p.is_escalated, p.escalation_priority, p.escalated_at, p.escalation_notes, p.resolved_date,
-              COALESCE(p.escalation_archived, false) as escalation_archived
+              COALESCE(p.escalation_archived, false) as escalation_archived,
+              COALESCE(p.resolved_date, p.escalated_at) as sort_key
        FROM projects p
        INNER JOIN escalation_history eh ON eh.project_id = p.id
        WHERE (p.status IN ('COMPLETED','CANCELLED') OR p.escalation_archived = true)
        ${aw}
-       ORDER BY COALESCE(p.resolved_date, p.escalated_at) DESC`,
+       ORDER BY sort_key DESC`,
       ap
     );
     const projects = result.rows.map((r: any) => ({
@@ -726,35 +766,62 @@ class DashboardService {
   }
 
   async getProjectsByMigrationType(type: string) {
-    const code = type.toUpperCase();
+    const CATEGORIES = ['Content Migration', 'Messaging', 'Email'];
+    const isCategory = CATEGORIES.some(c => c.toLowerCase() === type.toLowerCase());
 
-    // Find the 1-based index of this type in the templates table (for legacy numeric IDs)
+    // Fetch all projects with migration_types populated
     const tplResult = await query(
-      `SELECT code FROM migration_templates WHERE is_active = true ORDER BY name ASC`, []
+      `SELECT id, code, name FROM migration_templates WHERE is_active = true ORDER BY name ASC`, []
     );
-    const tplCodes: string[] = tplResult.rows.map((r: any) => r.code.toUpperCase());
-    const legacyIdx = tplCodes.indexOf(code) + 1; // 1-based; 0 means not found
+    const templates: { id: string; code: string; name: string }[] = tplResult.rows;
 
-    let sql = `SELECT id, name, customer_name, project_manager, status, phase, delay_status, delay_days, planned_end, migration_types
-               FROM projects
-               WHERE migration_types LIKE $1`;
-    const params: any[] = [`%${code}%`];
-
-    // Also match legacy numeric ID
-    if (legacyIdx > 0) {
-      const n = params.length + 1;
-      sql += ` OR migration_types = $${n} OR migration_types LIKE $${n + 1} OR migration_types LIKE $${n + 2}`;
-      params.push(
-        String(legacyIdx),
-        `${legacyIdx},%`,
-        `%,${legacyIdx}`,
+    const resolveToCode = (raw: string): string => {
+      const up = raw.trim().toUpperCase();
+      if (templates.some(t => t.code.toUpperCase() === up)) return up;
+      const cleaned = up.replace(/ MIGRATION$/, '').replace(/ MIGRATION$/, '');
+      const byName = templates.find(t =>
+        t.name.toUpperCase().replace(/\s+/g, '') === up.replace(/\s+/g, '') ||
+        t.name.toUpperCase().replace(/\s+/g, '') === cleaned.replace(/\s+/g, '') ||
+        t.code.toUpperCase() === cleaned.trim()
       );
-    }
+      if (byName) return byName.code.toUpperCase();
+      const idx = parseInt(up, 10);
+      if (!isNaN(idx) && idx >= 1 && idx <= templates.length) return templates[idx - 1].code.toUpperCase();
+      return up;
+    };
 
-    sql += ` ORDER BY updated_at DESC`;
-    const result = await query(sql, params);
+    const getProjectCategory = (migTypes: string): string => {
+      if (!migTypes) return 'Content Migration';
+      const parts = migTypes.split(',').map(s => s.trim());
+      for (const part of parts) {
+        const code = resolveToCode(part);
+        const tpl = templates.find(t => t.code.toUpperCase() === code);
+        const label = tpl ? `${tpl.code} ${tpl.name}` : part;
+        const cat = this.getMigrationCategory(label);
+        if (cat !== 'Content Migration') return cat;
+      }
+      const raw = migTypes.toUpperCase();
+      if (raw.includes('MESSAGING') || raw.includes('SLACK') || raw.includes('TEAMS')) return 'Messaging';
+      if (raw.includes('EMAIL') || raw.includes('EXCHANGE') || raw.includes('GMAIL')) return 'Email';
+      return 'Content Migration';
+    };
 
-    return result.rows.map((r: any) => ({
+    const result = await query(
+      `SELECT id, name, customer_name, project_manager, status, phase, delay_status, delay_days, planned_end, migration_types
+       FROM projects WHERE migration_types IS NOT NULL AND migration_types <> ''
+       ORDER BY updated_at DESC`,
+      []
+    );
+
+    const rows = isCategory
+      ? result.rows.filter((r: any) => getProjectCategory(r.migration_types || '') === type)
+      : result.rows.filter((r: any) => {
+          const code = type.toUpperCase();
+          const codes = (r.migration_types || '').split(',').map((s: string) => resolveToCode(s.trim()));
+          return codes.includes(code) || (r.migration_types || '').toUpperCase().includes(code);
+        });
+
+    return rows.map((r: any) => ({
       id: r.id,
       name: r.name,
       customerName: r.customer_name,
