@@ -46,11 +46,11 @@ export default function ArchivePage() {
   const isAdmin = user?.role === 'ADMIN';
   const queryClient = useQueryClient();
 
-  // Filters
+  // Filters — non-admins are auto-scoped to their own name
   const [search, setSearch]               = useState('');
   const [statusFilter, setStatusFilter]   = useState('');
   const [migTypeFilter, setMigTypeFilter] = useState('');
-  const [managerFilter, setManagerFilter] = useState('');
+  const [managerFilter, setManagerFilter] = useState(!isAdmin && user?.name ? user.name : '');
   const [yearFrom, setYearFrom]           = useState('');
   const [yearTo, setYearTo]               = useState('');
   const [sortBy, setSortBy]               = useState('archived_at');
@@ -307,11 +307,13 @@ export default function ArchivePage() {
         </div>
         {showFilters && (
           <div className="flex flex-wrap gap-3 mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
-            <select value={managerFilter} onChange={(e) => { setManagerFilter(e.target.value); setPage(1); }}
-              className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-              <option value="">All Managers</option>
-              {managers.map((m) => <option key={m} value={m}>{m}</option>)}
-            </select>
+            {isAdmin && (
+              <select value={managerFilter} onChange={(e) => { setManagerFilter(e.target.value); setPage(1); }}
+                className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                <option value="">All Managers</option>
+                {managers.map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
+            )}
             <input value={migTypeFilter} onChange={(e) => { setMigTypeFilter(e.target.value); setPage(1); }}
               placeholder="Migration type…"
               className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white w-44" />
