@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
-import { useDashboard, useWeeklyReport, useManagerStats, useProjectsByMigrationType, useUpsertManagerGoal, useOveragedProjects, useEscalatedProjects } from '@/hooks/useProjects';
+import { useState, useRef, useEffect, useMemo } from 'react';
+import { useDashboard, useWeeklyReport, useManagerStats, useProjectsByMigrationType, useUpsertManagerGoal, useOveragedProjects, useEscalatedProjects, useProjects } from '@/hooks/useProjects';
 import { useSettings } from '@/context/SettingsContext';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
@@ -234,14 +234,16 @@ function EscalateControl({ projectId, isEscalated, defaultPriority, busy, onEsca
 /* ── Migration Type Projects Modal ──────────────────────────────── */
 function MigrationTypeModal({ type, onClose }: { type: string; onClose: () => void }) {
   const { data, isLoading } = useProjectsByMigrationType(type);
-  const { settings } = useSettings();
   const projects: any[] = data?.data || [];
-  const settingType = settings.migrationTypes.find(t => t.code.toUpperCase() === type.toUpperCase());
-  const bgPalette = ['bg-blue-600','bg-green-600','bg-purple-600','bg-orange-500','bg-pink-600'];
-  const idx = settings.migrationTypes.findIndex(t => t.code.toUpperCase() === type.toUpperCase());
-  const bg = bgPalette[idx >= 0 ? idx % bgPalette.length : 0];
-  const emoji = settingType?.icon || '📦';
-  const label = settingType?.name || (type.charAt(0) + type.slice(1).toLowerCase());
+  const CATEGORY_META: Record<string, { emoji: string; bg: string }> = {
+    'Content Migration': { emoji: '📁', bg: 'bg-blue-600' },
+    'Messaging':         { emoji: '💬', bg: 'bg-green-600' },
+    'Email':             { emoji: '📧', bg: 'bg-purple-600' },
+  };
+  const meta = CATEGORY_META[type] || { emoji: '📦', bg: 'bg-blue-600' };
+  const emoji = meta.emoji;
+  const bg = meta.bg;
+  const label = type;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={onClose}>
@@ -450,6 +452,53 @@ export default function DashboardPage() {
   const { data: escalatedData, refetch: refetchEscalated } = useEscalatedProjects(managerFilter);
   const overagedProjects: any[] = overagedData?.data || [];
   const escalatedProjects: any[] = escalatedData?.data || [];
+
+  // Fetch all projects for frontend category grouping
+  const { data: allProjectsData } = useProjects({ status: undefined });
+  const allProjectsList: any[] = (allProjectsData?.data || []).filter(
+    (p: any) => viewMode === 'overall' || !managerFilter || p.projectManager === managerFilter
+  );
+
+  // Build category stats from settings + project data (reliable, no server-side grouping needed)
+  const categoryStats = useMemo(() => {
+    const nameToCategory: Record<string, string> = {};
+    settings.migrationTypes.forEach((t: any) => {
+      if (t.name && t.category) nameToCategory[t.name.toLowerCase()] = t.category;
+    });
+
+    const getCategory = (migTypes: string): string => {
+      if (!migTypes) return 'Content Migration';
+      for (const part of migTypes.split(',').map((s: string) => s.trim())) {
+        const cat = nameToCategory[part.toLowerCase()];
+        if (cat) return cat;
+      }
+      const u = migTypes.toUpperCase();
+      if (['SLACK','TEAMS','CHAT','META','WEBEX','SKYPE','VIVA'].some(k => u.includes(k))) return 'Messaging';
+      if (['GMAIL','OUTLOOK','EXCHANGE','OFFICE365','GOOGLE WORKSPACE','LOTUS','ZIMBRA'].some(k => u.includes(k))) return 'Email';
+      return 'Content Migration';
+    };
+
+    const CATS = [
+      { key: 'Content Migration', icon: '📁' },
+      { key: 'Messaging',         icon: '💬' },
+      { key: 'Email',             icon: '📧' },
+    ];
+
+    return CATS.map(({ key, icon }) => {
+      const ps = allProjectsList.filter((p: any) => getCategory(p.migrationTypes || '') === key);
+      return {
+        type: key, name: key, icon,
+        total:     ps.length,
+        active:    ps.filter((p: any) => p.status === 'ACTIVE').length,
+        completed: ps.filter((p: any) => p.status === 'COMPLETED').length,
+        inactive:  ps.filter((p: any) => p.status === 'ON_HOLD').length,
+        delayed:   ps.filter((p: any) => p.delayStatus === 'DELAYED').length,
+        atRisk:    ps.filter((p: any) => p.delayStatus === 'AT_RISK').length,
+        overaged:  ps.filter((p: any) => p.isOveraged).length,
+        cancelled: ps.filter((p: any) => p.status === 'CANCELLED').length,
+      };
+    });
+  }, [allProjectsList, settings.migrationTypes]);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -965,27 +1014,25 @@ export default function DashboardPage() {
               <h2 className="text-base font-semibold text-gray-900">Migration Type Overview</h2>
               <Link href="/projects" className="text-primary-600 hover:text-primary-700 text-sm font-medium flex items-center gap-1">View All <ChevronRight size={14} /></Link>
             </div>
-            {migrationTypeStats?.byType?.filter((s: any) => s.total > 0).length ? (
+            {categoryStats.length ? (
               <div className="space-y-4">
+                {/* 3 Category Cards */}
                 <div className="grid grid-cols-3 gap-3">
-                  {migrationTypeStats.byType.filter((s: any) => s.total > 0).map((stat: any, idx: number) => {
-                    // Resolve icon + color from settings migration types; fall back by position
-                    const settingType = settings.migrationTypes.find(
-                      (t) => t.code.toUpperCase() === stat.type || t.name.toUpperCase().includes(stat.type)
-                    );
-                    const palettes = [
-                      { cardCls: 'bg-blue-50 border-blue-200', textCls: 'text-blue-700' },
-                      { cardCls: 'bg-green-50 border-green-200', textCls: 'text-green-700' },
-                      { cardCls: 'bg-purple-50 border-purple-200', textCls: 'text-purple-700' },
-                      { cardCls: 'bg-orange-50 border-orange-200', textCls: 'text-orange-700' },
-                      { cardCls: 'bg-pink-50 border-pink-200', textCls: 'text-pink-700' },
-                    ];
-                    const palette = palettes[idx % palettes.length];
-                    const emoji = settingType?.icon || '📦';
-                    const label = settingType?.name || stat.name || stat.type.charAt(0) + stat.type.slice(1).toLowerCase();
+                  {categoryStats.map((stat: any) => {
+                    const palettes: Record<string, { cardCls: string; textCls: string; bgBtn: string }> = {
+                      'Content Migration': { cardCls: 'bg-blue-50 border-blue-200',   textCls: 'text-blue-700',   bgBtn: 'bg-blue-600' },
+                      'Messaging':         { cardCls: 'bg-green-50 border-green-200', textCls: 'text-green-700', bgBtn: 'bg-green-600' },
+                      'Email':             { cardCls: 'bg-purple-50 border-purple-200', textCls: 'text-purple-700', bgBtn: 'bg-purple-600' },
+                    };
+                    const palette = palettes[stat.type] || palettes['Content Migration'];
+                    const emoji = stat.icon || '📦';
                     return (
-                      <button key={stat.type} onClick={() => setSelectedMigrationType(stat.type)} className={`p-4 rounded-xl border ${palette.cardCls} block hover:opacity-90 transition-opacity text-left w-full cursor-pointer`}>
-                        <div className="flex items-center gap-2 mb-2"><span className="text-xl">{emoji}</span><span className={`text-sm font-semibold ${palette.textCls}`}>{label}</span></div>
+                      <button key={stat.type} onClick={() => setSelectedMigrationType(stat.type)}
+                        className={`p-4 rounded-xl border ${palette.cardCls} hover:opacity-90 transition-opacity text-left w-full cursor-pointer`}>
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-xl">{emoji}</span>
+                          <span className={`text-sm font-semibold ${palette.textCls}`}>{stat.name}</span>
+                        </div>
                         <div className="text-3xl font-bold text-gray-900 mb-2">{stat.total}</div>
                         <div className="grid grid-cols-2 gap-1 text-xs">
                           <span className="flex items-center gap-1 text-gray-600"><span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />{stat.active} Active</span>
@@ -997,37 +1044,34 @@ export default function DashboardPage() {
                     );
                   })}
                 </div>
+                {/* Summary Table */}
                 <div className="overflow-x-auto rounded-xl border border-blue-100">
                   <table className="w-full text-sm">
                     <thead className="bg-blue-50/60">
                       <tr>
-                        {['Type', 'Total', 'Active', 'Completed', 'On Hold', 'At Risk'].map((h) => (
-                          <th key={h} className={`py-2 px-3 font-medium text-gray-500 ${h === 'Type' ? 'text-left' : 'text-center'}`}>{h}</th>
+                        {['Category', 'Total', 'Active', 'Completed', 'On Hold', 'At Risk'].map((h) => (
+                          <th key={h} className={`py-2 px-3 font-medium text-gray-500 ${h === 'Category' ? 'text-left' : 'text-center'}`}>{h}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
-                      {migrationTypeStats.byType.filter((s: any) => s.total > 0).map((stat: any) => {
-                        const st = settings.migrationTypes.find(t => t.code.toUpperCase() === stat.type);
-                        const displayName = st?.name || stat.name || stat.type;
-                        return (
+                      {categoryStats.map((stat: any) => (
                         <tr key={stat.type} className="border-t border-blue-50 hover:bg-blue-50/50 cursor-pointer" onClick={() => setSelectedMigrationType(stat.type)}>
-                          <td className="py-2 px-3 font-medium text-gray-800 flex items-center gap-1.5">{st?.icon || '📦'} {displayName}</td>
+                          <td className="py-2 px-3 font-medium text-gray-800 flex items-center gap-1.5">{stat.icon} {stat.name}</td>
                           <td className="text-center py-2 px-3 font-bold">{stat.total}</td>
                           <td className="text-center py-2 px-3"><span className="inline-flex items-center justify-center min-w-[22px] h-5 px-1 rounded-full bg-green-100 text-green-700 text-xs font-semibold">{stat.active}</span></td>
                           <td className="text-center py-2 px-3"><span className="inline-flex items-center justify-center min-w-[22px] h-5 px-1 rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">{stat.completed}</span></td>
                           <td className="text-center py-2 px-3"><span className="inline-flex items-center justify-center min-w-[22px] h-5 px-1 rounded-full bg-yellow-100 text-yellow-700 text-xs font-semibold">{stat.inactive}</span></td>
                           <td className="text-center py-2 px-3"><span className={`inline-flex items-center justify-center min-w-[22px] h-5 px-1 rounded-full text-xs font-semibold ${stat.atRisk > 0 ? 'bg-red-100 text-red-700' : 'bg-blue-50 text-gray-400'}`}>{stat.atRisk}</span></td>
                         </tr>
-                        );
-                      })}
+                      ))}
                       <tr className="border-t-2 border-blue-200 bg-gray-50 font-semibold">
                         <td className="py-2 px-3 text-gray-700">TOTAL</td>
-                        <td className="text-center py-2 px-3">{migrationTypeStats.totals.total}</td>
-                        <td className="text-center py-2 px-3 text-green-700">{migrationTypeStats.totals.active}</td>
-                        <td className="text-center py-2 px-3 text-blue-700">{migrationTypeStats.totals.completed}</td>
-                        <td className="text-center py-2 px-3 text-yellow-700">{migrationTypeStats.totals.inactive}</td>
-                        <td className="text-center py-2 px-3 text-red-700">{migrationTypeStats.totals.atRisk}</td>
+                        <td className="text-center py-2 px-3">{allProjectsList.length}</td>
+                        <td className="text-center py-2 px-3 text-green-700">{allProjectsList.filter((p: any) => p.status === 'ACTIVE').length}</td>
+                        <td className="text-center py-2 px-3 text-blue-700">{allProjectsList.filter((p: any) => p.status === 'COMPLETED').length}</td>
+                        <td className="text-center py-2 px-3 text-yellow-700">{allProjectsList.filter((p: any) => p.status === 'ON_HOLD').length}</td>
+                        <td className="text-center py-2 px-3 text-red-700">{allProjectsList.filter((p: any) => p.delayStatus === 'AT_RISK').length}</td>
                       </tr>
                     </tbody>
                   </table>

@@ -339,7 +339,7 @@ class ProjectService {
       : existing.actual_end;
 
     const calculated = calculateDelay(plannedEnd, actualEnd);
-    const delayDays = calculated.delayDays;
+    const delayDays = Math.floor(Number(calculated.delayDays) || 0);
     const delayStatus = data.delayStatus || calculated.delayStatus;
 
     const updates: string[] = [];
@@ -387,6 +387,14 @@ class ProjectService {
       `UPDATE projects SET ${updates.join(', ')}, updated_at = NOW() WHERE id = $${params.length + 1}`,
       [...params, id]
     );
+
+    // Auto-archive when status becomes a terminal status
+    if (data.status && ['COMPLETED', 'CANCELLED', 'CLOSED', 'DECOMMISSIONED'].includes(data.status.toUpperCase())) {
+      try {
+        const { archiveService } = require('./archiveService');
+        await archiveService.autoArchive(id, data.status);
+      } catch (_) { /* non-critical */ }
+    }
 
     const result = await query(`SELECT * FROM projects WHERE id = $1`, [id]);
     const project = mapProjectRow(result.rows[0]);
