@@ -8,7 +8,7 @@ import Link from 'next/link';
 import {
   DollarSign, Clock, TrendingUp, Calendar, Search,
   RotateCcw, Eye, Download, ChevronLeft, ChevronRight, AlertCircle,
-  Plus, X, Trash2, ChevronDown, ChevronUp,
+  Plus, X, Trash2, ChevronDown, ChevronUp, Pencil,
 } from 'lucide-react';
 import { format, isThisWeek } from 'date-fns';
 import { StatusBadge } from '@/components/ui/StatusBadge';
@@ -47,6 +47,44 @@ export default function OverageProjectsPage() {
   const [overageForm, setOverageForm] = useState({ projectId: '', overageAmount: '', notes: '', extendedStartDate: '', extendedEndDate: '' });
   const [saving, setSaving] = useState(false);
   const [modalError, setModalError] = useState('');
+
+  // Edit Overage Modal state
+  const [editProject, setEditProject] = useState<any | null>(null);
+  const [editForm, setEditForm] = useState({ overageAmount: '', notes: '', extendedStartDate: '', extendedEndDate: '' });
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState('');
+
+  function openEditModal(p: any) {
+    setEditProject(p);
+    setEditForm({
+      overageAmount: p.overageAmount != null ? String(p.overageAmount) : '',
+      notes: p.overageNotes || '',
+      extendedStartDate: p.extendedStartDate ? p.extendedStartDate.split('T')[0] : '',
+      extendedEndDate: p.extendedEndDate ? p.extendedEndDate.split('T')[0] : '',
+    });
+    setEditError('');
+  }
+
+  async function handleEditOverage() {
+    if (!editProject) return;
+    setEditSaving(true);
+    setEditError('');
+    try {
+      await markOverage.mutateAsync({
+        id: editProject.id,
+        overageAmount: editForm.overageAmount ? parseFloat(editForm.overageAmount) : undefined,
+        notes: editForm.notes || undefined,
+        extendedStartDate: editForm.extendedStartDate || undefined,
+        extendedEndDate: editForm.extendedEndDate || undefined,
+      });
+      setEditProject(null);
+      refetch();
+    } catch {
+      setEditError('Failed to update overage. Please try again.');
+    } finally {
+      setEditSaving(false);
+    }
+  }
   const [projectSearch, setProjectSearch] = useState('');
   const [showProjectDropdown, setShowProjectDropdown] = useState(false);
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
@@ -340,6 +378,13 @@ export default function OverageProjectsPage() {
                             <Link href={`/projects/${p.id}`} className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 text-gray-600 hover:bg-primary-100 hover:text-primary-700 transition-colors">
                               <Eye size={14} />
                             </Link>
+                            <button
+                              onClick={() => openEditModal(p)}
+                              title="Edit overage details"
+                              className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 text-blue-500 hover:bg-blue-100 transition-colors"
+                            >
+                              <Pencil size={14} />
+                            </button>
                             {isAdmin && p.isOveraged && (
                               <button
                                 onClick={() => handleUnmarkOverage(p.id)}
@@ -431,6 +476,82 @@ export default function OverageProjectsPage() {
         <AlertCircle size={15} />
         Overage projects are those that require additional payment or extension beyond the original scope.
       </div>
+
+      {/* Edit Overage Modal */}
+      {editProject && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <Pencil size={18} className="text-blue-600" /> Edit Overage
+              </h2>
+              <button onClick={() => setEditProject(null)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+            </div>
+            <p className="text-sm text-gray-500 mb-4">{editProject.name} — {editProject.customerName}</p>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Overage Amount</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                  <input
+                    type="number" min="0" step="0.01"
+                    value={editForm.overageAmount}
+                    onChange={(e) => setEditForm({ ...editForm, overageAmount: e.target.value })}
+                    placeholder="0.00"
+                    className="w-full pl-7 pr-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-900"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Extended Start Date</label>
+                  <input
+                    type="date"
+                    value={editForm.extendedStartDate}
+                    onChange={(e) => setEditForm({ ...editForm, extendedStartDate: e.target.value })}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-900"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Extended End Date</label>
+                  <input
+                    type="date"
+                    value={editForm.extendedEndDate}
+                    onChange={(e) => setEditForm({ ...editForm, extendedEndDate: e.target.value })}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-900"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                <textarea
+                  value={editForm.notes}
+                  onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
+                  rows={3}
+                  placeholder="Describe the overage reason..."
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-900 resize-none"
+                />
+              </div>
+              {editError && <p className="text-sm text-red-600 flex items-center gap-1"><AlertCircle size={13} /> {editError}</p>}
+            </div>
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setEditProject(null)}
+                className="flex-1 px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleEditOverage}
+                disabled={editSaving}
+                className="flex-1 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-60 transition-colors font-medium"
+              >
+                {editSaving ? 'Saving…' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Add Overage Modal */}
       {showModal && (

@@ -5,6 +5,8 @@ const router = Router();
 
 router.get('/', managerGoalsController.getAll);
 router.get('/with-stats', managerGoalsController.getWithStats);
+router.get('/gartner-stats', managerGoalsController.getGartnerStats);
+router.put('/gartner-stats/:managerName', managerGoalsController.updateGartnerStats);
 router.post('/', managerGoalsController.upsert);
 router.delete('/:id', managerGoalsController.delete);
 

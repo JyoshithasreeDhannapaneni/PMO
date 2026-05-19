@@ -366,8 +366,6 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
               <SortHeader field="projectManager" label="Project Manager" />
               <SortHeader field="accountManager" label="Account Manager" />
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Migration Types</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Source</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Target</th>
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Budget</th>
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Overage</th>
               <SortHeader field="planType" label="Plan" />
@@ -441,16 +439,6 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
                       : <span className="text-xs text-gray-400 italic">—</span>
                     }
                   </div>
-                </td>
-
-                {/* Source Platform - Editable */}
-                <td className="px-4 py-3">
-                  <EditableText projectId={project.id} field="sourcePlatform" value={project.sourcePlatform || ''} />
-                </td>
-
-                {/* Target Platform - Editable */}
-                <td className="px-4 py-3">
-                  <EditableText projectId={project.id} field="targetPlatform" value={project.targetPlatform || ''} />
                 </td>
 
                 {/* Budget - Editable */}
