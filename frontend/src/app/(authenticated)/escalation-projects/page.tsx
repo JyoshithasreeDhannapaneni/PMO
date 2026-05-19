@@ -462,8 +462,8 @@ export default function EscalationProjectsPage() {
               <table className="w-full text-sm">
                 <thead className="bg-blue-50/60">
                   <tr>
-                    {['', 'Project Name', 'Project Manager', 'Escalation Type', 'Priority', 'Status', 'Phase', 'Delay Days', 'Escalated At', 'Resolved Date', 'Notes', 'Action'].map((h) => (
-                      <th key={h} className={`py-3 px-4 text-xs font-semibold text-gray-500 ${h === 'Project Name' || h === 'Notes' ? 'text-left' : 'text-center'}`}>{h}</th>
+                    {['', 'Project Name', 'Project Manager', 'Escalation Type', 'Priority', 'Status', 'Phase', 'Delay Days', 'Escalated At', 'Resolved Date', 'Action'].map((h) => (
+                      <th key={h} className={`py-3 px-4 text-xs font-semibold text-gray-500 ${h === 'Project Name' ? 'text-left' : 'text-center'}`}>{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -534,15 +534,6 @@ export default function EscalationProjectsPage() {
                                 )}
                               </button>
                             )}
-                          </td>
-                          <td className="py-3 px-4" onClick={(e) => e.stopPropagation()}>
-                            <textarea
-                              value={projectNotes[p.id] || ''}
-                              onChange={(e) => saveNote(p.id, e.target.value)}
-                              placeholder="Add note…"
-                              rows={2}
-                              className="w-44 text-xs border border-gray-200 rounded-lg px-2 py-1 resize-none bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-primary-400 placeholder-gray-300"
-                            />
                           </td>
                           <td className="py-3 px-4 text-center" onClick={(e) => e.stopPropagation()}>
                             <div className="flex items-center justify-center gap-1">

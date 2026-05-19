@@ -30,6 +30,7 @@ import exportRoutes from './routes/exportRoutes';
 import managerGoalsRoutes from './routes/managerGoalsRoutes';
 import smtpRoutes from './routes/smtpRoutes';
 import pmoSettingsRoutes from './routes/pmoSettingsRoutes';
+import archiveRoutes from './routes/archiveRoutes';
 import { initializeCronJobs } from './jobs';
 import { logger } from './utils/logger';
 import { authService } from './services/authService';
@@ -83,6 +84,7 @@ app.use('/api/export', exportRoutes);
 app.use('/api/manager-goals', managerGoalsRoutes);
 app.use('/api/smtp', smtpRoutes);
 app.use('/api/pmo-settings', pmoSettingsRoutes);
+app.use('/api/archive', archiveRoutes);
 
 // Error handling
 app.use(notFoundHandler);
@@ -143,6 +145,12 @@ async function runMigrations() {
   if (!await columnExists('projects', 'overage_notes')) {
     try { await execute(`ALTER TABLE projects ADD COLUMN overage_notes TEXT DEFAULT NULL`); } catch {}
   }
+
+  // Archive columns
+  try { await execute(`ALTER TABLE projects ADD COLUMN IF NOT EXISTS archived_at TIMESTAMP NULL`); } catch {}
+  try { await execute(`ALTER TABLE projects ADD COLUMN IF NOT EXISTS archive_reason VARCHAR(50) NULL`); } catch {}
+  try { await execute(`ALTER TABLE projects ADD COLUMN IF NOT EXISTS archived_by VARCHAR(100) NULL`); } catch {}
+  try { await execute(`ALTER TABLE projects ADD COLUMN IF NOT EXISTS restore_count INT NOT NULL DEFAULT 0`); } catch {}
 }
 
 // Start server

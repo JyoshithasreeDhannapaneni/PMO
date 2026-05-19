@@ -8,7 +8,7 @@ import { useSettings } from '@/context/SettingsContext';
 import {
   LayoutDashboard, FolderKanban, AlertTriangle, FileText, Bell,
   Settings, Layers, Users, Shuffle, BarChart2, ChevronDown,
-  ChevronRight, MessageSquare, LogOut, DollarSign, Siren, Menu, X,
+  ChevronRight, MessageSquare, LogOut, DollarSign, Siren, Menu, X, Archive,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
@@ -29,6 +29,7 @@ const allNavigation = [
       { name: 'Monthly Reports', href: '/reports/monthly' },
     ],
   },
+  { name: 'History Archive', href: '/archive',         icon: Archive,       adminOnly: false },
   { name: 'Chat Bot',      href: '/?chatbot=open',  icon: MessageSquare, badge: 'chat', adminOnly: false },
   { name: 'Notifications', href: '/notifications',  icon: Bell,          adminOnly: false },
 ];

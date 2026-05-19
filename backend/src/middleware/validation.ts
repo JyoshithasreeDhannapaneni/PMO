@@ -45,9 +45,9 @@ export const createProjectSchema = z.object({
     migrationTypes: z.string().max(500).optional().nullable(),
     sourcePlatform: z.string().max(500).optional().nullable(),
     targetPlatform: z.string().max(500).optional().nullable(),
-    estimatedCost: z.number().nonnegative().optional().nullable(),
-    actualCost: z.number().nonnegative().optional().nullable(),
-    numberOfServers: z.number().int().nonnegative().optional().nullable(),
+    estimatedCost: z.coerce.number().nonnegative().optional().nullable(),
+    actualCost: z.coerce.number().nonnegative().optional().nullable(),
+    numberOfServers: z.coerce.number().int().nonnegative().optional().nullable(),
     projectMemory: z.string().max(100).optional().nullable(),
     description: z.string().optional().nullable(),
     notes: z.string().optional().nullable(),
@@ -56,7 +56,7 @@ export const createProjectSchema = z.object({
     isOveraged: z.boolean().optional().nullable(),
     isEscalated: z.boolean().optional().nullable(),
     escalationPriority: z.enum(['LOW', 'MEDIUM', 'HIGH']).optional().nullable(),
-    overageAmount: z.number().nonnegative().optional().nullable(),
+    overageAmount: z.coerce.number().nonnegative().optional().nullable(),
   }),
 });
 
@@ -77,9 +77,9 @@ export const updateProjectSchema = z.object({
     migrationTypes: z.string().max(500).optional().nullable(),
     sourcePlatform: z.string().max(500).optional().nullable(),
     targetPlatform: z.string().max(500).optional().nullable(),
-    estimatedCost: z.number().nonnegative().optional().nullable(),
-    actualCost: z.number().nonnegative().optional().nullable(),
-    numberOfServers: z.number().int().nonnegative().optional().nullable(),
+    estimatedCost: z.coerce.number().nonnegative().optional().nullable(),
+    actualCost: z.coerce.number().nonnegative().optional().nullable(),
+    numberOfServers: z.coerce.number().int().nonnegative().optional().nullable(),
     projectMemory: z.string().max(100).optional().nullable(),
     description: z.string().optional().nullable(),
     notes: z.string().optional().nullable(),
@@ -89,7 +89,7 @@ export const updateProjectSchema = z.object({
     isOveraged: z.boolean().optional().nullable(),
     isEscalated: z.boolean().optional().nullable(),
     escalationPriority: z.enum(['LOW', 'MEDIUM', 'HIGH']).optional().nullable(),
-    overageAmount: z.number().nonnegative().optional().nullable(),
+    overageAmount: z.coerce.number().nonnegative().optional().nullable(),
   }),
 });
 

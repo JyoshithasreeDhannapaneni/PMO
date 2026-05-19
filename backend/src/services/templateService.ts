@@ -147,7 +147,7 @@ class TemplateService {
           await client.query(
             `INSERT INTO template_phases (id, template_id, name, order_index, default_duration, description)
              VALUES ($1, $2, $3, $4, $5, $6)`,
-            [phaseId, templateId, phase.name, phase.orderIndex, phase.defaultDuration, phase.description ?? null]
+            [phaseId, templateId, phase.name, phase.orderIndex ?? 0, phase.defaultDuration ?? null, phase.description ?? null]
           );
 
           if (phase.tasks) {
@@ -155,7 +155,7 @@ class TemplateService {
               await client.query(
                 `INSERT INTO template_tasks (id, phase_id, name, order_index, default_duration, description, is_milestone)
                  VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-                [uuidv4(), phaseId, task.name, task.orderIndex, task.defaultDuration, task.description ?? null, task.isMilestone ?? false]
+                [uuidv4(), phaseId, task.name, task.orderIndex ?? 0, task.defaultDuration ?? null, task.description ?? null, task.isMilestone ?? false]
               );
             }
           }

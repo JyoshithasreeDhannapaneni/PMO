@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { managerGoalsService } from '../services/managerGoalsService';
+import { managerGoalsService, gartnerStatsService } from '../services/managerGoalsService';
 import { asyncHandler } from '../middleware/errorHandler';
 
 export const managerGoalsController = {
@@ -33,5 +33,33 @@ export const managerGoalsController = {
     const { id } = req.params;
     await managerGoalsService.delete(id);
     res.json({ success: true, message: 'Manager goal deleted' });
+  }),
+
+  getGartnerStats: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const statsData = await managerGoalsService.getManagerStatsWithGoals();
+    const managerNames = statsData.map((s) => s.manager);
+    const data = await gartnerStatsService.getAll(managerNames);
+    res.json({ success: true, data });
+  }),
+
+  updateGartnerStats: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const reqUser = (req as any).user;
+    if (!reqUser || reqUser.role !== 'ADMIN') {
+      res.status(403).json({ success: false, error: { message: 'Forbidden: Admin only' } });
+      return;
+    }
+    const { managerName } = req.params;
+    const { projects_closed, gartner_reviews } = req.body;
+    if (projects_closed === undefined || gartner_reviews === undefined) {
+      res.status(400).json({ success: false, error: { message: 'projects_closed and gartner_reviews are required' } });
+      return;
+    }
+    const data = await gartnerStatsService.update(
+      decodeURIComponent(managerName),
+      parseInt(projects_closed, 10),
+      parseInt(gartner_reviews, 10),
+      reqUser.name || reqUser.email || 'admin'
+    );
+    res.json({ success: true, data });
   }),
 };
