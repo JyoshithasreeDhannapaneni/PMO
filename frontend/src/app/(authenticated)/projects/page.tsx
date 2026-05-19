@@ -78,6 +78,7 @@ export default function ProjectsPage() {
     search: filters.search || undefined,
     // MANAGER role always sees only their own projects
     projectManager: isManager ? (user?.name ?? undefined) : undefined,
+    limit: 10000,
   });
 
   const deleteProject = useDeleteProject();
