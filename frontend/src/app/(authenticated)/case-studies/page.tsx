@@ -12,13 +12,14 @@ import {
   Plus,
   Loader2,
   Search,
-  Filter,
   Eye,
   Edit,
   CheckCircle,
   Clock,
   AlertCircle,
   Settings,
+  RotateCcw,
+  Download,
 } from 'lucide-react';
 
 interface CaseStudy {
@@ -107,6 +108,26 @@ export default function CaseStudiesPage() {
     }
   };
 
+  const exportCSV = () => {
+    const headers = ['Title', 'Project', 'Customer', 'Manager', 'Status', 'Created'];
+    const rows = filteredCaseStudies.map((cs) => [
+      cs.title || cs.project?.name || 'Untitled',
+      cs.project?.name || '',
+      cs.project?.customerName || '',
+      cs.project?.projectManager || '',
+      cs.status,
+      new Date(cs.createdAt).toLocaleDateString(),
+    ]);
+    const csv = [headers, ...rows].map((r) => r.map((v) => `"${v}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `case-studies-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const filteredCaseStudies = caseStudies.filter((cs) => {
     const matchesSearch = 
       cs.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -153,15 +174,40 @@ export default function CaseStudiesPage() {
           <h1 className="text-2xl font-bold text-gray-900">Case Studies</h1>
           <p className="text-gray-500">Document and showcase successful project migrations</p>
         </div>
-        {isAdmin && (
-          <Link
-            href="/case-studies/template"
-            className="flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50 transition-colors"
+        <div className="flex items-center gap-2">
+          <button
+            onClick={fetchData}
+            disabled={isLoading}
+            className="flex items-center gap-2 px-3 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50 transition-colors disabled:opacity-50"
+            title="Refresh"
           >
-            <Settings size={14} />
-            Manage Template
+            <RotateCcw size={14} className={isLoading ? 'animate-spin' : ''} />
+            Refresh
+          </button>
+          <button
+            onClick={exportCSV}
+            className="flex items-center gap-2 px-3 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50 transition-colors"
+          >
+            <Download size={14} />
+            Export
+          </button>
+          <Link
+            href="/case-studies/new"
+            className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm hover:bg-primary-700 transition-colors"
+          >
+            <Plus size={14} />
+            Add Case Study
           </Link>
-        )}
+          {isAdmin && (
+            <Link
+              href="/case-studies/template"
+              className="flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50 transition-colors"
+            >
+              <Settings size={14} />
+              Manage Template
+            </Link>
+          )}
+        </div>
       </div>
 
       {/* Manager scope banner */}

@@ -65,6 +65,22 @@ const FALLBACK_SECTIONS = [
     icon: '📊',
   },
   {
+    id: 'what_went_well',
+    title: 'What Went Well',
+    description: 'Highlights, wins and positive outcomes from the project',
+    placeholder: 'List the things that went smoothly, standout achievements, team wins, client praise, and any moments you would repeat on future projects.',
+    required: true,
+    icon: '✅',
+  },
+  {
+    id: 'issues_challenges',
+    title: 'Issues & Challenges',
+    description: 'Problems, obstacles and difficult moments encountered during the project',
+    placeholder: 'Describe the issues faced during the project, how they were handled, what impact they had, and what could have been done differently to avoid them.',
+    required: true,
+    icon: '⚠️',
+  },
+  {
     id: 'lessons_learned',
     title: 'Lessons Learned',
     description: 'Key learnings from the project',

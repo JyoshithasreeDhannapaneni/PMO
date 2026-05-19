@@ -25,7 +25,8 @@ const ESCALATION_TYPES = ['Client Issues', 'Tools Issues', 'Process Issues', 'Re
 export default function EscalationProjectsPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'ADMIN';
-  const managerFilter = isAdmin ? undefined : user?.name;
+  const isManager = user?.role === 'MANAGER';
+  const managerFilter = (isAdmin || isManager) ? undefined : user?.name;
 
   const { data, isLoading, refetch } = useEscalatedProjects(managerFilter);
   const escalated: any[] = data?.data || [];
