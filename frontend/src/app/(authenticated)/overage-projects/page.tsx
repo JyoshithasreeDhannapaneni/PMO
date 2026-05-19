@@ -25,7 +25,8 @@ function daysLabel(d: number) {
 export default function OverageProjectsPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'ADMIN';
-  const managerFilter = isAdmin ? undefined : user?.name;
+  const isManager = user?.role === 'MANAGER';
+  const managerFilter = (isAdmin || isManager) ? undefined : user?.name;
 
   const { data, isLoading, refetch } = useOveragedProjects(managerFilter);
   const projects: any[] = data?.data || [];

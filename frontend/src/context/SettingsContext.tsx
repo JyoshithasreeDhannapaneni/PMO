@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import { pmoSettingsApi } from '@/services/api';
 
 export interface MigrationType {
   id: string;
@@ -228,6 +229,7 @@ interface SettingsContextType {
   settings: PMOSettings;
   updateSettings: (partial: Partial<PMOSettings>) => void;
   resetSettings: () => void;
+  isLoading: boolean;
 }
 
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
@@ -261,55 +263,72 @@ function mergeWithDefaults(saved: any): PMOSettings {
 
 export function SettingsProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<PMOSettings>(defaultSettings);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Load from localStorage on mount
+  // Load from API on mount; fall back to localStorage if the API isn't reachable
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        setSettings(mergeWithDefaults(JSON.parse(saved)));
-      }
-    } catch {
-      // ignore parse errors
-    }
-  }, []);
-
-  // Listen for changes made in other tabs or by the settings page writing directly to localStorage
-  useEffect(() => {
-    const handleStorage = (e: StorageEvent) => {
-      if (e.key === STORAGE_KEY && e.newValue) {
-        try {
-          setSettings(mergeWithDefaults(JSON.parse(e.newValue)));
-        } catch {
-          // ignore
+    let cancelled = false;
+    async function loadSettings() {
+      try {
+        const response = await pmoSettingsApi.get();
+        if (cancelled) return;
+        const remote = response?.data;
+        if (remote && Object.keys(remote).length > 0) {
+          const merged = mergeWithDefaults(remote);
+          setSettings(merged);
+          // Keep localStorage in sync as a local cache
+          try { localStorage.setItem(STORAGE_KEY, JSON.stringify(merged)); } catch {}
+        } else {
+          // No settings saved yet in DB — check localStorage for a migration seed
+          try {
+            const saved = localStorage.getItem(STORAGE_KEY);
+            if (saved) {
+              const parsed = JSON.parse(saved);
+              const merged = mergeWithDefaults(parsed);
+              setSettings(merged);
+              // Push the local settings up to the DB so all managers benefit
+              await pmoSettingsApi.save(merged);
+            }
+          } catch {}
         }
+      } catch {
+        // API unreachable — fall back to localStorage
+        try {
+          const saved = localStorage.getItem(STORAGE_KEY);
+          if (saved) setSettings(mergeWithDefaults(JSON.parse(saved)));
+        } catch {}
+      } finally {
+        if (!cancelled) setIsLoading(false);
       }
-    };
-    window.addEventListener('storage', handleStorage);
-    return () => window.removeEventListener('storage', handleStorage);
+    }
+    loadSettings();
+    return () => { cancelled = true; };
   }, []);
 
   const updateSettings = useCallback((partial: Partial<PMOSettings>) => {
     setSettings((prev) => {
       const next = { ...prev, ...partial };
-      // Preserve any extra keys (template, teamMembers, etc.) already in localStorage
+      // Optimistically update localStorage
       try {
         const existing = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
         localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...existing, ...next }));
       } catch {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch {}
       }
+      // Persist to database so all managers see the change
+      pmoSettingsApi.save(next).catch(() => {});
       return next;
     });
   }, []);
 
   const resetSettings = useCallback(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(defaultSettings));
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(defaultSettings)); } catch {}
+    pmoSettingsApi.save(defaultSettings).catch(() => {});
     setSettings(defaultSettings);
   }, []);
 
   return (
-    <SettingsContext.Provider value={{ settings, updateSettings, resetSettings }}>
+    <SettingsContext.Provider value={{ settings, updateSettings, resetSettings, isLoading }}>
       {children}
     </SettingsContext.Provider>
   );

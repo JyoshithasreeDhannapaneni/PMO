@@ -59,8 +59,10 @@ const defaultTemplate: CaseStudyTemplate = {
     { id: '4', title: 'Solution', description: 'The approach and solution implemented', placeholder: 'Explain the migration strategy...', required: true },
     { id: '5', title: 'Implementation Process', description: 'Details of how the solution was implemented', placeholder: 'Describe the phases, timeline...', required: false },
     { id: '6', title: 'Results & Benefits', description: 'Quantifiable outcomes and benefits achieved', placeholder: 'List specific metrics...', required: true },
-    { id: '7', title: 'Lessons Learned', description: 'Key takeaways and insights from the project', placeholder: 'Share important lessons...', required: false },
-    { id: '8', title: 'Client Testimonial', description: 'Quote or feedback from the client', placeholder: 'Include a direct quote...', required: false },
+    { id: '7', title: 'What Went Well', description: 'Highlights, wins and positive outcomes from the project', placeholder: 'List the things that went smoothly, standout achievements, team wins, client praise, and any moments you would repeat...', required: true },
+    { id: '8', title: 'Issues & Challenges', description: 'Problems, obstacles and difficult moments encountered during the project', placeholder: 'Describe the issues faced, how they were handled, and what could have been done differently to avoid them...', required: true },
+    { id: '9', title: 'Lessons Learned', description: 'Key takeaways and insights from the project', placeholder: 'Share important lessons...', required: false },
+    { id: '10', title: 'Client Testimonial', description: 'Quote or feedback from the client', placeholder: 'Include a direct quote...', required: false },
   ],
 };
 
