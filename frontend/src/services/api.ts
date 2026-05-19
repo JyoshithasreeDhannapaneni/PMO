@@ -406,4 +406,20 @@ export const migrationTypeApi = {
   },
 };
 
+// PMO Settings API — shared across all managers
+export const pmoSettingsApi = {
+  get: async (): Promise<{ success: boolean; data: Record<string, any> }> => {
+    const { data } = await api.get('/pmo-settings');
+    return data;
+  },
+  save: async (settings: Record<string, any>): Promise<{ success: boolean; data: Record<string, any>; message: string }> => {
+    const { data } = await api.post('/pmo-settings', settings);
+    return data;
+  },
+  patch: async (partial: Record<string, any>): Promise<{ success: boolean; data: Record<string, any>; message: string }> => {
+    const { data } = await api.patch('/pmo-settings', partial);
+    return data;
+  },
+};
+
 export default api;

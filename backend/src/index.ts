@@ -29,6 +29,7 @@ import searchRoutes from './routes/searchRoutes';
 import exportRoutes from './routes/exportRoutes';
 import managerGoalsRoutes from './routes/managerGoalsRoutes';
 import smtpRoutes from './routes/smtpRoutes';
+import pmoSettingsRoutes from './routes/pmoSettingsRoutes';
 import { initializeCronJobs } from './jobs';
 import { logger } from './utils/logger';
 import { authService } from './services/authService';
@@ -81,6 +82,7 @@ app.use('/api/search', searchRoutes);
 app.use('/api/export', exportRoutes);
 app.use('/api/manager-goals', managerGoalsRoutes);
 app.use('/api/smtp', smtpRoutes);
+app.use('/api/pmo-settings', pmoSettingsRoutes);
 
 // Error handling
 app.use(notFoundHandler);

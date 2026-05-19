@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
+import { useSettings } from '@/context/SettingsContext';
 import {
   FolderOpen,
   Mail,
@@ -49,35 +50,7 @@ const SUB_TABS: { id: SubTab; label: string; icon: React.ReactNode; color: strin
   { id: 'email',     label: 'Email Migration',     icon: <Mail size={18} />,          color: 'text-green-700',  bg: 'bg-green-50',  border: 'border-green-300',  activeBtn: 'bg-green-600 hover:bg-green-700'  },
 ];
 
-const DEFAULT_COMBINATIONS: Record<SubTab, Combination[]> = {
-  content: [
-    { id: 'gdrive-spo',    source: 'Google Drive',      target: 'SharePoint Online',    sourceIcon: '🟡', targetIcon: '🔷' },
-    { id: 'gdrive-odb',    source: 'Google Drive',      target: 'OneDrive for Business', sourceIcon: '🟡', targetIcon: '🔵' },
-    { id: 'box-spo',       source: 'Box',               target: 'SharePoint Online',    sourceIcon: '📦', targetIcon: '🔷' },
-    { id: 'box-odb',       source: 'Box',               target: 'OneDrive for Business', sourceIcon: '📦', targetIcon: '🔵' },
-    { id: 'dropbox-spo',   source: 'Dropbox',           target: 'SharePoint Online',    sourceIcon: '💧', targetIcon: '🔷' },
-    { id: 'dropbox-odb',   source: 'Dropbox',           target: 'OneDrive for Business', sourceIcon: '💧', targetIcon: '🔵' },
-    { id: 'fileserver-spo',source: 'File Servers',      target: 'SharePoint Online',    sourceIcon: '🖥️', targetIcon: '🔷' },
-    { id: 'fileserver-odb',source: 'File Servers',      target: 'OneDrive for Business', sourceIcon: '🖥️', targetIcon: '🔵' },
-    { id: 'spon-spo',      source: 'On-Prem SharePoint',target: 'SharePoint Online',    sourceIcon: '🔶', targetIcon: '🔷' },
-  ],
-  messaging: [
-    { id: 'slack-teams',   source: 'Slack',             target: 'Microsoft Teams', sourceIcon: '💬', targetIcon: '🟦' },
-    { id: 'skype-teams',   source: 'Skype for Business',target: 'Microsoft Teams', sourceIcon: '📞', targetIcon: '🟦' },
-    { id: 'webex-teams',   source: 'Cisco Webex',       target: 'Microsoft Teams', sourceIcon: '🔵', targetIcon: '🟦' },
-    { id: 'zoom-teams',    source: 'Zoom',              target: 'Microsoft Teams', sourceIcon: '🎥', targetIcon: '🟦' },
-    { id: 'hipchat-teams', source: 'HipChat',           target: 'Microsoft Teams', sourceIcon: '💭', targetIcon: '🟦' },
-  ],
-  email: [
-    { id: 'exchange-exo',   source: 'On-Prem Exchange',  target: 'Exchange Online', sourceIcon: '📧', targetIcon: '☁️' },
-    { id: 'exchange-m365',  source: 'On-Prem Exchange',  target: 'Microsoft 365',   sourceIcon: '📧', targetIcon: '🟦' },
-    { id: 'gworkspace-exo', source: 'Google Workspace',  target: 'Exchange Online', sourceIcon: '🟡', targetIcon: '☁️' },
-    { id: 'gworkspace-m365',source: 'Google Workspace',  target: 'Microsoft 365',   sourceIcon: '🟡', targetIcon: '🟦' },
-    { id: 'lotusnotes-exo', source: 'Lotus Notes',       target: 'Exchange Online', sourceIcon: '🪷', targetIcon: '☁️' },
-    { id: 'lotusnotes-m365',source: 'Lotus Notes',       target: 'Microsoft 365',   sourceIcon: '🪷', targetIcon: '🟦' },
-    { id: 'zimbra-exo',     source: 'Zimbra',            target: 'Exchange Online', sourceIcon: '📬', targetIcon: '☁️' },
-  ],
-};
+const EMPTY_COMBOS: Record<SubTab, Combination[]> = { content: [], messaging: [], email: [] };
 
 interface DocType {
   id: string;
@@ -103,9 +76,10 @@ const DOC_TYPES_KEY = 'templateDocTypes';
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function TemplatesPage() {
-  const [activeTab, setActiveTab]         = useState<SubTab>('content');
-  const [combinations, setCombinations]   = useState<Record<SubTab, Combination[]>>(DEFAULT_COMBINATIONS);
-  const [selectedCombo, setSelectedCombo] = useState<string | null>(null);
+  const { settings } = useSettings();
+  const [activeTab, setActiveTab]             = useState<SubTab>('content');
+  const [customCombinations, setCustomCombinations] = useState<Record<SubTab, Combination[]>>(EMPTY_COMBOS);
+  const [selectedCombo, setSelectedCombo]     = useState<string | null>(null);
   const [docs, setDocs]                   = useState<Record<string, UploadedDoc[]>>({});
   const [docTypes, setDocTypes]           = useState<DocType[]>(DEFAULT_DOC_TYPES);
   const [selectedDocType, setSelectedDocType] = useState<string>('kickoff');
@@ -136,12 +110,36 @@ export default function TemplatesPage() {
   const [renamingTypeId, setRenamingTypeId]   = useState<string | null>(null);
   const [renameTypeValue, setRenameTypeValue] = useState('');
 
+  // ── Derive combinations from settings migration types ────────────────────────
+
+  const settingsCombinations = useMemo<Record<SubTab, Combination[]>>(() => {
+    const parseName = (name: string) => {
+      const idx = name.indexOf(' - ');
+      if (idx !== -1) return { source: name.slice(0, idx), target: name.slice(idx + 3) };
+      return { source: name, target: '' };
+    };
+    const map = (category: string): Combination[] =>
+      settings.migrationTypes
+        .filter((t) => t.enabled && t.category === category)
+        .map((t) => {
+          const { source, target } = parseName(t.name);
+          return { id: `mt-${t.id}`, source, target, sourceIcon: t.icon, targetIcon: t.icon };
+        });
+    return { content: map('Content Migration'), messaging: map('Messaging'), email: map('Email') };
+  }, [settings.migrationTypes]);
+
+  const allCombinations = useMemo<Record<SubTab, Combination[]>>(() => ({
+    content:   [...settingsCombinations.content,   ...customCombinations.content],
+    messaging: [...settingsCombinations.messaging, ...customCombinations.messaging],
+    email:     [...settingsCombinations.email,     ...customCombinations.email],
+  }), [settingsCombinations, customCombinations]);
+
   // ── Persistence ─────────────────────────────────────────────────────────────
 
   useEffect(() => {
     try {
       const savedCombos = localStorage.getItem(COMBOS_KEY);
-      if (savedCombos) setCombinations(JSON.parse(savedCombos));
+      if (savedCombos) setCustomCombinations(JSON.parse(savedCombos));
       const savedDocs = localStorage.getItem(DOCS_KEY);
       if (savedDocs) setDocs(JSON.parse(savedDocs));
       const savedTypes = localStorage.getItem(DOC_TYPES_KEY);
@@ -150,7 +148,7 @@ export default function TemplatesPage() {
   }, []);
 
   const persistCombos = (updated: Record<SubTab, Combination[]>) => {
-    setCombinations(updated);
+    setCustomCombinations(updated);
     try { localStorage.setItem(COMBOS_KEY, JSON.stringify(updated)); } catch {}
   };
 
@@ -166,8 +164,9 @@ export default function TemplatesPage() {
 
   // ── Derived ─────────────────────────────────────────────────────────────────
 
-  const currentCombos = combinations[activeTab];
+  const currentCombos = allCombinations[activeTab];
   const combo         = currentCombos.find((c) => c.id === selectedCombo) ?? null;
+  const isSettingsCombo = (id: string) => id.startsWith('mt-');
   const comboDocs     = selectedCombo ? (docs[selectedCombo] ?? []) : [];
   const tab           = SUB_TABS.find((t) => t.id === activeTab)!;
 
@@ -276,7 +275,7 @@ export default function TemplatesPage() {
       targetIcon: newTgtIcon || '☁️',
       custom: true,
     };
-    const updated = { ...combinations, [activeTab]: [...combinations[activeTab], newCombo] };
+    const updated = { ...customCombinations, [activeTab]: [...customCombinations[activeTab], newCombo] };
     persistCombos(updated);
     // Auto-select new combination
     setSelectedCombo(id);
@@ -292,7 +291,8 @@ export default function TemplatesPage() {
   // ── Delete combination ──────────────────────────────────────────────────────
 
   const handleDeleteCombination = (comboId: string) => {
-    const updated = { ...combinations, [activeTab]: combinations[activeTab].filter((c) => c.id !== comboId) };
+    if (isSettingsCombo(comboId)) return;
+    const updated = { ...customCombinations, [activeTab]: customCombinations[activeTab].filter((c) => c.id !== comboId) };
     persistCombos(updated);
     // Remove associated docs
     const updatedDocs = { ...docs };
@@ -471,37 +471,39 @@ export default function TemplatesPage() {
                     </div>
                   </button>
 
-                  {/* Delete button — always visible on hover */}
-                  {!isConfirming ? (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setConfirmDelete(c.id); }}
-                      title="Delete combination"
-                      className="absolute top-2 right-2 p-1 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  ) : (
-                    /* Confirm delete overlay */
-                    <div className="absolute inset-0 bg-red-50 border-2 border-red-300 rounded-xl flex flex-col items-center justify-center gap-2 z-10 p-3">
-                      <p className="text-xs font-semibold text-red-700 text-center">
-                        Delete "{c.source} → {c.target}"?
-                      </p>
-                      <p className="text-xs text-red-500 text-center">This will also delete all uploaded documents.</p>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => setConfirmDelete(null)}
-                          className="px-3 py-1 text-xs font-medium bg-white border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-600 transition-colors"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          onClick={() => handleDeleteCombination(c.id)}
-                          className="px-3 py-1 text-xs font-semibold bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-                        >
-                          Delete
-                        </button>
+                  {/* Delete button — only for custom combinations */}
+                  {!isSettingsCombo(c.id) && (
+                    !isConfirming ? (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setConfirmDelete(c.id); }}
+                        title="Delete combination"
+                        className="absolute top-2 right-2 p-1 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    ) : (
+                      /* Confirm delete overlay */
+                      <div className="absolute inset-0 bg-red-50 border-2 border-red-300 rounded-xl flex flex-col items-center justify-center gap-2 z-10 p-3">
+                        <p className="text-xs font-semibold text-red-700 text-center">
+                          Delete "{c.source} → {c.target}"?
+                        </p>
+                        <p className="text-xs text-red-500 text-center">This will also delete all uploaded documents.</p>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => setConfirmDelete(null)}
+                            className="px-3 py-1 text-xs font-medium bg-white border border-gray-300 rounded-lg hover:bg-gray-50 text-gray-600 transition-colors"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={() => handleDeleteCombination(c.id)}
+                            className="px-3 py-1 text-xs font-semibold bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                          >
+                            Delete
+                          </button>
+                        </div>
                       </div>
-                    </div>
+                    )
                   )}
                 </div>
               );
@@ -552,14 +554,16 @@ export default function TemplatesPage() {
                     <p className="text-2xl font-bold text-gray-800">{comboDocs.length}</p>
                     <p className="text-xs text-gray-500">Documents</p>
                   </div>
-                  {/* Delete this combination from the right panel too */}
-                  <button
-                    onClick={() => setConfirmDelete(combo.id)}
-                    title="Delete this combination"
-                    className="p-2 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
-                  >
-                    <Trash2 size={16} />
-                  </button>
+                  {/* Delete button — only for custom combinations */}
+                  {!isSettingsCombo(combo.id) && (
+                    <button
+                      onClick={() => setConfirmDelete(combo.id)}
+                      title="Delete this combination"
+                      className="p-2 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  )}
                 </div>
               </div>
 
