@@ -27,7 +27,9 @@
       "Bash(grep -E \"\\\\.\\(ts|js\\)$\")",
       "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\BharathTummaganti\\\\OneDrive - CloudFuze, Inc\\\\Documents\\\\PMO\\\\PMO\" -Recurse -Directory)",
       "Bash(Select-Object -First 20)",
-      "Bash(Format-Table FullName)"
+      "Bash(Format-Table FullName)",
+      "Bash(git pull *)",
+      "Bash(git push *)"
     ]
   }
 }
