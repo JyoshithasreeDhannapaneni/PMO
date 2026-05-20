@@ -554,6 +554,18 @@ export default function SettingsPage() {
         customNotifTypes,
       };
       localStorage.setItem('pmoSettings', JSON.stringify(fullData));
+      // Save to API so all users see the changes
+      try {
+        const apiToken = localStorage.getItem('token');
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+        if (apiToken) {
+          await fetch(`${apiUrl}/api/settings`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiToken}` },
+            body: JSON.stringify(fullData),
+          });
+        }
+      } catch (e) { console.error('Failed to save settings to API', e); }
 
       // Update in-memory context so all consumers (ProjectForm, Header, Sidebar, Dashboard) reflect changes instantly
       updateSettings({

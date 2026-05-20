@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { managerGoalsService, gartnerStatsService } from '../services/managerGoalsService';
+import { authService } from '../services/authService';
 import { asyncHandler } from '../middleware/errorHandler';
 
 export const managerGoalsController = {
@@ -43,7 +44,11 @@ export const managerGoalsController = {
   }),
 
   updateGartnerStats: asyncHandler(async (req: Request, res: Response): Promise<void> => {
-    const reqUser = (req as any).user;
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    let reqUser = null;
+    if (token) {
+      try { reqUser = await authService.getUserFromToken(token); } catch {}
+    }
     if (!reqUser || reqUser.role !== 'ADMIN') {
       res.status(403).json({ success: false, error: { message: 'Forbidden: Admin only' } });
       return;

@@ -182,7 +182,6 @@ export default function LoginPage() {
               <div className="flex-1 h-px bg-slate-100" />
             </div>
 
-            {/* Microsoft */}
             <button
               type="button"
               onClick={handleMicrosoftLogin}

@@ -19,8 +19,9 @@ export function useProjects(params?: {
   return useQuery({
     queryKey: ['projects', params],
     queryFn: () => projectsApi.getAll(params),
-    staleTime: 60_000,
-    refetchOnWindowFocus: false,
+    staleTime: 30_000,
+    refetchOnWindowFocus: true,
+    refetchInterval: 30_000,
   });
 }
 
@@ -86,8 +87,9 @@ export function useDashboard(manager?: string) {
   return useQuery({
     queryKey: ['dashboard', manager],
     queryFn: () => dashboardApi.getOverview(manager),
-    staleTime: 60_000,
-    refetchOnWindowFocus: false,
+    staleTime: 30_000,
+    refetchOnWindowFocus: true,
+    refetchInterval: 30_000,
   });
 }
 

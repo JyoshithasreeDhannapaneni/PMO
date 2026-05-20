@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { authService } from '../services/authService';
 import { projectService, ProjectFilters, PaginationOptions } from '../services/projectService';
 import { asyncHandler } from '../middleware/errorHandler';
 
@@ -7,7 +8,7 @@ export const projectController = {
    * GET /api/projects
    * Get all projects with filtering and pagination
    */
-  getAll: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+getAll: asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const filters: ProjectFilters = {
       status: req.query.status as any,
       phase: req.query.phase as any,
@@ -18,16 +19,24 @@ export const projectController = {
       accountManager: req.query.accountManager as string,
       migrationType: req.query.migrationType as string,
     };
-
+    // Auto-filter by project manager for MANAGER role
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (token) {
+      try {
+        const user = await authService.getUserFromToken(token);
+        if (user && user.role === 'MANAGER') {
+          // Try exact match first, then partial match
+          filters.projectManager = user.name;
+        }
+      } catch {}
+    }
     const pagination: PaginationOptions = {
       page: parseInt(req.query.page as string) || 1,
       limit: parseInt(req.query.limit as string) || 20,
       sortBy: (req.query.sortBy as string) || 'createdAt',
       sortOrder: (req.query.sortOrder as 'asc' | 'desc') || 'desc',
     };
-
     const result = await projectService.getAll(filters, pagination);
-
     res.json({
       success: true,
       data: result.projects,
@@ -38,7 +47,6 @@ export const projectController = {
       },
     });
   }),
-
   /**
    * GET /api/projects/:id
    * Get a single project by ID

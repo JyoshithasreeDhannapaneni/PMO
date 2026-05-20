@@ -32,7 +32,7 @@ class AuthService {
   }
 
   private verifyPasswordHash(password: string, hash: string): boolean {
-    return this.hashPassword(password) === hash;
+    return crypto.createHash('sha256').update(password).digest('hex') === hash;
   }
 
   private generateToken(): string {

@@ -1,4 +1,4 @@
-import { query, execute } from '../config/database';
+import { query, execute } from '../config/db';
 import nodemailer from 'nodemailer';
 
 export interface SmtpSettings {
