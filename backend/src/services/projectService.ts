@@ -120,8 +120,8 @@ class ProjectService {
       params.push(`%${filters.search}%`, `%${filters.search}%`, `%${filters.search}%`);
     }
     if (filters.projectManager) {
-      conditions.push(`project_manager = $${params.length + 1}`);
-      params.push(filters.projectManager);
+      conditions.push(`project_manager ILIKE $${params.length + 1}`);
+      params.push(`%${filters.projectManager}%`);
     }
     if (filters.accountManager) {
       conditions.push(`account_manager = $${params.length + 1}`);

@@ -245,7 +245,7 @@ export function ProjectForm({ project, onSubmit, isLoading, defaultManagerName }
 
   return (
     <form onSubmit={handleSubmit(handleFormSubmit, () => { showToast('error', 'Please fix errors', 'Check all required fields.'); })}
-      className="flex flex-col h-full">
+      className="flex flex-col h-full" onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}>
 
       {/* ── Step tabs ───────────────────────────────────────────── */}
       <div className="flex items-center gap-0 mb-6 bg-white border border-blue-100 rounded-xl overflow-hidden shadow-sm">
@@ -253,7 +253,7 @@ export function ProjectForm({ project, onSubmit, isLoading, defaultManagerName }
           const isActive = s.id === step;
           const isDone = i < currentStepIdx;
           return (
-            <button key={s.id} type="button" onClick={() => goToStep(s.id)}
+            <button key={s.id} type="button" onClick={() => i <= currentStepIdx ? goToStep(s.id) : null}
               className={`flex-1 flex items-center justify-center gap-2 py-3 px-2 text-sm font-medium transition-all border-r border-blue-50 last:border-r-0
                 ${isActive ? 'bg-blue-600 text-white' : isDone ? 'bg-blue-50 text-blue-700 hover:bg-blue-100' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'}`}>
               {isDone ? <CheckCircle size={14} /> : <span className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold ${isActive ? 'bg-white/20' : 'bg-slate-200 text-slate-500'}`}>{i + 1}</span>}

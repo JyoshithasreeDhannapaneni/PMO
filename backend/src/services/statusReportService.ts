@@ -138,14 +138,14 @@ class StatusReportService {
         completionPercentage,
         tasksCompleted,
         tasksTotal,
-        data.accomplishments ?? null,
-        data.plannedActivities ?? null,
-        data.issues ?? null,
-        risksSummary ?? null,
-        data.decisions ?? null,
-        project?.estimated_cost ?? null,
-        project?.actual_cost ?? null,
-        data.createdBy ?? null,
+        data.accomplishments,
+        data.plannedActivities,
+        data.issues,
+        risksSummary,
+        data.decisions,
+        project?.estimated_cost,
+        project?.actual_cost,
+        (data.createdBy && data.createdBy !== 'system' && data.createdBy.match(/^[0-9a-f-]{36}$/i)) ? data.createdBy : null,
       ]
     );
 

@@ -1,4 +1,4 @@
-import { query, execute } from '../config/database';
+import { query, execute } from '../config/db';
 
 export interface DashboardStats {
   totalProjects: number;
@@ -591,7 +591,7 @@ class DashboardService {
     await this.ensureEscalationHistoryTable();
     const { clause: aw, params: ap } = this.andManagerWhere(managerName);
     const result = await query(
-      `SELECT DISTINCT p.id, p.name, p.customer_name, p.project_manager, p.account_manager, p.status, p.phase,
+      `SELECT  p.id, p.name, p.customer_name, p.project_manager, p.account_manager, p.status, p.phase,
               p.planned_end, p.delay_days, p.delay_status, p.migration_types,
               p.is_escalated, p.escalation_priority, p.escalated_at, p.escalation_notes, p.resolved_date,
               COALESCE(p.escalation_archived, false) as escalation_archived,

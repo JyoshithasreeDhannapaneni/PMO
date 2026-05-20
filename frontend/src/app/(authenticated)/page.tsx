@@ -1451,7 +1451,7 @@ export default function DashboardPage() {
                           </div>
                           <div className="p-4 rounded-xl border border-blue-100">
                             <h4 className="text-sm font-semibold text-gray-900 mb-3">Change Types</h4>
-                            {wr.changeTypes.length > 0 ? (
+                            {(wr.changeTypes && wr.changeTypes.length > 0) ? (
                               <div className="space-y-2">
                                 {wr.changeTypes.map((ct: any, i: number) => {
                                   const colors = ['bg-blue-500', 'bg-green-500', 'bg-orange-500', 'bg-purple-500'];

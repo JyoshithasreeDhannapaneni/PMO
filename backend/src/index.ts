@@ -8,7 +8,8 @@ import morgan from 'morgan';
 
 import { errorHandler } from './middleware/errorHandler';
 import { notFoundHandler } from './middleware/notFoundHandler';
-import { execute, query } from './config/db';
+import { query, execute } from './config/db';
+
 import authRoutes from './routes/authRoutes';
 import projectRoutes from './routes/projectRoutes';
 import phaseRoutes from './routes/phaseRoutes';
@@ -32,6 +33,8 @@ import smtpRoutes from './routes/smtpRoutes';
 import pmoSettingsRoutes from './routes/pmoSettingsRoutes';
 import archiveRoutes from './routes/archiveRoutes';
 import { initializeCronJobs } from './jobs';
+import settingsRoutes from './routes/settingsRoutes';
+
 import { logger } from './utils/logger';
 import { authService } from './services/authService';
 import { templateService } from './services/templateService';
@@ -39,30 +42,24 @@ import { templateService } from './services/templateService';
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Security middleware
 app.use(helmet());
 
-// CORS configuration
 app.use(cors({
   origin: process.env.FRONTEND_URL || 'http://localhost:3000',
   credentials: true,
 }));
 
-// Request parsing
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Logging
 app.use(morgan('combined', {
   stream: { write: (message) => logger.info(message.trim()) }
 }));
 
-// Health check endpoint
 app.get('/health', (req, res) => {
   res.json({ status: 'healthy', timestamp: new Date().toISOString() });
 });
 
-// API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api/phases', phaseRoutes);
@@ -85,11 +82,10 @@ app.use('/api/manager-goals', managerGoalsRoutes);
 app.use('/api/smtp', smtpRoutes);
 app.use('/api/pmo-settings', pmoSettingsRoutes);
 app.use('/api/archive', archiveRoutes);
+app.use('/api/settings', settingsRoutes);
 
-// Error handling
 app.use(notFoundHandler);
 app.use(errorHandler);
-
 async function columnExists(table: string, column: string): Promise<boolean> {
   try {
     const result = await query(
@@ -105,7 +101,6 @@ async function columnExists(table: string, column: string): Promise<boolean> {
 }
 
 async function runMigrations() {
-  // ALTER existing columns to wider types — safe to retry
   const alterStatements = [
     `ALTER TABLE projects ALTER COLUMN phase TYPE VARCHAR(50)`,
     `ALTER TABLE projects ALTER COLUMN plan_type TYPE VARCHAR(50)`,
@@ -117,7 +112,6 @@ async function runMigrations() {
     try { await execute(sql); } catch { /* already correct type — ignore */ }
   }
 
-  // ADD new columns only if they don't exist
   if (!await columnExists('projects', 'number_of_servers')) {
     try { await execute(`ALTER TABLE projects ADD COLUMN number_of_servers INTEGER`); } catch {}
   }
@@ -145,37 +139,32 @@ async function runMigrations() {
   if (!await columnExists('projects', 'overage_notes')) {
     try { await execute(`ALTER TABLE projects ADD COLUMN overage_notes TEXT DEFAULT NULL`); } catch {}
   }
-
-  // Archive columns
-  try { await execute(`ALTER TABLE projects ADD COLUMN IF NOT EXISTS archived_at TIMESTAMP NULL`); } catch {}
-  try { await execute(`ALTER TABLE projects ADD COLUMN IF NOT EXISTS archive_reason VARCHAR(50) NULL`); } catch {}
-  try { await execute(`ALTER TABLE projects ADD COLUMN IF NOT EXISTS archived_by VARCHAR(100) NULL`); } catch {}
-  try { await execute(`ALTER TABLE projects ADD COLUMN IF NOT EXISTS restore_count INT NOT NULL DEFAULT 0`); } catch {}
 }
 
 // Start server
 app.listen(PORT, async () => {
   logger.info(`🚀 Server running on port ${PORT}`);
   logger.info(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
-  
-  // Run DB migrations (e.g. widen ENUM columns to VARCHAR for dynamic phases/plan types)
-  await runMigrations();
 
-  // Create default admin user
+  try {
+    await runMigrations();
+    logger.info('✅ Migrations completed');
+  } catch (error) {
+    logger.warn('Migration error (non-fatal):', error);
+  }
+
   try {
     await authService.createDefaultAdmin();
   } catch (error) {
     logger.warn('Could not create default admin (may already exist)');
   }
-  
-  // Seed default templates
+
   try {
     await templateService.seedDefaultTemplates();
   } catch (error) {
     logger.warn('Could not seed templates (may already exist)');
   }
-  
-  // Initialize background jobs
+
   if (process.env.ENABLE_CRON_JOBS === 'true') {
     initializeCronJobs();
     logger.info('⏰ Cron jobs initialized');
