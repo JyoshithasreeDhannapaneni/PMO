@@ -56,6 +56,7 @@ export const projectsApi = {
     sortBy?: string;
     sortOrder?: 'asc' | 'desc';
     projectManager?: string;
+    accountManager?: string;
   }): Promise<PaginatedResponse<Project>> => {
     const { data } = await api.get('/projects', { params });
     return data;

@@ -29,7 +29,13 @@
       "Bash(Select-Object -First 20)",
       "Bash(Format-Table FullName)",
       "Bash(git pull *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(npx tsx *)",
+      "Bash(Start-Sleep -Seconds 3)",
+      "Bash(Get-Content \"C:\\\\Users\\\\BHARAT~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-BharathTummaganti-OneDrive---CloudFuze--Inc-Documents-PMO-PMO\\\\32f45957-ba05-48a5-9eec-aeaf0ec23ad4\\\\tasks\\\\bh4xyomf4.output\" -ErrorAction SilentlyContinue)",
+      "Bash(Get-ChildItem -Path . -Force)",
+      "Bash(Select-Object Name, FullName)",
+      "Bash(not exist *)"
     ]
   }
 }

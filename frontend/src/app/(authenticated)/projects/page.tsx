@@ -1,8 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
 import { useProjects, useDeleteProject } from '@/hooks/useProjects';
+import { authApi } from '@/services/api';
 import { ProjectsTable } from '@/components/projects/ProjectsTable';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -27,6 +29,8 @@ interface FilterState {
   phase: string;
   delayStatus: string;
   planType: string;
+  projectManager: string;
+  accountManager: string;
   search: string;
 }
 
@@ -42,6 +46,8 @@ export default function ProjectsPage() {
     phase: searchParams.get('phase') || '',
     delayStatus: searchParams.get('delayStatus') || '',
     planType: searchParams.get('planType') || '',
+    projectManager: searchParams.get('projectManager') || '',
+    accountManager: searchParams.get('accountManager') || '',
     search: searchParams.get('search') || '',
   });
 
@@ -56,6 +62,8 @@ export default function ProjectsPage() {
     if (filters.phase) params.set('phase', filters.phase);
     if (filters.delayStatus) params.set('delayStatus', filters.delayStatus);
     if (filters.planType) params.set('planType', filters.planType);
+    if (filters.projectManager) params.set('projectManager', filters.projectManager);
+    if (filters.accountManager) params.set('accountManager', filters.accountManager);
     if (filters.search) params.set('search', filters.search);
     
     const queryString = params.toString();
@@ -76,10 +84,22 @@ export default function ProjectsPage() {
     delayStatus: filters.delayStatus || undefined,
     planType: filters.planType || undefined,
     search: filters.search || undefined,
-    // MANAGER role always sees only their own projects
-    projectManager: isManager ? (user?.name ?? undefined) : undefined,
+    // MANAGER role is always restricted to their own projects by the backend;
+    // for ADMIN/VIEWER we pass the dropdown selection.
+    projectManager: isManager ? (user?.name ?? undefined) : (filters.projectManager || undefined),
+    accountManager: filters.accountManager || undefined,
     limit: 10000,
   });
+
+  // Fetch all users with MANAGER role to populate PM dropdown
+  const { data: usersData } = useQuery({
+    queryKey: ['users'],
+    queryFn: () => authApi.getUsers(),
+    staleTime: 60_000,
+  });
+
+  // Separate query for AM names — drawn from actual project data
+  const { data: namesData } = useProjects({ limit: 10000 });
 
   const deleteProject = useDeleteProject();
 
@@ -89,6 +109,69 @@ export default function ProjectsPage() {
     } catch (error) {
       console.error('Failed to delete project:', error);
     }
+  };
+
+  const exportToCSV = () => {
+    if (!data?.data?.length) return;
+
+    const fmt = (d: string | null | undefined) =>
+      d ? new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' }) : '';
+
+    const headers = [
+      'Project Name', 'Customer Name', 'Project Manager', 'Account Manager',
+      'Migration Types', 'Plan Type', 'Status', 'Phase', 'Delay Status',
+      'Estimated Budget', 'Is Overaged', 'Overage Amount',
+      'SOW Start', 'SOW End', 'Kickoff Start',
+      'Cloud Adding Start', 'Cloud Adding End',
+      'Pilot Migration Start', 'Pilot Migration End',
+      'Onetime Migration Start', 'Onetime Migration End',
+      'Delta Migration Start', 'Delta Migration End',
+      'Final Validation Start', 'Final Validation End',
+      'Project End',
+    ];
+
+    const rows = data.data.map(p => [
+      p.name ?? '',
+      p.customerName ?? '',
+      p.projectManager ?? '',
+      p.accountManager ?? '',
+      p.migrationTypes ?? '',
+      p.planType ?? '',
+      p.status ?? '',
+      p.phase ?? '',
+      p.delayStatus ?? '',
+      p.estimatedCost != null ? String(p.estimatedCost) : '',
+      p.isOveraged ? 'Yes' : 'No',
+      p.overageAmount != null ? String(p.overageAmount) : '',
+      fmt(p.plannedStart),
+      fmt(p.plannedEnd),
+      fmt(p.actualStart),
+      fmt(p.cloudAddingStart),
+      fmt(p.cloudAddingEnd),
+      fmt(p.pilotMigrationStart),
+      fmt(p.pilotMigrationEnd),
+      fmt(p.onetimeMigrationStart),
+      fmt(p.onetimeMigrationEnd),
+      fmt(p.deltaMigrationStart),
+      fmt(p.deltaMigrationEnd),
+      fmt(p.finalValidationStart),
+      fmt(p.finalValidationEnd),
+      fmt(p.actualEnd),
+    ]);
+
+    const csv = [headers, ...rows]
+      .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `projects-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   const handleFilterChange = (key: keyof FilterState, value: string) => {
@@ -101,6 +184,8 @@ export default function ProjectsPage() {
       phase: '',
       delayStatus: '',
       planType: '',
+      projectManager: '',
+      accountManager: '',
       search: '',
     });
     setSearchInput('');
@@ -140,6 +225,28 @@ export default function ProjectsPage() {
     { value: 'GOLD', label: 'Gold', color: 'yellow' },
     { value: 'PLATINUM', label: 'Platinum', color: 'indigo' },
   ];
+
+  const projectManagerOptions = useMemo(() => {
+    const managers = (usersData?.data || [])
+      .filter((u: any) => u.role === 'MANAGER' && u.isActive !== false)
+      .map((u: any) => u.name)
+      .filter(Boolean)
+      .sort() as string[];
+    return [
+      { value: '', label: 'All Project Managers', color: 'gray' },
+      ...managers.map((n: string) => ({ value: n, label: n, color: 'indigo' })),
+    ];
+  }, [usersData?.data]);
+
+  const accountManagerOptions = useMemo(() => {
+    const names = [...new Set(
+      (namesData?.data || []).map((p: any) => p.accountManager).filter(Boolean)
+    )].sort() as string[];
+    return [
+      { value: '', label: 'All Account Managers', color: 'gray' },
+      ...names.map(n => ({ value: n, label: n, color: 'teal' })),
+    ];
+  }, [namesData?.data]);
 
   const FilterDropdown = ({ 
     label, 
@@ -238,6 +345,16 @@ export default function ProjectsPage() {
             <RefreshCw size={16} className="mr-1" />
             Refresh
           </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={exportToCSV}
+            disabled={!data?.data?.length}
+            className="hidden sm:flex"
+          >
+            <Download size={16} className="mr-1" />
+            Export CSV
+          </Button>
           <Link href="/projects/new">
             <Button>
               <Plus size={20} className="mr-2" />
@@ -297,8 +414,8 @@ export default function ProjectsPage() {
               <input
                 type="text"
                 value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-                placeholder="Search by project name, customer, or manager..."
+                onChange={(e) => setSearchInput(e.target.value.toLowerCase())}
+                placeholder="Search by project name..."
                 className="w-full pl-10 pr-4 py-2.5 text-sm rounded-lg border border-gray-200 bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all"
               />
               {searchInput && (
@@ -315,7 +432,7 @@ export default function ProjectsPage() {
             </div>
 
             {/* Filter Dropdowns */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
               <FilterDropdown
                 label="Status"
                 value={filters.status}
@@ -339,6 +456,18 @@ export default function ProjectsPage() {
                 value={filters.planType}
                 options={planOptions}
                 onChange={(value) => handleFilterChange('planType', value)}
+              />
+              <FilterDropdown
+                label="Project Manager"
+                value={filters.projectManager}
+                options={projectManagerOptions}
+                onChange={(value) => handleFilterChange('projectManager', value)}
+              />
+              <FilterDropdown
+                label="Account Manager"
+                value={filters.accountManager}
+                options={accountManagerOptions}
+                onChange={(value) => handleFilterChange('accountManager', value)}
               />
             </div>
 
@@ -374,6 +503,22 @@ export default function ProjectsPage() {
                   <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-purple-100 text-purple-700 rounded-full">
                     Plan: {planOptions.find(o => o.value === filters.planType)?.label}
                     <button onClick={() => handleFilterChange('planType', '')} className="hover:text-purple-900">
+                      <X size={12} />
+                    </button>
+                  </span>
+                )}
+                {filters.projectManager && (
+                  <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-indigo-100 text-indigo-700 rounded-full">
+                    PM: {filters.projectManager}
+                    <button onClick={() => handleFilterChange('projectManager', '')} className="hover:text-indigo-900">
+                      <X size={12} />
+                    </button>
+                  </span>
+                )}
+                {filters.accountManager && (
+                  <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-teal-100 text-teal-700 rounded-full">
+                    AM: {filters.accountManager}
+                    <button onClick={() => handleFilterChange('accountManager', '')} className="hover:text-teal-900">
                       <X size={12} />
                     </button>
                   </span>
