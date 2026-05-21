@@ -139,6 +139,23 @@ async function runMigrations() {
   if (!await columnExists('projects', 'overage_notes')) {
     try { await execute(`ALTER TABLE projects ADD COLUMN overage_notes TEXT DEFAULT NULL`); } catch {}
   }
+
+  const phaseRangeCols = [
+    'cloud_adding_start', 'cloud_adding_end', 'cloud_adding_notes',
+    'pilot_migration_start', 'pilot_migration_end', 'pilot_migration_notes',
+    'onetime_migration_start', 'onetime_migration_end', 'onetime_migration_notes',
+    'delta_migration_start', 'delta_migration_end', 'delta_migration_notes',
+    'final_validation_start', 'final_validation_end', 'final_validation_notes',
+  ];
+  for (const col of phaseRangeCols) {
+    if (!await columnExists('projects', col)) {
+      const colType = col.endsWith('_notes') ? 'TEXT' : 'TIMESTAMP';
+      try { await execute(`ALTER TABLE projects ADD COLUMN ${col} ${colType} DEFAULT NULL`); } catch {}
+    }
+  }
+
+  // Normalise all existing project names to lowercase
+  try { await execute(`UPDATE projects SET name = LOWER(name) WHERE name != LOWER(name)`); } catch {}
 }
 
 // Start server

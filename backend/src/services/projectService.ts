@@ -32,6 +32,21 @@ export interface CreateProjectDTO {
   isEscalated?: boolean | null;
   escalationPriority?: string | null;
   overageAmount?: number | null;
+  cloudAddingStart?: Date | string | null;
+  cloudAddingEnd?: Date | string | null;
+  pilotMigrationStart?: Date | string | null;
+  pilotMigrationEnd?: Date | string | null;
+  onetimeMigrationStart?: Date | string | null;
+  onetimeMigrationEnd?: Date | string | null;
+  deltaMigrationStart?: Date | string | null;
+  deltaMigrationEnd?: Date | string | null;
+  finalValidationStart?: Date | string | null;
+  finalValidationEnd?: Date | string | null;
+  cloudAddingNotes?: string | null;
+  pilotMigrationNotes?: string | null;
+  onetimeMigrationNotes?: string | null;
+  deltaMigrationNotes?: string | null;
+  finalValidationNotes?: string | null;
 }
 
 export interface UpdateProjectDTO extends Partial<CreateProjectDTO> {}
@@ -86,6 +101,21 @@ function mapProjectRow(row: any) {
     escalatedAt: row.escalated_at ?? null,
     escalationNotes: row.escalation_notes ?? null,
     overageAmount: row.overage_amount ?? null,
+    cloudAddingStart: row.cloud_adding_start ?? null,
+    cloudAddingEnd: row.cloud_adding_end ?? null,
+    pilotMigrationStart: row.pilot_migration_start ?? null,
+    pilotMigrationEnd: row.pilot_migration_end ?? null,
+    onetimeMigrationStart: row.onetime_migration_start ?? null,
+    onetimeMigrationEnd: row.onetime_migration_end ?? null,
+    deltaMigrationStart: row.delta_migration_start ?? null,
+    deltaMigrationEnd: row.delta_migration_end ?? null,
+    finalValidationStart: row.final_validation_start ?? null,
+    finalValidationEnd: row.final_validation_end ?? null,
+    cloudAddingNotes: row.cloud_adding_notes ?? null,
+    pilotMigrationNotes: row.pilot_migration_notes ?? null,
+    onetimeMigrationNotes: row.onetime_migration_notes ?? null,
+    deltaMigrationNotes: row.delta_migration_notes ?? null,
+    finalValidationNotes: row.final_validation_notes ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -115,9 +145,8 @@ class ProjectService {
       params.push(filters.delayStatus);
     }
     if (filters.search) {
-      const n = params.length + 1;
-      conditions.push(`(name LIKE $${n} OR customer_name LIKE $${n + 1} OR project_manager LIKE $${n + 2})`);
-      params.push(`%${filters.search}%`, `%${filters.search}%`, `%${filters.search}%`);
+      conditions.push(`name ILIKE $${params.length + 1}`);
+      params.push(`%${filters.search}%`);
     }
     if (filters.projectManager) {
       conditions.push(`project_manager ILIKE $${params.length + 1}`);
@@ -258,7 +287,7 @@ class ProjectService {
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, NOW(), NOW())`,
       [
         projectId,
-        data.name,
+        data.name.toLowerCase(),
         data.customerName,
         data.projectManager,
         data.accountManager,
@@ -306,6 +335,32 @@ class ProjectService {
       }
     }
 
+    const phaseRangeData = {
+      cloud_adding_start: data.cloudAddingStart ? new Date(data.cloudAddingStart) : null,
+      cloud_adding_end: data.cloudAddingEnd ? new Date(data.cloudAddingEnd) : null,
+      pilot_migration_start: data.pilotMigrationStart ? new Date(data.pilotMigrationStart) : null,
+      pilot_migration_end: data.pilotMigrationEnd ? new Date(data.pilotMigrationEnd) : null,
+      onetime_migration_start: data.onetimeMigrationStart ? new Date(data.onetimeMigrationStart) : null,
+      onetime_migration_end: data.onetimeMigrationEnd ? new Date(data.onetimeMigrationEnd) : null,
+      delta_migration_start: data.deltaMigrationStart ? new Date(data.deltaMigrationStart) : null,
+      delta_migration_end: data.deltaMigrationEnd ? new Date(data.deltaMigrationEnd) : null,
+      final_validation_start: data.finalValidationStart ? new Date(data.finalValidationStart) : null,
+      final_validation_end: data.finalValidationEnd ? new Date(data.finalValidationEnd) : null,
+      cloud_adding_notes: data.cloudAddingNotes ?? null,
+      pilot_migration_notes: data.pilotMigrationNotes ?? null,
+      onetime_migration_notes: data.onetimeMigrationNotes ?? null,
+      delta_migration_notes: data.deltaMigrationNotes ?? null,
+      final_validation_notes: data.finalValidationNotes ?? null,
+    };
+    if (Object.values(phaseRangeData).some(v => v != null)) {
+      try {
+        const cols = Object.keys(phaseRangeData);
+        const vals = Object.values(phaseRangeData);
+        const sets = cols.map((c, i) => `${c} = $${i + 1}`).join(', ');
+        await execute(`UPDATE projects SET ${sets} WHERE id = $${cols.length + 1}`, [...vals, projectId]);
+      } catch {}
+    }
+
     const result = await query(`SELECT * FROM projects WHERE id = $1`, [projectId]);
     const project = mapProjectRow(result.rows[0]);
 
@@ -347,7 +402,7 @@ class ProjectService {
     updates.push(`delay_days = $${params.length + 1}`); params.push(delayDays);
     updates.push(`delay_status = $${params.length + 1}`); params.push(delayStatus);
 
-    if (data.name !== undefined) { updates.push(`name = $${params.length + 1}`); params.push(data.name); }
+    if (data.name !== undefined) { updates.push(`name = $${params.length + 1}`); params.push(data.name.toLowerCase()); }
     if (data.customerName !== undefined) { updates.push(`customer_name = $${params.length + 1}`); params.push(data.customerName); }
     if (data.projectManager !== undefined) { updates.push(`project_manager = $${params.length + 1}`); params.push(data.projectManager); }
     if (data.accountManager !== undefined) { updates.push(`account_manager = $${params.length + 1}`); params.push(data.accountManager); }
@@ -382,6 +437,21 @@ class ProjectService {
       updates.push(`escalated_at = $${params.length + 1}`); params.push(data.isEscalated ? new Date() : null);
     }
     if (data.overageAmount !== undefined) { updates.push(`overage_amount = $${params.length + 1}`); params.push(data.overageAmount ?? null); }
+    if (data.cloudAddingStart !== undefined) { updates.push(`cloud_adding_start = $${params.length + 1}`); params.push(data.cloudAddingStart ? new Date(data.cloudAddingStart) : null); }
+    if (data.cloudAddingEnd !== undefined) { updates.push(`cloud_adding_end = $${params.length + 1}`); params.push(data.cloudAddingEnd ? new Date(data.cloudAddingEnd) : null); }
+    if (data.pilotMigrationStart !== undefined) { updates.push(`pilot_migration_start = $${params.length + 1}`); params.push(data.pilotMigrationStart ? new Date(data.pilotMigrationStart) : null); }
+    if (data.pilotMigrationEnd !== undefined) { updates.push(`pilot_migration_end = $${params.length + 1}`); params.push(data.pilotMigrationEnd ? new Date(data.pilotMigrationEnd) : null); }
+    if (data.onetimeMigrationStart !== undefined) { updates.push(`onetime_migration_start = $${params.length + 1}`); params.push(data.onetimeMigrationStart ? new Date(data.onetimeMigrationStart) : null); }
+    if (data.onetimeMigrationEnd !== undefined) { updates.push(`onetime_migration_end = $${params.length + 1}`); params.push(data.onetimeMigrationEnd ? new Date(data.onetimeMigrationEnd) : null); }
+    if (data.deltaMigrationStart !== undefined) { updates.push(`delta_migration_start = $${params.length + 1}`); params.push(data.deltaMigrationStart ? new Date(data.deltaMigrationStart) : null); }
+    if (data.deltaMigrationEnd !== undefined) { updates.push(`delta_migration_end = $${params.length + 1}`); params.push(data.deltaMigrationEnd ? new Date(data.deltaMigrationEnd) : null); }
+    if (data.finalValidationStart !== undefined) { updates.push(`final_validation_start = $${params.length + 1}`); params.push(data.finalValidationStart ? new Date(data.finalValidationStart) : null); }
+    if (data.finalValidationEnd !== undefined) { updates.push(`final_validation_end = $${params.length + 1}`); params.push(data.finalValidationEnd ? new Date(data.finalValidationEnd) : null); }
+    if (data.cloudAddingNotes !== undefined) { updates.push(`cloud_adding_notes = $${params.length + 1}`); params.push(data.cloudAddingNotes ?? null); }
+    if (data.pilotMigrationNotes !== undefined) { updates.push(`pilot_migration_notes = $${params.length + 1}`); params.push(data.pilotMigrationNotes ?? null); }
+    if (data.onetimeMigrationNotes !== undefined) { updates.push(`onetime_migration_notes = $${params.length + 1}`); params.push(data.onetimeMigrationNotes ?? null); }
+    if (data.deltaMigrationNotes !== undefined) { updates.push(`delta_migration_notes = $${params.length + 1}`); params.push(data.deltaMigrationNotes ?? null); }
+    if (data.finalValidationNotes !== undefined) { updates.push(`final_validation_notes = $${params.length + 1}`); params.push(data.finalValidationNotes ?? null); }
 
     await execute(
       `UPDATE projects SET ${updates.join(', ')}, updated_at = NOW() WHERE id = $${params.length + 1}`,
