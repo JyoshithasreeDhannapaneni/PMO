@@ -629,12 +629,22 @@ export default function DashboardPage() {
         <Link href="/projects?status=ACTIVE" className="block group">
           <Card className="h-full transition-transform group-hover:scale-[1.02] group-hover:shadow-lg border-green-200">
             <div className="flex items-center justify-between">
-              <div>
+              <div className="flex-1 min-w-0">
                 <p className="text-green-600 text-sm font-medium">Active</p>
                 <p className="text-3xl font-bold text-green-700 mt-1">{stats.activeProjects}</p>
-                <p className="text-xs text-green-500 mt-1">Active projects</p>
+                <div className="flex items-center gap-2 mt-1 flex-wrap">
+                  {stats.delayedProjects > 0 && (
+                    <span className="text-xs text-red-500 font-medium">{stats.delayedProjects} delayed</span>
+                  )}
+                  {stats.atRiskProjects > 0 && (
+                    <span className="text-xs text-orange-500 font-medium">{stats.atRiskProjects} at risk</span>
+                  )}
+                  {stats.delayedProjects === 0 && stats.atRiskProjects === 0 && (
+                    <span className="text-xs text-green-500">All on track</span>
+                  )}
+                </div>
               </div>
-              <div className="w-11 h-11 rounded-xl bg-green-50 flex items-center justify-center">
+              <div className="w-11 h-11 rounded-xl bg-green-50 flex items-center justify-center flex-shrink-0">
                 <PlayCircle size={20} className="text-green-600" />
               </div>
             </div>
@@ -654,6 +664,20 @@ export default function DashboardPage() {
             </div>
           </Card>
         </Link>
+        <Link href="/projects?status=COMPLETED" className="block group">
+          <Card className="h-full transition-transform group-hover:scale-[1.02] group-hover:shadow-lg border-blue-200">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-blue-600 text-sm font-medium">Completed</p>
+                <p className="text-3xl font-bold text-blue-700 mt-1">{stats.completedProjects}</p>
+                <p className="text-xs text-blue-500 mt-1">Successfully closed</p>
+              </div>
+              <div className="w-11 h-11 rounded-xl bg-blue-50 flex items-center justify-center">
+                <CheckCircle size={20} className="text-blue-600" />
+              </div>
+            </div>
+          </Card>
+        </Link>
         <Link href="/overage-projects" className="block group">
           <Card className="h-full transition-transform group-hover:scale-[1.02] group-hover:shadow-lg border-orange-200">
             <div className="flex items-center justify-between">
@@ -664,20 +688,6 @@ export default function DashboardPage() {
               </div>
               <div className="w-11 h-11 rounded-xl bg-orange-50 flex items-center justify-center">
                 <Clock size={20} className="text-orange-600" />
-              </div>
-            </div>
-          </Card>
-        </Link>
-        <Link href="/projects?delayStatus=DELAYED" className="block group">
-          <Card className={`h-full transition-transform group-hover:scale-[1.02] group-hover:shadow-lg ${stats.delayedProjects + stats.atRiskProjects > 0 ? 'border-red-200 bg-red-50' : 'border-green-200 bg-green-50'}`}>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className={`text-sm font-medium ${stats.delayedProjects + stats.atRiskProjects > 0 ? 'text-red-600' : 'text-green-600'}`}>Risk Status</p>
-                <p className={`text-3xl font-bold mt-1 ${stats.delayedProjects + stats.atRiskProjects > 0 ? 'text-red-700' : 'text-green-700'}`}>{stats.delayedProjects + stats.atRiskProjects}</p>
-                <p className="text-xs mt-1 text-red-500">{stats.atRiskProjects} at risk</p>
-              </div>
-              <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${stats.delayedProjects + stats.atRiskProjects > 0 ? 'bg-red-100' : 'bg-green-100'}`}>
-                <AlertTriangle size={20} className={stats.delayedProjects + stats.atRiskProjects > 0 ? 'text-red-600' : 'text-green-600'} />
               </div>
             </div>
           </Card>
@@ -1094,9 +1104,11 @@ export default function DashboardPage() {
                   <Link href="/projects" className="text-xs text-primary-600 hover:text-primary-700 font-medium flex items-center gap-0.5">View Details <ChevronRight size={12} /></Link>
                 </div>
                 <DonutChart segments={[
-                  { label: 'On Track', value: stats.activeProjects - stats.atRiskProjects, color: '#22c55e' },
-                  { label: 'At Risk', value: stats.atRiskProjects, color: '#f97316' },
-                  { label: 'Delayed', value: stats.delayedProjects, color: '#ef4444' },
+                  { label: 'On Track', value: Math.max(0, stats.activeProjects - stats.delayedProjects - stats.atRiskProjects), color: '#22c55e' },
+                  { label: 'At Risk',  value: stats.atRiskProjects, color: '#f97316' },
+                  { label: 'Delayed',  value: stats.delayedProjects, color: '#ef4444' },
+                  { label: 'On Hold',  value: stats.onHoldProjects, color: '#eab308' },
+                  { label: 'Completed', value: stats.completedProjects, color: '#3b82f6' },
                 ].filter((s) => s.value > 0)} />
               </Card>
               <Card>
@@ -1117,25 +1129,30 @@ export default function DashboardPage() {
             <Card>
               <h3 className="text-sm font-semibold text-gray-900 mb-4">Projects by Status</h3>
               <div className="space-y-3">
-                {[
-                  { label: 'Active', value: stats.activeProjects, iconColor: 'text-green-600', barColor: 'bg-green-500', icon: PlayCircle },
-                  { label: 'Completed', value: stats.completedProjects, iconColor: 'text-blue-600', barColor: 'bg-blue-500', icon: CheckCircle },
-                  { label: 'On Hold', value: stats.onHoldProjects, iconColor: 'text-yellow-600', barColor: 'bg-yellow-500', icon: PauseCircle },
-                  { label: 'Delayed', value: stats.delayedProjects, iconColor: 'text-red-600', barColor: 'bg-red-500', icon: AlertCircle },
-                ].map((item) => (
-                  <div key={item.label} className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 w-24">
-                      <item.icon size={14} className={item.iconColor} />
-                      <span className="text-sm text-gray-700">{item.label}</span>
-                    </div>
-                    <div className="flex items-center gap-2 flex-1">
-                      <div className="flex-1 bg-blue-100 rounded-full h-2">
-                        <div className={`${item.barColor} h-2 rounded-full transition-all`} style={{ width: `${stats.totalProjects > 0 ? (item.value / stats.totalProjects) * 100 : 0}%` }} />
+                {(() => {
+                  const grandTotal = stats.activeProjects + stats.completedProjects + stats.onHoldProjects;
+                  return [
+                    { label: 'Active',    value: stats.activeProjects,    sub: stats.delayedProjects > 0 || stats.atRiskProjects > 0 ? `${stats.delayedProjects} delayed · ${stats.atRiskProjects} at risk` : 'On track', iconColor: 'text-green-600', barColor: 'bg-green-500', icon: PlayCircle },
+                    { label: 'Completed', value: stats.completedProjects, sub: null, iconColor: 'text-blue-600',  barColor: 'bg-blue-500',  icon: CheckCircle },
+                    { label: 'On Hold',   value: stats.onHoldProjects,    sub: null, iconColor: 'text-yellow-600', barColor: 'bg-yellow-500', icon: PauseCircle },
+                  ].map((item) => (
+                    <div key={item.label} className="flex items-center justify-between gap-2">
+                      <div className="flex flex-col w-28 flex-shrink-0">
+                        <div className="flex items-center gap-1.5">
+                          <item.icon size={14} className={item.iconColor} />
+                          <span className="text-sm text-gray-700">{item.label}</span>
+                        </div>
+                        {item.sub && <span className="text-[10px] text-gray-400 pl-5">{item.sub}</span>}
                       </div>
-                      <span className="text-sm font-semibold text-gray-900 w-6 text-right">{item.value}</span>
+                      <div className="flex items-center gap-2 flex-1">
+                        <div className="flex-1 bg-blue-100 rounded-full h-2">
+                          <div className={`${item.barColor} h-2 rounded-full transition-all`} style={{ width: `${grandTotal > 0 ? (item.value / grandTotal) * 100 : 0}%` }} />
+                        </div>
+                        <span className="text-sm font-semibold text-gray-900 w-6 text-right">{item.value}</span>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ));
+                })()}
               </div>
             </Card>
           )}
