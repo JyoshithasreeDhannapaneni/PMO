@@ -149,9 +149,6 @@ class ProjectService {
       params.push(`%${filters.search}%`);
     }
     if (filters.projectManager) {
-      conditions.push(`(project_manager ILIKE $${params.length + 1} OR $${params.length + 2} ILIKE '%' || project_manager || '%')`);
-      params.push(`%${filters.projectManager}%`);
-      params.push(filters.projectManager);
     }
     if (filters.accountManager) {
       conditions.push(`account_manager = $${params.length + 1}`);
