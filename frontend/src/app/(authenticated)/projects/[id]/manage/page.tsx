@@ -5,9 +5,9 @@ import { useProject } from '@/hooks/useProjects';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { 
-  Loader2, ArrowLeft, AlertTriangle, Users, FileText, 
+  Loader2, ArrowLeft, AlertTriangle, Users, FileText,
   BarChart3, GitPullRequest, Plus, Edit2, Trash2, Check,
-  X, Clock, Shield, ChevronDown, ChevronRight
+  X, Clock, Shield, ChevronDown, ChevronRight, Pencil
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -443,6 +443,20 @@ function TeamTab({ team, projectId, onRefresh, onDelete }: any) {
   const [formData, setFormData] = useState({
     name: '', email: '', role: 'TEAM_MEMBER', department: '', allocation: 100
   });
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editData, setEditData] = useState<any>({});
+  const [editSaving, setEditSaving] = useState(false);
+
+  const roleLabels: Record<string, string> = {
+    PROJECT_MANAGER: 'Project Manager',
+    TECHNICAL_LEAD: 'Technical Lead',
+    DEVELOPER: 'Developer',
+    QA_ENGINEER: 'QA Engineer',
+    BUSINESS_ANALYST: 'Business Analyst',
+    ARCHITECT: 'Architect',
+    TEAM_MEMBER: 'Team Member',
+    STAKEHOLDER: 'Stakeholder',
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -460,16 +474,29 @@ function TeamTab({ team, projectId, onRefresh, onDelete }: any) {
     }
   };
 
-  const roleLabels: Record<string, string> = {
-    PROJECT_MANAGER: 'Project Manager',
-    TECHNICAL_LEAD: 'Technical Lead',
-    DEVELOPER: 'Developer',
-    QA_ENGINEER: 'QA Engineer',
-    BUSINESS_ANALYST: 'Business Analyst',
-    ARCHITECT: 'Architect',
-    TEAM_MEMBER: 'Team Member',
-    STAKEHOLDER: 'Stakeholder',
-  };
+  function startEdit(member: any) {
+    setEditingId(member.id);
+    setEditData({ name: member.name, email: member.email, role: member.role, department: member.department || '', allocation: member.allocation ?? 100 });
+  }
+
+  async function handleEditSave(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editingId) return;
+    setEditSaving(true);
+    try {
+      await fetch(`${API_URL}/api/team/${editingId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editData),
+      });
+      setEditingId(null);
+      onRefresh();
+    } catch (err) {
+      console.error('Failed to update team member:', err);
+    } finally {
+      setEditSaving(false);
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -488,9 +515,7 @@ function TeamTab({ team, projectId, onRefresh, onDelete }: any) {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
                 <input
-                  type="text"
-                  required
-                  value={formData.name}
+                  type="text" required value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
                 />
@@ -498,9 +523,7 @@ function TeamTab({ team, projectId, onRefresh, onDelete }: any) {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
                 <input
-                  type="email"
-                  required
-                  value={formData.email}
+                  type="email" required value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
                 />
@@ -509,11 +532,8 @@ function TeamTab({ team, projectId, onRefresh, onDelete }: any) {
             <div className="grid grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
-                <select
-                  value={formData.role}
-                  onChange={(e) => setFormData({ ...formData, role: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
-                >
+                <select value={formData.role} onChange={(e) => setFormData({ ...formData, role: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500">
                   {Object.entries(roleLabels).map(([value, label]) => (
                     <option key={value} value={value}>{label}</option>
                   ))}
@@ -521,20 +541,14 @@ function TeamTab({ team, projectId, onRefresh, onDelete }: any) {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Department</label>
-                <input
-                  type="text"
-                  value={formData.department}
+                <input type="text" value={formData.department}
                   onChange={(e) => setFormData({ ...formData, department: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
                 />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Allocation %</label>
-                <input
-                  type="number"
-                  min="0"
-                  max="100"
-                  value={formData.allocation}
+                <input type="number" min="0" max="100" value={formData.allocation}
                   onChange={(e) => setFormData({ ...formData, allocation: parseInt(e.target.value) || 0 })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
                 />
@@ -558,26 +572,85 @@ function TeamTab({ team, projectId, onRefresh, onDelete }: any) {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {team.map((member: any) => (
             <Card key={member.id} className="p-4">
-              <div className="flex items-start justify-between">
-                <div>
-                  <h4 className="font-semibold text-gray-900">{member.name}</h4>
-                  <p className="text-sm text-gray-500">{member.email}</p>
-                  <div className="flex flex-wrap gap-2 mt-2 text-xs">
-                    <span className="px-2 py-1 bg-primary-50 text-primary-700 rounded">
-                      {roleLabels[member.role] || member.role}
-                    </span>
-                    {member.department && (
-                      <span className="px-2 py-1 bg-gray-100 rounded">{member.department}</span>
-                    )}
-                    <span className="px-2 py-1 bg-green-50 text-green-700 rounded">
-                      {member.allocation}% allocated
-                    </span>
+              {editingId === member.id ? (
+                <form onSubmit={handleEditSave} className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Name *</label>
+                    <input type="text" required value={editData.name}
+                      onChange={(e) => setEditData({ ...editData, name: e.target.value })}
+                      className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Email *</label>
+                    <input type="email" required value={editData.email}
+                      onChange={(e) => setEditData({ ...editData, email: e.target.value })}
+                      className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Role</label>
+                      <select value={editData.role} onChange={(e) => setEditData({ ...editData, role: e.target.value })}
+                        className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500">
+                        {Object.entries(roleLabels).map(([value, label]) => (
+                          <option key={value} value={value}>{label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Allocation %</label>
+                      <input type="number" min="0" max="100" value={editData.allocation}
+                        onChange={(e) => setEditData({ ...editData, allocation: parseInt(e.target.value) || 0 })}
+                        className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Department</label>
+                    <input type="text" value={editData.department}
+                      onChange={(e) => setEditData({ ...editData, department: e.target.value })}
+                      className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                    />
+                  </div>
+                  <div className="flex gap-2 pt-1">
+                    <button type="submit" disabled={editSaving}
+                      className="flex-1 px-3 py-1.5 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-60 font-medium transition-colors">
+                      {editSaving ? 'Saving…' : 'Save'}
+                    </button>
+                    <button type="button" onClick={() => setEditingId(null)}
+                      className="flex-1 px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors">
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h4 className="font-semibold text-gray-900">{member.name}</h4>
+                    <p className="text-sm text-gray-500">{member.email}</p>
+                    <div className="flex flex-wrap gap-2 mt-2 text-xs">
+                      <span className="px-2 py-1 bg-primary-50 text-primary-700 rounded">
+                        {roleLabels[member.role] || member.role}
+                      </span>
+                      {member.department && (
+                        <span className="px-2 py-1 bg-gray-100 rounded">{member.department}</span>
+                      )}
+                      <span className="px-2 py-1 bg-green-50 text-green-700 rounded">
+                        {member.allocation}% allocated
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 ml-2">
+                    <button onClick={() => startEdit(member)} className="text-blue-400 hover:text-blue-600 p-1" title="Edit member">
+                      <Pencil size={15} />
+                    </button>
+                    <button onClick={() => onDelete(member.id)} className="text-red-400 hover:text-red-600 p-1" title="Remove member">
+                      <Trash2 size={15} />
+                    </button>
                   </div>
                 </div>
-                <button onClick={() => onDelete(member.id)} className="text-red-500 hover:text-red-700 p-1">
-                  <Trash2 size={16} />
-                </button>
-              </div>
+              )}
             </Card>
           ))}
         </div>

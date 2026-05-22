@@ -199,11 +199,11 @@ const defaultPlanTypes: PlanType[] = [
 ];
 
 const defaultPhases: ProjectPhase[] = [
-  { id: '1', name: 'Kickoff', order: 1, color: '#3B82F6' },
-  { id: '2', name: 'Migration', order: 2, color: '#F59E0B' },
-  { id: '3', name: 'Validation', order: 3, color: '#8B5CF6' },
-  { id: '4', name: 'Closure', order: 4, color: '#10B981' },
-  { id: '5', name: 'Completed', order: 5, color: '#6B7280' },
+  { id: '1', code: 'KICKOFF',    name: 'Kickoff',    order: 1, color: '#3B82F6' },
+  { id: '2', code: 'MIGRATION',  name: 'Migration',  order: 2, color: '#F59E0B' },
+  { id: '3', code: 'VALIDATION', name: 'Validation', order: 3, color: '#8B5CF6' },
+  { id: '4', code: 'CLOSURE',    name: 'Closure',    order: 4, color: '#10B981' },
+  { id: '5', code: 'COMPLETED',  name: 'Completed',  order: 5, color: '#6B7280' },
 ];
 
 const defaultNotificationSettings: NotificationSettings = {
