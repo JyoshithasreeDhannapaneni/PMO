@@ -11,7 +11,7 @@ import type {
   ProjectPhaseRecord,
 } from '@/types';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
 const api = axios.create({
   baseURL: `${API_URL}/api`,
@@ -56,6 +56,7 @@ export const projectsApi = {
     sortBy?: string;
     sortOrder?: 'asc' | 'desc';
     projectManager?: string;
+    accountManager?: string;
   }): Promise<PaginatedResponse<Project>> => {
     const { data } = await api.get('/projects', { params });
     return data;

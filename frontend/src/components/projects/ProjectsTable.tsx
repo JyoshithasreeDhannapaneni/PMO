@@ -1,14 +1,16 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useUpdateProject } from '@/hooks/useProjects';
+import { useUpdateProject, useEscalationDailyNotes, useAddEscalationDailyNote, useDeleteEscalationDailyNote } from '@/hooks/useProjects';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { DelayIndicator } from '@/components/ui/DelayIndicator';
 import { formatDate, formatCurrency } from '@/lib/utils';
 import type { Project } from '@/types';
 import { useSettings } from '@/context/SettingsContext';
 import { useToast } from '@/context/ToastContext';
+import { useAuth } from '@/context/AuthContext';
+import { format } from 'date-fns';
 import {
   Eye,
   Edit,
@@ -20,7 +22,10 @@ import {
   Calendar,
   Loader2,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  MessageSquare,
+  BookOpen,
+  Send,
 } from 'lucide-react';
 
 interface ProjectsTableProps {
@@ -41,6 +46,7 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
   const updateProject = useUpdateProject();
   const { settings } = useSettings();
   const { showToast } = useToast();
+  const { user } = useAuth();
 
   const resolveMigrationTypes = (raw: string | null) => {
     if (!raw) return [];
@@ -58,29 +64,41 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
   
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
   const [editValue, setEditValue] = useState<string>('');
+
+  // Daily tracking notes state
+  const [dailyNotesProject, setDailyNotesProject] = useState<{ project: Project; columnName: string } | null>(null);
+  const [newDailyNote, setNewDailyNote] = useState('');
+  const [dailyNoteDate, setDailyNoteDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const { data: dailyNotesData, isLoading: loadingNotes } = useEscalationDailyNotes(dailyNotesProject?.project.id ?? null);
+  const dailyNotes: any[] = dailyNotesData?.data || [];
+  const addDailyNote = useAddEscalationDailyNote();
+  const deleteDailyNote = useDeleteEscalationDailyNote();
+
+  async function handleAddDailyNote() {
+    if (!dailyNotesProject || !newDailyNote.trim()) return;
+    await addDailyNote.mutateAsync({ projectId: dailyNotesProject.project.id, note: newDailyNote.trim(), author: user?.name, noteDate: dailyNoteDate });
+    setNewDailyNote('');
+  }
+
+  const openColumnNotes = (project: Project, columnName: string) => {
+    setDailyNotesProject({ project, columnName });
+    setNewDailyNote('');
+    setDailyNoteDate(new Date().toISOString().split('T')[0]);
+  };
   const [sortField, setSortField] = useState<SortField>('name');
   const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
-  const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
-  // Filter and sort projects
+  // Reset to page 1 whenever the projects list changes (e.g. after a backend search)
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [projects]);
+
+  // Sort projects
   const filteredAndSortedProjects = useMemo(() => {
-    let filtered = projects;
-
-    // Search filter
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase();
-      filtered = filtered.filter(p => 
-        p.name?.toLowerCase().includes(term) ||
-        p.customerName?.toLowerCase().includes(term) ||
-        p.projectManager?.toLowerCase().includes(term) ||
-        p.accountManager?.toLowerCase().includes(term)
-      );
-    }
-
     // Sort
-    const sorted = [...filtered].sort((a, b) => {
+    const sorted = [...projects].sort((a, b) => {
       let aVal = a[sortField] || '';
       let bVal = b[sortField] || '';
       
@@ -93,7 +111,7 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
     });
 
     return sorted;
-  }, [projects, searchTerm, sortField, sortOrder]);
+  }, [projects, sortField, sortOrder]);
 
   // Pagination
   const totalPages = Math.ceil(filteredAndSortedProjects.length / itemsPerPage);
@@ -272,14 +290,14 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
     );
   };
 
-  const EditableDate = ({ 
-    projectId, 
-    field, 
-    value 
-  }: { 
-    projectId: string; 
-    field: string; 
-    value: string;
+  const EditableDate = ({
+    projectId,
+    field,
+    value
+  }: {
+    projectId: string;
+    field: string;
+    value: string | null;
   }) => {
     const isEditing = editingCell?.projectId === projectId && editingCell?.field === field;
     const dateValue = value ? value.split('T')[0] : '';
@@ -376,6 +394,21 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
               <SortHeader field="plannedEnd" label="SOW End" />
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                 Kickoff Start Date
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider min-w-[160px]">
+                Cloud Adding
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider min-w-[160px]">
+                Pilot Migration
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider min-w-[160px]">
+                Onetime Migration
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider min-w-[160px]">
+                Delta Migration
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider min-w-[160px]">
+                Final Validation
               </th>
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                 Project End Date
@@ -530,19 +563,84 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
 
                 {/* Actual Start - Editable */}
                 <td className="px-4 py-3">
-                  <EditableDate 
-                    projectId={project.id} 
-                    field="actualStart" 
-                    value={project.actualStart} 
+                  <EditableDate
+                    projectId={project.id}
+                    field="actualStart"
+                    value={project.actualStart}
                   />
+                </td>
+
+                {/* Cloud Adding */}
+                <td className="px-4 py-3">
+                  <div className="space-y-1">
+                    <div className="text-xs text-gray-400">Start</div>
+                    <EditableDate projectId={project.id} field="cloudAddingStart" value={project.cloudAddingStart ?? null} />
+                    <div className="text-xs text-gray-400 mt-1">End</div>
+                    <EditableDate projectId={project.id} field="cloudAddingEnd" value={project.cloudAddingEnd ?? null} />
+                    <button onClick={(e) => { e.stopPropagation(); openColumnNotes(project, 'Cloud Adding'); }} className="mt-1 flex items-center gap-1 text-xs px-1.5 py-0.5 rounded transition-colors text-teal-600 bg-teal-50 hover:bg-teal-100" title="Daily tracking notes">
+                      <MessageSquare size={11} /><span>Notes</span>
+                    </button>
+                  </div>
+                </td>
+
+                {/* Pilot Migration */}
+                <td className="px-4 py-3">
+                  <div className="space-y-1">
+                    <div className="text-xs text-gray-400">Start</div>
+                    <EditableDate projectId={project.id} field="pilotMigrationStart" value={project.pilotMigrationStart ?? null} />
+                    <div className="text-xs text-gray-400 mt-1">End</div>
+                    <EditableDate projectId={project.id} field="pilotMigrationEnd" value={project.pilotMigrationEnd ?? null} />
+                    <button onClick={(e) => { e.stopPropagation(); openColumnNotes(project, 'Pilot Migration'); }} className="mt-1 flex items-center gap-1 text-xs px-1.5 py-0.5 rounded transition-colors text-teal-600 bg-teal-50 hover:bg-teal-100" title="Daily tracking notes">
+                      <MessageSquare size={11} /><span>Notes</span>
+                    </button>
+                  </div>
+                </td>
+
+                {/* Onetime Migration */}
+                <td className="px-4 py-3">
+                  <div className="space-y-1">
+                    <div className="text-xs text-gray-400">Start</div>
+                    <EditableDate projectId={project.id} field="onetimeMigrationStart" value={project.onetimeMigrationStart ?? null} />
+                    <div className="text-xs text-gray-400 mt-1">End</div>
+                    <EditableDate projectId={project.id} field="onetimeMigrationEnd" value={project.onetimeMigrationEnd ?? null} />
+                    <button onClick={(e) => { e.stopPropagation(); openColumnNotes(project, 'Onetime Migration'); }} className="mt-1 flex items-center gap-1 text-xs px-1.5 py-0.5 rounded transition-colors text-teal-600 bg-teal-50 hover:bg-teal-100" title="Daily tracking notes">
+                      <MessageSquare size={11} /><span>Notes</span>
+                    </button>
+                  </div>
+                </td>
+
+                {/* Delta Migration */}
+                <td className="px-4 py-3">
+                  <div className="space-y-1">
+                    <div className="text-xs text-gray-400">Start</div>
+                    <EditableDate projectId={project.id} field="deltaMigrationStart" value={project.deltaMigrationStart ?? null} />
+                    <div className="text-xs text-gray-400 mt-1">End</div>
+                    <EditableDate projectId={project.id} field="deltaMigrationEnd" value={project.deltaMigrationEnd ?? null} />
+                    <button onClick={(e) => { e.stopPropagation(); openColumnNotes(project, 'Delta Migration'); }} className="mt-1 flex items-center gap-1 text-xs px-1.5 py-0.5 rounded transition-colors text-teal-600 bg-teal-50 hover:bg-teal-100" title="Daily tracking notes">
+                      <MessageSquare size={11} /><span>Notes</span>
+                    </button>
+                  </div>
+                </td>
+
+                {/* Final Validation */}
+                <td className="px-4 py-3">
+                  <div className="space-y-1">
+                    <div className="text-xs text-gray-400">Start</div>
+                    <EditableDate projectId={project.id} field="finalValidationStart" value={project.finalValidationStart ?? null} />
+                    <div className="text-xs text-gray-400 mt-1">End</div>
+                    <EditableDate projectId={project.id} field="finalValidationEnd" value={project.finalValidationEnd ?? null} />
+                    <button onClick={(e) => { e.stopPropagation(); openColumnNotes(project, 'Final Validation'); }} className="mt-1 flex items-center gap-1 text-xs px-1.5 py-0.5 rounded transition-colors text-teal-600 bg-teal-50 hover:bg-teal-100" title="Daily tracking notes">
+                      <MessageSquare size={11} /><span>Notes</span>
+                    </button>
+                  </div>
                 </td>
 
                 {/* Actual End - Editable */}
                 <td className="px-4 py-3">
-                  <EditableDate 
-                    projectId={project.id} 
-                    field="actualEnd" 
-                    value={project.actualEnd} 
+                  <EditableDate
+                    projectId={project.id}
+                    field="actualEnd"
+                    value={project.actualEnd}
                   />
                 </td>
 
@@ -594,7 +692,105 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
       {/* Empty State */}
       {paginatedProjects.length === 0 && (
         <div className="text-center py-12 text-gray-500">
-          {searchTerm ? 'No projects match your search criteria' : 'No projects found'}
+          No projects found
+        </div>
+      )}
+
+      {/* Daily Notes Modal */}
+      {dailyNotesProject && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => setDailyNotesProject(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 bg-teal-600 text-white flex-shrink-0">
+              <div className="flex items-center gap-2">
+                <MessageSquare size={18} />
+                <div>
+                  <p className="font-bold text-sm">{dailyNotesProject.project.name}</p>
+                  <p className="text-xs opacity-80">{dailyNotesProject.project.customerName} · {dailyNotesProject.columnName} Notes</p>
+                </div>
+              </div>
+              <button onClick={() => setDailyNotesProject(null)} className="p-1.5 rounded hover:bg-white/20 transition-colors">
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-5 space-y-3">
+              {loadingNotes ? (
+                <div className="flex justify-center py-8"><Loader2 className="animate-spin text-teal-600" size={24} /></div>
+              ) : dailyNotes.length === 0 ? (
+                <div className="text-center py-10 text-gray-400">
+                  <BookOpen size={32} className="mx-auto mb-2 opacity-30" />
+                  <p className="text-sm">No daily notes yet. Add the first note below.</p>
+                </div>
+              ) : (
+                (() => {
+                  const grouped: Record<string, any[]> = {};
+                  dailyNotes.forEach((n: any) => {
+                    const d = n.noteDate?.split('T')[0] || n.noteDate;
+                    if (!grouped[d]) grouped[d] = [];
+                    grouped[d].push(n);
+                  });
+                  return Object.entries(grouped).map(([date, notes]) => (
+                    <div key={date}>
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-xs font-bold text-teal-700 bg-teal-50 px-2 py-0.5 rounded-full">
+                          {format(new Date(date + 'T12:00:00'), 'EEE, MMM d, yyyy')}
+                        </span>
+                        <div className="flex-1 h-px bg-gray-100" />
+                      </div>
+                      <div className="space-y-2 pl-2">
+                        {notes.map((n: any) => (
+                          <div key={n.id} className="flex items-start gap-3 bg-gray-50 rounded-lg p-3 group border border-gray-100">
+                            <div className="w-1.5 h-1.5 rounded-full bg-teal-400 mt-1.5 flex-shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm text-gray-800 whitespace-pre-wrap">{n.note}</p>
+                              {n.author && <p className="text-xs text-gray-400 mt-1">— {n.author} · {n.createdAt ? format(new Date(n.createdAt), 'HH:mm') : ''}</p>}
+                            </div>
+                            <button
+                              onClick={() => deleteDailyNote.mutate({ projectId: dailyNotesProject.project.id, noteId: n.id })}
+                              className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-all flex-shrink-0 p-0.5"
+                              title="Delete note"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ));
+                })()
+              )}
+            </div>
+
+            <div className="border-t border-gray-200 p-4 bg-gray-50 flex-shrink-0">
+              <div className="flex items-center gap-2 mb-2">
+                <label className="text-xs font-medium text-gray-600">Date:</label>
+                <input
+                  type="date"
+                  value={dailyNoteDate}
+                  onChange={(e) => setDailyNoteDate(e.target.value)}
+                  className="text-xs border border-gray-300 rounded-lg px-2 py-1 bg-white text-gray-900"
+                />
+              </div>
+              <div className="flex gap-2">
+                <textarea
+                  value={newDailyNote}
+                  onChange={(e) => setNewDailyNote(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleAddDailyNote(); }}
+                  placeholder="Write today's tracking note… (Ctrl+Enter to submit)"
+                  rows={3}
+                  className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-900 resize-none focus:outline-none focus:ring-2 focus:ring-teal-400"
+                />
+                <button
+                  onClick={handleAddDailyNote}
+                  disabled={addDailyNote.isPending || !newDailyNote.trim()}
+                  className="px-3 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-60 transition-colors self-end flex items-center gap-1.5 text-sm font-medium"
+                >
+                  {addDailyNote.isPending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                  Add
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

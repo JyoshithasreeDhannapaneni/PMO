@@ -66,6 +66,15 @@ getAll: asyncHandler(async (req: Request, res: Response): Promise<void> => {
    * Create a new project
    */
   create: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (token) {
+      try {
+        const user = await authService.getUserFromToken(token);
+        if (user && user.role === 'MANAGER') {
+          req.body.projectManager = user.name;
+        }
+      } catch {}
+    }
     const project = await projectService.create(req.body);
 
     res.status(201).json({
@@ -81,6 +90,15 @@ getAll: asyncHandler(async (req: Request, res: Response): Promise<void> => {
    */
   update: asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const { id } = req.params;
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (token) {
+      try {
+        const user = await authService.getUserFromToken(token);
+        if (user && user.role === 'MANAGER') {
+          req.body.projectManager = user.name;
+        }
+      } catch {}
+    }
     const project = await projectService.update(id, req.body);
 
     res.json({

@@ -15,6 +15,7 @@ export function useProjects(params?: {
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';
   projectManager?: string;
+  accountManager?: string;
 }) {
   return useQuery({
     queryKey: ['projects', params],

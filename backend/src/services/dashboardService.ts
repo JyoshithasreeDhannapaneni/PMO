@@ -37,7 +37,6 @@ class DashboardService {
       activeResult,
       inactiveResult,
       completedResult,
-      onHoldResult,
       delayedResult,
       atRiskResult,
       pendingCaseStudiesResult,
@@ -48,25 +47,26 @@ class DashboardService {
       query(`SELECT COUNT(*) as count FROM projects WHERE status = 'ACTIVE' ${aw}`, ap),
       query(`SELECT COUNT(*) as count FROM projects WHERE status = 'ON_HOLD' ${aw}`, ap),
       query(`SELECT COUNT(*) as count FROM projects WHERE status = 'COMPLETED' ${aw}`, ap),
-      query(`SELECT COUNT(*) as count FROM projects WHERE status = 'ON_HOLD' ${aw}`, ap),
-      query(`SELECT COUNT(*) as count FROM projects WHERE delay_status = 'DELAYED' ${aw}`, ap),
-      query(`SELECT COUNT(*) as count FROM projects WHERE delay_status = 'AT_RISK' ${aw}`, ap),
+      // Delayed and at-risk are subsets of active — counted separately for display within the Active card
+      query(`SELECT COUNT(*) as count FROM projects WHERE status = 'ACTIVE' AND delay_status = 'DELAYED' ${aw}`, ap),
+      query(`SELECT COUNT(*) as count FROM projects WHERE status = 'ACTIVE' AND delay_status = 'AT_RISK' ${aw}`, ap),
       query(`SELECT COUNT(*) as count FROM case_studies cs JOIN projects p ON cs.project_id = p.id WHERE cs.status = 'PENDING' ${aw.replace(/^AND /, 'AND p.')}`, ap),
       query(`SELECT AVG(delay_days) as avg FROM projects WHERE delay_days > 0 ${aw}`, ap),
       query(`SELECT COUNT(*) as count FROM projects WHERE is_overaged = true`, []),
     ]);
 
     return {
-      totalProjects: parseInt(totalResult.rows[0].count || 0),
-      activeProjects: parseInt(activeResult.rows[0].count || 0),
+      totalProjects:    parseInt(totalResult.rows[0].count || 0),
+      activeProjects:   parseInt(activeResult.rows[0].count || 0),
       inactiveProjects: parseInt(inactiveResult.rows[0].count || 0),
+      onHoldProjects:   parseInt(inactiveResult.rows[0].count || 0),
       completedProjects: parseInt(completedResult.rows[0].count || 0),
-      onHoldProjects: parseInt(onHoldResult.rows[0].count || 0),
-      delayedProjects: parseInt(delayedResult.rows[0].count || 0),
-      atRiskProjects: parseInt(atRiskResult.rows[0].count || 0),
+      // delayedProjects and atRiskProjects are subsets of activeProjects (status=ACTIVE only)
+      delayedProjects:  parseInt(delayedResult.rows[0].count || 0),
+      atRiskProjects:   parseInt(atRiskResult.rows[0].count || 0),
       pendingCaseStudies: parseInt(pendingCaseStudiesResult.rows[0].count || 0),
-      avgDelayDays: Math.round(parseFloat(avgDelayResult.rows[0].avg) || 0),
-      overagedCount: parseInt(overagedResult.rows[0].count || 0),
+      avgDelayDays:     Math.round(parseFloat(avgDelayResult.rows[0].avg) || 0),
+      overagedCount:    parseInt(overagedResult.rows[0].count || 0),
     };
   }
 
