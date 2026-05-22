@@ -26,7 +26,9 @@ export default function EscalationProjectsPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'ADMIN';
   const isManager = user?.role === 'MANAGER';
-  const managerFilter = isAdmin ? undefined : user?.name;
+  const isViewer = user?.role === 'VIEWER';
+  // ADMIN & VIEWER see all; MANAGER sees only their own projects
+  const managerFilter = (isAdmin || isViewer) ? undefined : user?.name;
 
   const { data, isLoading, refetch } = useEscalatedProjects(managerFilter);
   const escalated: any[] = data?.data || [];
