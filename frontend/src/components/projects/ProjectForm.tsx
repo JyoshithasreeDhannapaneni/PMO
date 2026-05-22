@@ -148,8 +148,8 @@ export function ProjectForm({ project, onSubmit, isLoading, defaultManagerName }
 
   useEffect(() => {
     if (project) return;
-    const validPlanCodes = planTypes.filter((p) => p.code).map((p) => p.code);
-    const validPhaseCodes = phases.filter((p) => p.code).map((p) => p.code);
+    const validPlanCodes = planTypes.map((p) => p.code || p.name.toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '')).filter(Boolean);
+    const validPhaseCodes = phases.map((p) => p.code || p.name.toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '')).filter(Boolean);
     const cp = getValues('planType');
     const ch = getValues('phase');
     if (cp && !validPlanCodes.includes(cp)) setValue('planType', validPlanCodes[0] || 'SILVER');
@@ -161,7 +161,11 @@ export function ProjectForm({ project, onSubmit, isLoading, defaultManagerName }
   const toggleMigrationType = (id: string) => { setSelectedMigrationTypes((p) => p.includes(id) ? p.filter((t) => t !== id) : [...p, id]); setMigrationTypeError(''); };
 
   const planOptions = planTypes.filter((p) => p.code).map((p) => ({ value: p.code, label: p.name }));
-  const phaseOptions = [...phases].sort((a, b) => a.order - b.order).filter((p) => p.code).map((p) => ({ value: p.code, label: p.name }));
+  const toPhaseCode = (name: string) => name.toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '');
+  const phaseOptions = [...phases]
+    .sort((a, b) => a.order - b.order)
+    .map((p) => ({ value: p.code || toPhaseCode(p.name), label: p.name }))
+    .filter((p) => p.value);
   const statusOptions = [
     { value: 'ACTIVE', label: 'Active' },
     { value: 'INACTIVE', label: 'Inactive' },

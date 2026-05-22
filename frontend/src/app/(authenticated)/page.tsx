@@ -454,7 +454,7 @@ export default function DashboardPage() {
   const escalatedProjects: any[] = escalatedData?.data || [];
 
   // Fetch all projects for frontend category grouping
-  const { data: allProjectsData } = useProjects({ status: undefined });
+  const { data: allProjectsData } = useProjects({ status: undefined, limit: 500000 });
   const allProjectsList: any[] = (allProjectsData?.data || []).filter(
     (p: any) => viewMode === 'overall' || !managerFilter || p.projectManager === managerFilter
   );
