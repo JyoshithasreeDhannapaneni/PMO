@@ -41,10 +41,16 @@ const nextConfig = {
     return config;
   },
   async rewrites() {
+    // In Docker: BACKEND_URL=http://backend:3001 (internal network, no nginx loop)
+    // In dev:    falls back to NEXT_PUBLIC_API_URL or localhost
+    const backendUrl =
+      process.env.BACKEND_URL ||
+      process.env.NEXT_PUBLIC_API_URL ||
+      'http://localhost:3001';
     return [
       {
         source: '/api/:path*',
-        destination: `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/:path*`,
+        destination: `${backendUrl}/api/:path*`,
       },
     ];
   },
