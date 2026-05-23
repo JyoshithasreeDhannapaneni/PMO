@@ -35,7 +35,7 @@ export const accountManagerController = {
         poc_handoff_date,
         customer_contact
       FROM projects
-      WHERE status NOT IN ('CANCELLED','DECOMMISSIONED')
+      WHERE status != 'CANCELLED'
       ORDER BY customer_name ASC, project_type ASC
     `);
 
