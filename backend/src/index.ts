@@ -189,6 +189,11 @@ async function runMigrations() {
     ['poc_migration_speed',      `DECIMAL(10,2)`],
     ['poc_error_rate',           `DECIMAL(5,2)`],
     ['customer_contact',         `VARCHAR(255)`],
+    ['poc_success_criteria',     `TEXT`],
+    ['poc_data_volume',          `VARCHAR(255)`],
+    ['poc_permissions_intact',   `BOOLEAN`],
+    ['poc_metadata_intact',      `BOOLEAN`],
+    ['poc_handoff_notes',        `TEXT`],
   ];
   for (const [col, colType] of pocCols) {
     if (!await columnExists('projects', col)) {
