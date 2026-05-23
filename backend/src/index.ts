@@ -34,6 +34,8 @@ import pmoSettingsRoutes from './routes/pmoSettingsRoutes';
 import archiveRoutes from './routes/archiveRoutes';
 import { initializeCronJobs } from './jobs';
 import settingsRoutes from './routes/settingsRoutes';
+import accountManagerRoutes from './routes/accountManagerRoutes';
+import customerSuccessRoutes from './routes/customerSuccessRoutes';
 
 import { logger } from './utils/logger';
 import { authService } from './services/authService';
@@ -83,6 +85,8 @@ app.use('/api/smtp', smtpRoutes);
 app.use('/api/pmo-settings', pmoSettingsRoutes);
 app.use('/api/archive', archiveRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/account-manager', accountManagerRoutes);
+app.use('/api/customer-success', customerSuccessRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
@@ -156,6 +160,67 @@ async function runMigrations() {
 
   // Normalise all existing project names to lowercase
   try { await execute(`UPDATE projects SET name = LOWER(name) WHERE name != LOWER(name)`); } catch {}
+
+  // New roles: PRE_SALES and ACCOUNT_MANAGER
+  try {
+    await execute(`ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check`);
+    await execute(`ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('ADMIN','MANAGER','VIEWER','PRE_SALES','ACCOUNT_MANAGER'))`);
+  } catch {}
+
+  // POC project support
+  if (!await columnExists('projects', 'project_type')) {
+    try { await execute(`ALTER TABLE projects ADD COLUMN project_type VARCHAR(20) NOT NULL DEFAULT 'MIGRATION'`); } catch {}
+  }
+  const pocCols: [string, string][] = [
+    ['poc_qualification_status', `VARCHAR(20) NOT NULL DEFAULT 'not_started'`],
+    ['poc_env_setup_status',     `VARCHAR(20) NOT NULL DEFAULT 'not_started'`],
+    ['poc_trial_status',         `VARCHAR(20) NOT NULL DEFAULT 'not_started'`],
+    ['poc_validation_status',    `VARCHAR(20) NOT NULL DEFAULT 'not_started'`],
+    ['poc_outcome_status',       `VARCHAR(20) NOT NULL DEFAULT 'not_started'`],
+    ['poc_qualification_notes',  `TEXT`],
+    ['poc_env_setup_notes',      `TEXT`],
+    ['poc_trial_notes',          `TEXT`],
+    ['poc_validation_notes',     `TEXT`],
+    ['poc_outcome_notes',        `TEXT`],
+    ['poc_deadline',             `DATE`],
+    ['poc_outcome',              `VARCHAR(20)`],
+    ['poc_handoff_to',           `VARCHAR(255)`],
+    ['poc_handoff_date',         `DATE`],
+    ['poc_migration_speed',      `DECIMAL(10,2)`],
+    ['poc_error_rate',           `DECIMAL(5,2)`],
+    ['customer_contact',         `VARCHAR(255)`],
+  ];
+  for (const [col, colType] of pocCols) {
+    if (!await columnExists('projects', col)) {
+      try { await execute(`ALTER TABLE projects ADD COLUMN ${col} ${colType}`); } catch {}
+    }
+  }
+
+  // Customer success entries (CSAT + CF product signal overrides)
+  try {
+    await execute(`
+      CREATE TABLE IF NOT EXISTS customer_success_entries (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        customer_name VARCHAR(255) NOT NULL UNIQUE,
+        csat_score DECIMAL(3,1),
+        csat_verbatim TEXT,
+        csat_migration_quality DECIMAL(3,1),
+        csat_support_experience DECIMAL(3,1),
+        csat_onboarding DECIMAL(3,1),
+        csat_date DATE,
+        cf_migrate_signal VARCHAR(20) DEFAULT 'none',
+        cf_migrate_signal_reason TEXT,
+        cf_manage_signal VARCHAR(20) DEFAULT 'none',
+        cf_manage_signal_reason TEXT,
+        cf_ps_signal VARCHAR(20) DEFAULT 'none',
+        cf_ps_signal_reason TEXT,
+        cf_ms_signal VARCHAR(20) DEFAULT 'none',
+        cf_ms_signal_reason TEXT,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+  } catch {}
 }
 
 // Start server
