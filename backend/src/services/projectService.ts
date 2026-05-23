@@ -155,6 +155,11 @@ function mapProjectRow(row: any) {
     pocMigrationSpeed: row.poc_migration_speed ?? null,
     pocErrorRate: row.poc_error_rate ?? null,
     customerContact: row.customer_contact ?? null,
+    pocSuccessCriteria: row.poc_success_criteria ?? null,
+    pocDataVolume: row.poc_data_volume ?? null,
+    pocPermissionsIntact: row.poc_permissions_intact ?? null,
+    pocMetadataIntact: row.poc_metadata_intact ?? null,
+    pocHandoffNotes: row.poc_handoff_notes ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -425,6 +430,11 @@ class ProjectService {
       poc_migration_speed: data.pocMigrationSpeed ?? null,
       poc_error_rate: data.pocErrorRate ?? null,
       customer_contact: data.customerContact ?? null,
+      poc_success_criteria: (data as any).pocSuccessCriteria ?? null,
+      poc_data_volume: (data as any).pocDataVolume ?? null,
+      poc_permissions_intact: (data as any).pocPermissionsIntact ?? null,
+      poc_metadata_intact: (data as any).pocMetadataIntact ?? null,
+      poc_handoff_notes: (data as any).pocHandoffNotes ?? null,
     };
     try {
       const pocCols = Object.keys(pocData);
@@ -543,6 +553,11 @@ class ProjectService {
     if (data.pocMigrationSpeed !== undefined) { updates.push(`poc_migration_speed = $${params.length + 1}`); params.push(data.pocMigrationSpeed ?? null); }
     if (data.pocErrorRate !== undefined) { updates.push(`poc_error_rate = $${params.length + 1}`); params.push(data.pocErrorRate ?? null); }
     if (data.customerContact !== undefined) { updates.push(`customer_contact = $${params.length + 1}`); params.push(data.customerContact ?? null); }
+    if ((data as any).pocSuccessCriteria !== undefined) { updates.push(`poc_success_criteria = $${params.length + 1}`); params.push((data as any).pocSuccessCriteria ?? null); }
+    if ((data as any).pocDataVolume !== undefined) { updates.push(`poc_data_volume = $${params.length + 1}`); params.push((data as any).pocDataVolume ?? null); }
+    if ((data as any).pocPermissionsIntact !== undefined) { updates.push(`poc_permissions_intact = $${params.length + 1}`); params.push((data as any).pocPermissionsIntact ?? null); }
+    if ((data as any).pocMetadataIntact !== undefined) { updates.push(`poc_metadata_intact = $${params.length + 1}`); params.push((data as any).pocMetadataIntact ?? null); }
+    if ((data as any).pocHandoffNotes !== undefined) { updates.push(`poc_handoff_notes = $${params.length + 1}`); params.push((data as any).pocHandoffNotes ?? null); }
 
     await execute(
       `UPDATE projects SET ${updates.join(', ')}, updated_at = NOW() WHERE id = $${params.length + 1}`,
