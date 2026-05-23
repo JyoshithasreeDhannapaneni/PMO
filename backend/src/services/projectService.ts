@@ -47,6 +47,25 @@ export interface CreateProjectDTO {
   onetimeMigrationNotes?: string | null;
   deltaMigrationNotes?: string | null;
   finalValidationNotes?: string | null;
+  // POC fields
+  projectType?: string;
+  pocQualificationStatus?: string;
+  pocEnvSetupStatus?: string;
+  pocTrialStatus?: string;
+  pocValidationStatus?: string;
+  pocOutcomeStatus?: string;
+  pocQualificationNotes?: string | null;
+  pocEnvSetupNotes?: string | null;
+  pocTrialNotes?: string | null;
+  pocValidationNotes?: string | null;
+  pocOutcomeNotes?: string | null;
+  pocDeadline?: Date | string | null;
+  pocOutcome?: string | null;
+  pocHandoffTo?: string | null;
+  pocHandoffDate?: Date | string | null;
+  pocMigrationSpeed?: number | null;
+  pocErrorRate?: number | null;
+  customerContact?: string | null;
 }
 
 export interface UpdateProjectDTO extends Partial<CreateProjectDTO> {}
@@ -60,6 +79,7 @@ export interface ProjectFilters {
   projectManager?: string;
   accountManager?: string;
   migrationType?: string;
+  projectType?: string;
 }
 
 export interface PaginationOptions {
@@ -116,6 +136,25 @@ function mapProjectRow(row: any) {
     onetimeMigrationNotes: row.onetime_migration_notes ?? null,
     deltaMigrationNotes: row.delta_migration_notes ?? null,
     finalValidationNotes: row.final_validation_notes ?? null,
+    // POC fields
+    projectType: row.project_type ?? 'MIGRATION',
+    pocQualificationStatus: row.poc_qualification_status ?? 'not_started',
+    pocEnvSetupStatus: row.poc_env_setup_status ?? 'not_started',
+    pocTrialStatus: row.poc_trial_status ?? 'not_started',
+    pocValidationStatus: row.poc_validation_status ?? 'not_started',
+    pocOutcomeStatus: row.poc_outcome_status ?? 'not_started',
+    pocQualificationNotes: row.poc_qualification_notes ?? null,
+    pocEnvSetupNotes: row.poc_env_setup_notes ?? null,
+    pocTrialNotes: row.poc_trial_notes ?? null,
+    pocValidationNotes: row.poc_validation_notes ?? null,
+    pocOutcomeNotes: row.poc_outcome_notes ?? null,
+    pocDeadline: row.poc_deadline ?? null,
+    pocOutcome: row.poc_outcome ?? null,
+    pocHandoffTo: row.poc_handoff_to ?? null,
+    pocHandoffDate: row.poc_handoff_date ?? null,
+    pocMigrationSpeed: row.poc_migration_speed ?? null,
+    pocErrorRate: row.poc_error_rate ?? null,
+    customerContact: row.customer_contact ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -157,6 +196,10 @@ class ProjectService {
     if (filters.migrationType) {
       conditions.push(`migration_types LIKE $${params.length + 1}`);
       params.push(`%${filters.migrationType}%`);
+    }
+    if (filters.projectType) {
+      conditions.push(`project_type = $${params.length + 1}`);
+      params.push(filters.projectType);
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -359,6 +402,34 @@ class ProjectService {
       } catch {}
     }
 
+    // POC fields
+    const pocData: Record<string, any> = {
+      project_type: data.projectType || 'MIGRATION',
+      poc_qualification_status: data.pocQualificationStatus || 'not_started',
+      poc_env_setup_status: data.pocEnvSetupStatus || 'not_started',
+      poc_trial_status: data.pocTrialStatus || 'not_started',
+      poc_validation_status: data.pocValidationStatus || 'not_started',
+      poc_outcome_status: data.pocOutcomeStatus || 'not_started',
+      poc_qualification_notes: data.pocQualificationNotes ?? null,
+      poc_env_setup_notes: data.pocEnvSetupNotes ?? null,
+      poc_trial_notes: data.pocTrialNotes ?? null,
+      poc_validation_notes: data.pocValidationNotes ?? null,
+      poc_outcome_notes: data.pocOutcomeNotes ?? null,
+      poc_deadline: data.pocDeadline ? new Date(data.pocDeadline) : null,
+      poc_outcome: data.pocOutcome ?? null,
+      poc_handoff_to: data.pocHandoffTo ?? null,
+      poc_handoff_date: data.pocHandoffDate ? new Date(data.pocHandoffDate) : null,
+      poc_migration_speed: data.pocMigrationSpeed ?? null,
+      poc_error_rate: data.pocErrorRate ?? null,
+      customer_contact: data.customerContact ?? null,
+    };
+    try {
+      const pocCols = Object.keys(pocData);
+      const pocVals = Object.values(pocData);
+      const pocSets = pocCols.map((c, i) => `${c} = $${i + 1}`).join(', ');
+      await execute(`UPDATE projects SET ${pocSets} WHERE id = $${pocCols.length + 1}`, [...pocVals, projectId]);
+    } catch {}
+
     const result = await query(`SELECT * FROM projects WHERE id = $1`, [projectId]);
     const project = mapProjectRow(result.rows[0]);
 
@@ -450,6 +521,25 @@ class ProjectService {
     if (data.onetimeMigrationNotes !== undefined) { updates.push(`onetime_migration_notes = $${params.length + 1}`); params.push(data.onetimeMigrationNotes ?? null); }
     if (data.deltaMigrationNotes !== undefined) { updates.push(`delta_migration_notes = $${params.length + 1}`); params.push(data.deltaMigrationNotes ?? null); }
     if (data.finalValidationNotes !== undefined) { updates.push(`final_validation_notes = $${params.length + 1}`); params.push(data.finalValidationNotes ?? null); }
+    // POC fields
+    if (data.projectType !== undefined) { updates.push(`project_type = $${params.length + 1}`); params.push(data.projectType); }
+    if (data.pocQualificationStatus !== undefined) { updates.push(`poc_qualification_status = $${params.length + 1}`); params.push(data.pocQualificationStatus); }
+    if (data.pocEnvSetupStatus !== undefined) { updates.push(`poc_env_setup_status = $${params.length + 1}`); params.push(data.pocEnvSetupStatus); }
+    if (data.pocTrialStatus !== undefined) { updates.push(`poc_trial_status = $${params.length + 1}`); params.push(data.pocTrialStatus); }
+    if (data.pocValidationStatus !== undefined) { updates.push(`poc_validation_status = $${params.length + 1}`); params.push(data.pocValidationStatus); }
+    if (data.pocOutcomeStatus !== undefined) { updates.push(`poc_outcome_status = $${params.length + 1}`); params.push(data.pocOutcomeStatus); }
+    if (data.pocQualificationNotes !== undefined) { updates.push(`poc_qualification_notes = $${params.length + 1}`); params.push(data.pocQualificationNotes ?? null); }
+    if (data.pocEnvSetupNotes !== undefined) { updates.push(`poc_env_setup_notes = $${params.length + 1}`); params.push(data.pocEnvSetupNotes ?? null); }
+    if (data.pocTrialNotes !== undefined) { updates.push(`poc_trial_notes = $${params.length + 1}`); params.push(data.pocTrialNotes ?? null); }
+    if (data.pocValidationNotes !== undefined) { updates.push(`poc_validation_notes = $${params.length + 1}`); params.push(data.pocValidationNotes ?? null); }
+    if (data.pocOutcomeNotes !== undefined) { updates.push(`poc_outcome_notes = $${params.length + 1}`); params.push(data.pocOutcomeNotes ?? null); }
+    if (data.pocDeadline !== undefined) { updates.push(`poc_deadline = $${params.length + 1}`); params.push(data.pocDeadline ? new Date(data.pocDeadline) : null); }
+    if (data.pocOutcome !== undefined) { updates.push(`poc_outcome = $${params.length + 1}`); params.push(data.pocOutcome ?? null); }
+    if (data.pocHandoffTo !== undefined) { updates.push(`poc_handoff_to = $${params.length + 1}`); params.push(data.pocHandoffTo ?? null); }
+    if (data.pocHandoffDate !== undefined) { updates.push(`poc_handoff_date = $${params.length + 1}`); params.push(data.pocHandoffDate ? new Date(data.pocHandoffDate) : null); }
+    if (data.pocMigrationSpeed !== undefined) { updates.push(`poc_migration_speed = $${params.length + 1}`); params.push(data.pocMigrationSpeed ?? null); }
+    if (data.pocErrorRate !== undefined) { updates.push(`poc_error_rate = $${params.length + 1}`); params.push(data.pocErrorRate ?? null); }
+    if (data.customerContact !== undefined) { updates.push(`customer_contact = $${params.length + 1}`); params.push(data.customerContact ?? null); }
 
     await execute(
       `UPDATE projects SET ${updates.join(', ')}, updated_at = NOW() WHERE id = $${params.length + 1}`,
