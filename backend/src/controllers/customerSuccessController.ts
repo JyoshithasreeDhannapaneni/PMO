@@ -16,7 +16,7 @@ export const customerSuccessController = {
                is_overaged, overage_amount, migration_types,
                project_type, poc_outcome, planned_end, actual_end
         FROM projects
-        WHERE status NOT IN ('CANCELLED','DECOMMISSIONED')
+        WHERE status != 'CANCELLED'
         ORDER BY customer_name ASC
       `),
       query(`SELECT * FROM customer_success_entries`),
