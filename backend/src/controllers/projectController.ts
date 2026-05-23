@@ -18,6 +18,7 @@ getAll: asyncHandler(async (req: Request, res: Response): Promise<void> => {
       projectManager: req.query.projectManager as string,
       accountManager: req.query.accountManager as string,
       migrationType: req.query.migrationType as string,
+      projectType: req.query.projectType as string,
     };
     // Auto-filter by project manager for MANAGER role
     const token = req.headers.authorization?.replace('Bearer ', '');
@@ -73,6 +74,10 @@ getAll: asyncHandler(async (req: Request, res: Response): Promise<void> => {
         if (user && user.role === 'MANAGER') {
           req.body.projectManager = user.name;
         }
+        if (user && user.role === 'PRE_SALES') {
+          req.body.projectType = 'POC';
+          req.body.projectManager = req.body.projectManager || user.name;
+        }
       } catch {}
     }
     const project = await projectService.create(req.body);
@@ -96,6 +101,22 @@ getAll: asyncHandler(async (req: Request, res: Response): Promise<void> => {
         const user = await authService.getUserFromToken(token);
         if (user && user.role === 'MANAGER') {
           req.body.projectManager = user.name;
+        }
+        if (user && user.role === 'PRE_SALES') {
+          // PRE_SALES can only update POC phase fields
+          const allowedPocFields = [
+            'pocQualificationStatus','pocEnvSetupStatus','pocTrialStatus',
+            'pocValidationStatus','pocOutcomeStatus',
+            'pocQualificationNotes','pocEnvSetupNotes','pocTrialNotes',
+            'pocValidationNotes','pocOutcomeNotes',
+            'pocDeadline','pocOutcome','pocHandoffTo','pocHandoffDate',
+            'pocMigrationSpeed','pocErrorRate','customerContact',
+          ];
+          const restricted: Record<string, any> = {};
+          for (const field of allowedPocFields) {
+            if (req.body[field] !== undefined) restricted[field] = req.body[field];
+          }
+          req.body = restricted;
         }
       } catch {}
     }

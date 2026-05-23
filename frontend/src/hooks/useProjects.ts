@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { projectsApi, dashboardApi, statusReportsApi, managerGoalsApi, migrationTypeApi } from '@/services/api';
+import { projectsApi, dashboardApi, statusReportsApi, managerGoalsApi, migrationTypeApi, pocProjectsApi, accountManagerApi, customerSuccessApi } from '@/services/api';
 import type { CreateProjectInput, UpdateProjectInput } from '@/types';
 
 export function useProjects(params?: {
@@ -169,6 +169,67 @@ export function useUpsertManagerGoal() {
       queryClient.invalidateQueries({ queryKey: ['managerGoalsWithStats'] });
       queryClient.invalidateQueries({ queryKey: ['managerStats'] });
     },
+  });
+}
+
+// ── POC / Account Manager / Customer Success Hooks ───────────────────────────
+
+export function usePocProjects(params?: Record<string, any>) {
+  return useQuery({
+    queryKey: ['poc-projects', params],
+    queryFn: () => pocProjectsApi.getAll(params),
+    staleTime: 30_000,
+    refetchOnWindowFocus: true,
+  });
+}
+
+export function useCreatePocProject() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: Record<string, any>) => pocProjectsApi.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['poc-projects'] });
+      queryClient.invalidateQueries({ queryKey: ['account-manager-view'] });
+    },
+  });
+}
+
+export function useUpdatePocProject() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Record<string, any> }) =>
+      pocProjectsApi.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['poc-projects'] });
+      queryClient.invalidateQueries({ queryKey: ['account-manager-view'] });
+    },
+  });
+}
+
+export function useAccountManagerView() {
+  return useQuery({
+    queryKey: ['account-manager-view'],
+    queryFn: () => accountManagerApi.getView(),
+    staleTime: 30_000,
+    refetchOnWindowFocus: true,
+  });
+}
+
+export function useCustomerSuccess() {
+  return useQuery({
+    queryKey: ['customer-success'],
+    queryFn: () => customerSuccessApi.getView(),
+    staleTime: 60_000,
+    refetchOnWindowFocus: true,
+  });
+}
+
+export function useUpdateCustomerSuccess() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ customerName, data }: { customerName: string; data: Record<string, any> }) =>
+      customerSuccessApi.updateEntry(customerName, data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['customer-success'] }),
   });
 }
 

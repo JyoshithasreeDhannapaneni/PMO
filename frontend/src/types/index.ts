@@ -1,3 +1,11 @@
+// Role Types
+export type UserRole = 'ADMIN' | 'MANAGER' | 'VIEWER' | 'PRE_SALES' | 'ACCOUNT_MANAGER';
+
+// POC Types
+export type PocPhaseStatus = 'not_started' | 'in_progress' | 'blocked' | 'completed';
+export type PocOutcome = 'won' | 'lost' | 'no_decision';
+export type CfSignalLevel = 'none' | 'moderate' | 'strong' | 'active';
+
 // Project Types
 export type PlanType = 'BRONZE' | 'SILVER' | 'GOLD' | 'PLATINUM';
 export type ProjectPhase = 'KICKOFF' | 'MIGRATION' | 'VALIDATION' | 'CLOSURE' | 'COMPLETED';
@@ -51,6 +59,25 @@ export interface Project {
   onetimeMigrationNotes?: string | null;
   deltaMigrationNotes?: string | null;
   finalValidationNotes?: string | null;
+  // POC fields
+  projectType?: string;
+  pocQualificationStatus?: PocPhaseStatus;
+  pocEnvSetupStatus?: PocPhaseStatus;
+  pocTrialStatus?: PocPhaseStatus;
+  pocValidationStatus?: PocPhaseStatus;
+  pocOutcomeStatus?: PocPhaseStatus;
+  pocQualificationNotes?: string | null;
+  pocEnvSetupNotes?: string | null;
+  pocTrialNotes?: string | null;
+  pocValidationNotes?: string | null;
+  pocOutcomeNotes?: string | null;
+  pocDeadline?: string | null;
+  pocOutcome?: PocOutcome | null;
+  pocHandoffTo?: string | null;
+  pocHandoffDate?: string | null;
+  pocMigrationSpeed?: number | null;
+  pocErrorRate?: number | null;
+  customerContact?: string | null;
   createdAt: string;
   updatedAt: string;
   phases?: ProjectPhaseRecord[];
@@ -226,4 +253,104 @@ export interface CreateProjectInput {
   overageAmount?: number;
 }
 
-export interface UpdateProjectInput extends Partial<CreateProjectInput> {}
+export interface UpdateProjectInput extends Partial<CreateProjectInput> {
+  projectType?: string;
+  pocQualificationStatus?: PocPhaseStatus;
+  pocEnvSetupStatus?: PocPhaseStatus;
+  pocTrialStatus?: PocPhaseStatus;
+  pocValidationStatus?: PocPhaseStatus;
+  pocOutcomeStatus?: PocPhaseStatus;
+  pocQualificationNotes?: string | null;
+  pocEnvSetupNotes?: string | null;
+  pocTrialNotes?: string | null;
+  pocValidationNotes?: string | null;
+  pocOutcomeNotes?: string | null;
+  pocDeadline?: string | null;
+  pocOutcome?: PocOutcome | null;
+  pocHandoffTo?: string | null;
+  pocHandoffDate?: string | null;
+  pocMigrationSpeed?: number | null;
+  pocErrorRate?: number | null;
+  customerContact?: string | null;
+}
+
+export interface CfProductSignal {
+  level: CfSignalLevel;
+  reason: string;
+}
+
+export interface AccountView {
+  customerName: string;
+  accountManager: string;
+  needsAttention: boolean;
+  attentionReasons: string[];
+  pocTrack: Project | null;
+  migrationTrack: Project | null;
+  handoffDate: string | null;
+  handoffBy: string | null;
+}
+
+// ── Customer Success (redesigned) ──────────────────────────────────────────
+
+export interface CsatData {
+  score: number | null;
+  verbatim: string | null;
+  migrationQuality: number | null;
+  supportExperience: number | null;
+  onboarding: number | null;
+  date: string | null;
+}
+
+export interface EscalationItem {
+  projectId: string;
+  projectName: string;
+  priority: string;
+  notes: string;
+}
+
+export interface CustomerSuccessEntry {
+  customerName: string;
+  accountManager: string;
+  workloadTypes: string[];
+  activeProjects: number;
+  completedProjects: number;
+  csat: CsatData;
+  cfMigrate: CfProductSignal;
+  cfManage: CfProductSignal;
+  professionalServices: CfProductSignal;
+  managedServices: CfProductSignal;
+  hasEscalations: boolean;
+  escalationCount: number;
+  escalations: EscalationItem[];
+}
+
+export interface RenewalDueItem {
+  id: string;
+  name: string;
+  customerName: string;
+  accountManager: string;
+  projectManager: string;
+  plannedEnd: string;
+  daysOverdue: number;
+  status: string;
+  phase: string;
+  planType: string;
+}
+
+export interface SignalItem {
+  customerName: string;
+  accountManager: string;
+  product: string;
+  level: CfSignalLevel;
+  reason: string;
+}
+
+export interface CustomerSuccessPageData {
+  accounts: CustomerSuccessEntry[];
+  renewalDue: RenewalDueItem[];
+  upsellSignals: SignalItem[];
+  crossSellSignals: SignalItem[];
+}
+
+// Keep for backwards compatibility in customer-success page import
+export type CustomerSuccessView = CustomerSuccessEntry;

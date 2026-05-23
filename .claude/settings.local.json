@@ -36,7 +36,12 @@
       "Bash(Get-ChildItem -Path . -Force)",
       "Bash(Select-Object Name, FullName)",
       "Bash(not exist *)",
-      "Bash(Find-ChildItem -Path \"c:\\\\Users\\\\BharathTummaganti\\\\OneDrive - CloudFuze, Inc\\\\Documents\\\\PMO\\\\PMO\" -Name \"*.ts\" -o -Name \"*.tsx\")"
+      "Bash(Find-ChildItem -Path \"c:\\\\Users\\\\BharathTummaganti\\\\OneDrive - CloudFuze, Inc\\\\Documents\\\\PMO\\\\PMO\" -Name \"*.ts\" -o -Name \"*.tsx\")",
+      "WebFetch(domain:claude.ai)",
+      "Bash(dir \"c:\\\\Users\\\\BharathTummaganti\\\\OneDrive - CloudFuze, Inc\\\\Documents\\\\PMO\\\\PMO\\\\frontend\\\\src\\\\app\" /s /b)",
+      "Bash(Get-ChildItem -Path . -File -Name)",
+      "Bash(cd \"/c/Users/BharathTummaganti/OneDrive - CloudFuze, Inc/Documents/PMO/PMO\" && ls -la | head -20)",
+      "Read(//c/c/Users/BharathTummaganti/OneDrive - CloudFuze, Inc/Documents/PMO/**)"
     ]
   }
 }
