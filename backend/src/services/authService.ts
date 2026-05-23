@@ -5,11 +5,13 @@ import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 
 
+export type UserRole = 'ADMIN' | 'MANAGER' | 'VIEWER' | 'PRE_SALES' | 'ACCOUNT_MANAGER';
+
 export interface UserPayload {
   id: string;
   name: string;
   email: string;
-  role: 'ADMIN' | 'MANAGER' | 'VIEWER';
+  role: UserRole;
 }
 
 export interface AuthResult {
@@ -70,7 +72,7 @@ class AuthService {
         id: user.id,
         name: user.name,
         email: user.email,
-        role: user.role as 'ADMIN' | 'MANAGER' | 'VIEWER',
+        role: user.role as UserRole,
       },
       token,
     };
@@ -114,7 +116,7 @@ class AuthService {
         id: user.id,
         name: user.name,
         email: user.email,
-        role: user.role as 'ADMIN' | 'MANAGER' | 'VIEWER',
+        role: user.role as UserRole,
       },
       token,
     };
@@ -199,7 +201,7 @@ class AuthService {
     }));
   }
 
-  async updateUserRole(userId: string, role: 'ADMIN' | 'MANAGER' | 'VIEWER'): Promise<void> {
+  async updateUserRole(userId: string, role: UserRole): Promise<void> {
     await query(`UPDATE users SET role = $1 WHERE id = $2`, [role, userId]);
     logger.info(`User role updated: ${userId} -> ${role}`);
   }
@@ -218,7 +220,7 @@ class AuthService {
   async createUserByAdmin(
     name: string,
     email: string,
-    role: 'ADMIN' | 'MANAGER' | 'VIEWER',
+    role: UserRole,
     tempPassword: string,
     department?: string
   ): Promise<any> {
@@ -458,7 +460,7 @@ class AuthService {
         id: user.id,
         name: user.name,
         email: user.email,
-        role: user.role as 'ADMIN' | 'MANAGER' | 'VIEWER',
+        role: user.role as UserRole,
       },
       token,
     };

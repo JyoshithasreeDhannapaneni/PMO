@@ -9,6 +9,7 @@ import {
   LayoutDashboard, FolderKanban, AlertTriangle, FileText, Bell,
   Settings, Layers, Users, Shuffle, BarChart2, ChevronDown,
   ChevronRight, MessageSquare, LogOut, DollarSign, Siren, Menu, X, Archive,
+  FlaskConical, Building2, HeartHandshake,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
@@ -18,6 +19,9 @@ const allNavigation = [
   { name: 'Overage Projects',   href: '/overage-projects',       icon: DollarSign,      adminOnly: false },
   { name: 'Escalated Projects', href: '/escalation-projects',    icon: Siren,           adminOnly: false },
   { name: 'Managers & Goals',   href: '/managers',               icon: Users,   badge: 'goals', adminOnly: false },
+  { name: 'POC Projects',       href: '/poc-projects',           icon: FlaskConical,    adminOnly: false },
+  { name: 'Account Manager View', href: '/account-manager',     icon: Building2,       adminOnly: false },
+  { name: 'Customer Success',   href: '/customer-success',       icon: HeartHandshake,  adminOnly: false },
   { name: 'Migration Types',    href: '/migration-types',        icon: Shuffle,         adminOnly: true },
   { name: 'Templates',          href: '/templates',              icon: Layers,          adminOnly: false },
   { name: 'Case Studies',       href: '/case-studies',           icon: FileText,        adminOnly: false },

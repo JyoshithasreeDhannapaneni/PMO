@@ -399,6 +399,42 @@ export const smtpApi = {
   },
 };
 
+// POC Projects API
+export const pocProjectsApi = {
+  getAll: async (params?: Record<string, any>) => {
+    const { data } = await api.get('/projects', { params: { ...params, projectType: 'POC' } });
+    return data;
+  },
+  create: async (projectData: Record<string, any>) => {
+    const { data } = await api.post('/projects', { ...projectData, projectType: 'POC' });
+    return data;
+  },
+  update: async (id: string, updates: Record<string, any>) => {
+    const { data } = await api.put(`/projects/${id}`, updates);
+    return data;
+  },
+};
+
+// Account Manager View API
+export const accountManagerApi = {
+  getView: async () => {
+    const { data } = await api.get('/account-manager/view');
+    return data;
+  },
+};
+
+// Customer Success API
+export const customerSuccessApi = {
+  getView: async () => {
+    const { data } = await api.get('/customer-success');
+    return data;
+  },
+  updateEntry: async (customerName: string, updates: Record<string, any>) => {
+    const { data } = await api.put(`/customer-success/${encodeURIComponent(customerName)}`, updates);
+    return data;
+  },
+};
+
 // Projects by migration type
 export const migrationTypeApi = {
   getProjectsByType: async (type: string) => {
