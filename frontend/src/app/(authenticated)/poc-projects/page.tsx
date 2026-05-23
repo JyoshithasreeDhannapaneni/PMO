@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import type { ReactNode } from 'react';
 import { Card } from '@/components/ui/Card';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
@@ -12,169 +13,166 @@ import {
   FlaskConical, Plus, ChevronDown, ChevronUp, Loader2,
   Clock, CheckCircle2, XCircle, Circle, Minus,
   CalendarDays, User, ArrowRight, X, Save, Search,
+  AlertTriangle, Gauge, ShieldCheck, Database, Flag,
+  Target, Server, ClipboardList, Handshake,
 } from 'lucide-react';
 
 type PhaseKey = 'pocQualificationStatus' | 'pocEnvSetupStatus' | 'pocTrialStatus' | 'pocValidationStatus' | 'pocOutcomeStatus';
-type NoteKey = 'pocQualificationNotes' | 'pocEnvSetupNotes' | 'pocTrialNotes' | 'pocValidationNotes' | 'pocOutcomeNotes';
+type NoteKey  = 'pocQualificationNotes'  | 'pocEnvSetupNotes'  | 'pocTrialNotes'  | 'pocValidationNotes'  | 'pocOutcomeNotes';
 
-const POC_PHASES: { label: string; statusKey: PhaseKey; noteKey: NoteKey }[] = [
-  { label: 'Qualification', statusKey: 'pocQualificationStatus', noteKey: 'pocQualificationNotes' },
-  { label: 'Env Setup',     statusKey: 'pocEnvSetupStatus',      noteKey: 'pocEnvSetupNotes' },
-  { label: 'Trial Run',     statusKey: 'pocTrialStatus',         noteKey: 'pocTrialNotes' },
-  { label: 'Validation',    statusKey: 'pocValidationStatus',    noteKey: 'pocValidationNotes' },
-  { label: 'Outcome',       statusKey: 'pocOutcomeStatus',       noteKey: 'pocOutcomeNotes' },
+const POC_PHASES: {
+  num: number; label: string; shortLabel: string;
+  statusKey: PhaseKey; noteKey: NoteKey;
+  description: string; icon: ReactNode;
+}[] = [
+  { num: 1, label: 'Qualification & Scoping',  shortLabel: 'Qualify',
+    statusKey: 'pocQualificationStatus', noteKey: 'pocQualificationNotes',
+    description: 'Lock down source/destination, data volume, and agreed success criteria.',
+    icon: <Target className="w-4 h-4" /> },
+  { num: 2, label: 'Environment Setup',         shortLabel: 'Env Setup',
+    statusKey: 'pocEnvSetupStatus',      noteKey: 'pocEnvSetupNotes',
+    description: 'Admin access, connector config, firewall clearance. Blocked status common here.',
+    icon: <Server className="w-4 h-4" /> },
+  { num: 3, label: 'Trial Migration Run',       shortLabel: 'Trial Run',
+    statusKey: 'pocTrialStatus',         noteKey: 'pocTrialNotes',
+    description: 'Execute migration. Capture speed, error rate, and verify permissions & metadata.',
+    icon: <Gauge className="w-4 h-4" /> },
+  { num: 4, label: 'Customer Validation',       shortLabel: 'Validation',
+    statusKey: 'pocValidationStatus',    noteKey: 'pocValidationNotes',
+    description: 'Formal review against success criteria from Phase 1. Every item gets pass/fail.',
+    icon: <ClipboardList className="w-4 h-4" /> },
+  { num: 5, label: 'Outcome & Handoff',         shortLabel: 'Outcome',
+    statusKey: 'pocOutcomeStatus',       noteKey: 'pocOutcomeNotes',
+    description: 'Record outcome and hand off to migration manager with a full brief.',
+    icon: <Handshake className="w-4 h-4" /> },
 ];
 
-const PHASE_COLORS: Record<PocPhaseStatus, string> = {
-  not_started: 'text-gray-400',
-  in_progress:  'text-blue-500',
-  blocked:      'text-red-500',
-  completed:    'text-green-500',
+const PHASE_STATUS_CLS: Record<PocPhaseStatus, string> = {
+  not_started: 'bg-gray-100 text-gray-600 border-gray-200',
+  in_progress:  'bg-blue-50 text-blue-700 border-blue-200',
+  blocked:      'bg-red-50 text-red-700 border-red-200',
+  completed:    'bg-green-50 text-green-700 border-green-200',
+};
+const PHASE_DOT_CLS: Record<PocPhaseStatus, string> = {
+  not_started: 'bg-gray-300',
+  in_progress:  'bg-blue-500',
+  blocked:      'bg-red-500',
+  completed:    'bg-green-500',
+};
+const STATUS_ICONS: Record<PocPhaseStatus, ReactNode> = {
+  not_started: <Circle className="w-3.5 h-3.5" />,
+  in_progress:  <Clock className="w-3.5 h-3.5" />,
+  blocked:      <XCircle className="w-3.5 h-3.5" />,
+  completed:    <CheckCircle2 className="w-3.5 h-3.5" />,
+};
+const STATUS_LABEL: Record<PocPhaseStatus, string> = {
+  not_started: 'Not Started', in_progress: 'In Progress', blocked: 'Blocked', completed: 'Completed',
 };
 
-const PHASE_ICONS: Record<PocPhaseStatus, React.ReactNode> = {
-  not_started: <Circle className="w-4 h-4" />,
-  in_progress:  <Clock className="w-4 h-4" />,
-  blocked:      <XCircle className="w-4 h-4" />,
-  completed:    <CheckCircle2 className="w-4 h-4" />,
+const OUTCOME_CFG: Record<string, { label: string; cls: string }> = {
+  won:         { label: 'Won',         cls: 'bg-green-100 text-green-700 border border-green-200' },
+  lost:        { label: 'Lost',        cls: 'bg-red-100 text-red-700 border border-red-200' },
+  no_decision: { label: 'No Decision', cls: 'bg-yellow-100 text-yellow-700 border border-yellow-200' },
 };
 
-const OUTCOME_LABELS: Record<string, { label: string; color: string }> = {
-  won:         { label: 'Won',         color: 'bg-green-100 text-green-700' },
-  lost:        { label: 'Lost',        color: 'bg-red-100 text-red-700' },
-  no_decision: { label: 'No Decision', color: 'bg-yellow-100 text-yellow-700' },
-};
+function pocDuration(p: Project): number | null {
+  if (!p.plannedStart || !p.pocDeadline) return null;
+  return Math.round((new Date(p.pocDeadline).getTime() - new Date(p.plannedStart).getTime()) / 86_400_000);
+}
 
-function deadlineColor(deadline: string | null | undefined): string {
-  if (!deadline) return '';
-  const h = (new Date(deadline).getTime() - Date.now()) / 3_600_000;
+function durationCls(days: number | null): string {
+  if (days === null) return 'text-gray-400';
+  if (days > 30) return 'text-red-600 font-semibold';
+  if (days > 14) return 'text-orange-500';
+  return 'text-green-600';
+}
+
+function deadlineCls(d: string | null | undefined): string {
+  if (!d) return '';
+  const h = (new Date(d).getTime() - Date.now()) / 3_600_000;
   if (h < 0) return 'text-red-600 font-semibold';
   if (h < 48) return 'text-red-500 font-semibold';
   if (h < 168) return 'text-orange-500';
-  return 'text-gray-600';
+  return 'text-gray-500';
 }
 
-function formatDeadline(deadline: string | null | undefined): string {
-  if (!deadline) return '—';
-  const d = new Date(deadline);
-  const h = (d.getTime() - Date.now()) / 3_600_000;
-  if (h < 0) return `Overdue (${d.toLocaleDateString()})`;
+function formatDeadline(d: string | null | undefined): string {
+  if (!d) return '';
+  const dt = new Date(d);
+  const h = (dt.getTime() - Date.now()) / 3_600_000;
+  if (h < 0) return `Overdue since ${dt.toLocaleDateString()}`;
   if (h < 24) return `${Math.round(h)}h left`;
-  return `${Math.floor(h / 24)}d left (${d.toLocaleDateString()})`;
+  return `${Math.floor(h / 24)}d left (${dt.toLocaleDateString()})`;
 }
 
 const EMPTY_FORM = {
   name: '', customerName: '', accountManager: '', projectManager: '',
   planType: 'SILVER', plannedStart: '', plannedEnd: '', pocDeadline: '',
-  customerContact: '', description: '',
+  customerContact: '', description: '', sourcePlatform: '', targetPlatform: '',
+  pocSuccessCriteria: '', pocDataVolume: '',
   pocQualificationStatus: 'not_started' as PocPhaseStatus,
-  pocEnvSetupStatus: 'not_started' as PocPhaseStatus,
-  pocTrialStatus: 'not_started' as PocPhaseStatus,
-  pocValidationStatus: 'not_started' as PocPhaseStatus,
-  pocOutcomeStatus: 'not_started' as PocPhaseStatus,
+  pocEnvSetupStatus:      'not_started' as PocPhaseStatus,
+  pocTrialStatus:         'not_started' as PocPhaseStatus,
+  pocValidationStatus:    'not_started' as PocPhaseStatus,
+  pocOutcomeStatus:       'not_started' as PocPhaseStatus,
   pocOutcome: '' as PocOutcome | '',
-  pocMigrationSpeed: '', pocErrorRate: '', pocHandoffTo: '', pocHandoffDate: '',
+  pocMigrationSpeed: '', pocErrorRate: '',
+  pocHandoffTo: '', pocHandoffDate: '', pocHandoffNotes: '',
 };
 
 const inputCls = 'w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition bg-white';
+const smallInput = 'w-full border border-gray-200 rounded px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-blue-400';
 
-// ── Migration types multi-select dropdown ────────────────────────────────────
+// ── Migration type picker ─────────────────────────────────────────────────────
 function MigrationTypePicker({
-  selected,
-  onChange,
-  allTypes,
-}: {
-  selected: string[];
-  onChange: (v: string[]) => void;
-  allTypes: { id: string; name: string; enabled: boolean }[];
-}) {
+  selected, onChange, allTypes,
+}: { selected: string[]; onChange: (v: string[]) => void; allTypes: { id: string; name: string; enabled: boolean }[] }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const ref = useRef<HTMLDivElement>(null);
-
   const enabled = allTypes.filter(t => t.enabled);
   const visible = enabled.filter(t => !search || t.name.toLowerCase().includes(search.toLowerCase()));
-
   useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
+    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
   }, []);
-
-  function toggle(id: string) {
-    onChange(selected.includes(id) ? selected.filter(s => s !== id) : [...selected, id]);
-  }
-
-  const selectedNames = selected
-    .map(id => enabled.find(t => t.id === id)?.name || id)
-    .filter(Boolean);
-
+  function toggle(id: string) { onChange(selected.includes(id) ? selected.filter(s => s !== id) : [...selected, id]); }
+  const selectedNames = selected.map(id => enabled.find(t => t.id === id)?.name || id).filter(Boolean);
   return (
     <div className="relative" ref={ref}>
-      <div
-        onClick={() => setOpen(o => !o)}
-        className="min-h-[44px] border border-gray-300 rounded-lg px-3 py-2 cursor-pointer bg-white flex items-start justify-between gap-2 hover:border-blue-400 transition focus:ring-2 focus:ring-blue-500"
-      >
+      <div onClick={() => setOpen(o => !o)}
+        className="min-h-[44px] border border-gray-300 rounded-lg px-3 py-2 cursor-pointer bg-white flex items-start justify-between gap-2 hover:border-blue-400 transition">
         <div className="flex flex-wrap gap-1 flex-1">
-          {selectedNames.length === 0 ? (
-            <span className="text-gray-400 text-sm self-center">Select workload type(s)...</span>
-          ) : (
-            selectedNames.map(name => (
-              <span key={name} className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full font-medium">
-                {name}
-              </span>
-            ))
-          )}
+          {selectedNames.length === 0
+            ? <span className="text-gray-400 text-sm self-center">Select workload type(s)...</span>
+            : selectedNames.map(n => <span key={n} className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full font-medium">{n}</span>)}
         </div>
         {open ? <ChevronUp className="w-4 h-4 text-gray-400 flex-shrink-0 mt-1" /> : <ChevronDown className="w-4 h-4 text-gray-400 flex-shrink-0 mt-1" />}
       </div>
-
       {open && (
         <div className="absolute z-[200] w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden">
           <div className="p-2 border-b border-gray-100 bg-gray-50">
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search types..."
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                onClick={e => e.stopPropagation()}
-                className="w-full pl-8 pr-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-              />
+              <input type="text" placeholder="Search types..." value={search}
+                onChange={e => setSearch(e.target.value)} onClick={e => e.stopPropagation()}
+                className="w-full pl-8 pr-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
             </div>
           </div>
           <div className="max-h-52 overflow-y-auto">
-            {visible.length === 0 ? (
-              <p className="text-sm text-gray-400 text-center py-4">No types found</p>
-            ) : (
-              visible.map(type => (
-                <label
-                  key={type.id}
-                  className="flex items-center gap-3 px-3 py-2.5 hover:bg-blue-50 cursor-pointer text-sm border-b border-gray-50 last:border-0"
-                  onClick={e => e.stopPropagation()}
-                >
-                  <input
-                    type="checkbox"
-                    checked={selected.includes(type.id)}
-                    onChange={() => toggle(type.id)}
-                    className="w-4 h-4 text-blue-600 rounded border-gray-300"
-                  />
+            {visible.length === 0
+              ? <p className="text-sm text-gray-400 text-center py-4">No types found</p>
+              : visible.map(type => (
+                <label key={type.id} className="flex items-center gap-3 px-3 py-2.5 hover:bg-blue-50 cursor-pointer text-sm border-b border-gray-50 last:border-0" onClick={e => e.stopPropagation()}>
+                  <input type="checkbox" checked={selected.includes(type.id)} onChange={() => toggle(type.id)} className="w-4 h-4 text-blue-600 rounded border-gray-300" />
                   <span className="text-gray-800">{type.name}</span>
                 </label>
-              ))
-            )}
+              ))}
           </div>
           {selected.length > 0 && (
             <div className="p-2 border-t border-gray-100 bg-gray-50">
-              <button
-                onClick={e => { e.stopPropagation(); onChange([]); }}
-                className="text-xs text-red-500 hover:text-red-700 font-medium"
-              >
-                Clear all selections
-              </button>
+              <button onClick={e => { e.stopPropagation(); onChange([]); }} className="text-xs text-red-500 hover:text-red-700 font-medium">Clear all</button>
             </div>
           )}
         </div>
@@ -183,27 +181,49 @@ function MigrationTypePicker({
   );
 }
 
-// ── Form section label ───────────────────────────────────────────────────────
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider border-b border-gray-100 pb-2 mb-4">
-      {children}
-    </p>
-  );
+function SectionLabel({ children }: { children: ReactNode }) {
+  return <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider border-b border-gray-100 pb-2 mb-4">{children}</p>;
 }
-
-function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
+function Field({ label, required, hint, children }: { label: string; required?: boolean; hint?: string; children: ReactNode }) {
   return (
     <div className="space-y-1.5">
-      <label className="block text-sm font-medium text-gray-700">
-        {label}{required && <span className="text-red-500 ml-0.5">*</span>}
-      </label>
+      <label className="block text-sm font-medium text-gray-700">{label}{required && <span className="text-red-500 ml-0.5">*</span>}</label>
       {children}
+      {hint && <p className="text-xs text-gray-400">{hint}</p>}
     </div>
   );
 }
 
-// ── Main page ────────────────────────────────────────────────────────────────
+function StatusBadge({ status }: { status: PocPhaseStatus }) {
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${PHASE_STATUS_CLS[status]}`}>
+      {STATUS_ICONS[status]}{STATUS_LABEL[status]}
+    </span>
+  );
+}
+
+function IntactBadge({ value, label }: { value: boolean | null | undefined; label: string }) {
+  if (value === true)  return <span className="inline-flex items-center gap-1 text-xs text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full"><CheckCircle2 className="w-3 h-3" />{label} OK</span>;
+  if (value === false) return <span className="inline-flex items-center gap-1 text-xs text-red-700 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full"><XCircle className="w-3 h-3" />{label} Failed</span>;
+  return <span className="inline-flex items-center gap-1 text-xs text-gray-400 bg-gray-50 border border-gray-200 px-2 py-0.5 rounded-full"><Circle className="w-3 h-3" />{label} —</span>;
+}
+
+function IntactSelect({ value, onChange, label }: { value: boolean | null | undefined; onChange: (v: boolean | null) => void; label: string }) {
+  const v = value === true ? 'yes' : value === false ? 'no' : 'unknown';
+  return (
+    <div className="space-y-1">
+      <label className="text-xs text-gray-600">{label}</label>
+      <select value={v} onChange={e => onChange(e.target.value === 'yes' ? true : e.target.value === 'no' ? false : null)}
+        className={smallInput}>
+        <option value="unknown">Unknown</option>
+        <option value="yes">Yes — intact</option>
+        <option value="no">No — issues found</option>
+      </select>
+    </div>
+  );
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
 export default function PocProjectsPage() {
   const { user } = useAuth();
   const { showToast } = useToast();
@@ -214,6 +234,7 @@ export default function PocProjectsPage() {
 
   const [outcomeFilter, setOutcomeFilter] = useState('');
   const [workloadFilter, setWorkloadFilter] = useState('');
+  const [flagFilter, setFlagFilter] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Record<string, any>>({});
@@ -233,6 +254,10 @@ export default function PocProjectsPage() {
   const filtered = projects.filter(p => {
     if (outcomeFilter && p.pocOutcome !== outcomeFilter) return false;
     if (workloadFilter && !(p.migrationTypes || '').toLowerCase().includes(workloadFilter.toLowerCase())) return false;
+    if (flagFilter) {
+      const days = pocDuration(p);
+      if (!days || days <= 30 || p.pocOutcomeStatus === 'completed') return false;
+    }
     return true;
   });
 
@@ -248,22 +273,29 @@ export default function PocProjectsPage() {
     setEditingId(p.id);
     setEditForm({
       pocQualificationStatus: p.pocQualificationStatus || 'not_started',
-      pocEnvSetupStatus: p.pocEnvSetupStatus || 'not_started',
-      pocTrialStatus: p.pocTrialStatus || 'not_started',
-      pocValidationStatus: p.pocValidationStatus || 'not_started',
-      pocOutcomeStatus: p.pocOutcomeStatus || 'not_started',
-      pocQualificationNotes: (p as any).pocQualificationNotes || '',
-      pocEnvSetupNotes: (p as any).pocEnvSetupNotes || '',
-      pocTrialNotes: (p as any).pocTrialNotes || '',
-      pocValidationNotes: (p as any).pocValidationNotes || '',
-      pocOutcomeNotes: (p as any).pocOutcomeNotes || '',
-      pocDeadline: p.pocDeadline ? p.pocDeadline.substring(0, 10) : '',
-      pocOutcome: p.pocOutcome || '',
-      pocHandoffTo: p.pocHandoffTo || '',
-      pocHandoffDate: p.pocHandoffDate ? p.pocHandoffDate.substring(0, 10) : '',
+      pocEnvSetupStatus:      p.pocEnvSetupStatus      || 'not_started',
+      pocTrialStatus:         p.pocTrialStatus         || 'not_started',
+      pocValidationStatus:    p.pocValidationStatus    || 'not_started',
+      pocOutcomeStatus:       p.pocOutcomeStatus       || 'not_started',
+      pocQualificationNotes:  (p as any).pocQualificationNotes  || '',
+      pocEnvSetupNotes:       (p as any).pocEnvSetupNotes       || '',
+      pocTrialNotes:          (p as any).pocTrialNotes          || '',
+      pocValidationNotes:     (p as any).pocValidationNotes     || '',
+      pocOutcomeNotes:        (p as any).pocOutcomeNotes        || '',
+      pocDeadline:      p.pocDeadline      ? p.pocDeadline.substring(0, 10)      : '',
+      pocOutcome:       p.pocOutcome       || '',
+      pocHandoffTo:     p.pocHandoffTo     || '',
+      pocHandoffDate:   p.pocHandoffDate   ? p.pocHandoffDate.substring(0, 10)   : '',
+      pocHandoffNotes:  (p as any).pocHandoffNotes  || '',
       pocMigrationSpeed: p.pocMigrationSpeed != null ? String(p.pocMigrationSpeed) : '',
-      pocErrorRate: p.pocErrorRate != null ? String(p.pocErrorRate) : '',
-      customerContact: p.customerContact || '',
+      pocErrorRate:      p.pocErrorRate      != null ? String(p.pocErrorRate)      : '',
+      customerContact:   p.customerContact   || '',
+      pocSuccessCriteria:(p as any).pocSuccessCriteria || '',
+      pocDataVolume:     (p as any).pocDataVolume     || '',
+      pocPermissionsIntact:(p as any).pocPermissionsIntact ?? null,
+      pocMetadataIntact:   (p as any).pocMetadataIntact   ?? null,
+      sourcePlatform: p.sourcePlatform || '',
+      targetPlatform: p.targetPlatform || '',
     });
   }
 
@@ -274,8 +306,8 @@ export default function PocProjectsPage() {
         data: {
           ...editForm,
           pocMigrationSpeed: editForm.pocMigrationSpeed ? Number(editForm.pocMigrationSpeed) : null,
-          pocErrorRate: editForm.pocErrorRate ? Number(editForm.pocErrorRate) : null,
-          pocOutcome: editForm.pocOutcome || null,
+          pocErrorRate:      editForm.pocErrorRate      ? Number(editForm.pocErrorRate)      : null,
+          pocOutcome:        editForm.pocOutcome || null,
         },
       });
       showToast('success', 'POC updated');
@@ -298,10 +330,13 @@ export default function PocProjectsPage() {
         ...newForm,
         migrationTypes: migrationTypesStr,
         pocMigrationSpeed: newForm.pocMigrationSpeed ? Number(newForm.pocMigrationSpeed) : null,
-        pocErrorRate: newForm.pocErrorRate ? Number(newForm.pocErrorRate) : null,
-        pocOutcome: newForm.pocOutcome || null,
-        pocDeadline: newForm.pocDeadline || null,
-        pocHandoffDate: newForm.pocHandoffDate || null,
+        pocErrorRate:      newForm.pocErrorRate      ? Number(newForm.pocErrorRate)      : null,
+        pocOutcome:        newForm.pocOutcome        || null,
+        pocDeadline:       newForm.pocDeadline       || null,
+        pocHandoffDate:    newForm.pocHandoffDate    || null,
+        pocSuccessCriteria: newForm.pocSuccessCriteria || null,
+        pocDataVolume:      newForm.pocDataVolume      || null,
+        pocHandoffNotes:    newForm.pocHandoffNotes    || null,
       });
       showToast('success', 'POC project created');
       closeModal();
@@ -319,66 +354,43 @@ export default function PocProjectsPage() {
     }
   }
 
-  if (isLoading) return (
-    <div className="flex items-center justify-center h-64">
-      <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
-    </div>
-  );
+  if (isLoading) return <div className="flex items-center justify-center h-64"><Loader2 className="w-8 h-8 animate-spin text-blue-500" /></div>;
+  if (error)     return <div className="p-6 text-red-500">Failed to load POC projects</div>;
 
-  if (error) return <div className="p-6 text-red-500">Failed to load POC projects</div>;
-
-  // ── Modal JSX (rendered via portal) ───────────────────────────────────────
+  // ── Modal ─────────────────────────────────────────────────────────────────
   const modal = showNewModal && mounted ? createPortal(
-    <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
-      style={{ backgroundColor: 'rgba(0,0,0,0.55)' }}
-      onClick={closeModal}
-    >
-      <div
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col"
-        style={{ maxHeight: 'calc(100vh - 2rem)' }}
-        onClick={e => e.stopPropagation()}
-      >
-        {/* Header */}
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.55)' }} onClick={closeModal}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col" style={{ maxHeight: 'calc(100vh - 2rem)' }} onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-6 py-4 bg-blue-600 text-white rounded-t-2xl flex-shrink-0">
           <div className="flex items-center gap-3">
             <FlaskConical className="w-5 h-5" />
             <div>
               <h2 className="text-lg font-bold leading-tight">New POC Project</h2>
-              <p className="text-xs text-blue-100">Fill in the details to create a new Proof of Concept</p>
+              <p className="text-xs text-blue-100">7–14 day deadline is standard. Flag any POC exceeding 30 days.</p>
             </div>
           </div>
-          <button onClick={closeModal} className="p-1.5 hover:bg-blue-500 rounded-lg transition">
-            <X className="w-5 h-5" />
-          </button>
+          <button onClick={closeModal} className="p-1.5 hover:bg-blue-500 rounded-lg transition"><X className="w-5 h-5" /></button>
         </div>
 
-        {/* Scrollable body */}
         <div className="overflow-y-auto flex-1 px-6 py-5 space-y-6">
 
-          {/* Section: Basic Information */}
           <div>
             <SectionLabel>Basic Information</SectionLabel>
             <div className="grid grid-cols-2 gap-4">
               <Field label="Project Name" required>
-                <input type="text" placeholder="e.g. Acme Corp POC" value={newForm.name}
-                  onChange={e => setNewForm(f => ({ ...f, name: e.target.value }))} className={inputCls} />
+                <input type="text" placeholder="e.g. Acme Corp POC" value={newForm.name} onChange={e => setNewForm(f => ({ ...f, name: e.target.value }))} className={inputCls} />
               </Field>
               <Field label="Customer Name" required>
-                <input type="text" placeholder="e.g. Acme Corporation" value={newForm.customerName}
-                  onChange={e => setNewForm(f => ({ ...f, customerName: e.target.value }))} className={inputCls} />
+                <input type="text" placeholder="e.g. Acme Corporation" value={newForm.customerName} onChange={e => setNewForm(f => ({ ...f, customerName: e.target.value }))} className={inputCls} />
               </Field>
-              <Field label="Project Manager">
-                <input type="text" placeholder="Who is running this POC?" value={newForm.projectManager}
-                  onChange={e => setNewForm(f => ({ ...f, projectManager: e.target.value }))} className={inputCls} />
+              <Field label="Pre-Sales Owner">
+                <input type="text" placeholder="Who is running this POC?" value={newForm.projectManager} onChange={e => setNewForm(f => ({ ...f, projectManager: e.target.value }))} className={inputCls} />
               </Field>
               <Field label="Account Manager">
-                <input type="text" placeholder="Account Manager name" value={newForm.accountManager}
-                  onChange={e => setNewForm(f => ({ ...f, accountManager: e.target.value }))} className={inputCls} />
+                <input type="text" placeholder="Account Manager name" value={newForm.accountManager} onChange={e => setNewForm(f => ({ ...f, accountManager: e.target.value }))} className={inputCls} />
               </Field>
               <Field label="Customer Contact">
-                <input type="text" placeholder="Customer point of contact" value={newForm.customerContact}
-                  onChange={e => setNewForm(f => ({ ...f, customerContact: e.target.value }))} className={inputCls} />
+                <input type="text" placeholder="Customer point of contact" value={newForm.customerContact} onChange={e => setNewForm(f => ({ ...f, customerContact: e.target.value }))} className={inputCls} />
               </Field>
               <Field label="Plan Type">
                 <select value={newForm.planType} onChange={e => setNewForm(f => ({ ...f, planType: e.target.value }))} className={inputCls}>
@@ -389,74 +401,62 @@ export default function PocProjectsPage() {
                 </select>
               </Field>
             </div>
-            {/* Migration Types — full width */}
             <div className="mt-4">
               <Field label="Workload / Migration Types">
-                <MigrationTypePicker
-                  selected={selectedMigrationTypes}
-                  onChange={setSelectedMigrationTypes}
-                  allTypes={allMigrationTypes as any}
-                />
+                <MigrationTypePicker selected={selectedMigrationTypes} onChange={setSelectedMigrationTypes} allTypes={allMigrationTypes as any} />
               </Field>
             </div>
             <div className="mt-4">
               <Field label="Description">
-                <textarea placeholder="Brief description of this POC..." value={newForm.description}
-                  onChange={e => setNewForm(f => ({ ...f, description: e.target.value }))}
-                  rows={3} className={`${inputCls} resize-none`} />
+                <textarea placeholder="Brief description of this POC..." value={newForm.description} onChange={e => setNewForm(f => ({ ...f, description: e.target.value }))} rows={2} className={`${inputCls} resize-none`} />
               </Field>
             </div>
           </div>
 
-          {/* Section: Dates & Timeline */}
           <div>
             <SectionLabel>Dates &amp; Timeline</SectionLabel>
             <div className="grid grid-cols-3 gap-4">
               <Field label="Planned Start" required>
-                <input type="date" value={newForm.plannedStart}
-                  onChange={e => setNewForm(f => ({ ...f, plannedStart: e.target.value }))} className={inputCls} />
+                <input type="date" value={newForm.plannedStart} onChange={e => setNewForm(f => ({ ...f, plannedStart: e.target.value }))} className={inputCls} />
               </Field>
               <Field label="Planned End" required>
-                <input type="date" value={newForm.plannedEnd}
-                  onChange={e => setNewForm(f => ({ ...f, plannedEnd: e.target.value }))} className={inputCls} />
+                <input type="date" value={newForm.plannedEnd} onChange={e => setNewForm(f => ({ ...f, plannedEnd: e.target.value }))} className={inputCls} />
               </Field>
-              <Field label="POC Deadline">
-                <input type="date" value={newForm.pocDeadline}
-                  onChange={e => setNewForm(f => ({ ...f, pocDeadline: e.target.value }))} className={inputCls} />
+              <Field label="POC Deadline" hint="7–14 days recommended">
+                <input type="date" value={newForm.pocDeadline} onChange={e => setNewForm(f => ({ ...f, pocDeadline: e.target.value }))} className={inputCls} />
               </Field>
             </div>
           </div>
 
-          {/* Section: POC Metrics */}
           <div>
-            <SectionLabel>POC Metrics <span className="text-gray-400 normal-case font-normal">(optional)</span></SectionLabel>
+            <SectionLabel>Phase 1 — Qualification &amp; Scoping</SectionLabel>
             <div className="grid grid-cols-2 gap-4">
-              <Field label="Migration Speed (GB/h)">
-                <input type="number" placeholder="e.g. 50" min="0" value={newForm.pocMigrationSpeed}
-                  onChange={e => setNewForm(f => ({ ...f, pocMigrationSpeed: e.target.value }))} className={inputCls} />
+              <Field label="Source Platform">
+                <input type="text" placeholder="e.g. Google Workspace" value={newForm.sourcePlatform} onChange={e => setNewForm(f => ({ ...f, sourcePlatform: e.target.value }))} className={inputCls} />
               </Field>
-              <Field label="Error Rate (%)">
-                <input type="number" placeholder="e.g. 2.5" min="0" max="100" step="0.1" value={newForm.pocErrorRate}
-                  onChange={e => setNewForm(f => ({ ...f, pocErrorRate: e.target.value }))} className={inputCls} />
+              <Field label="Target Platform">
+                <input type="text" placeholder="e.g. Microsoft 365" value={newForm.targetPlatform} onChange={e => setNewForm(f => ({ ...f, targetPlatform: e.target.value }))} className={inputCls} />
+              </Field>
+              <Field label="Data Volume" hint="e.g. ~50 GB, 200 mailboxes">
+                <input type="text" placeholder="Approx. data size and scope" value={newForm.pocDataVolume} onChange={e => setNewForm(f => ({ ...f, pocDataVolume: e.target.value }))} className={inputCls} />
+              </Field>
+            </div>
+            <div className="mt-4">
+              <Field label="Success Criteria" hint="One criterion per line. Phase 4 validates against these.">
+                <textarea placeholder={"Email delivery rate > 99.5%\nZero data loss\nMigration completes in < 8 hours"} value={newForm.pocSuccessCriteria} onChange={e => setNewForm(f => ({ ...f, pocSuccessCriteria: e.target.value }))} rows={4} className={`${inputCls} resize-none font-mono text-xs`} />
               </Field>
             </div>
           </div>
 
         </div>
 
-        {/* Footer */}
         <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100 bg-gray-50 rounded-b-2xl flex-shrink-0">
           <p className="text-xs text-gray-400">Fields marked <span className="text-red-500">*</span> are required</p>
           <div className="flex gap-3">
-            <button onClick={closeModal}
-              className="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-100 transition">
-              Cancel
-            </button>
+            <button onClick={closeModal} className="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-100 transition">Cancel</button>
             <button onClick={handleCreate} disabled={createPoc.isPending}
               className="flex items-center gap-2 px-5 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition">
-              {createPoc.isPending
-                ? <><Loader2 className="w-4 h-4 animate-spin" /> Creating...</>
-                : <><Plus className="w-4 h-4" /> Create POC Project</>}
+              {createPoc.isPending ? <><Loader2 className="w-4 h-4 animate-spin" /> Creating...</> : <><Plus className="w-4 h-4" /> Create POC</>}
             </button>
           </div>
         </div>
@@ -465,7 +465,7 @@ export default function PocProjectsPage() {
     document.body
   ) : null;
 
-  // ── Page ───────────────────────────────────────────────────────────────────
+  // ── Page ──────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -478,15 +478,14 @@ export default function PocProjectsPage() {
           </div>
         </div>
         {canEdit && (
-          <button onClick={openModal}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium">
+          <button onClick={openModal} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium">
             <Plus className="w-4 h-4" /> New POC
           </button>
         )}
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-3">
+      <div className="flex flex-wrap gap-3 items-center">
         <select value={outcomeFilter} onChange={e => setOutcomeFilter(e.target.value)}
           className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white">
           <option value="">All Outcomes</option>
@@ -494,12 +493,16 @@ export default function PocProjectsPage() {
           <option value="lost">Lost</option>
           <option value="no_decision">No Decision</option>
         </select>
-        <input type="text" placeholder="Filter by workload type..." value={workloadFilter}
+        <input type="text" placeholder="Filter by workload..." value={workloadFilter}
           onChange={e => setWorkloadFilter(e.target.value)}
-          className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white w-52" />
-        {(outcomeFilter || workloadFilter) && (
-          <button onClick={() => { setOutcomeFilter(''); setWorkloadFilter(''); }}
-            className="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1">
+          className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white w-48" />
+        <button onClick={() => setFlagFilter(f => !f)}
+          className={`flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border transition ${flagFilter ? 'bg-red-50 border-red-300 text-red-700' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+          <Flag className="w-3.5 h-3.5" /> {flagFilter ? 'Showing flagged only' : 'Flag >30 days'}
+        </button>
+        {(outcomeFilter || workloadFilter || flagFilter) && (
+          <button onClick={() => { setOutcomeFilter(''); setWorkloadFilter(''); setFlagFilter(false); }}
+            className="text-sm text-gray-400 hover:text-gray-600 flex items-center gap-1">
             <X className="w-3 h-3" /> Clear
           </button>
         )}
@@ -516,176 +519,109 @@ export default function PocProjectsPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
           {filtered.map(p => {
             const isExpanded = expandedId === p.id;
-            const isEditing = editingId === p.id;
-            const outcome = p.pocOutcome ? OUTCOME_LABELS[p.pocOutcome] : null;
-            const workloads = (p.migrationTypes || '').split(',').map(w => w.trim()).filter(Boolean);
+            const isEditing  = editingId  === p.id;
+            const outcome    = p.pocOutcome ? OUTCOME_CFG[p.pocOutcome] : null;
+            const workloads  = (p.migrationTypes || '').split(',').map(w => w.trim()).filter(Boolean);
+            const days       = pocDuration(p);
+            const isFlagged  = days !== null && days > 30 && p.pocOutcomeStatus !== 'completed';
 
             return (
-              <Card key={p.id} className="overflow-hidden">
+              <Card key={p.id} className={`overflow-hidden ${isFlagged ? 'ring-1 ring-red-200' : ''}`}>
+                {/* Card header — click to expand */}
                 <div className="p-4 cursor-pointer hover:bg-gray-50 transition" onClick={() => toggleExpand(p.id)}>
-                  <div className="flex items-start justify-between mb-2">
+                  {/* Row 1: customer name + outcome */}
+                  <div className="flex items-start justify-between mb-1.5">
                     <div className="flex-1 min-w-0">
-                      <h3 className="font-semibold text-gray-900 truncate capitalize">{p.customerName}</h3>
-                      <p className="text-xs text-gray-400 truncate capitalize">{p.name}</p>
+                      <h3 className="font-semibold text-gray-900 capitalize leading-snug">{p.customerName}</h3>
+                      <p className="text-xs text-gray-400 capitalize truncate">{p.name}</p>
                     </div>
-                    <div className="flex items-center gap-2 ml-2 flex-shrink-0">
+                    <div className="flex items-center gap-1.5 ml-2 flex-shrink-0">
+                      {isFlagged && (
+                        <span className="inline-flex items-center gap-1 text-xs text-red-600 bg-red-50 border border-red-200 px-1.5 py-0.5 rounded-full font-medium">
+                          <AlertTriangle className="w-3 h-3" />{days}d
+                        </span>
+                      )}
                       {outcome
-                        ? <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${outcome.color}`}>{outcome.label}</span>
-                        : <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 font-medium">In Progress</span>}
+                        ? <span className={`text-xs px-2 py-0.5 rounded-full font-medium border ${outcome.cls}`}>{outcome.label}</span>
+                        : <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-200 font-medium">In Progress</span>}
                       {isExpanded ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
                     </div>
                   </div>
 
+                  {/* Workload badges */}
                   {workloads.length > 0 && (
                     <div className="flex flex-wrap gap-1 mb-2">
                       {workloads.map(w => <span key={w} className="text-xs px-2 py-0.5 bg-purple-50 text-purple-700 rounded-full">{w}</span>)}
                     </div>
                   )}
 
-                  <div className="flex items-center gap-4 text-xs text-gray-500 mb-3">
-                    <span className="flex items-center gap-1"><User className="w-3 h-3" /> {p.projectManager || '—'}</span>
-                    {p.accountManager && <span className="flex items-center gap-1"><User className="w-3 h-3" /> {p.accountManager}</span>}
+                  {/* Owners */}
+                  <div className="flex items-center gap-3 text-xs text-gray-500 mb-2">
+                    <span className="flex items-center gap-1" title="Pre-Sales Owner">
+                      <FlaskConical className="w-3 h-3 text-blue-400" />{p.projectManager || '—'}
+                    </span>
+                    {p.accountManager && (
+                      <span className="flex items-center gap-1" title="Account Manager">
+                        <User className="w-3 h-3 text-gray-400" />{p.accountManager}
+                      </span>
+                    )}
                   </div>
 
-                  {p.pocDeadline && (
-                    <div className={`flex items-center gap-1 text-xs mb-3 ${deadlineColor(p.pocDeadline)}`}>
-                      <CalendarDays className="w-3 h-3" />
-                      {formatDeadline(p.pocDeadline)}
-                    </div>
-                  )}
+                  {/* Duration + deadline */}
+                  <div className="flex items-center gap-3 mb-3 text-xs">
+                    {days !== null && (
+                      <span className={`flex items-center gap-1 ${durationCls(days)}`}>
+                        <CalendarDays className="w-3 h-3" />{days}-day POC
+                      </span>
+                    )}
+                    {p.pocDeadline && (
+                      <span className={`flex items-center gap-1 ${deadlineCls(p.pocDeadline)}`}>
+                        <Clock className="w-3 h-3" />{formatDeadline(p.pocDeadline)}
+                      </span>
+                    )}
+                  </div>
 
-                  <div className="flex items-center gap-1">
+                  {/* Phase strip */}
+                  <div className="flex items-center gap-0.5">
                     {POC_PHASES.map((phase, i) => {
                       const status: PocPhaseStatus = (p as any)[phase.statusKey] || 'not_started';
                       return (
-                        <div key={phase.label} className="flex items-center gap-1">
-                          <div className={`flex flex-col items-center ${PHASE_COLORS[status]}`} title={`${phase.label}: ${status}`}>
-                            {PHASE_ICONS[status]}
-                            <span className="text-[10px] mt-0.5 whitespace-nowrap">{phase.label}</span>
+                        <div key={phase.shortLabel} className="flex items-center gap-0.5 flex-1">
+                          <div className="flex flex-col items-center flex-1" title={`${phase.label}: ${STATUS_LABEL[status]}`}>
+                            <div className={`w-5 h-5 rounded-full flex items-center justify-center ${PHASE_DOT_CLS[status]}`}>
+                              <span className="text-white w-3 h-3 flex items-center justify-center">{STATUS_ICONS[status]}</span>
+                            </div>
+                            <span className="text-[9px] mt-0.5 text-gray-500 text-center leading-tight whitespace-nowrap">{phase.shortLabel}</span>
                           </div>
-                          {i < POC_PHASES.length - 1 && <Minus className="w-3 h-3 text-gray-300 flex-shrink-0" />}
+                          {i < POC_PHASES.length - 1 && <Minus className="w-2 h-2 text-gray-300 flex-shrink-0 mb-3" />}
                         </div>
                       );
                     })}
                   </div>
                 </div>
 
+                {/* Expanded panel */}
                 {isExpanded && (
-                  <div className="border-t border-gray-100 p-4 space-y-4 bg-gray-50">
+                  <div className="border-t border-gray-100 p-4 space-y-1 bg-gray-50">
                     {canEdit && !isEditing && (
-                      <button onClick={() => startEdit(p)} className="text-sm text-blue-600 hover:underline font-medium">
-                        Edit POC Details
-                      </button>
+                      <div className="flex justify-end mb-3">
+                        <button onClick={() => startEdit(p)} className="text-sm text-blue-600 hover:underline font-medium">
+                          Edit POC Details
+                        </button>
+                      </div>
                     )}
 
                     {isEditing ? (
-                      <div className="space-y-3">
-                        {POC_PHASES.map(phase => (
-                          <div key={phase.statusKey} className="space-y-1">
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs font-medium text-gray-700 w-24">{phase.label}</span>
-                              <select
-                                value={editForm[phase.statusKey] || 'not_started'}
-                                onChange={e => setEditForm(f => ({ ...f, [phase.statusKey]: e.target.value }))}
-                                className="text-xs border border-gray-200 rounded px-2 py-1 bg-white"
-                              >
-                                <option value="not_started">Not Started</option>
-                                <option value="in_progress">In Progress</option>
-                                <option value="blocked">Blocked</option>
-                                <option value="completed">Completed</option>
-                              </select>
-                            </div>
-                            <textarea value={editForm[phase.noteKey] || ''} onChange={e => setEditForm(f => ({ ...f, [phase.noteKey]: e.target.value }))}
-                              placeholder={`${phase.label} notes...`} rows={2}
-                              className="w-full text-xs border border-gray-200 rounded px-2 py-1 bg-white resize-none" />
-                          </div>
-                        ))}
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <label className="text-xs text-gray-600">Outcome</label>
-                            <select value={editForm.pocOutcome || ''} onChange={e => setEditForm(f => ({ ...f, pocOutcome: e.target.value }))}
-                              className="w-full text-xs border border-gray-200 rounded px-2 py-1 bg-white mt-1">
-                              <option value="">In Progress</option>
-                              <option value="won">Won</option>
-                              <option value="lost">Lost</option>
-                              <option value="no_decision">No Decision</option>
-                            </select>
-                          </div>
-                          <div>
-                            <label className="text-xs text-gray-600">Deadline</label>
-                            <input type="date" value={editForm.pocDeadline || ''} onChange={e => setEditForm(f => ({ ...f, pocDeadline: e.target.value }))}
-                              className="w-full text-xs border border-gray-200 rounded px-2 py-1 bg-white mt-1" />
-                          </div>
-                          <div>
-                            <label className="text-xs text-gray-600">Speed (GB/h)</label>
-                            <input type="number" value={editForm.pocMigrationSpeed || ''} onChange={e => setEditForm(f => ({ ...f, pocMigrationSpeed: e.target.value }))}
-                              className="w-full text-xs border border-gray-200 rounded px-2 py-1 bg-white mt-1" />
-                          </div>
-                          <div>
-                            <label className="text-xs text-gray-600">Error Rate (%)</label>
-                            <input type="number" value={editForm.pocErrorRate || ''} onChange={e => setEditForm(f => ({ ...f, pocErrorRate: e.target.value }))}
-                              className="w-full text-xs border border-gray-200 rounded px-2 py-1 bg-white mt-1" />
-                          </div>
-                          <div>
-                            <label className="text-xs text-gray-600">Handoff To</label>
-                            <input type="text" value={editForm.pocHandoffTo || ''} onChange={e => setEditForm(f => ({ ...f, pocHandoffTo: e.target.value }))}
-                              className="w-full text-xs border border-gray-200 rounded px-2 py-1 bg-white mt-1" />
-                          </div>
-                          <div>
-                            <label className="text-xs text-gray-600">Handoff Date</label>
-                            <input type="date" value={editForm.pocHandoffDate || ''} onChange={e => setEditForm(f => ({ ...f, pocHandoffDate: e.target.value }))}
-                              className="w-full text-xs border border-gray-200 rounded px-2 py-1 bg-white mt-1" />
-                          </div>
-                        </div>
-                        <div className="flex gap-2 pt-1">
-                          <button onClick={() => saveEdit(p.id)} disabled={updatePoc.isPending}
-                            className="flex items-center gap-1 text-sm px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">
-                            {updatePoc.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />} Save
-                          </button>
-                          <button onClick={() => setEditingId(null)} className="text-sm px-3 py-1.5 border border-gray-200 rounded hover:bg-gray-100">
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
+                      <EditPocForm
+                        form={editForm}
+                        setForm={setEditForm}
+                        onSave={() => saveEdit(p.id)}
+                        onCancel={() => setEditingId(null)}
+                        isSaving={updatePoc.isPending}
+                        successCriteriaRef={(p as any).pocSuccessCriteria || ''}
+                      />
                     ) : (
-                      <div className="space-y-3">
-                        {POC_PHASES.map(phase => {
-                          const status: PocPhaseStatus = (p as any)[phase.statusKey] || 'not_started';
-                          const note: string = (p as any)[phase.noteKey] || '';
-                          return (
-                            <div key={phase.statusKey} className="space-y-1">
-                              <div className="flex items-center gap-2">
-                                <span className={`flex items-center gap-1 text-xs font-medium ${PHASE_COLORS[status]}`}>
-                                  {PHASE_ICONS[status]} {phase.label}
-                                </span>
-                                {canEdit && (
-                                  <select value={status} onChange={e => quickUpdatePhase(p.id, phase.statusKey, e.target.value as PocPhaseStatus)}
-                                    className="text-xs border border-gray-200 rounded px-1 py-0.5 bg-white ml-auto">
-                                    <option value="not_started">Not Started</option>
-                                    <option value="in_progress">In Progress</option>
-                                    <option value="blocked">Blocked</option>
-                                    <option value="completed">Completed</option>
-                                  </select>
-                                )}
-                              </div>
-                              {note && <p className="text-xs text-gray-500 pl-5">{note}</p>}
-                            </div>
-                          );
-                        })}
-                        {(p.pocMigrationSpeed != null || p.pocErrorRate != null) && (
-                          <div className="flex gap-4 text-xs text-gray-600 pt-1 border-t border-gray-100">
-                            {p.pocMigrationSpeed != null && <span>Speed: <strong>{p.pocMigrationSpeed} GB/h</strong></span>}
-                            {p.pocErrorRate != null && <span>Error Rate: <strong>{p.pocErrorRate}%</strong></span>}
-                          </div>
-                        )}
-                        {(p.pocHandoffTo || p.pocHandoffDate) && (
-                          <div className="flex items-center gap-2 text-xs text-gray-500 pt-1 border-t border-gray-100">
-                            <ArrowRight className="w-3 h-3 text-green-500" />
-                            Handoff to <strong>{p.pocHandoffTo || '—'}</strong>
-                            {p.pocHandoffDate && <> on {new Date(p.pocHandoffDate).toLocaleDateString()}</>}
-                          </div>
-                        )}
-                      </div>
+                      <ViewPocPhases project={p} onQuickUpdate={canEdit ? quickUpdatePhase : undefined} />
                     )}
                   </div>
                 )}
@@ -696,6 +632,347 @@ export default function PocProjectsPage() {
       )}
 
       {modal}
+    </div>
+  );
+}
+
+// ── View phases (read-only with optional quick-update dropdowns) ──────────────
+function ViewPocPhases({
+  project: p,
+  onQuickUpdate,
+}: {
+  project: Project;
+  onQuickUpdate?: (id: string, key: PhaseKey, value: PocPhaseStatus) => void;
+}) {
+  const successCriteria: string[] = ((p as any).pocSuccessCriteria || '')
+    .split('\n').map((s: string) => s.trim()).filter(Boolean);
+
+  return (
+    <div className="space-y-3">
+      {POC_PHASES.map(phase => {
+        const status: PocPhaseStatus = (p as any)[phase.statusKey] || 'not_started';
+        const note: string = (p as any)[phase.noteKey] || '';
+
+        return (
+          <div key={phase.num} className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+            {/* Phase header */}
+            <div className="flex items-center justify-between px-3 py-2.5 border-b border-gray-50">
+              <div className="flex items-center gap-2">
+                <span className="w-5 h-5 flex items-center justify-center text-xs font-bold text-gray-400 bg-gray-100 rounded-full">{phase.num}</span>
+                <span className="text-sm font-semibold text-gray-800">{phase.label}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <StatusBadge status={status} />
+                {onQuickUpdate && (
+                  <select value={status}
+                    onChange={e => onQuickUpdate(p.id, phase.statusKey, e.target.value as PocPhaseStatus)}
+                    onClick={e => e.stopPropagation()}
+                    className="text-xs border border-gray-200 rounded px-1.5 py-0.5 bg-white focus:outline-none focus:ring-1 focus:ring-blue-400">
+                    <option value="not_started">Not Started</option>
+                    <option value="in_progress">In Progress</option>
+                    <option value="blocked">Blocked</option>
+                    <option value="completed">Completed</option>
+                  </select>
+                )}
+              </div>
+            </div>
+
+            {/* Phase body */}
+            <div className="px-3 py-2.5 space-y-2">
+              {/* Phase 1: platforms + data volume + success criteria */}
+              {phase.num === 1 && (
+                <>
+                  {(p.sourcePlatform || p.targetPlatform) && (
+                    <div className="flex items-center gap-2 text-xs text-gray-600">
+                      <span className="font-medium text-gray-500">Source:</span>{p.sourcePlatform || '—'}
+                      <ArrowRight className="w-3 h-3 text-gray-400" />
+                      <span className="font-medium text-gray-500">Target:</span>{p.targetPlatform || '—'}
+                    </div>
+                  )}
+                  {(p as any).pocDataVolume && (
+                    <div className="flex items-center gap-1.5 text-xs text-gray-600">
+                      <Database className="w-3 h-3 text-gray-400" />
+                      <span className="font-medium text-gray-500">Volume:</span>{(p as any).pocDataVolume}
+                    </div>
+                  )}
+                  {successCriteria.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold text-gray-500 mb-1">Success Criteria:</p>
+                      <ul className="space-y-0.5">
+                        {successCriteria.map((c, i) => (
+                          <li key={i} className="flex items-start gap-1.5 text-xs text-gray-700">
+                            <span className="text-blue-400 mt-0.5">•</span>{c}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Phase 2: blocked highlight */}
+              {phase.num === 2 && status === 'blocked' && note && (
+                <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg px-2.5 py-2">
+                  <AlertTriangle className="w-3.5 h-3.5 text-red-500 flex-shrink-0 mt-0.5" />
+                  <p className="text-xs text-red-700">{note}</p>
+                </div>
+              )}
+
+              {/* Phase 3: metrics */}
+              {phase.num === 3 && (
+                <div className="flex flex-wrap gap-2">
+                  {p.pocMigrationSpeed != null && (
+                    <div className="flex items-center gap-1.5 bg-blue-50 border border-blue-100 rounded-lg px-2.5 py-1.5">
+                      <Gauge className="w-3.5 h-3.5 text-blue-500" />
+                      <div>
+                        <p className="text-xs font-bold text-blue-700">{p.pocMigrationSpeed} GB/h</p>
+                        <p className="text-[10px] text-blue-400">Speed</p>
+                      </div>
+                    </div>
+                  )}
+                  {p.pocErrorRate != null && (
+                    <div className="flex items-center gap-1.5 bg-orange-50 border border-orange-100 rounded-lg px-2.5 py-1.5">
+                      <AlertTriangle className="w-3.5 h-3.5 text-orange-500" />
+                      <div>
+                        <p className="text-xs font-bold text-orange-700">{p.pocErrorRate}%</p>
+                        <p className="text-[10px] text-orange-400">Error Rate</p>
+                      </div>
+                    </div>
+                  )}
+                  <IntactBadge value={(p as any).pocPermissionsIntact} label="Permissions" />
+                  <IntactBadge value={(p as any).pocMetadataIntact}    label="Metadata" />
+                </div>
+              )}
+
+              {/* Phase 4: validation with criteria reference */}
+              {phase.num === 4 && successCriteria.length > 0 && !note && (
+                <p className="text-xs text-gray-400 italic">
+                  Validate against {successCriteria.length} success criteria from Phase 1.
+                </p>
+              )}
+
+              {/* Phase 5: handoff */}
+              {phase.num === 5 && (p.pocHandoffTo || p.pocHandoffDate || (p as any).pocHandoffNotes) && (
+                <div className="space-y-1.5">
+                  {(p.pocHandoffTo || p.pocHandoffDate) && (
+                    <div className="flex items-center gap-2 text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-2.5 py-2">
+                      <ArrowRight className="w-3.5 h-3.5 text-green-500 flex-shrink-0" />
+                      <span>Handoff to <strong>{p.pocHandoffTo || '—'}</strong></span>
+                      {p.pocHandoffDate && <span className="text-green-500">on {new Date(p.pocHandoffDate).toLocaleDateString()}</span>}
+                    </div>
+                  )}
+                  {(p as any).pocHandoffNotes && (
+                    <p className="text-xs text-gray-600 pl-1">{(p as any).pocHandoffNotes}</p>
+                  )}
+                </div>
+              )}
+
+              {/* Notes (Phase 2 blocked note already shown above) */}
+              {note && !(phase.num === 2 && status === 'blocked') && (
+                <p className="text-xs text-gray-500 leading-relaxed">{note}</p>
+              )}
+
+              {/* Empty state */}
+              {!note && phase.num !== 3 && phase.num !== 5 && (
+                !(phase.num === 1 && (p.sourcePlatform || p.targetPlatform || successCriteria.length > 0)) &&
+                !(phase.num === 4 && successCriteria.length > 0) &&
+                <p className="text-xs text-gray-300 italic">{phase.description}</p>
+              )}
+            </div>
+          </div>
+        );
+      })}
+
+      {/* Customer contact */}
+      {p.customerContact && (
+        <div className="flex items-center gap-2 text-xs text-gray-500 pt-1">
+          <User className="w-3 h-3" />Customer Contact: <strong>{p.customerContact}</strong>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Edit form (all phases) ────────────────────────────────────────────────────
+function EditPocForm({
+  form, setForm, onSave, onCancel, isSaving, successCriteriaRef,
+}: {
+  form: Record<string, any>;
+  setForm: (fn: (prev: Record<string, any>) => Record<string, any>) => void;
+  onSave: () => void;
+  onCancel: () => void;
+  isSaving: boolean;
+  successCriteriaRef: string;
+}) {
+  function set(k: string, v: any) { setForm(f => ({ ...f, [k]: v })); }
+
+  return (
+    <div className="space-y-4">
+      {/* Phase 1 */}
+      <PhaseEditSection num={1} label="Qualification & Scoping" statusKey="pocQualificationStatus" form={form} set={set}>
+        <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-1">
+            <label className="text-xs text-gray-600">Source Platform</label>
+            <input type="text" value={form.sourcePlatform || ''} onChange={e => set('sourcePlatform', e.target.value)} placeholder="e.g. Google Workspace" className={smallInput} />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs text-gray-600">Target Platform</label>
+            <input type="text" value={form.targetPlatform || ''} onChange={e => set('targetPlatform', e.target.value)} placeholder="e.g. Microsoft 365" className={smallInput} />
+          </div>
+          <div className="space-y-1 col-span-2">
+            <label className="text-xs text-gray-600">Data Volume</label>
+            <input type="text" value={form.pocDataVolume || ''} onChange={e => set('pocDataVolume', e.target.value)} placeholder="e.g. ~50 GB, 200 mailboxes" className={smallInput} />
+          </div>
+        </div>
+        <div className="space-y-1 mt-2">
+          <label className="text-xs text-gray-600 font-medium">Success Criteria <span className="font-normal text-gray-400">(one per line — Phase 4 validates against these)</span></label>
+          <textarea value={form.pocSuccessCriteria || ''} onChange={e => set('pocSuccessCriteria', e.target.value)}
+            placeholder={"Email delivery rate > 99.5%\nZero data loss\nMigration completes in < 8 hours"}
+            rows={4} className={`${smallInput} resize-none font-mono`} />
+        </div>
+        <div className="space-y-1 mt-2">
+          <label className="text-xs text-gray-600">Qualification Notes</label>
+          <textarea value={form.pocQualificationNotes || ''} onChange={e => set('pocQualificationNotes', e.target.value)}
+            placeholder="Scope notes, stakeholders, agreed parameters..." rows={2} className={`${smallInput} resize-none`} />
+        </div>
+      </PhaseEditSection>
+
+      {/* Phase 2 */}
+      <PhaseEditSection num={2} label="Environment Setup" statusKey="pocEnvSetupStatus" form={form} set={set}>
+        {form.pocEnvSetupStatus === 'blocked' && (
+          <div className="flex items-center gap-1.5 text-xs text-red-600 bg-red-50 border border-red-200 rounded px-2 py-1.5 mb-2">
+            <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+            <span>This phase is blocked. Document the blocker in the notes below.</span>
+          </div>
+        )}
+        <div className="space-y-1">
+          <label className="text-xs text-gray-600">Notes</label>
+          <textarea value={form.pocEnvSetupNotes || ''} onChange={e => set('pocEnvSetupNotes', e.target.value)}
+            placeholder="Admin access steps, connector config, firewall rules, blocker details..." rows={3} className={`${smallInput} resize-none`} />
+        </div>
+      </PhaseEditSection>
+
+      {/* Phase 3 */}
+      <PhaseEditSection num={3} label="Trial Migration Run" statusKey="pocTrialStatus" form={form} set={set}>
+        <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-1">
+            <label className="text-xs text-gray-600">Migration Speed (GB/h)</label>
+            <input type="number" value={form.pocMigrationSpeed || ''} onChange={e => set('pocMigrationSpeed', e.target.value)} placeholder="e.g. 47" min="0" className={smallInput} />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs text-gray-600">Error Rate (%)</label>
+            <input type="number" value={form.pocErrorRate || ''} onChange={e => set('pocErrorRate', e.target.value)} placeholder="e.g. 0.8" min="0" max="100" step="0.1" className={smallInput} />
+          </div>
+          <IntactSelect value={form.pocPermissionsIntact} onChange={v => set('pocPermissionsIntact', v)} label="Permissions Intact?" />
+          <IntactSelect value={form.pocMetadataIntact}   onChange={v => set('pocMetadataIntact', v)}   label="Metadata Intact?" />
+        </div>
+        <div className="space-y-1 mt-2">
+          <label className="text-xs text-gray-600">Trial Notes</label>
+          <textarea value={form.pocTrialNotes || ''} onChange={e => set('pocTrialNotes', e.target.value)}
+            placeholder="Run observations, issues encountered, proof points..." rows={2} className={`${smallInput} resize-none`} />
+        </div>
+      </PhaseEditSection>
+
+      {/* Phase 4 */}
+      <PhaseEditSection num={4} label="Customer Validation" statusKey="pocValidationStatus" form={form} set={set}>
+        {successCriteriaRef && (
+          <div className="bg-blue-50 border border-blue-100 rounded px-2.5 py-2 mb-2">
+            <p className="text-xs font-medium text-blue-700 mb-1">Phase 1 Success Criteria (for reference):</p>
+            {successCriteriaRef.split('\n').filter(Boolean).map((c, i) => (
+              <p key={i} className="text-xs text-blue-600">• {c}</p>
+            ))}
+          </div>
+        )}
+        <div className="space-y-1">
+          <label className="text-xs text-gray-600">Validation Notes <span className="text-gray-400">(document pass/fail for each criterion)</span></label>
+          <textarea value={form.pocValidationNotes || ''} onChange={e => set('pocValidationNotes', e.target.value)}
+            placeholder={"✓ Email delivery rate: Pass (99.8%)\n✓ Zero data loss: Pass\n✗ Migration speed: Fail (42 GB/h vs target 50)"}
+            rows={4} className={`${smallInput} resize-none font-mono`} />
+        </div>
+      </PhaseEditSection>
+
+      {/* Phase 5 */}
+      <PhaseEditSection num={5} label="Outcome & Handoff" statusKey="pocOutcomeStatus" form={form} set={set}>
+        <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-1">
+            <label className="text-xs text-gray-600">Outcome</label>
+            <select value={form.pocOutcome || ''} onChange={e => set('pocOutcome', e.target.value)} className={smallInput}>
+              <option value="">In Progress</option>
+              <option value="won">Won</option>
+              <option value="lost">Lost</option>
+              <option value="no_decision">No Decision</option>
+            </select>
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs text-gray-600">POC Deadline</label>
+            <input type="date" value={form.pocDeadline || ''} onChange={e => set('pocDeadline', e.target.value)} className={smallInput} />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs text-gray-600">Handoff To (Migration Mgr)</label>
+            <input type="text" value={form.pocHandoffTo || ''} onChange={e => set('pocHandoffTo', e.target.value)} placeholder="Migration manager name" className={smallInput} />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs text-gray-600">Handoff Date</label>
+            <input type="date" value={form.pocHandoffDate || ''} onChange={e => set('pocHandoffDate', e.target.value)} className={smallInput} />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs text-gray-600">Customer Contact</label>
+            <input type="text" value={form.customerContact || ''} onChange={e => set('customerContact', e.target.value)} className={smallInput} />
+          </div>
+        </div>
+        <div className="space-y-1 mt-2">
+          <label className="text-xs text-gray-600">Handoff Brief <span className="text-gray-400">(full context for migration manager)</span></label>
+          <textarea value={form.pocHandoffNotes || ''} onChange={e => set('pocHandoffNotes', e.target.value)}
+            placeholder="Key findings, agreed scope, customer stakeholders, gotchas to know before starting migration..."
+            rows={4} className={`${smallInput} resize-none`} />
+        </div>
+        <div className="space-y-1 mt-2">
+          <label className="text-xs text-gray-600">Outcome Notes</label>
+          <textarea value={form.pocOutcomeNotes || ''} onChange={e => set('pocOutcomeNotes', e.target.value)}
+            placeholder="Why won/lost, next steps..." rows={2} className={`${smallInput} resize-none`} />
+        </div>
+      </PhaseEditSection>
+
+      {/* Save / Cancel */}
+      <div className="flex gap-2 pt-1">
+        <button onClick={onSave} disabled={isSaving}
+          className="flex items-center gap-1.5 text-sm px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
+          {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />} Save Changes
+        </button>
+        <button onClick={onCancel} className="text-sm px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-100">
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Per-phase edit section wrapper ───────────────────────────────────────────
+function PhaseEditSection({
+  num, label, statusKey, form, set, children,
+}: {
+  num: number; label: string; statusKey: PhaseKey;
+  form: Record<string, any>;
+  set: (k: string, v: any) => void;
+  children: ReactNode;
+}) {
+  const status: PocPhaseStatus = form[statusKey] || 'not_started';
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+      <div className="flex items-center justify-between px-3 py-2 bg-gray-50 border-b border-gray-100">
+        <div className="flex items-center gap-2">
+          <span className="w-5 h-5 flex items-center justify-center text-xs font-bold text-gray-400 bg-white border border-gray-200 rounded-full">{num}</span>
+          <span className="text-xs font-semibold text-gray-700">{label}</span>
+        </div>
+        <select value={status} onChange={e => set(statusKey, e.target.value)}
+          className="text-xs border border-gray-200 rounded px-2 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-blue-400">
+          <option value="not_started">Not Started</option>
+          <option value="in_progress">In Progress</option>
+          <option value="blocked">Blocked</option>
+          <option value="completed">Completed</option>
+        </select>
+      </div>
+      <div className="px-3 py-3 space-y-2">{children}</div>
     </div>
   );
 }

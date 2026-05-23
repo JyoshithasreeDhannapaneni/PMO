@@ -78,6 +78,11 @@ export interface Project {
   pocMigrationSpeed?: number | null;
   pocErrorRate?: number | null;
   customerContact?: string | null;
+  pocSuccessCriteria?: string | null;
+  pocDataVolume?: string | null;
+  pocPermissionsIntact?: boolean | null;
+  pocMetadataIntact?: boolean | null;
+  pocHandoffNotes?: string | null;
   createdAt: string;
   updatedAt: string;
   phases?: ProjectPhaseRecord[];
@@ -272,6 +277,11 @@ export interface UpdateProjectInput extends Partial<CreateProjectInput> {
   pocMigrationSpeed?: number | null;
   pocErrorRate?: number | null;
   customerContact?: string | null;
+  pocSuccessCriteria?: string | null;
+  pocDataVolume?: string | null;
+  pocPermissionsIntact?: boolean | null;
+  pocMetadataIntact?: boolean | null;
+  pocHandoffNotes?: string | null;
 }
 
 export interface CfProductSignal {
