@@ -167,7 +167,7 @@ export default function ManagersPage() {
   const { showToast } = useToast();
   const queryClient = useQueryClient();
   const isAdmin = user?.role === 'ADMIN';
-  const isManager = user?.role === 'MANAGER';
+  const isManager = user?.role === 'PROJECT_MANAGER';
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedManager, setSelectedManager] = useState<ManagerStat | null>(null);
 

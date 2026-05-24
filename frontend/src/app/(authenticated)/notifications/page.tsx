@@ -178,7 +178,7 @@ export default function NotificationsPage() {
     switch (user?.role) {
       case 'ADMIN':
         return 'Viewing all project notifications across the organization';
-      case 'MANAGER':
+      case 'PROJECT_MANAGER':
         return 'Notifications for your managed projects and team updates';
       default:
         return 'Notifications for projects you are assigned to';
@@ -507,14 +507,14 @@ export default function NotificationsPage() {
             <h4 className="text-sm font-semibold text-blue-900">
               {user?.role === 'ADMIN'
                 ? 'Admin View'
-                : user?.role === 'MANAGER'
+                : user?.role === 'PROJECT_MANAGER'
                 ? 'Manager View'
                 : 'Team Member View'}
             </h4>
             <p className="text-sm text-blue-700 mt-0.5">
               {user?.role === 'ADMIN'
                 ? 'You are seeing all notifications across every project. Use filters to focus on delays, completions, or specific types. Delay alerts require immediate PM escalation.'
-                : user?.role === 'MANAGER'
+                : user?.role === 'PROJECT_MANAGER'
                 ? 'You are seeing notifications for projects you manage. Delay alerts should be addressed within 24 hours. Phase completions indicate milestone progress.'
                 : 'You are seeing notifications for projects you contribute to. Check delay alerts for potential impact on your tasks and timelines.'}
             </p>

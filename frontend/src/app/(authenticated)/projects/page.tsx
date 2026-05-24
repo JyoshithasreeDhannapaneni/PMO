@@ -38,7 +38,7 @@ export default function ProjectsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user } = useAuth();
-  const isManager = user?.role === 'MANAGER';
+  const isManager = user?.role === 'PROJECT_MANAGER';
   
   // Initialize filters from URL params
   const [filters, setFilters] = useState<FilterState>({
@@ -228,7 +228,7 @@ export default function ProjectsPage() {
 
   const projectManagerOptions = useMemo(() => {
     const managers = (usersData?.data || [])
-      .filter((u: any) => u.role === 'MANAGER' && u.isActive !== false)
+      .filter((u: any) => u.role === 'PROJECT_MANAGER' && u.isActive !== false)
       .map((u: any) => u.name)
       .filter(Boolean)
       .sort() as string[];

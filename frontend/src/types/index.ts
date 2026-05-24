@@ -1,5 +1,5 @@
 // Role Types
-export type UserRole = 'ADMIN' | 'MANAGER' | 'VIEWER' | 'PRE_SALES' | 'ACCOUNT_MANAGER';
+export type UserRole = 'ADMIN' | 'PROJECT_MANAGER' | 'VIEWER' | 'PRE_SALES' | 'ACCOUNT_MANAGER';
 
 // POC Types
 export type PocPhaseStatus = 'not_started' | 'in_progress' | 'blocked' | 'completed';
@@ -102,6 +102,7 @@ export interface Project {
   pocNextStep?: string | null;
   pocDealValue?: number | null;
   pocPhase5Checklist?: string | null;
+  pocPreSalesOwner?: string | null;
   createdAt: string;
   updatedAt: string;
   phases?: ProjectPhaseRecord[];
@@ -340,6 +341,7 @@ export interface EscalationItem {
 export interface CustomerSuccessEntry {
   customerName: string;
   accountManager: string;
+  projectNames: string[];
   workloadTypes: string[];
   activeProjects: number;
   completedProjects: number;

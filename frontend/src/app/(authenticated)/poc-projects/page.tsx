@@ -7,7 +7,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { useSettings } from '@/context/SettingsContext';
 import {
-  usePocProjects, useCreatePocProject, useUpdatePocProject, useDeletePocProject,
+  usePocProjects, useCreatePocProject, useUpdatePocProject, useDeletePocProject, useAllUsers,
 } from '@/hooks/useProjects';
 import type { Project, PocPhaseStatus } from '@/types';
 import {
@@ -708,24 +708,28 @@ function PhaseStepperView({ project: p, canEdit }: { project: Project; canEdit: 
   const [editingPhaseNum, setEditingPhaseNum] = useState<number | null>(null);
   const [editingOverview, setEditingOverview] = useState(false);
   const [overviewForm, setOverviewForm] = useState({
-    customerName:   p.customerName   || '',
-    projectManager: p.projectManager || '',
-    accountManager: p.accountManager || '',
-    plannedStart:   p.plannedStart   ? String(p.plannedStart).substring(0, 10) : '',
-    plannedEnd:     p.plannedEnd     ? String(p.plannedEnd).substring(0, 10)   : '',
-    pocDataVolume:  (p as any).pocDataVolume || '',
+    projectManager:   p.projectManager || '',
+    pocPreSalesOwner: (p as any).pocPreSalesOwner || '',
+    accountManager:   p.accountManager || '',
+    plannedStart:     p.plannedStart   ? String(p.plannedStart).substring(0, 10) : '',
+    plannedEnd:       p.plannedEnd     ? String(p.plannedEnd).substring(0, 10)   : '',
+    pocDataVolume:    (p as any).pocDataVolume || '',
   });
   const updatePoc = useUpdatePocProject();
   const { showToast } = useToast();
+  const { data: usersData } = useAllUsers();
+  const userNames: string[] = Array.isArray(usersData?.data)
+    ? usersData.data.map((u: any) => u.name).filter(Boolean).sort()
+    : [];
 
   function openOverviewEdit() {
     setOverviewForm({
-      customerName:   p.customerName   || '',
-      projectManager: p.projectManager || '',
-      accountManager: p.accountManager || '',
-      plannedStart:   p.plannedStart   ? String(p.plannedStart).substring(0, 10) : '',
-      plannedEnd:     p.plannedEnd     ? String(p.plannedEnd).substring(0, 10)   : '',
-      pocDataVolume:  (p as any).pocDataVolume || '',
+      projectManager:   p.projectManager || '',
+      pocPreSalesOwner: (p as any).pocPreSalesOwner || '',
+      accountManager:   p.accountManager || '',
+      plannedStart:     p.plannedStart   ? String(p.plannedStart).substring(0, 10) : '',
+      plannedEnd:       p.plannedEnd     ? String(p.plannedEnd).substring(0, 10)   : '',
+      pocDataVolume:    (p as any).pocDataVolume || '',
     });
     setEditingOverview(true);
   }
@@ -735,12 +739,12 @@ function PhaseStepperView({ project: p, canEdit }: { project: Project; canEdit: 
       await updatePoc.mutateAsync({
         id: p.id,
         data: {
-          customerName:   overviewForm.customerName   || undefined,
-          projectManager: overviewForm.projectManager || undefined,
-          accountManager: overviewForm.accountManager || undefined,
-          plannedStart:   overviewForm.plannedStart   || undefined,
-          plannedEnd:     overviewForm.plannedEnd     || undefined,
-          pocDataVolume:  overviewForm.pocDataVolume  || null,
+          projectManager:   overviewForm.projectManager   || undefined,
+          pocPreSalesOwner: overviewForm.pocPreSalesOwner || null,
+          accountManager:   overviewForm.accountManager   || undefined,
+          plannedStart:     overviewForm.plannedStart     || undefined,
+          plannedEnd:       overviewForm.plannedEnd       || undefined,
+          pocDataVolume:    overviewForm.pocDataVolume    || null,
         } as any,
       });
       showToast('success', 'Overview saved');
@@ -771,12 +775,26 @@ function PhaseStepperView({ project: p, canEdit }: { project: Project; canEdit: 
           <div className="space-y-3">
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               <div className="space-y-1">
-                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Account</p>
-                <input type="text" value={overviewForm.customerName} onChange={e => setOF('customerName', e.target.value)} className={inp} />
+                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Project Manager</p>
+                <select value={overviewForm.projectManager} onChange={e => setOF('projectManager', e.target.value)} className={inp}>
+                  <option value="">— Select —</option>
+                  {userNames.map(name => <option key={name} value={name}>{name}</option>)}
+                  {overviewForm.projectManager && !userNames.includes(overviewForm.projectManager) && (
+                    <option value={overviewForm.projectManager}>{overviewForm.projectManager}</option>
+                  )}
+                </select>
               </div>
               <div className="space-y-1">
                 <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Pre-Sales</p>
-                <input type="text" value={overviewForm.projectManager} onChange={e => setOF('projectManager', e.target.value)} className={inp} />
+                <select value={overviewForm.pocPreSalesOwner} onChange={e => setOF('pocPreSalesOwner', e.target.value)} className={inp}>
+                  <option value="">— Select —</option>
+                  <option value="Nivas">Nivas</option>
+                  <option value="Vimlesh">Vimlesh</option>
+                  <option value="Vignesh">Vignesh</option>
+                  {overviewForm.pocPreSalesOwner && !['Nivas','Vimlesh','Vignesh'].includes(overviewForm.pocPreSalesOwner) && (
+                    <option value={overviewForm.pocPreSalesOwner}>{overviewForm.pocPreSalesOwner}</option>
+                  )}
+                </select>
               </div>
               <div className="space-y-1">
                 <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Account Manager</p>
@@ -807,12 +825,12 @@ function PhaseStepperView({ project: p, canEdit }: { project: Project; canEdit: 
           <div className="flex items-start gap-2">
             <div className="grid grid-cols-3 md:grid-cols-6 gap-3 flex-1">
               <div>
-                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Account</p>
-                <p className="text-gray-800 font-medium capitalize">{p.customerName}</p>
+                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Project Manager</p>
+                <p className="text-gray-700">{dash(p.projectManager)}</p>
               </div>
               <div>
                 <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Pre-Sales</p>
-                <p className="text-gray-700">{dash(p.projectManager)}</p>
+                <p className="text-gray-700">{dash((p as any).pocPreSalesOwner)}</p>
               </div>
               <div>
                 <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Account Manager</p>
@@ -1144,7 +1162,7 @@ export default function PocProjectsPage() {
         <div className="flex items-center gap-3">
           <FlaskConical className="w-7 h-7 text-blue-600" />
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">POC Projects</h1>
+            <h1 className="text-2xl font-bold text-gray-900">Pre-sales</h1>
             <p className="text-sm text-gray-500">{filteredActive.length} active · {filteredArchived.length} archived</p>
           </div>
         </div>

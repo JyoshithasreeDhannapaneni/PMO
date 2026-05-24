@@ -22,7 +22,7 @@ function downloadCSV(rows: any[][], filename: string) {
 export default function WeeklyReportPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'ADMIN';
-  const isManager = user?.role === 'MANAGER';
+  const isManager = user?.role === 'PROJECT_MANAGER';
 
   const today = new Date();
   const [startDate, setStartDate] = useState(format(subDays(today, 7), 'yyyy-MM-dd'));
