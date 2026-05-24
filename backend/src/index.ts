@@ -161,10 +161,13 @@ async function runMigrations() {
   // Normalise all existing project names to lowercase
   try { await execute(`UPDATE projects SET name = LOWER(name) WHERE name != LOWER(name)`); } catch {}
 
-  // New roles: PRE_SALES and ACCOUNT_MANAGER
+  // Rename MANAGER role to PROJECT_MANAGER
+  try { await execute(`UPDATE users SET role = 'PROJECT_MANAGER' WHERE role = 'MANAGER'`); } catch {}
+
+  // Updated roles constraint including PROJECT_MANAGER
   try {
     await execute(`ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check`);
-    await execute(`ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('ADMIN','MANAGER','VIEWER','PRE_SALES','ACCOUNT_MANAGER'))`);
+    await execute(`ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('ADMIN','PROJECT_MANAGER','VIEWER','PRE_SALES','ACCOUNT_MANAGER'))`);
   } catch {}
 
   // POC project support
@@ -214,6 +217,7 @@ async function runMigrations() {
     ['poc_next_step',            `VARCHAR(255)`],
     ['poc_deal_value',           `DECIMAL(15,2)`],
     ['poc_phase5_checklist',     `TEXT`],
+    ['poc_pre_sales_owner',      `VARCHAR(255)`],
   ];
   for (const [col, colType] of pocCols) {
     if (!await columnExists('projects', col)) {

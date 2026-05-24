@@ -260,6 +260,14 @@ const authFetch = (url: string) => {
   return fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} }).then(r => r.json());
 };
 
+export function useAllUsers() {
+  return useQuery({
+    queryKey: ['all-users'],
+    queryFn: () => authFetch(`${API_BASE}/api/auth/users`),
+    staleTime: 5 * 60_000,
+  });
+}
+
 export function useOveragedProjects(manager?: string) {
   return useQuery({
     queryKey: ['overagedProjects', manager],

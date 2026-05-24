@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { AppError } from './errorHandler';
 
-type UserRole = 'ADMIN' | 'MANAGER' | 'VIEWER';
+type UserRole = 'ADMIN' | 'PROJECT_MANAGER' | 'VIEWER' | 'PRE_SALES' | 'ACCOUNT_MANAGER';
 
 // Define permissions for each role
 const rolePermissions: Record<UserRole, string[]> = {
@@ -19,7 +19,7 @@ const rolePermissions: Record<UserRole, string[]> = {
     'audit:read',
     'export:all',
   ],
-  MANAGER: [
+  PROJECT_MANAGER: [
     'projects:read', 'projects:write',
     'tasks:read', 'tasks:write',
     'risks:read', 'risks:write',
@@ -29,6 +29,16 @@ const rolePermissions: Record<UserRole, string[]> = {
     'change-requests:read', 'change-requests:write', 'change-requests:approve',
     'templates:read',
     'export:own',
+  ],
+  PRE_SALES: [
+    'projects:read', 'projects:write',
+    'reports:read',
+    'templates:read',
+  ],
+  ACCOUNT_MANAGER: [
+    'projects:read', 'projects:write',
+    'reports:read',
+    'templates:read',
   ],
   VIEWER: [
     'projects:read',
@@ -88,5 +98,5 @@ export function isAdmin(req: Request): boolean {
 
 export function isManagerOrAdmin(req: Request): boolean {
   const user = (req as any).user;
-  return user?.role === 'ADMIN' || user?.role === 'MANAGER';
+  return user?.role === 'ADMIN' || user?.role === 'PROJECT_MANAGER';
 }

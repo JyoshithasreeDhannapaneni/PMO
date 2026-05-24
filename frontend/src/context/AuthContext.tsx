@@ -4,7 +4,7 @@ import { createContext, useContext, useState, useEffect, ReactNode } from 'react
 import { useRouter } from 'next/navigation';
 import { authApi } from '@/services/api';
 
-export type UserRole = 'ADMIN' | 'MANAGER' | 'VIEWER' | 'PRE_SALES' | 'ACCOUNT_MANAGER';
+export type UserRole = 'ADMIN' | 'PROJECT_MANAGER' | 'VIEWER' | 'PRE_SALES' | 'ACCOUNT_MANAGER';
 
 export interface User {
   id: string;

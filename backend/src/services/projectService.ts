@@ -179,6 +179,7 @@ function mapProjectRow(row: any) {
     pocNextStep: row.poc_next_step ?? null,
     pocDealValue: row.poc_deal_value ?? null,
     pocPhase5Checklist: row.poc_phase5_checklist ?? null,
+    pocPreSalesOwner: row.poc_pre_sales_owner ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -473,6 +474,7 @@ class ProjectService {
       poc_next_step: (data as any).pocNextStep ?? null,
       poc_deal_value: (data as any).pocDealValue ?? null,
       poc_phase5_checklist: (data as any).pocPhase5Checklist ?? null,
+      poc_pre_sales_owner: (data as any).pocPreSalesOwner ?? null,
     };
     try {
       const pocCols = Object.keys(pocData);
@@ -615,6 +617,7 @@ class ProjectService {
     if ((data as any).pocNextStep !== undefined) { updates.push(`poc_next_step = $${params.length + 1}`); params.push((data as any).pocNextStep ?? null); }
     if ((data as any).pocDealValue !== undefined) { updates.push(`poc_deal_value = $${params.length + 1}`); params.push((data as any).pocDealValue ?? null); }
     if ((data as any).pocPhase5Checklist !== undefined) { updates.push(`poc_phase5_checklist = $${params.length + 1}`); params.push((data as any).pocPhase5Checklist ?? null); }
+    if ((data as any).pocPreSalesOwner !== undefined) { updates.push(`poc_pre_sales_owner = $${params.length + 1}`); params.push((data as any).pocPreSalesOwner ?? null); }
 
     await execute(
       `UPDATE projects SET ${updates.join(', ')}, updated_at = NOW() WHERE id = $${params.length + 1}`,

@@ -87,9 +87,12 @@ export const customerSuccessController = {
         projects.flatMap(p => (p.migration_types || '').split(',').map((t: string) => t.trim())).filter(Boolean)
       )) as string[];
 
+      const projectNames = projects.map((p: any) => p.name).filter(Boolean);
+
       accounts.push({
         customerName: entry.customerName,
         accountManager: entry.accountManager,
+        projectNames,
         workloadTypes,
         activeProjects: activeProjects.length,
         completedProjects: completedProjects.length,
