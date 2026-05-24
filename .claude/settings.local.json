@@ -46,7 +46,9 @@
       "Bash(npx ts-node -e ' *)",
       "Bash(node -e ' *)",
       "Bash(node -e \"const crypto = require\\('crypto'\\); console.log\\(crypto.createHash\\('sha256'\\).update\\('admin2026'\\).digest\\('hex'\\)\\);\")",
-      "Bash(node -e \"const crypto = require\\('crypto'\\); ['admin123', 'admin', 'Admin@123', 'admin2026!', 'cloudfuze'].forEach\\(p => { const h = crypto.createHash\\('sha256'\\).update\\(p\\).digest\\('hex'\\); console.log\\(p, '=', h.startsWith\\('240be518'\\) ? 'MATCH' : h.substring\\(0,20\\)\\); }\\);\")"
+      "Bash(node -e \"const crypto = require\\('crypto'\\); ['admin123', 'admin', 'Admin@123', 'admin2026!', 'cloudfuze'].forEach\\(p => { const h = crypto.createHash\\('sha256'\\).update\\(p\\).digest\\('hex'\\); console.log\\(p, '=', h.startsWith\\('240be518'\\) ? 'MATCH' : h.substring\\(0,20\\)\\); }\\);\")",
+      "Bash(node generate-template.js)",
+      "Bash(del \"c:\\\\Users\\\\BharathTummaganti\\\\OneDrive - CloudFuze, Inc\\\\Documents\\\\PMO\\\\PMO\\\\backend\\\\generate-template.js\")"
     ]
   }
 }

@@ -52,7 +52,6 @@ const CHECKLIST_CONFIG: Record<MigrationType, Record<Phase, ChecklistSection[]>>
         title: 'Pre-Check 1 — Previous Migration Completion',
         warning: 'The previous workspace migration must be fully completed and workspace status updated before proceeding.',
         items: [
-          { id: 'onetime_complete', label: 'Previous OneTime migration confirmed completed' },
           { id: 'all_files_copied', label: 'All files and folders from source workspace are copied to destination' },
           { id: 'no_stuck_files', label: 'No files stuck in IN_PROGRESS or PENDING state' },
           { id: 'permissions_replicated', label: 'Folder and file level permissions are replicated correctly' },
@@ -538,7 +537,7 @@ export default function MigrationRunbooksPage() {
               <BookOpen className="w-5 h-5 text-indigo-600" />
             </div>
             <div>
-              <h1 className="text-lg font-bold text-slate-900">Migration Runbooks</h1>
+              <h1 className="text-lg font-bold text-slate-900">Migration Validation</h1>
               <p className="text-xs text-slate-500">Engineers fill checklist · PM verifies · Approved → Final Validation</p>
             </div>
           </div>
