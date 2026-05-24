@@ -41,6 +41,7 @@ export default function EscalationProjectsPage() {
   const unarchiveEscalation = useUnarchiveEscalation();
 
   const [activeTab, setActiveTab] = useState<'active' | 'archive'>('active');
+  const [kpiFilter, setKpiFilter] = useState<'' | 'active' | 'critical'>('');
   const { data: archiveData, refetch: refetchArchive } = useArchivedEscalations(undefined);
   const archived: any[] = archiveData?.data || [];
 
@@ -156,9 +157,11 @@ export default function EscalationProjectsPage() {
       if (q && !p.name?.toLowerCase().includes(q) && !p.customerName?.toLowerCase().includes(q) && !p.projectManager?.toLowerCase().includes(q)) return false;
       if (prioritySel && p.escalationPriority !== prioritySel) return false;
       if (typeSel && !(p.escalationNotes || '').toLowerCase().includes(typeSel.toLowerCase())) return false;
+      if (kpiFilter === 'active' && !p.isEscalated) return false;
+      if (kpiFilter === 'critical' && p.escalationPriority !== 'HIGH') return false;
       return true;
     });
-  }, [deduped, search, prioritySel, typeSel]);
+  }, [deduped, search, prioritySel, typeSel, kpiFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
   const paged = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
@@ -272,39 +275,51 @@ export default function EscalationProjectsPage() {
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-        <Card className="border-red-200">
+        <button
+          onClick={() => setKpiFilter('')}
+          className={`text-left rounded-xl border p-4 transition-all ${kpiFilter === '' ? 'border-red-500 bg-red-50 ring-2 ring-red-300' : 'border-red-200 bg-white hover:border-red-400 hover:bg-red-50'}`}
+        >
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
               <Siren size={20} className="text-red-600" />
             </div>
             <div>
               <p className="text-xs text-gray-500">Total Escalated</p>
               <p className="text-2xl font-bold text-gray-900">{total}</p>
+              {kpiFilter === '' && <p className="text-[10px] text-red-600 font-medium mt-0.5">Showing all</p>}
             </div>
           </div>
-        </Card>
-        <Card className="border-orange-200">
+        </button>
+        <button
+          onClick={() => setKpiFilter(kpiFilter === 'critical' ? '' : 'critical')}
+          className={`text-left rounded-xl border p-4 transition-all ${kpiFilter === 'critical' ? 'border-orange-500 bg-orange-50 ring-2 ring-orange-300' : 'border-orange-200 bg-white hover:border-orange-400 hover:bg-orange-50'}`}
+        >
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center flex-shrink-0">
               <AlertTriangle size={20} className="text-orange-600" />
             </div>
             <div>
               <p className="text-xs text-gray-500">Critical Escalations</p>
               <p className="text-2xl font-bold text-gray-900">{critical}</p>
+              {kpiFilter === 'critical' && <p className="text-[10px] text-orange-600 font-medium mt-0.5">Filtered — click to clear</p>}
             </div>
           </div>
-        </Card>
-        <Card className="border-green-200">
+        </button>
+        <button
+          onClick={() => setKpiFilter(kpiFilter === 'active' ? '' : 'active')}
+          className={`text-left rounded-xl border p-4 transition-all ${kpiFilter === 'active' ? 'border-green-500 bg-green-50 ring-2 ring-green-300' : 'border-green-200 bg-white hover:border-green-400 hover:bg-green-50'}`}
+        >
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
               <TrendingUp size={20} className="text-green-600" />
             </div>
             <div>
               <p className="text-xs text-gray-500">Active Escalations</p>
               <p className="text-2xl font-bold text-gray-900">{escalated.filter((p) => p.isEscalated && p.status !== 'COMPLETED' && p.status !== 'CANCELLED').length}</p>
+              {kpiFilter === 'active' && <p className="text-[10px] text-green-600 font-medium mt-0.5">Filtered — click to clear</p>}
             </div>
           </div>
-        </Card>
+        </button>
       </div>
 
       {/* Tab Toggle */}
@@ -356,7 +371,7 @@ export default function EscalationProjectsPage() {
             {ESCALATION_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
           </select>
           <button
-            onClick={() => { setSearch(''); setPrioritySel(''); setTypeSel(''); setPage(1); }}
+            onClick={() => { setSearch(''); setPrioritySel(''); setTypeSel(''); setKpiFilter(''); setPage(1); }}
             className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
           >
             <RotateCcw size={13} /> Reset
