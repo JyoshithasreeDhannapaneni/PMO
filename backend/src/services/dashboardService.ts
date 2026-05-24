@@ -536,8 +536,12 @@ class DashboardService {
               planned_end, delay_days, delay_status, migration_types,
               is_escalated, escalation_priority, escalated_at, escalation_notes, resolved_date
        FROM projects
-       WHERE is_escalated = true AND status NOT IN ('COMPLETED','CANCELLED')
-             AND (escalation_archived IS NULL OR escalation_archived = false) ${aw}
+       WHERE status NOT IN ('COMPLETED','CANCELLED')
+             AND (escalation_archived IS NULL OR escalation_archived = false)
+             AND (
+               is_escalated = true
+               OR (status = 'ACTIVE' AND planned_end IS NOT NULL AND planned_end < CURRENT_TIMESTAMP)
+             ) ${aw}
        ORDER BY CASE WHEN escalation_priority='HIGH' THEN 1 WHEN escalation_priority='MEDIUM' THEN 2 ELSE 3 END, delay_days DESC`,
       ap
     );
