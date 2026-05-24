@@ -13,7 +13,7 @@ import type { Project, PocPhaseStatus } from '@/types';
 import {
   FlaskConical, Plus, ChevronDown, Loader2, Clock, CheckCircle2, XCircle, Circle,
   CalendarDays, User, X, Save, Search, AlertTriangle, Flag, Trash2, Archive,
-  Pencil, Check, DollarSign, FileText, Wifi,
+  Pencil, Check,
 } from 'lucide-react';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -263,6 +263,18 @@ function PhaseColumn({ phase, project: p, canEdit, isEditing, onEdit, onSave, on
   const [form, setForm] = useState<Record<string, any>>({});
   const [checklist, setChecklist] = useState<boolean[]>([]);
 
+  // Tracks the display checklist independently so saves reflect immediately
+  // without waiting for the React Query refetch to complete.
+  const [viewedChecklist, setViewedChecklist] = useState<boolean[]>(() =>
+    parseChecklist((p as any)[phase.checklistKey], phase.checklistCount)
+  );
+  const checklistJson = (p as any)[phase.checklistKey] as string | null | undefined;
+  useEffect(() => {
+    if (!isEditing) {
+      setViewedChecklist(parseChecklist(checklistJson, phase.checklistCount));
+    }
+  }, [checklistJson, isEditing]);
+
   useEffect(() => {
     if (!isEditing) return;
     const raw = (p as any)[phase.checklistKey];
@@ -320,7 +332,9 @@ function PhaseColumn({ phase, project: p, canEdit, isEditing, onEdit, onSave, on
   function set(k: string, v: any) { setForm(f => ({ ...f, [k]: v })); }
   function handleSave() {
     const payload: Record<string, any> = { ...form };
-    payload[phase.checklistKey] = JSON.stringify(checklist);
+    const savedChecklist = [...checklist];
+    payload[phase.checklistKey] = JSON.stringify(savedChecklist);
+    setViewedChecklist(savedChecklist);
     if (phase.num === 3) {
       payload.pocDataMigratedGb = form.pocDataMigratedGb ? Number(form.pocDataMigratedGb) : null;
       payload.pocMigrationSpeed = form.pocMigrationSpeed ? Number(form.pocMigrationSpeed) : null;
@@ -337,8 +351,7 @@ function PhaseColumn({ phase, project: p, canEdit, isEditing, onEdit, onSave, on
   }
 
   const editStatus: PocPhaseStatus = ((form[phase.statusKey] || 'not_started') as PocPhaseStatus);
-  const viewChecklist = parseChecklist((p as any)[phase.checklistKey], phase.checklistCount);
-  const doneCount = viewChecklist.filter(Boolean).length;
+  const doneCount = viewedChecklist.filter(Boolean).length;
   const headerBg = isEditing ? PHASE_COL_HEADER[editStatus] : PHASE_COL_HEADER[status];
 
   return (
@@ -419,7 +432,7 @@ function PhaseColumn({ phase, project: p, canEdit, isEditing, onEdit, onSave, on
                 <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Checklist</p>
                 <span className="text-[10px] text-gray-400">{doneCount}/{phase.checklistCount}</span>
               </div>
-              <ChecklistView items={checklistItems} checklist={viewChecklist} />
+              <ChecklistView items={checklistItems} checklist={viewedChecklist} />
             </div>
           </>
         ))}
@@ -485,7 +498,7 @@ function PhaseColumn({ phase, project: p, canEdit, isEditing, onEdit, onSave, on
                 <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Checklist</p>
                 <span className="text-[10px] text-gray-400">{doneCount}/{phase.checklistCount}</span>
               </div>
-              <ChecklistView items={checklistItems} checklist={viewChecklist} />
+              <ChecklistView items={checklistItems} checklist={viewedChecklist} />
             </div>
           </>
         ))}
@@ -543,7 +556,7 @@ function PhaseColumn({ phase, project: p, canEdit, isEditing, onEdit, onSave, on
                 <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Checklist</p>
                 <span className="text-[10px] text-gray-400">{doneCount}/{phase.checklistCount}</span>
               </div>
-              <ChecklistView items={checklistItems} checklist={viewChecklist} />
+              <ChecklistView items={checklistItems} checklist={viewedChecklist} />
             </div>
           </>
         ))}
@@ -604,7 +617,7 @@ function PhaseColumn({ phase, project: p, canEdit, isEditing, onEdit, onSave, on
                 <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Checklist</p>
                 <span className="text-[10px] text-gray-400">{doneCount}/{phase.checklistCount}</span>
               </div>
-              <ChecklistView items={checklistItems} checklist={viewChecklist} />
+              <ChecklistView items={checklistItems} checklist={viewedChecklist} />
             </div>
           </>
         ))}
@@ -681,7 +694,7 @@ function PhaseColumn({ phase, project: p, canEdit, isEditing, onEdit, onSave, on
                 <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Checklist</p>
                 <span className="text-[10px] text-gray-400">{doneCount}/{phase.checklistCount}</span>
               </div>
-              <ChecklistView items={checklistItems} checklist={viewChecklist} />
+              <ChecklistView items={checklistItems} checklist={viewedChecklist} />
             </div>
           </>
         ))}
@@ -704,8 +717,6 @@ function PhaseColumn({ phase, project: p, canEdit, isEditing, onEdit, onSave, on
 // ── Expanded stepper view ─────────────────────────────────────────────────────
 function PhaseStepperView({ project: p, canEdit }: { project: Project; canEdit: boolean }) {
   const [editingPhaseNum, setEditingPhaseNum] = useState<number | null>(null);
-  const [editingNotes, setEditingNotes] = useState(false);
-  const [notesForm, setNotesForm] = useState('');
   const updatePoc = useUpdatePocProject();
   const { showToast } = useToast();
 
@@ -719,17 +730,6 @@ function PhaseStepperView({ project: p, canEdit }: { project: Project; canEdit: 
     }
   }
 
-  async function saveNotes() {
-    try {
-      await updatePoc.mutateAsync({ id: p.id, data: { pocHandoffNotes: notesForm || null } as any });
-      showToast('success', 'Notes saved');
-      setEditingNotes(false);
-    } catch {
-      showToast('error', 'Failed to save notes');
-    }
-  }
-
-  const workloads = (p.migrationTypes || '').split(',').map(w => w.trim()).filter(Boolean);
   const days = pocDuration(p);
 
   return (
@@ -801,41 +801,6 @@ function PhaseStepperView({ project: p, canEdit }: { project: Project; canEdit: 
         </div>
       </div>
 
-      {/* Notes / blockers */}
-      <div className="border border-gray-200 rounded-xl overflow-hidden">
-        <div className="flex items-center justify-between px-3 py-2 bg-amber-50 border-b border-amber-100">
-          <div className="flex items-center gap-2">
-            <FileText className="w-3.5 h-3.5 text-amber-600" />
-            <p className="text-xs font-semibold text-amber-800">Notes / blockers</p>
-          </div>
-          {canEdit && !editingNotes && (
-            <button onClick={() => { setNotesForm((p as any).pocHandoffNotes || ''); setEditingNotes(true); }}
-              className="flex items-center gap-1 text-[10px] text-blue-600 hover:text-blue-800 bg-white border border-blue-200 rounded px-1.5 py-0.5">
-              <Pencil className="w-2.5 h-2.5" /> Edit
-            </button>
-          )}
-        </div>
-        <div className="px-3 py-2.5">
-          {editingNotes ? (
-            <div className="space-y-2">
-              <textarea value={notesForm} onChange={e => setNotesForm(e.target.value)}
-                placeholder="Use this field to log blockers, customer-specific constraints, or any deviation from standard POC procedure."
-                rows={3} className={`${inp} resize-none`} autoFocus />
-              <div className="flex gap-2">
-                <button onClick={saveNotes} disabled={updatePoc.isPending}
-                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition">
-                  {updatePoc.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />} Save
-                </button>
-                <button onClick={() => setEditingNotes(false)} className="text-xs px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50 transition text-gray-600">Cancel</button>
-              </div>
-            </div>
-          ) : (
-            <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-wrap">
-              {dash((p as any).pocHandoffNotes)}
-            </p>
-          )}
-        </div>
-      </div>
     </div>
   );
 }
