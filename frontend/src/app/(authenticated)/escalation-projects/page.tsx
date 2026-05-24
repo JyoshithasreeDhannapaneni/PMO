@@ -26,11 +26,10 @@ export default function EscalationProjectsPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'ADMIN';
   const isManager = user?.role === 'PROJECT_MANAGER';
-  const isViewer = user?.role === 'VIEWER';
-  // ADMIN & VIEWER see all; MANAGER sees only their own projects
-  const managerFilter = (isAdmin || isViewer) ? undefined : user?.name;
+  // Everyone sees all escalations; edit rights scoped per-project below
+  const canEditProject = (p: any) => isAdmin || (isManager && p.projectManager === user?.name);
 
-  const { data, isLoading, refetch } = useEscalatedProjects(managerFilter);
+  const { data, isLoading, refetch } = useEscalatedProjects(undefined);
   const escalated: any[] = data?.data || [];
 
   const { data: allProjectsData } = useProjects({ limit: 500 });
@@ -42,7 +41,7 @@ export default function EscalationProjectsPage() {
   const unarchiveEscalation = useUnarchiveEscalation();
 
   const [activeTab, setActiveTab] = useState<'active' | 'archive'>('active');
-  const { data: archiveData, refetch: refetchArchive } = useArchivedEscalations(managerFilter);
+  const { data: archiveData, refetch: refetchArchive } = useArchivedEscalations(undefined);
   const archived: any[] = archiveData?.data || [];
 
   const [search, setSearch] = useState('');
@@ -425,7 +424,7 @@ export default function EscalationProjectsPage() {
                             >
                               <History size={14} />
                             </button>
-                            {isAdmin && p.escalationArchived && (
+                            {(isAdmin || (isManager && p.projectManager === user?.name)) && p.escalationArchived && (
                               <button
                                 onClick={() => handleUnarchive(p.id)}
                                 title="Restore to active escalations"
@@ -507,7 +506,7 @@ export default function EscalationProjectsPage() {
                             {p.escalatedAt ? format(new Date(p.escalatedAt), 'MMM d, yyyy') : '—'}
                           </td>
                           <td className="py-3 px-4 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                            {editingResolvedId === p.id ? (
+                            {canEditProject(p) && editingResolvedId === p.id ? (
                               <div className="flex items-center gap-1 justify-center">
                                 <input
                                   type="date"
@@ -523,7 +522,7 @@ export default function EscalationProjectsPage() {
                                   <X size={14} />
                                 </button>
                               </div>
-                            ) : (
+                            ) : canEditProject(p) ? (
                               <button
                                 onClick={() => { setEditingResolvedId(p.id); setResolvedDateInput(p.resolvedDate ? p.resolvedDate.split('T')[0] : ''); }}
                                 className="group flex items-center gap-1 mx-auto"
@@ -535,6 +534,12 @@ export default function EscalationProjectsPage() {
                                   <span className="text-gray-400 text-xs group-hover:text-gray-600">Pending</span>
                                 )}
                               </button>
+                            ) : (
+                              p.resolvedDate ? (
+                                <span className="text-green-600 text-xs font-medium">{format(new Date(p.resolvedDate), 'MMM d, yyyy')}</span>
+                              ) : (
+                                <span className="text-gray-400 text-xs">Pending</span>
+                              )
                             )}
                           </td>
                           <td className="py-3 px-4 text-center" onClick={(e) => e.stopPropagation()}>
@@ -563,7 +568,7 @@ export default function EscalationProjectsPage() {
                               >
                                 <Calendar size={14} />
                               </button>
-                              {isAdmin && (
+                              {canEditProject(p) && (
                                 <button
                                   onClick={() => handleArchive(p.id)}
                                   title="Archive this escalation"
@@ -572,7 +577,7 @@ export default function EscalationProjectsPage() {
                                   <Archive size={14} />
                                 </button>
                               )}
-                              {isAdmin && p.isEscalated && (
+                              {canEditProject(p) && p.isEscalated && (
                                 <button
                                   onClick={() => handleDeescalate(p.id)}
                                   title="Remove escalation"
@@ -581,7 +586,7 @@ export default function EscalationProjectsPage() {
                                   <X size={14} />
                                 </button>
                               )}
-                              {isAdmin && (
+                              {canEditProject(p) && (
                                 <button
                                   onClick={() => handleDeleteProject(p.id)}
                                   title="Remove from escalation"
@@ -893,8 +898,8 @@ export default function EscalationProjectsPage() {
               )}
             </div>
 
-            {/* Add new note */}
-            <div className="border-t border-gray-200 p-5 space-y-3 bg-gray-50">
+            {/* Add new note — only for admin or the project's PM */}
+            {canEditProject(historyProject) && <div className="border-t border-gray-200 p-5 space-y-3 bg-gray-50">
               <p className="text-sm font-semibold text-gray-700">Add New Note</p>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -944,7 +949,14 @@ export default function EscalationProjectsPage() {
                   {addingNote ? 'Adding…' : 'Add Note'}
                 </button>
               </div>
-            </div>
+            </div>}
+            {!canEditProject(historyProject) && (
+              <div className="border-t border-gray-200 p-4 bg-gray-50 flex justify-end">
+                <button onClick={() => setHistoryProject(null)} className="px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">
+                  Close
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
