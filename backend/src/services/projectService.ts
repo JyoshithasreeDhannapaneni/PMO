@@ -6,6 +6,21 @@ import { taskService } from './taskService';
 import { caseStudyService } from './caseStudyService';
 import { v4 as uuidv4 } from 'uuid';
 
+const AM_CANONICAL = [
+  { canonical: 'Joy Prakash',   variants: ['joy','joy prakash','joy prakash a','vivin','vivin joseph'] },
+  { canonical: 'Arundhati Sen', variants: ['arundhati','arundhanti','arundhati sen','arundhathi','arundhathi sen'] },
+  { canonical: 'Deepak R J',    variants: ['deepak','deepak r j','deepak rj','deepak r'] },
+];
+
+function normalizeAccountManager(name: string | null | undefined): string | null | undefined {
+  if (!name) return name;
+  const lower = name.trim().toLowerCase();
+  for (const { canonical, variants } of AM_CANONICAL) {
+    if (variants.includes(lower)) return canonical;
+  }
+  return name;
+}
+
 export interface CreateProjectDTO {
   name: string;
   customerName: string;
@@ -180,6 +195,7 @@ function mapProjectRow(row: any) {
     pocDealValue: row.poc_deal_value ?? null,
     pocPhase5Checklist: row.poc_phase5_checklist ?? null,
     pocPreSalesOwner: row.poc_pre_sales_owner ?? null,
+    pocCriticalNotes: row.poc_critical_notes ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -359,7 +375,7 @@ class ProjectService {
         data.name.toLowerCase(),
         data.customerName,
         data.projectManager,
-        data.accountManager,
+        normalizeAccountManager(data.accountManager) ?? data.accountManager,
         safePlanType,
         plannedStart,
         plannedEnd,
@@ -527,7 +543,7 @@ class ProjectService {
     if (data.name !== undefined) { updates.push(`name = $${params.length + 1}`); params.push(data.name.toLowerCase()); }
     if (data.customerName !== undefined) { updates.push(`customer_name = $${params.length + 1}`); params.push(data.customerName); }
     if (data.projectManager !== undefined) { updates.push(`project_manager = $${params.length + 1}`); params.push(data.projectManager); }
-    if (data.accountManager !== undefined) { updates.push(`account_manager = $${params.length + 1}`); params.push(data.accountManager); }
+    if (data.accountManager !== undefined) { updates.push(`account_manager = $${params.length + 1}`); params.push(normalizeAccountManager(data.accountManager) ?? data.accountManager); }
     if (data.planType !== undefined) {
       const sp = ['BRONZE','SILVER','GOLD','PLATINUM'].includes((data.planType||'').toUpperCase())
         ? data.planType.toUpperCase() : data.planType;
@@ -618,6 +634,7 @@ class ProjectService {
     if ((data as any).pocDealValue !== undefined) { updates.push(`poc_deal_value = $${params.length + 1}`); params.push((data as any).pocDealValue ?? null); }
     if ((data as any).pocPhase5Checklist !== undefined) { updates.push(`poc_phase5_checklist = $${params.length + 1}`); params.push((data as any).pocPhase5Checklist ?? null); }
     if ((data as any).pocPreSalesOwner !== undefined) { updates.push(`poc_pre_sales_owner = $${params.length + 1}`); params.push((data as any).pocPreSalesOwner ?? null); }
+    if ((data as any).pocCriticalNotes !== undefined) { updates.push(`poc_critical_notes = $${params.length + 1}`); params.push((data as any).pocCriticalNotes); }
 
     await execute(
       `UPDATE projects SET ${updates.join(', ')}, updated_at = NOW() WHERE id = $${params.length + 1}`,

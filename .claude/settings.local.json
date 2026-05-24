@@ -41,7 +41,12 @@
       "Bash(dir \"c:\\\\Users\\\\BharathTummaganti\\\\OneDrive - CloudFuze, Inc\\\\Documents\\\\PMO\\\\PMO\\\\frontend\\\\src\\\\app\" /s /b)",
       "Bash(Get-ChildItem -Path . -File -Name)",
       "Bash(cd \"/c/Users/BharathTummaganti/OneDrive - CloudFuze, Inc/Documents/PMO/PMO\" && ls -la | head -20)",
-      "Read(//c/c/Users/BharathTummaganti/OneDrive - CloudFuze, Inc/Documents/PMO/**)"
+      "Read(//c/c/Users/BharathTummaganti/OneDrive - CloudFuze, Inc/Documents/PMO/**)",
+      "Bash(npx tsc *)",
+      "Bash(npx ts-node -e ' *)",
+      "Bash(node -e ' *)",
+      "Bash(node -e \"const crypto = require\\('crypto'\\); console.log\\(crypto.createHash\\('sha256'\\).update\\('admin2026'\\).digest\\('hex'\\)\\);\")",
+      "Bash(node -e \"const crypto = require\\('crypto'\\); ['admin123', 'admin', 'Admin@123', 'admin2026!', 'cloudfuze'].forEach\\(p => { const h = crypto.createHash\\('sha256'\\).update\\(p\\).digest\\('hex'\\); console.log\\(p, '=', h.startsWith\\('240be518'\\) ? 'MATCH' : h.substring\\(0,20\\)\\); }\\);\")"
     ]
   }
 }

@@ -5,6 +5,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
+import path from 'path';
 
 import { errorHandler } from './middleware/errorHandler';
 import { notFoundHandler } from './middleware/notFoundHandler';
@@ -36,6 +37,8 @@ import { initializeCronJobs } from './jobs';
 import settingsRoutes from './routes/settingsRoutes';
 import accountManagerRoutes from './routes/accountManagerRoutes';
 import customerSuccessRoutes from './routes/customerSuccessRoutes';
+import pocDocumentsRoutes from './routes/pocDocumentsRoutes';
+import migrationChecklistRoutes from './routes/migrationChecklistRoutes';
 
 import { logger } from './utils/logger';
 import { authService } from './services/authService';
@@ -53,6 +56,8 @@ app.use(cors({
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+// serve uploaded poc documents
+app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
 app.use(morgan('combined', {
   stream: { write: (message) => logger.info(message.trim()) }
@@ -87,6 +92,8 @@ app.use('/api/archive', archiveRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/account-manager', accountManagerRoutes);
 app.use('/api/customer-success', customerSuccessRoutes);
+app.use('/api/poc-documents', pocDocumentsRoutes);
+app.use('/api/migration-checklists', migrationChecklistRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
@@ -161,6 +168,17 @@ async function runMigrations() {
   // Normalise all existing project names to lowercase
   try { await execute(`UPDATE projects SET name = LOWER(name) WHERE name != LOWER(name)`); } catch {}
 
+  // Normalise account manager names to 3 canonical values
+  const amJoy = `('joy','joy prakash','joy prakash a','vivin','vivin joseph')`;
+  const amArun = `('arundhati','arundhanti','arundhati sen','arundhathi','arundhathi sen')`;
+  const amDeepak = `('deepak','deepak r j','deepak rj','deepak r')`;
+  try { await execute(`UPDATE projects SET account_manager = 'Joy Prakash' WHERE LOWER(TRIM(account_manager)) = ANY(ARRAY${amJoy}::text[])`); } catch {}
+  try { await execute(`UPDATE projects SET account_manager = 'Arundhati Sen' WHERE LOWER(TRIM(account_manager)) = ANY(ARRAY${amArun}::text[])`); } catch {}
+  try { await execute(`UPDATE projects SET account_manager = 'Deepak R J' WHERE LOWER(TRIM(account_manager)) = ANY(ARRAY${amDeepak}::text[])`); } catch {}
+  try { await execute(`UPDATE users SET name = 'Joy Prakash' WHERE LOWER(TRIM(name)) = ANY(ARRAY${amJoy}::text[])`); } catch {}
+  try { await execute(`UPDATE users SET name = 'Arundhati Sen' WHERE LOWER(TRIM(name)) = ANY(ARRAY${amArun}::text[])`); } catch {}
+  try { await execute(`UPDATE users SET name = 'Deepak R J' WHERE LOWER(TRIM(name)) = ANY(ARRAY${amDeepak}::text[])`); } catch {}
+
   // Rename MANAGER role to PROJECT_MANAGER
   try { await execute(`UPDATE users SET role = 'PROJECT_MANAGER' WHERE role = 'MANAGER'`); } catch {}
 
@@ -225,6 +243,25 @@ async function runMigrations() {
     }
   }
 
+  // POC documents table
+  await execute(`CREATE TABLE IF NOT EXISTS poc_documents (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL,
+    file_name VARCHAR(500) NOT NULL,
+    category VARCHAR(20) NOT NULL DEFAULT 'MOM',
+    file_size BIGINT,
+    mime_type VARCHAR(200),
+    file_path TEXT NOT NULL,
+    uploaded_by VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  )`);
+  try { await execute(`CREATE INDEX IF NOT EXISTS idx_poc_docs_project ON poc_documents(project_id)`); } catch {}
+
+  // POC critical notes column
+  if (!await columnExists('projects', 'poc_critical_notes')) {
+    try { await execute(`ALTER TABLE projects ADD COLUMN poc_critical_notes TEXT`); } catch {}
+  }
+
   // Customer success entries (CSAT + CF product signal overrides)
   try {
     await execute(`
@@ -250,6 +287,25 @@ async function runMigrations() {
       )
     `);
   } catch {}
+
+  // Migration checklists table
+  await execute(`CREATE TABLE IF NOT EXISTS migration_checklists (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL,
+    migration_type VARCHAR(20) NOT NULL,
+    phase VARCHAR(20) NOT NULL,
+    checklist_data JSONB NOT NULL DEFAULT '{}',
+    status VARCHAR(30) NOT NULL DEFAULT 'not_started',
+    submitted_by VARCHAR(255),
+    submitted_at TIMESTAMP,
+    verified_by VARCHAR(255),
+    verified_at TIMESTAMP,
+    pm_notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(project_id, migration_type, phase)
+  )`);
+  try { await execute(`CREATE INDEX IF NOT EXISTS idx_mig_chk_project ON migration_checklists(project_id)`); } catch {}
 }
 
 // Start server
