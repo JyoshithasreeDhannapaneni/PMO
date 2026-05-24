@@ -164,7 +164,7 @@ export default function OverageProjectsPage() {
   const paged = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
 
   // Stats
-  const totalOverageAmount = projects.reduce((sum, p) => sum + (p.overageAmount || 0), 0);
+  const totalOverageAmount = projects.reduce((sum, p) => sum + (parseFloat(p.overageAmount) || 0), 0);
   const newThisWeek = projects.filter((p) => p.plannedEnd && isThisWeek(new Date(p.plannedEnd))).length;
 
   function downloadCSV() {
