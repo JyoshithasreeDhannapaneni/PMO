@@ -1512,7 +1512,7 @@ export default function SettingsPage() {
   const getRoleBadgeClass = (role: string) => {
     switch (role) {
       case 'ADMIN': return 'bg-red-100 text-red-700 border-red-200';
-      case 'MANAGER': return 'bg-blue-100 text-blue-700 border-blue-200';
+      case 'PROJECT_MANAGER': return 'bg-blue-100 text-blue-700 border-blue-200';
       case 'PRE_SALES': return 'bg-purple-100 text-purple-700 border-purple-200';
       case 'ACCOUNT_MANAGER': return 'bg-indigo-100 text-indigo-700 border-indigo-200';
       default: return 'bg-gray-100 text-gray-700 border-gray-200';
@@ -1522,7 +1522,7 @@ export default function SettingsPage() {
   const getRoleIcon = (role: string) => {
     switch (role) {
       case 'ADMIN': return Shield;
-      case 'MANAGER': return Users;
+      case 'PROJECT_MANAGER': return Users;
       default: return Eye;
     }
   };
@@ -1603,7 +1603,7 @@ export default function SettingsPage() {
               onChange={(e) => setInviteForm({ ...inviteForm, role: e.target.value })}
               options={[
                 { value: 'VIEWER', label: 'Viewer — Can view projects and reports' },
-                { value: 'MANAGER', label: 'Project Manager — Can create/edit migration projects' },
+                { value: 'PROJECT_MANAGER', label: 'Project Manager — Can create/edit migration projects' },
                 { value: 'PRE_SALES', label: 'Pre-Sales — Can create/edit POC projects' },
                 { value: 'ACCOUNT_MANAGER', label: 'Account Manager — Can edit Account Manager view' },
                 { value: 'ADMIN', label: 'Admin — Full access to all features and settings' },
@@ -1672,7 +1672,7 @@ export default function SettingsPage() {
           />
         </div>
         <div className="flex gap-1 bg-gray-100 rounded-lg p-0.5">
-          {['ALL', 'ADMIN', 'MANAGER', 'PRE_SALES', 'ACCOUNT_MANAGER', 'VIEWER'].map((role) => (
+          {['ALL', 'ADMIN', 'PROJECT_MANAGER', 'PRE_SALES', 'ACCOUNT_MANAGER', 'VIEWER'].map((role) => (
             <button
               key={role}
               onClick={() => setUserRoleFilter(role)}
@@ -1722,7 +1722,7 @@ export default function SettingsPage() {
                 {/* Avatar */}
                 <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold ${
                   u.role === 'ADMIN' ? 'bg-red-100 text-red-700'
-                  : u.role === 'MANAGER' ? 'bg-blue-100 text-blue-700'
+                  : u.role === 'PROJECT_MANAGER' ? 'bg-blue-100 text-blue-700'
                   : 'bg-gray-100 text-gray-700'
                 }`}>
                   {u.name?.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase() || '?'}

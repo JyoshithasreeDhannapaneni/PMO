@@ -35,7 +35,7 @@ function AuthCallbackInner() {
       id,
       name: decodeURIComponent(name),
       email: decodeURIComponent(email),
-      role: role as 'ADMIN' | 'MANAGER' | 'VIEWER',
+      role: role as 'ADMIN' | 'PROJECT_MANAGER' | 'VIEWER',
     });
     // Fetch settings from API after Microsoft SSO login
     const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';

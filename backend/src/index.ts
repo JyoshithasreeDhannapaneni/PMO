@@ -161,10 +161,13 @@ async function runMigrations() {
   // Normalise all existing project names to lowercase
   try { await execute(`UPDATE projects SET name = LOWER(name) WHERE name != LOWER(name)`); } catch {}
 
-  // New roles: PRE_SALES and ACCOUNT_MANAGER
+  // Rename MANAGER role to PROJECT_MANAGER
+  try { await execute(`UPDATE users SET role = 'PROJECT_MANAGER' WHERE role = 'MANAGER'`); } catch {}
+
+  // Updated roles constraint including PROJECT_MANAGER
   try {
     await execute(`ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check`);
-    await execute(`ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('ADMIN','MANAGER','VIEWER','PRE_SALES','ACCOUNT_MANAGER'))`);
+    await execute(`ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('ADMIN','PROJECT_MANAGER','VIEWER','PRE_SALES','ACCOUNT_MANAGER'))`);
   } catch {}
 
   // POC project support
@@ -194,6 +197,27 @@ async function runMigrations() {
     ['poc_permissions_intact',   `BOOLEAN`],
     ['poc_metadata_intact',      `BOOLEAN`],
     ['poc_handoff_notes',        `TEXT`],
+    // Phase-specific fields added for structured POC template
+    ['poc_num_users',            `VARCHAR(100)`],
+    ['poc_estimated_data',       `VARCHAR(100)`],
+    ['poc_phase1_checklist',     `TEXT`],
+    ['poc_tenant_access',        `VARCHAR(20)`],
+    ['poc_tool_version',         `VARCHAR(100)`],
+    ['poc_test_accounts',        `VARCHAR(255)`],
+    ['poc_firewall_issues',      `VARCHAR(50)`],
+    ['poc_phase2_checklist',     `TEXT`],
+    ['poc_files_migrated',       `VARCHAR(100)`],
+    ['poc_data_migrated_gb',     `DECIMAL(15,2)`],
+    ['poc_errors_failed',        `VARCHAR(255)`],
+    ['poc_phase3_checklist',     `TEXT`],
+    ['poc_validation_date',      `DATE`],
+    ['poc_issues_raised',        `VARCHAR(100)`],
+    ['poc_customer_satisfaction',`VARCHAR(20)`],
+    ['poc_phase4_checklist',     `TEXT`],
+    ['poc_next_step',            `VARCHAR(255)`],
+    ['poc_deal_value',           `DECIMAL(15,2)`],
+    ['poc_phase5_checklist',     `TEXT`],
+    ['poc_pre_sales_owner',      `VARCHAR(255)`],
   ];
   for (const [col, colType] of pocCols) {
     if (!await columnExists('projects', col)) {

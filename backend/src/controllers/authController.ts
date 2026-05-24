@@ -189,7 +189,7 @@ export const authController = {
 
     const requestingUser = await authService.getUserFromToken(token);
     if (!requestingUser) throw new AppError('Invalid token', 401);
-    if (requestingUser.role !== 'ADMIN' && requestingUser.role !== 'MANAGER') {
+    if (requestingUser.role !== 'ADMIN' && requestingUser.role !== 'PROJECT_MANAGER') {
       throw new AppError('Insufficient permissions', 403);
     }
 
@@ -261,8 +261,8 @@ export const authController = {
     const { id } = req.params;
     const { role } = req.body;
 
-    if (!['ADMIN', 'MANAGER', 'VIEWER'].includes(role)) {
-      throw new AppError('Invalid role. Must be ADMIN, MANAGER, or VIEWER', 400);
+    if (!['ADMIN', 'PROJECT_MANAGER', 'VIEWER', 'PRE_SALES', 'ACCOUNT_MANAGER'].includes(role)) {
+      throw new AppError('Invalid role. Must be ADMIN, PROJECT_MANAGER, VIEWER, PRE_SALES, or ACCOUNT_MANAGER', 400);
     }
 
     await authService.updateUserRole(id, role);

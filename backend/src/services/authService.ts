@@ -5,7 +5,7 @@ import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 
 
-export type UserRole = 'ADMIN' | 'MANAGER' | 'VIEWER' | 'PRE_SALES' | 'ACCOUNT_MANAGER';
+export type UserRole = 'ADMIN' | 'PROJECT_MANAGER' | 'VIEWER' | 'PRE_SALES' | 'ACCOUNT_MANAGER';
 
 export interface UserPayload {
   id: string;
@@ -144,7 +144,7 @@ class AuthService {
       id: session.user_id,
       name: session.name,
       email: session.email,
-      role: session.role as 'ADMIN' | 'MANAGER' | 'VIEWER',
+      role: session.role as UserRole,
     };
   }
 

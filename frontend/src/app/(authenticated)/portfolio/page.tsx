@@ -348,7 +348,7 @@ export default function PortfolioPage() {
   const { user } = useAuth();
   const { settings } = useSettings();
   const isAdmin   = user?.role === 'ADMIN';
-  const isManager = user?.role === 'MANAGER';
+  const isManager = user?.role === 'PROJECT_MANAGER';
   const phaseProgress = useMemo(
     () => buildPhaseProgress(settings.phases.map((p) => ({ code: p.code, order: p.order }))),
     [settings.phases]

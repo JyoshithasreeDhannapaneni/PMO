@@ -206,6 +206,19 @@ export function useUpdatePocProject() {
   });
 }
 
+export function useDeletePocProject() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => projectsApi.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['poc-projects'] });
+      queryClient.invalidateQueries({ queryKey: ['account-manager-view'] });
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+  });
+}
+
 export function useAccountManagerView() {
   return useQuery({
     queryKey: ['account-manager-view'],
@@ -246,6 +259,14 @@ const authFetch = (url: string) => {
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
   return fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} }).then(r => r.json());
 };
+
+export function useAllUsers() {
+  return useQuery({
+    queryKey: ['all-users'],
+    queryFn: () => authFetch(`${API_BASE}/api/auth/users`),
+    staleTime: 5 * 60_000,
+  });
+}
 
 export function useOveragedProjects(manager?: string) {
   return useQuery({
