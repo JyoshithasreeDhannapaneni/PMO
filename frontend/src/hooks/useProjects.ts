@@ -206,6 +206,19 @@ export function useUpdatePocProject() {
   });
 }
 
+export function useDeletePocProject() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => projectsApi.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['poc-projects'] });
+      queryClient.invalidateQueries({ queryKey: ['account-manager-view'] });
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+  });
+}
+
 export function useAccountManagerView() {
   return useQuery({
     queryKey: ['account-manager-view'],
