@@ -269,11 +269,12 @@ function PhaseColumn({ phase, project: p, canEdit, isEditing, onEdit, onSave, on
     parseChecklist((p as any)[phase.checklistKey], phase.checklistCount)
   );
   const checklistJson = (p as any)[phase.checklistKey] as string | null | undefined;
+  // Sync only when p's data changes (refetch). Do NOT include isEditing —
+  // adding it would overwrite the optimistic update the moment editing closes,
+  // because checklistJson is still the old value at that instant.
   useEffect(() => {
-    if (!isEditing) {
-      setViewedChecklist(parseChecklist(checklistJson, phase.checklistCount));
-    }
-  }, [checklistJson, isEditing]);
+    setViewedChecklist(parseChecklist(checklistJson, phase.checklistCount));
+  }, [checklistJson]);
 
   useEffect(() => {
     if (!isEditing) return;
