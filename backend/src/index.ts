@@ -194,6 +194,26 @@ async function runMigrations() {
     ['poc_permissions_intact',   `BOOLEAN`],
     ['poc_metadata_intact',      `BOOLEAN`],
     ['poc_handoff_notes',        `TEXT`],
+    // Phase-specific fields added for structured POC template
+    ['poc_num_users',            `VARCHAR(100)`],
+    ['poc_estimated_data',       `VARCHAR(100)`],
+    ['poc_phase1_checklist',     `TEXT`],
+    ['poc_tenant_access',        `VARCHAR(20)`],
+    ['poc_tool_version',         `VARCHAR(100)`],
+    ['poc_test_accounts',        `VARCHAR(255)`],
+    ['poc_firewall_issues',      `VARCHAR(50)`],
+    ['poc_phase2_checklist',     `TEXT`],
+    ['poc_files_migrated',       `VARCHAR(100)`],
+    ['poc_data_migrated_gb',     `DECIMAL(15,2)`],
+    ['poc_errors_failed',        `VARCHAR(255)`],
+    ['poc_phase3_checklist',     `TEXT`],
+    ['poc_validation_date',      `DATE`],
+    ['poc_issues_raised',        `VARCHAR(100)`],
+    ['poc_customer_satisfaction',`VARCHAR(20)`],
+    ['poc_phase4_checklist',     `TEXT`],
+    ['poc_next_step',            `VARCHAR(255)`],
+    ['poc_deal_value',           `DECIMAL(15,2)`],
+    ['poc_phase5_checklist',     `TEXT`],
   ];
   for (const [col, colType] of pocCols) {
     if (!await columnExists('projects', col)) {
