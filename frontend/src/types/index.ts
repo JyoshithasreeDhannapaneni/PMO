@@ -103,6 +103,7 @@ export interface Project {
   pocDealValue?: number | null;
   pocPhase5Checklist?: string | null;
   pocPreSalesOwner?: string | null;
+  pocCriticalNotes?: string | null;
   createdAt: string;
   updatedAt: string;
   phases?: ProjectPhaseRecord[];

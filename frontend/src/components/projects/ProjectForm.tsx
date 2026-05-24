@@ -291,11 +291,13 @@ export function ProjectForm({ project, onSubmit, isLoading, defaultManagerName }
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Account Manager <span className="text-red-500">*</span></label>
-                <input list="am-list" {...register('accountManager')} placeholder="Type or select..."
-                  className="w-full px-3 py-2 border border-blue-200 rounded-lg bg-white text-slate-900 text-sm focus:ring-2 focus:ring-blue-300 focus:outline-none" />
-                <datalist id="am-list">
-                  {accountManagers.map((name) => <option key={name} value={name} />)}
-                </datalist>
+                <select {...register('accountManager')}
+                  className="w-full px-3 py-2 border border-blue-200 rounded-lg bg-white text-slate-900 text-sm focus:ring-2 focus:ring-blue-300 focus:outline-none">
+                  <option value="">Select account manager</option>
+                  <option value="Joy Prakash">Joy Prakash</option>
+                  <option value="Arundhati Sen">Arundhati Sen</option>
+                  <option value="Deepak R J">Deepak R J</option>
+                </select>
                 {errors.accountManager && <p className="mt-1 text-xs text-red-600">{errors.accountManager.message}</p>}
               </div>
             </div>
