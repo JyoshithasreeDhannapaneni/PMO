@@ -13,7 +13,7 @@ import type { Project, PocPhaseStatus } from '@/types';
 import {
   FlaskConical, Plus, ChevronDown, Loader2, Clock, CheckCircle2, XCircle, Circle,
   CalendarDays, User, X, Save, Search, AlertTriangle, Flag, Trash2, Archive,
-  Pencil, Check,
+  Pencil, Check, FileText, Upload, Download, StickyNote, FolderOpen,
 } from 'lucide-react';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -722,6 +722,90 @@ function PhaseStepperView({ project: p, canEdit }: { project: Project; canEdit: 
     ? usersData.data.map((u: any) => u.name).filter(Boolean).sort()
     : [];
 
+  // ── Tab state ──────────────────────────────────────────────────────────────
+  const [activeTab, setActiveTab] = useState<'details' | 'moms' | 'scope' | 'notes'>('details');
+  const [docs, setDocs] = useState<any[]>([]);
+  const [docsLoading, setDocsLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [criticalNotes, setCriticalNotes] = useState((p as any).pocCriticalNotes || '');
+  const [savingNotes, setSavingNotes] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadCategory, setUploadCategory] = useState<'MOM' | 'SCOPE'>('MOM');
+  const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+
+  async function loadDocs() {
+    setDocsLoading(true);
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
+      const res = await fetch(`${API_BASE}/api/poc-documents/${p.id}`, {
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+      });
+      const json = await res.json();
+      if (json.success) setDocs(json.data);
+    } catch {} finally { setDocsLoading(false); }
+  }
+
+  useEffect(() => {
+    if (activeTab === 'moms' || activeTab === 'scope') loadDocs();
+  }, [activeTab]);
+
+  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const base64 = (reader.result as string).split(',')[1];
+        const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
+        await fetch(`${API_BASE}/api/poc-documents/${p.id}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+          body: JSON.stringify({
+            fileName: file.name,
+            category: uploadCategory,
+            fileData: base64,
+            mimeType: file.type,
+            fileSize: file.size,
+            uploadedBy: '',
+          }),
+        });
+        await loadDocs();
+        showToast('success', 'Document uploaded');
+      };
+      reader.readAsDataURL(file);
+    } catch { showToast('error', 'Upload failed'); } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  }
+
+  async function handleDeleteDoc(docId: string) {
+    if (!confirm('Delete this document?')) return;
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
+    await fetch(`${API_BASE}/api/poc-documents/${p.id}/${docId}`, {
+      method: 'DELETE',
+      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+    });
+    await loadDocs();
+    showToast('success', 'Document deleted');
+  }
+
+  async function saveCriticalNotes() {
+    setSavingNotes(true);
+    try {
+      await updatePoc.mutateAsync({ id: p.id, data: { pocCriticalNotes: criticalNotes } as any });
+      showToast('success', 'Critical notes saved');
+    } catch { showToast('error', 'Failed to save notes'); } finally { setSavingNotes(false); }
+  }
+
+  function formatFileSize(bytes: number) {
+    if (!bytes) return '';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / 1048576).toFixed(1)} MB`;
+  }
+
   function openOverviewEdit() {
     setOverviewForm({
       projectManager:   p.projectManager || '',
@@ -769,6 +853,31 @@ function PhaseStepperView({ project: p, canEdit }: { project: Project; canEdit: 
 
   return (
     <div className="space-y-4">
+      {/* Tab navigation */}
+      <div className="flex gap-1 border-b border-gray-200">
+        {([
+          { id: 'details', label: 'Project Details',        icon: <FlaskConical className="w-3.5 h-3.5" /> },
+          { id: 'moms',    label: 'MOMs',                   icon: <FileText className="w-3.5 h-3.5" /> },
+          { id: 'scope',   label: 'Scope & Customization',  icon: <FolderOpen className="w-3.5 h-3.5" /> },
+          { id: 'notes',   label: 'Critical Notes',         icon: <StickyNote className="w-3.5 h-3.5" /> },
+        ] as const).map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium border-b-2 transition-colors ${
+              activeTab === tab.id
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            {tab.icon}{tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Tab 1: Project Details */}
+      {activeTab === 'details' && (
+      <div className="space-y-4">
       {/* Overview strip */}
       <div className="p-3 bg-gray-50 rounded-xl border border-gray-100 text-xs">
         {editingOverview ? (
@@ -798,7 +907,12 @@ function PhaseStepperView({ project: p, canEdit }: { project: Project; canEdit: 
               </div>
               <div className="space-y-1">
                 <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Account Manager</p>
-                <input type="text" value={overviewForm.accountManager} onChange={e => setOF('accountManager', e.target.value)} className={inp} />
+                <select value={overviewForm.accountManager} onChange={e => setOF('accountManager', e.target.value)} className={inp}>
+                  <option value="">Select...</option>
+                  <option value="Joy Prakash">Joy Prakash</option>
+                  <option value="Arundhati Sen">Arundhati Sen</option>
+                  <option value="Deepak R J">Deepak R J</option>
+                </select>
               </div>
               <div className="space-y-1">
                 <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">POC Start</p>
@@ -897,6 +1011,116 @@ function PhaseStepperView({ project: p, canEdit }: { project: Project; canEdit: 
           ))}
         </div>
       </div>
+      </div>
+      )} {/* end activeTab === 'details' */}
+
+      {/* Tab 2 & 3: MOMs / Scope & Customization */}
+      {(activeTab === 'moms' || activeTab === 'scope') && (
+        <div className="space-y-4">
+          {/* Upload bar */}
+          {canEdit && (
+            <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-xl border border-blue-100">
+              <input
+                ref={fileInputRef}
+                type="file"
+                className="hidden"
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.png,.jpg,.jpeg"
+                onChange={handleFileUpload}
+              />
+              <button
+                onClick={() => { setUploadCategory(activeTab === 'moms' ? 'MOM' : 'SCOPE'); fileInputRef.current?.click(); }}
+                disabled={uploading}
+                className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition"
+              >
+                {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                {uploading ? 'Uploading…' : `Upload ${activeTab === 'moms' ? 'MOM' : 'Scope'} Document`}
+              </button>
+              <p className="text-xs text-blue-600">PDF, Word, Excel, PPT, images supported</p>
+            </div>
+          )}
+
+          {/* Document list */}
+          {docsLoading ? (
+            <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-gray-400" /></div>
+          ) : (() => {
+            const category = activeTab === 'moms' ? 'MOM' : 'SCOPE';
+            const filteredDocs = docs.filter(d => d.category === category);
+            if (filteredDocs.length === 0) return (
+              <div className="flex flex-col items-center py-12 text-gray-400 gap-2">
+                <FileText className="w-10 h-10 opacity-30" />
+                <p className="text-sm">No {activeTab === 'moms' ? 'MOM' : 'Scope'} documents yet</p>
+                {canEdit && <p className="text-xs">Use the upload button above to add documents</p>}
+              </div>
+            );
+            return (
+              <div className="space-y-2">
+                {filteredDocs.map((doc: any) => (
+                  <div key={doc.id} className="flex items-center gap-3 p-3 bg-white rounded-lg border border-gray-200 hover:border-blue-200 transition group">
+                    <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0">
+                      <FileText className="w-4 h-4 text-blue-500" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-800 truncate">{doc.fileName}</p>
+                      <p className="text-xs text-gray-400">
+                        {formatFileSize(doc.fileSize)}{doc.uploadedBy ? ` · ${doc.uploadedBy}` : ''} · {new Date(doc.createdAt).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <a
+                      href={`${API_BASE}${doc.filePath}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      download={doc.fileName}
+                      className="opacity-0 group-hover:opacity-100 inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 text-blue-500 hover:bg-blue-100 transition"
+                      title="Download"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                    </a>
+                    {canEdit && (
+                      <button
+                        onClick={() => handleDeleteDoc(doc.id)}
+                        className="opacity-0 group-hover:opacity-100 inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 text-red-500 hover:bg-red-100 transition"
+                        title="Delete"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
+      {/* Tab 4: Critical Notes */}
+      {activeTab === 'notes' && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-semibold text-gray-700">Critical Notes</p>
+            <p className="text-xs text-gray-400">Visible to all team members</p>
+          </div>
+          <textarea
+            value={criticalNotes}
+            onChange={e => setCriticalNotes(e.target.value)}
+            placeholder="Add critical notes, blockers, key decisions, or important context for this POC…"
+            rows={10}
+            readOnly={!canEdit}
+            className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl bg-white text-gray-800 placeholder-gray-400 resize-none focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+          />
+          {canEdit && (
+            <div className="flex justify-end">
+              <button
+                onClick={saveCriticalNotes}
+                disabled={savingNotes}
+                className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition"
+              >
+                {savingNotes ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                Save Notes
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
     </div>
   );
