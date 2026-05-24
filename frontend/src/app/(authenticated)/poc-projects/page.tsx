@@ -284,8 +284,6 @@ function PhaseColumn({ phase, project: p, canEdit, isEditing, onEdit, onSave, on
     if (phase.num === 1) {
       setForm({
         pocQualificationStatus: (p as any).pocQualificationStatus || 'not_started',
-        sourcePlatform:         p.sourcePlatform || '',
-        targetPlatform:         p.targetPlatform || '',
         pocNumUsers:            (p as any).pocNumUsers || '',
         pocEstimatedData:       (p as any).pocEstimatedData || '',
         pocQualificationNotes:  (p as any).pocQualificationNotes || '',
@@ -389,16 +387,6 @@ function PhaseColumn({ phase, project: p, canEdit, isEditing, onEdit, onSave, on
         {/* ── PHASE 1 ── */}
         {phase.num === 1 && (isEditing ? (
           <>
-            <div className="space-y-1">
-              <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Source platform</label>
-              <input type="text" value={form.sourcePlatform || ''} onChange={e => set('sourcePlatform', e.target.value)}
-                placeholder="e.g. SharePoint, Box, G Drive" className={inp} />
-            </div>
-            <div className="space-y-1">
-              <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Destination platform</label>
-              <input type="text" value={form.targetPlatform || ''} onChange={e => set('targetPlatform', e.target.value)}
-                placeholder="e.g. OneDrive, SharePoint Online" className={inp} />
-            </div>
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1">
                 <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">No. of users</label>
@@ -421,8 +409,6 @@ function PhaseColumn({ phase, project: p, canEdit, isEditing, onEdit, onSave, on
           </>
         ) : (
           <>
-            <FL label="Source platform"><FV v={p.sourcePlatform} /></FL>
-            <FL label="Destination platform"><FV v={p.targetPlatform} /></FL>
             <div className="grid grid-cols-2 gap-2">
               <FL label="No. of users"><FV v={(p as any).pocNumUsers} /></FL>
               <FL label="Estimated data"><FV v={(p as any).pocEstimatedData} /></FL>
@@ -718,8 +704,49 @@ function PhaseColumn({ phase, project: p, canEdit, isEditing, onEdit, onSave, on
 // ── Expanded stepper view ─────────────────────────────────────────────────────
 function PhaseStepperView({ project: p, canEdit }: { project: Project; canEdit: boolean }) {
   const [editingPhaseNum, setEditingPhaseNum] = useState<number | null>(null);
+  const [editingOverview, setEditingOverview] = useState(false);
+  const [overviewForm, setOverviewForm] = useState({
+    customerName:   p.customerName   || '',
+    projectManager: p.projectManager || '',
+    accountManager: p.accountManager || '',
+    plannedStart:   p.plannedStart   ? String(p.plannedStart).substring(0, 10) : '',
+    plannedEnd:     p.plannedEnd     ? String(p.plannedEnd).substring(0, 10)   : '',
+    pocDataVolume:  (p as any).pocDataVolume || '',
+  });
   const updatePoc = useUpdatePocProject();
   const { showToast } = useToast();
+
+  function openOverviewEdit() {
+    setOverviewForm({
+      customerName:   p.customerName   || '',
+      projectManager: p.projectManager || '',
+      accountManager: p.accountManager || '',
+      plannedStart:   p.plannedStart   ? String(p.plannedStart).substring(0, 10) : '',
+      plannedEnd:     p.plannedEnd     ? String(p.plannedEnd).substring(0, 10)   : '',
+      pocDataVolume:  (p as any).pocDataVolume || '',
+    });
+    setEditingOverview(true);
+  }
+
+  async function saveOverview() {
+    try {
+      await updatePoc.mutateAsync({
+        id: p.id,
+        data: {
+          customerName:   overviewForm.customerName   || undefined,
+          projectManager: overviewForm.projectManager || undefined,
+          accountManager: overviewForm.accountManager || undefined,
+          plannedStart:   overviewForm.plannedStart   || undefined,
+          plannedEnd:     overviewForm.plannedEnd     || undefined,
+          pocDataVolume:  overviewForm.pocDataVolume  || null,
+        } as any,
+      });
+      showToast('success', 'Overview saved');
+      setEditingOverview(false);
+    } catch {
+      showToast('error', 'Failed to save');
+    }
+  }
 
   async function savePhase(phaseNum: number, data: Record<string, any>) {
     try {
@@ -732,38 +759,87 @@ function PhaseStepperView({ project: p, canEdit }: { project: Project; canEdit: 
   }
 
   const days = pocDuration(p);
+  function setOF(k: string, v: string) { setOverviewForm(f => ({ ...f, [k]: v })); }
 
   return (
     <div className="space-y-4">
       {/* Overview strip */}
-      <div className="grid grid-cols-3 md:grid-cols-6 gap-3 p-3 bg-gray-50 rounded-xl border border-gray-100 text-xs">
-        <div>
-          <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Account</p>
-          <p className="text-gray-800 font-medium capitalize">{p.customerName}</p>
-        </div>
-        <div>
-          <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Pre-Sales</p>
-          <p className="text-gray-700">{dash(p.projectManager)}</p>
-        </div>
-        <div>
-          <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Account Manager</p>
-          <p className="text-gray-700">{dash(p.accountManager)}</p>
-        </div>
-        <div>
-          <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">POC Start</p>
-          <p className="text-gray-700">{fmtDate(p.plannedStart)}</p>
-        </div>
-        <div>
-          <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">POC End</p>
-          <p className={`font-medium ${days !== null && days > 30 ? 'text-red-600' : days !== null && days > 14 ? 'text-orange-500' : 'text-gray-700'}`}>
-            {fmtDate(p.plannedEnd)}
-            {days !== null && <span className="ml-1 font-normal text-gray-400">({days}d)</span>}
-          </p>
-        </div>
-        <div>
-          <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Data size</p>
-          <p className="text-gray-700">{dash((p as any).pocDataVolume)}</p>
-        </div>
+      <div className="p-3 bg-gray-50 rounded-xl border border-gray-100 text-xs">
+        {editingOverview ? (
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              <div className="space-y-1">
+                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Account</p>
+                <input type="text" value={overviewForm.customerName} onChange={e => setOF('customerName', e.target.value)} className={inp} />
+              </div>
+              <div className="space-y-1">
+                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Pre-Sales</p>
+                <input type="text" value={overviewForm.projectManager} onChange={e => setOF('projectManager', e.target.value)} className={inp} />
+              </div>
+              <div className="space-y-1">
+                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Account Manager</p>
+                <input type="text" value={overviewForm.accountManager} onChange={e => setOF('accountManager', e.target.value)} className={inp} />
+              </div>
+              <div className="space-y-1">
+                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">POC Start</p>
+                <input type="date" value={overviewForm.plannedStart} onChange={e => setOF('plannedStart', e.target.value)} className={inp} />
+              </div>
+              <div className="space-y-1">
+                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">POC End</p>
+                <input type="date" value={overviewForm.plannedEnd} onChange={e => setOF('plannedEnd', e.target.value)} className={inp} />
+              </div>
+              <div className="space-y-1">
+                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Data size</p>
+                <input type="text" value={overviewForm.pocDataVolume} onChange={e => setOF('pocDataVolume', e.target.value)} placeholder="e.g. 500 GB" className={inp} />
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={saveOverview} disabled={updatePoc.isPending}
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition">
+                {updatePoc.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />} Save
+              </button>
+              <button onClick={() => setEditingOverview(false)} className="text-xs px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50 transition text-gray-600">Cancel</button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-start gap-2">
+            <div className="grid grid-cols-3 md:grid-cols-6 gap-3 flex-1">
+              <div>
+                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Account</p>
+                <p className="text-gray-800 font-medium capitalize">{p.customerName}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Pre-Sales</p>
+                <p className="text-gray-700">{dash(p.projectManager)}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Account Manager</p>
+                <p className="text-gray-700">{dash(p.accountManager)}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">POC Start</p>
+                <p className="text-gray-700">{fmtDate(p.plannedStart)}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">POC End</p>
+                <p className={`font-medium ${days !== null && days > 30 ? 'text-red-600' : days !== null && days > 14 ? 'text-orange-500' : 'text-gray-700'}`}>
+                  {fmtDate(p.plannedEnd)}
+                  {days !== null && <span className="ml-1 font-normal text-gray-400">({days}d)</span>}
+                </p>
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Data size</p>
+                <p className="text-gray-700">{dash((p as any).pocDataVolume)}</p>
+              </div>
+            </div>
+            {canEdit && (
+              <button onClick={openOverviewEdit}
+                className="flex items-center gap-1 text-[10px] text-blue-600 hover:text-blue-800 bg-white border border-blue-200 rounded px-1.5 py-0.5 shrink-0 transition">
+                <Pencil className="w-2.5 h-2.5" /> Edit
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Progress circles */}
