@@ -1018,26 +1018,42 @@ function PhaseStepperView({ project: p, canEdit }: { project: Project; canEdit: 
       {(activeTab === 'moms' || activeTab === 'scope') && (
         <div className="space-y-4">
           {/* Upload bar */}
-          {canEdit && (
-            <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-xl border border-blue-100">
-              <input
-                ref={fileInputRef}
-                type="file"
-                className="hidden"
-                accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.png,.jpg,.jpeg"
-                onChange={handleFileUpload}
-              />
-              <button
-                onClick={() => { setUploadCategory(activeTab === 'moms' ? 'MOM' : 'SCOPE'); fileInputRef.current?.click(); }}
-                disabled={uploading}
-                className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition"
+          <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-xl border border-blue-100 flex-wrap">
+            {canEdit && (
+              <>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  className="hidden"
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.png,.jpg,.jpeg"
+                  onChange={handleFileUpload}
+                />
+                <button
+                  onClick={() => { setUploadCategory(activeTab === 'moms' ? 'MOM' : 'SCOPE'); fileInputRef.current?.click(); }}
+                  disabled={uploading}
+                  className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition"
+                >
+                  {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                  {uploading ? 'Uploading…' : `Upload ${activeTab === 'moms' ? 'MOM' : 'Scope'} Document`}
+                </button>
+              </>
+            )}
+            {activeTab === 'scope' && (
+              <a
+                href="/templates/CloudFuze_POC_Scope_Register_Template.xls"
+                download="CloudFuze_POC_Scope_Register_Template.xls"
+                className="flex items-center gap-2 px-4 py-2 text-sm bg-white text-indigo-700 border border-indigo-200 rounded-lg hover:bg-indigo-50 transition font-medium"
               >
-                {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                {uploading ? 'Uploading…' : `Upload ${activeTab === 'moms' ? 'MOM' : 'Scope'} Document`}
-              </button>
-              <p className="text-xs text-blue-600">PDF, Word, Excel, PPT, images supported</p>
-            </div>
-          )}
+                <Download className="w-4 h-4" />
+                Download Template
+              </a>
+            )}
+            <p className="text-xs text-blue-600">
+              {activeTab === 'scope'
+                ? 'Download the template, fill it out, then upload the completed file above'
+                : 'PDF, Word, Excel, PPT, images supported'}
+            </p>
+          </div>
 
           {/* Document list */}
           {docsLoading ? (

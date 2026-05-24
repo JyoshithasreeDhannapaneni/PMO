@@ -16,7 +16,7 @@ import { useAuth } from '@/context/AuthContext';
 const allNavigation = [
   { name: 'Dashboard',          href: '/',                       icon: LayoutDashboard, adminOnly: false },
   { name: 'All Projects',        href: '/projects',               icon: FolderKanban,    adminOnly: false },
-  { name: 'Migration Runbooks', href: '/migration-runbooks',     icon: BookOpen,        adminOnly: false },
+  { name: 'Migration Validation', href: '/migration-runbooks',     icon: BookOpen,        adminOnly: false },
   { name: 'Overage Projects',   href: '/overage-projects',       icon: DollarSign,      adminOnly: false },
   { name: 'Escalated Projects', href: '/escalation-projects',    icon: Siren,           adminOnly: false },
   { name: 'Managers & Goals',   href: '/managers',               icon: Users,   badge: 'goals', adminOnly: false },
