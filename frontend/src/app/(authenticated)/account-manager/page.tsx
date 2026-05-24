@@ -146,6 +146,8 @@ export default function AccountManagerPage() {
               ...(migration?.migrationTypes || '').split(','),
             ].map(w => w.trim()).filter(Boolean)));
 
+            const primaryProjectName = migration?.name || poc?.name;
+
             return (
               <Card key={key} className="overflow-hidden">
                 {/* Panel header */}
@@ -154,13 +156,20 @@ export default function AccountManagerPage() {
                   onClick={() => toggle(key)}
                 >
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-semibold text-gray-900">{account.customerName}</span>
-                      {account.needsAttention && (
-                        <span className="flex items-center gap-1 text-xs bg-orange-50 text-orange-600 px-2 py-0.5 rounded-full font-medium">
-                          <AlertTriangle className="w-3 h-3" /> Needs Attention
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-2 flex-wrap min-w-0">
+                        <span className="font-semibold text-gray-900 truncate">
+                          {primaryProjectName || account.customerName}
                         </span>
-                      )}
+                        {account.needsAttention && (
+                          <span className="flex items-center gap-1 text-xs bg-orange-50 text-orange-600 px-2 py-0.5 rounded-full font-medium flex-shrink-0">
+                            <AlertTriangle className="w-3 h-3" /> Needs Attention
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-xs bg-indigo-100 text-indigo-700 px-2.5 py-0.5 rounded-full font-medium flex-shrink-0">
+                        {account.customerName}
+                      </span>
                     </div>
                     <div className="flex items-center gap-3 mt-1 flex-wrap">
                       {account.accountManager && (
