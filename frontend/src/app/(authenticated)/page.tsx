@@ -419,7 +419,7 @@ export default function DashboardPage() {
   const { settings } = useSettings();
   const dash = settings.dashboardSettings;
   const isAdmin = user?.role === 'ADMIN';
-  const isManager = user?.role === 'MANAGER';
+  const isManager = user?.role === 'PROJECT_MANAGER';
   // ADMIN defaults to overall; MANAGER/others default to my
   const [viewMode, setViewMode] = useState<ViewMode>(isAdmin ? 'overall' : 'my');
   const [isRefreshing, setIsRefreshing] = useState(false);

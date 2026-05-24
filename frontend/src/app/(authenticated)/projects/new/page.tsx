@@ -55,7 +55,7 @@ export default function NewProjectPage() {
   const { showToast } = useToast();
   const [createdProjectName, setCreatedProjectName] = useState<string | null>(null);
 
-  const defaultManagerName = user?.role === 'MANAGER' ? user.name : undefined;
+  const defaultManagerName = user?.role === 'PROJECT_MANAGER' ? user.name : undefined;
 
   const handleSubmit = async (data: CreateProjectInput) => {
     try {

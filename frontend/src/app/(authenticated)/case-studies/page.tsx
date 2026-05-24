@@ -59,7 +59,7 @@ const statusConfig = {
 export default function CaseStudiesPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'ADMIN';
-  const isManager = user?.role === 'MANAGER';
+  const isManager = user?.role === 'PROJECT_MANAGER';
   const searchParams = useSearchParams();
   const highlightProjectId = searchParams.get('projectId');
   const highlightRef = useRef<HTMLDivElement>(null);

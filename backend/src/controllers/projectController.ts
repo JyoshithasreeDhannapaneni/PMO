@@ -25,8 +25,7 @@ getAll: asyncHandler(async (req: Request, res: Response): Promise<void> => {
     if (token) {
       try {
         const user = await authService.getUserFromToken(token);
-        if (user && user.role === 'MANAGER') {
-          // Try exact match first, then partial match
+        if (user && user.role === 'PROJECT_MANAGER') {
           filters.projectManager = user.name;
         }
       } catch {}
@@ -71,7 +70,7 @@ getAll: asyncHandler(async (req: Request, res: Response): Promise<void> => {
     if (token) {
       try {
         const user = await authService.getUserFromToken(token);
-        if (user && user.role === 'MANAGER') {
+        if (user && user.role === 'PROJECT_MANAGER') {
           req.body.projectManager = user.name;
         }
         if (user && user.role === 'PRE_SALES') {
@@ -99,8 +98,12 @@ getAll: asyncHandler(async (req: Request, res: Response): Promise<void> => {
     if (token) {
       try {
         const user = await authService.getUserFromToken(token);
-        if (user && user.role === 'MANAGER') {
-          req.body.projectManager = user.name;
+        if (user && user.role === 'PROJECT_MANAGER') {
+          const existing = await projectService.getById(id);
+          if (existing.projectManager !== user.name) {
+            res.status(403).json({ success: false, error: { message: 'You can only edit projects assigned to you' } });
+            return;
+          }
         }
         if (user && user.role === 'PRE_SALES') {
           // PRE_SALES can only update POC phase fields

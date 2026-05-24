@@ -284,7 +284,7 @@ export function ProjectForm({ project, onSubmit, isLoading, defaultManagerName }
                   placeholder="Type or select..."
                   className={`w-full px-3 py-2 border border-blue-200 rounded-lg bg-white text-slate-900 text-sm focus:ring-2 focus:ring-blue-300 focus:outline-none ${defaultManagerName ? 'opacity-60 cursor-not-allowed' : ''}`} />
                 <datalist id="pm-list">
-                  {users.filter((u) => u.role === 'MANAGER' || u.role === 'ADMIN').map((u) => <option key={u.name} value={u.name} />)}
+                  {users.filter((u) => u.role === 'PROJECT_MANAGER' || u.role === 'ADMIN').map((u) => <option key={u.name} value={u.name} />)}
                 </datalist>
                 {errors.projectManager && <p className="mt-1 text-xs text-red-600">{errors.projectManager.message}</p>}
                 {defaultManagerName && <p className="mt-1 text-xs text-blue-600">Auto-assigned to you</p>}

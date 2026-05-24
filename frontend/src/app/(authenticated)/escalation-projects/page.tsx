@@ -25,7 +25,7 @@ const ESCALATION_TYPES = ['Client Issues', 'Tools Issues', 'Process Issues', 'Re
 export default function EscalationProjectsPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'ADMIN';
-  const isManager = user?.role === 'MANAGER';
+  const isManager = user?.role === 'PROJECT_MANAGER';
   const isViewer = user?.role === 'VIEWER';
   // ADMIN & VIEWER see all; MANAGER sees only their own projects
   const managerFilter = (isAdmin || isViewer) ? undefined : user?.name;

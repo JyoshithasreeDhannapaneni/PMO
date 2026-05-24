@@ -160,6 +160,26 @@ function mapProjectRow(row: any) {
     pocPermissionsIntact: row.poc_permissions_intact ?? null,
     pocMetadataIntact: row.poc_metadata_intact ?? null,
     pocHandoffNotes: row.poc_handoff_notes ?? null,
+    pocNumUsers: row.poc_num_users ?? null,
+    pocEstimatedData: row.poc_estimated_data ?? null,
+    pocPhase1Checklist: row.poc_phase1_checklist ?? null,
+    pocTenantAccess: row.poc_tenant_access ?? null,
+    pocToolVersion: row.poc_tool_version ?? null,
+    pocTestAccounts: row.poc_test_accounts ?? null,
+    pocFirewallIssues: row.poc_firewall_issues ?? null,
+    pocPhase2Checklist: row.poc_phase2_checklist ?? null,
+    pocFilesMigrated: row.poc_files_migrated ?? null,
+    pocDataMigratedGb: row.poc_data_migrated_gb ?? null,
+    pocErrorsFailed: row.poc_errors_failed ?? null,
+    pocPhase3Checklist: row.poc_phase3_checklist ?? null,
+    pocValidationDate: row.poc_validation_date ?? null,
+    pocIssuesRaised: row.poc_issues_raised ?? null,
+    pocCustomerSatisfaction: row.poc_customer_satisfaction ?? null,
+    pocPhase4Checklist: row.poc_phase4_checklist ?? null,
+    pocNextStep: row.poc_next_step ?? null,
+    pocDealValue: row.poc_deal_value ?? null,
+    pocPhase5Checklist: row.poc_phase5_checklist ?? null,
+    pocPreSalesOwner: row.poc_pre_sales_owner ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -432,6 +452,26 @@ class ProjectService {
       poc_permissions_intact: (data as any).pocPermissionsIntact ?? null,
       poc_metadata_intact: (data as any).pocMetadataIntact ?? null,
       poc_handoff_notes: (data as any).pocHandoffNotes ?? null,
+      poc_num_users: (data as any).pocNumUsers ?? null,
+      poc_estimated_data: (data as any).pocEstimatedData ?? null,
+      poc_phase1_checklist: (data as any).pocPhase1Checklist ?? null,
+      poc_tenant_access: (data as any).pocTenantAccess ?? null,
+      poc_tool_version: (data as any).pocToolVersion ?? null,
+      poc_test_accounts: (data as any).pocTestAccounts ?? null,
+      poc_firewall_issues: (data as any).pocFirewallIssues ?? null,
+      poc_phase2_checklist: (data as any).pocPhase2Checklist ?? null,
+      poc_files_migrated: (data as any).pocFilesMigrated ?? null,
+      poc_data_migrated_gb: (data as any).pocDataMigratedGb ?? null,
+      poc_errors_failed: (data as any).pocErrorsFailed ?? null,
+      poc_phase3_checklist: (data as any).pocPhase3Checklist ?? null,
+      poc_validation_date: (data as any).pocValidationDate ? new Date((data as any).pocValidationDate) : null,
+      poc_issues_raised: (data as any).pocIssuesRaised ?? null,
+      poc_customer_satisfaction: (data as any).pocCustomerSatisfaction ?? null,
+      poc_phase4_checklist: (data as any).pocPhase4Checklist ?? null,
+      poc_next_step: (data as any).pocNextStep ?? null,
+      poc_deal_value: (data as any).pocDealValue ?? null,
+      poc_phase5_checklist: (data as any).pocPhase5Checklist ?? null,
+      poc_pre_sales_owner: (data as any).pocPreSalesOwner ?? null,
     };
     try {
       const pocCols = Object.keys(pocData);
@@ -555,6 +595,26 @@ class ProjectService {
     if ((data as any).pocPermissionsIntact !== undefined) { updates.push(`poc_permissions_intact = $${params.length + 1}`); params.push((data as any).pocPermissionsIntact ?? null); }
     if ((data as any).pocMetadataIntact !== undefined) { updates.push(`poc_metadata_intact = $${params.length + 1}`); params.push((data as any).pocMetadataIntact ?? null); }
     if ((data as any).pocHandoffNotes !== undefined) { updates.push(`poc_handoff_notes = $${params.length + 1}`); params.push((data as any).pocHandoffNotes ?? null); }
+    if ((data as any).pocNumUsers !== undefined) { updates.push(`poc_num_users = $${params.length + 1}`); params.push((data as any).pocNumUsers ?? null); }
+    if ((data as any).pocEstimatedData !== undefined) { updates.push(`poc_estimated_data = $${params.length + 1}`); params.push((data as any).pocEstimatedData ?? null); }
+    if ((data as any).pocPhase1Checklist !== undefined) { updates.push(`poc_phase1_checklist = $${params.length + 1}`); params.push((data as any).pocPhase1Checklist ?? null); }
+    if ((data as any).pocTenantAccess !== undefined) { updates.push(`poc_tenant_access = $${params.length + 1}`); params.push((data as any).pocTenantAccess ?? null); }
+    if ((data as any).pocToolVersion !== undefined) { updates.push(`poc_tool_version = $${params.length + 1}`); params.push((data as any).pocToolVersion ?? null); }
+    if ((data as any).pocTestAccounts !== undefined) { updates.push(`poc_test_accounts = $${params.length + 1}`); params.push((data as any).pocTestAccounts ?? null); }
+    if ((data as any).pocFirewallIssues !== undefined) { updates.push(`poc_firewall_issues = $${params.length + 1}`); params.push((data as any).pocFirewallIssues ?? null); }
+    if ((data as any).pocPhase2Checklist !== undefined) { updates.push(`poc_phase2_checklist = $${params.length + 1}`); params.push((data as any).pocPhase2Checklist ?? null); }
+    if ((data as any).pocFilesMigrated !== undefined) { updates.push(`poc_files_migrated = $${params.length + 1}`); params.push((data as any).pocFilesMigrated ?? null); }
+    if ((data as any).pocDataMigratedGb !== undefined) { updates.push(`poc_data_migrated_gb = $${params.length + 1}`); params.push((data as any).pocDataMigratedGb ?? null); }
+    if ((data as any).pocErrorsFailed !== undefined) { updates.push(`poc_errors_failed = $${params.length + 1}`); params.push((data as any).pocErrorsFailed ?? null); }
+    if ((data as any).pocPhase3Checklist !== undefined) { updates.push(`poc_phase3_checklist = $${params.length + 1}`); params.push((data as any).pocPhase3Checklist ?? null); }
+    if ((data as any).pocValidationDate !== undefined) { updates.push(`poc_validation_date = $${params.length + 1}`); params.push((data as any).pocValidationDate ? new Date((data as any).pocValidationDate) : null); }
+    if ((data as any).pocIssuesRaised !== undefined) { updates.push(`poc_issues_raised = $${params.length + 1}`); params.push((data as any).pocIssuesRaised ?? null); }
+    if ((data as any).pocCustomerSatisfaction !== undefined) { updates.push(`poc_customer_satisfaction = $${params.length + 1}`); params.push((data as any).pocCustomerSatisfaction ?? null); }
+    if ((data as any).pocPhase4Checklist !== undefined) { updates.push(`poc_phase4_checklist = $${params.length + 1}`); params.push((data as any).pocPhase4Checklist ?? null); }
+    if ((data as any).pocNextStep !== undefined) { updates.push(`poc_next_step = $${params.length + 1}`); params.push((data as any).pocNextStep ?? null); }
+    if ((data as any).pocDealValue !== undefined) { updates.push(`poc_deal_value = $${params.length + 1}`); params.push((data as any).pocDealValue ?? null); }
+    if ((data as any).pocPhase5Checklist !== undefined) { updates.push(`poc_phase5_checklist = $${params.length + 1}`); params.push((data as any).pocPhase5Checklist ?? null); }
+    if ((data as any).pocPreSalesOwner !== undefined) { updates.push(`poc_pre_sales_owner = $${params.length + 1}`); params.push((data as any).pocPreSalesOwner ?? null); }
 
     await execute(
       `UPDATE projects SET ${updates.join(', ')}, updated_at = NOW() WHERE id = $${params.length + 1}`,
