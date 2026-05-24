@@ -26,11 +26,10 @@ export default function OverageProjectsPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'ADMIN';
   const isManager = user?.role === 'PROJECT_MANAGER';
-  const isViewer = user?.role === 'VIEWER';
-  // ADMIN & VIEWER see all; MANAGER sees only their own projects
-  const managerFilter = (isAdmin || isViewer) ? undefined : user?.name;
+  // Everyone sees all overage projects; edit rights are per-project
+  const canEditProject = (p: any) => isAdmin || (isManager && p.projectManager === user?.name);
 
-  const { data, isLoading, refetch } = useOveragedProjects(managerFilter);
+  const { data, isLoading, refetch } = useOveragedProjects(undefined);
   const projects: any[] = data?.data || [];
 
   const { data: allProjectsData } = useProjects({ limit: 1000 });
@@ -274,16 +273,14 @@ export default function OverageProjectsPage() {
               className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-900"
             />
           </div>
-          {isAdmin && (
-            <select
-              value={managerSel}
-              onChange={(e) => { setManagerSel(e.target.value); setPage(1); }}
-              className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-900"
-            >
-              <option value="">All Managers</option>
-              {managers.map((m) => <option key={m} value={m}>{m}</option>)}
-            </select>
-          )}
+          <select
+            value={managerSel}
+            onChange={(e) => { setManagerSel(e.target.value); setPage(1); }}
+            className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-900"
+          >
+            <option value="">All Managers</option>
+            {managers.map((m) => <option key={m} value={m}>{m}</option>)}
+          </select>
           <select
             value={typeSel}
             onChange={(e) => { setTypeSel(e.target.value); setPage(1); }}
@@ -381,14 +378,16 @@ export default function OverageProjectsPage() {
                             <Link href={`/projects/${p.id}`} className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 text-gray-600 hover:bg-primary-100 hover:text-primary-700 transition-colors">
                               <Eye size={14} />
                             </Link>
-                            <button
-                              onClick={() => openEditModal(p)}
-                              title="Edit overage details"
-                              className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 text-blue-500 hover:bg-blue-100 transition-colors"
-                            >
-                              <Pencil size={14} />
-                            </button>
-                            {isAdmin && p.isOveraged && (
+                            {canEditProject(p) && (
+                              <button
+                                onClick={() => openEditModal(p)}
+                                title="Edit overage details"
+                                className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 text-blue-500 hover:bg-blue-100 transition-colors"
+                              >
+                                <Pencil size={14} />
+                              </button>
+                            )}
+                            {canEditProject(p) && p.isOveraged && (
                               <button
                                 onClick={() => handleUnmarkOverage(p.id)}
                                 title="Remove overage flag"
@@ -397,7 +396,7 @@ export default function OverageProjectsPage() {
                                 <X size={14} />
                               </button>
                             )}
-                            {isAdmin && (
+                            {canEditProject(p) && (
                               <button
                                 onClick={() => handleDeleteProject(p.id)}
                                 title="Remove from overage"
