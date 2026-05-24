@@ -278,8 +278,10 @@ function PhaseColumn({ phase, project: p, canEdit, isEditing, onEdit, onSave, on
 
   useEffect(() => {
     if (!isEditing) return;
-    const raw = (p as any)[phase.checklistKey];
-    setChecklist(parseChecklist(raw, phase.checklistCount));
+    // Use viewedChecklist (not p's raw prop) so the edit mode reflects the
+    // optimistically-updated state even if the React Query refetch hasn't
+    // completed yet when the user clicks Edit again.
+    setChecklist([...viewedChecklist]);
 
     if (phase.num === 1) {
       setForm({
