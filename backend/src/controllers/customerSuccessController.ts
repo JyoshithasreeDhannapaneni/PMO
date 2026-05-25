@@ -73,6 +73,7 @@ export const customerSuccessController = {
               status: p.status,
               phase: p.phase,
               planType: p.plan_type,
+              projectType: p.project_type || 'MIGRATION',
             });
           }
         }
@@ -89,6 +90,17 @@ export const customerSuccessController = {
 
       const projectNames = projects.map((p: any) => p.name).filter(Boolean);
 
+      const migrationProjectsList = projects.filter((p: any) => p.project_type !== 'POC');
+      const pocProjectsList       = projects.filter((p: any) => p.project_type === 'POC');
+
+      const allEscalations = escalations.map((e: any) => ({
+        projectId:   e.id,
+        projectName: e.name,
+        priority:    e.escalation_priority || 'MEDIUM',
+        notes:       e.escalation_notes   || '',
+        projectType: e.project_type || 'MIGRATION',
+      }));
+
       accounts.push({
         customerName: entry.customerName,
         accountManager: entry.accountManager,
@@ -96,6 +108,17 @@ export const customerSuccessController = {
         workloadTypes,
         activeProjects: activeProjects.length,
         completedProjects: completedProjects.length,
+        hasMigrationProjects: migrationProjectsList.length > 0,
+        hasPocProjects:       pocProjectsList.length > 0,
+        migrationProjectNames: migrationProjectsList.map((p: any) => p.name).filter(Boolean),
+        pocProjectNames:       pocProjectsList.map((p: any) => p.name).filter(Boolean),
+        migrationActiveCount:    migrationProjectsList.filter((p: any) => p.status === 'ACTIVE').length,
+        migrationCompletedCount: migrationProjectsList.filter((p: any) => p.status === 'COMPLETED').length,
+        pocActiveCount:    pocProjectsList.filter((p: any) => p.status === 'ACTIVE').length,
+        pocCompletedCount: pocProjectsList.filter((p: any) => p.status === 'COMPLETED').length,
+        pocProjectDetails: pocProjectsList.map((p: any) => ({
+          id: p.id, name: p.name, status: p.status, pocOutcome: p.poc_outcome ?? null,
+        })),
         csat: {
           score:            cse?.csat_score            ?? null,
           verbatim:         cse?.csat_verbatim         ?? null,
@@ -108,14 +131,9 @@ export const customerSuccessController = {
         cfManage,
         professionalServices: professionalSvcs,
         managedServices:      managedSvcs,
-        hasEscalations: escalations.length > 0,
-        escalationCount: escalations.length,
-        escalations: escalations.map(e => ({
-          projectId:   e.id,
-          projectName: e.name,
-          priority:    e.escalation_priority || 'MEDIUM',
-          notes:       e.escalation_notes   || '',
-        })),
+        hasEscalations: allEscalations.length > 0,
+        escalationCount: allEscalations.length,
+        escalations: allEscalations,
       });
 
       // Classify upsell / cross-sell

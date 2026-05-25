@@ -1,12 +1,10 @@
-version: '3.8'
-
 # ─────────────────────────────────────────────────────────────────────────────
 # PMO Tracker — Production Docker Compose
 #
 # Before running:
 #   1. Copy .env.example to .env
 #   2. Set SERVER_IP to your server's public IP or domain
-#   3. Change DB_PASSWORD and JWT_SECRET to strong values
+#   3. Change DB_PASSWORD to a strong value
 #   4. Run:  docker compose up -d --build
 #
 # The app will be available at http://SERVER_IP (port 80)
