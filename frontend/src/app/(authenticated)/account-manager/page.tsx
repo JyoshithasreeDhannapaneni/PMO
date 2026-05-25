@@ -1,14 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Card } from '@/components/ui/Card';
 import { useAuth } from '@/context/AuthContext';
 import { useAccountManagerView } from '@/hooks/useProjects';
-import type { AccountView, Project } from '@/types';
+import type { AccountView } from '@/types';
 import {
   Building2, ChevronDown, ChevronUp, Loader2, AlertTriangle,
   ArrowRight, FlaskConical, FolderKanban, Clock, CheckCircle2,
-  XCircle, Circle, Minus, User, CalendarDays, X,
+  XCircle, Circle, Minus, User, CalendarDays, X, RefreshCw, Calendar, Search,
 } from 'lucide-react';
 
 const POC_PHASES = ['pocQualificationStatus','pocEnvSetupStatus','pocTrialStatus','pocValidationStatus','pocOutcomeStatus'] as const;
@@ -16,38 +16,61 @@ const POC_LABELS = ['Qual','Env','Trial','Valid','Outcome'];
 
 const STATUS_COLORS: Record<string, string> = {
   not_started: 'text-gray-400',
-  in_progress: 'text-blue-500',
-  blocked: 'text-red-500',
-  completed: 'text-green-500',
+  in_progress:  'text-blue-500',
+  blocked:      'text-red-500',
+  completed:    'text-green-500',
 };
 
 const STATUS_ICONS: Record<string, React.ReactNode> = {
-  not_started: <Circle className="w-3 h-3" />,
-  in_progress: <Clock className="w-3 h-3" />,
-  blocked: <XCircle className="w-3 h-3" />,
-  completed: <CheckCircle2 className="w-3 h-3" />,
+  not_started: <Circle      className="w-3 h-3" />,
+  in_progress:  <Clock       className="w-3 h-3" />,
+  blocked:      <XCircle     className="w-3 h-3" />,
+  completed:    <CheckCircle2 className="w-3 h-3" />,
 };
 
 const DELAY_COLORS: Record<string, string> = {
-  DELAYED: 'bg-red-100 text-red-700',
-  AT_RISK: 'bg-yellow-100 text-yellow-700',
+  DELAYED:     'bg-red-100 text-red-700',
+  AT_RISK:     'bg-yellow-100 text-yellow-700',
   NOT_DELAYED: 'bg-green-100 text-green-700',
 };
+
+function scrollTo(ref: React.RefObject<HTMLDivElement>) {
+  ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
 
 export default function AccountManagerPage() {
   const { user } = useAuth();
   const canEdit = user?.role === 'ADMIN' || user?.role === 'ACCOUNT_MANAGER';
 
+  const [activeTab, setActiveTab]       = useState<'accounts' | 'poc'>('accounts');
+  const [search, setSearch]             = useState('');
   const [workloadFilter, setWorkloadFilter] = useState('');
   const [attentionFilter, setAttentionFilter] = useState('');
-  const [amFilter, setAmFilter] = useState('');
+  const [amFilter, setAmFilter]         = useState('');
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
+
+  const escalationRef = useRef<HTMLDivElement>(null);
+  const renewalRef    = useRef<HTMLDivElement>(null);
 
   const { data, isLoading, error } = useAccountManagerView();
   const accounts: AccountView[] = data?.data || [];
 
-  // Auto-expand attention accounts on first load
-  const attentionAccounts = accounts.filter(a => a.needsAttention).map(a => a.customerName.toLowerCase());
+  const today = new Date();
+
+  // ── Derived summary data ──────────────────────────────────────────────────
+  const escalatedAccounts = accounts.filter(a => (a.migrationTrack as any)?.isEscalated);
+
+  const renewalDueAccounts = accounts.filter(a => {
+    const t = a.migrationTrack;
+    if (!t || !t.plannedEnd) return false;
+    return new Date(t.plannedEnd) < today && t.status !== 'COMPLETED' && t.status !== 'CANCELLED';
+  });
+
+  const pocAccounts       = accounts.filter(a => a.pocTrack);
+  const migrationAccounts = accounts.filter(a => a.migrationTrack);
+
+  // ── Attention accounts (auto-expand) ──────────────────────────────────────
+  const attentionKeys = accounts.filter(a => a.needsAttention).map(a => a.customerName.toLowerCase());
 
   function toggle(key: string) {
     setExpandedKeys(prev => {
@@ -59,15 +82,27 @@ export default function AccountManagerPage() {
   }
 
   function isExpanded(key: string) {
-    return expandedKeys.has(key) || attentionAccounts.includes(key);
+    return expandedKeys.has(key) || attentionKeys.includes(key);
   }
 
   const allAMs = Array.from(new Set(accounts.map(a => a.accountManager).filter(Boolean)));
 
-  const filtered = accounts.filter(a => {
+  // ── Tab + filter ──────────────────────────────────────────────────────────
+  const tabAccounts = activeTab === 'poc' ? pocAccounts : migrationAccounts;
+
+  const filtered = tabAccounts.filter(a => {
     if (attentionFilter === 'attention' && !a.needsAttention) return false;
     if (attentionFilter === 'ok' && a.needsAttention) return false;
     if (amFilter && a.accountManager !== amFilter) return false;
+    if (search) {
+      const q = search.toLowerCase();
+      const track = a.migrationTrack || a.pocTrack;
+      const matchesCustomer = a.customerName.toLowerCase().includes(q);
+      const matchesAM       = (a.accountManager || '').toLowerCase().includes(q);
+      const matchesProject  = (track?.name || '').toLowerCase().includes(q);
+      const matchesPM       = (track?.projectManager || '').toLowerCase().includes(q);
+      if (!matchesCustomer && !matchesAM && !matchesProject && !matchesPM) return false;
+    }
     if (workloadFilter) {
       const track = a.pocTrack || a.migrationTrack;
       if (!track) return false;
@@ -86,17 +121,96 @@ export default function AccountManagerPage() {
 
   return (
     <div className="p-6 space-y-6">
+
       {/* Header */}
       <div className="flex items-center gap-3">
         <Building2 className="w-7 h-7 text-indigo-600" />
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Account Manager View</h1>
-          <p className="text-sm text-gray-500">{filtered.length} account{filtered.length !== 1 ? 's' : ''}</p>
+          <p className="text-sm text-gray-500">{accounts.length} account{accounts.length !== 1 ? 's' : ''}</p>
         </div>
+      </div>
+
+      {/* Summary strip */}
+      <div className="grid grid-cols-3 gap-3">
+        {[
+          {
+            icon: <Building2 className="w-4 h-4" />,
+            label: 'Total Accounts',
+            value: accounts.length,
+            color: 'text-indigo-600',
+            bg: 'bg-indigo-50',
+            scrollRef: null,
+          },
+          {
+            icon: <AlertTriangle className="w-4 h-4" />,
+            label: 'Escalations',
+            value: escalatedAccounts.length,
+            color: 'text-red-600',
+            bg: 'bg-red-50',
+            scrollRef: escalationRef,
+          },
+          {
+            icon: <RefreshCw className="w-4 h-4" />,
+            label: 'Renewal Due',
+            value: renewalDueAccounts.length,
+            color: 'text-amber-600',
+            bg: 'bg-amber-50',
+            scrollRef: renewalRef,
+          },
+        ].map(s => (
+          <div
+            key={s.label}
+            onClick={() => s.scrollRef && scrollTo(s.scrollRef)}
+            className={`${s.bg} rounded-xl p-3 flex items-center gap-3 ${s.scrollRef ? 'cursor-pointer hover:brightness-95 transition' : ''}`}
+          >
+            <div className={s.color}>{s.icon}</div>
+            <div>
+              <div className={`text-xl font-bold ${s.color}`}>{s.value}</div>
+              <div className="text-xs text-gray-500">{s.label}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-1 border-b border-gray-200">
+        {([
+          { key: 'accounts', label: 'All Accounts',  icon: <FolderKanban className="w-4 h-4" />, count: migrationAccounts.length },
+          { key: 'poc',      label: 'POC Projects',  icon: <FlaskConical  className="w-4 h-4" />, count: pocAccounts.length },
+        ] as const).map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => { setActiveTab(tab.key); setSearch(''); setWorkloadFilter(''); setAttentionFilter(''); setAmFilter(''); }}
+            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition -mb-px ${
+              activeTab === tab.key
+                ? 'border-indigo-600 text-indigo-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            {tab.icon}
+            {tab.label}
+            <span className={`text-xs px-1.5 py-0.5 rounded-full font-semibold ${
+              activeTab === tab.key ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-500'
+            }`}>
+              {tab.count}
+            </span>
+          </button>
+        ))}
       </div>
 
       {/* Filters */}
       <div className="flex flex-wrap gap-3">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Search customer, project, PM..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm bg-white w-56"
+          />
+        </div>
         <select
           value={attentionFilter}
           onChange={e => setAttentionFilter(e.target.value)}
@@ -119,10 +233,13 @@ export default function AccountManagerPage() {
           placeholder="Filter by workload..."
           value={workloadFilter}
           onChange={e => setWorkloadFilter(e.target.value)}
-          className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white w-48"
+          className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white w-44"
         />
-        {(attentionFilter || amFilter || workloadFilter) && (
-          <button onClick={() => { setAttentionFilter(''); setAmFilter(''); setWorkloadFilter(''); }} className="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1">
+        {(search || attentionFilter || amFilter || workloadFilter) && (
+          <button
+            onClick={() => { setSearch(''); setAttentionFilter(''); setAmFilter(''); setWorkloadFilter(''); }}
+            className="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1"
+          >
             <X className="w-3 h-3" /> Clear
           </button>
         )}
@@ -131,15 +248,19 @@ export default function AccountManagerPage() {
       {/* Account panels */}
       {filtered.length === 0 ? (
         <Card className="p-12 text-center text-gray-400">
-          <Building2 className="w-12 h-12 mx-auto mb-3 opacity-30" />
-          <p className="text-lg font-medium">No accounts found</p>
+          {activeTab === 'poc'
+            ? <FlaskConical className="w-12 h-12 mx-auto mb-3 opacity-30" />
+            : <Building2 className="w-12 h-12 mx-auto mb-3 opacity-30" />}
+          <p className="text-lg font-medium">
+            {activeTab === 'poc' ? 'No POC projects found' : 'No accounts found'}
+          </p>
         </Card>
       ) : (
         <div className="space-y-3">
           {filtered.map(account => {
-            const key = account.customerName.toLowerCase();
-            const expanded = isExpanded(key);
-            const poc = account.pocTrack;
+            const key       = account.customerName.toLowerCase();
+            const expanded  = isExpanded(key);
+            const poc       = account.pocTrack;
             const migration = account.migrationTrack;
             const workloads = Array.from(new Set([
               ...(poc?.migrationTypes || '').split(','),
@@ -186,8 +307,8 @@ export default function AccountManagerPage() {
                         </span>
                       )}
                       {migration && (
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${DELAY_COLORS[migration.delayStatus || 'NOT_DELAYED'] || 'bg-gray-100 text-gray-600'}`}>
-                          Migration: {migration.delayStatus?.replace('_', ' ') || migration.status}
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${DELAY_COLORS[(migration as any).delayStatus || 'NOT_DELAYED'] || 'bg-gray-100 text-gray-600'}`}>
+                          Migration: {(migration as any).delayStatus?.replace('_', ' ') || migration.status}
                         </span>
                       )}
                     </div>
@@ -230,8 +351,8 @@ export default function AccountManagerPage() {
                             {poc.projectManager && (
                               <p className="text-xs text-gray-500 flex items-center gap-1"><User className="w-3 h-3" /> {poc.projectManager}</p>
                             )}
-                            {poc.pocDeadline && (
-                              <p className="text-xs text-gray-500 flex items-center gap-1"><CalendarDays className="w-3 h-3" /> Deadline: {new Date(poc.pocDeadline).toLocaleDateString()}</p>
+                            {(poc as any).pocDeadline && (
+                              <p className="text-xs text-gray-500 flex items-center gap-1"><CalendarDays className="w-3 h-3" /> Deadline: {new Date((poc as any).pocDeadline).toLocaleDateString()}</p>
                             )}
                           </div>
                         ) : (
@@ -263,9 +384,9 @@ export default function AccountManagerPage() {
                             <p className="text-xs text-gray-500 capitalize">{migration.name}</p>
                             <div className="flex flex-wrap gap-1">
                               <span className="text-xs px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full">{migration.phase}</span>
-                              {migration.delayStatus && migration.delayStatus !== 'NOT_DELAYED' && (
-                                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${DELAY_COLORS[migration.delayStatus]}`}>
-                                  {migration.delayDays}d delayed
+                              {(migration as any).delayStatus && (migration as any).delayStatus !== 'NOT_DELAYED' && (
+                                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${DELAY_COLORS[(migration as any).delayStatus]}`}>
+                                  {(migration as any).delayDays}d delayed
                                 </span>
                               )}
                             </div>
@@ -288,6 +409,112 @@ export default function AccountManagerPage() {
           })}
         </div>
       )}
+
+      {/* ── Escalations section ─────────────────────────────────────────────── */}
+      <div ref={escalationRef} className="scroll-mt-6">
+        {escalatedAccounts.length > 0 && (
+          <div className="space-y-3">
+            <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-red-500" /> Active Escalations
+            </h2>
+            <Card className="overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b border-gray-100">
+                  <tr>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600">Customer</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600">Account Manager</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600">Project</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600">Priority</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600">Phase</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {escalatedAccounts.map(a => {
+                    const t = a.migrationTrack!;
+                    return (
+                      <tr key={a.customerName} className="hover:bg-gray-50 transition">
+                        <td className="px-4 py-3 font-medium text-gray-900">{a.customerName}</td>
+                        <td className="px-4 py-3 text-gray-600">{a.accountManager || '—'}</td>
+                        <td className="px-4 py-3 text-gray-700">{t.name}</td>
+                        <td className="px-4 py-3">
+                          {(t as any).escalationPriority ? (
+                            <span className="text-xs px-2 py-0.5 bg-red-50 text-red-600 rounded-full border border-red-100 font-medium">
+                              {(t as any).escalationPriority}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-red-600 font-medium flex items-center gap-1">
+                              <AlertTriangle className="w-3 h-3" /> Escalated
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="text-xs px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded-full">{t.phase}</span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </Card>
+          </div>
+        )}
+      </div>
+
+      {/* ── Renewal Due section ─────────────────────────────────────────────── */}
+      <div ref={renewalRef} className="scroll-mt-6">
+        {renewalDueAccounts.length > 0 && (
+          <div className="space-y-3">
+            <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+              <RefreshCw className="w-5 h-5 text-amber-500" /> Renewal Due
+              <span className="text-sm font-normal text-gray-400">— active projects past planned end date</span>
+            </h2>
+            <Card className="overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b border-gray-100">
+                  <tr>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600">Project</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600">Customer</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600">Account Manager</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600">PM</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600">Planned End</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600">Overdue</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600">Phase</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {renewalDueAccounts.map(a => {
+                    const t = a.migrationTrack!;
+                    const daysOverdue = Math.floor((today.getTime() - new Date(t.plannedEnd).getTime()) / 86400000);
+                    return (
+                      <tr key={a.customerName} className="hover:bg-gray-50 transition">
+                        <td className="px-4 py-3 font-medium text-gray-900 capitalize">{t.name}</td>
+                        <td className="px-4 py-3 text-gray-700">{a.customerName}</td>
+                        <td className="px-4 py-3 text-gray-600">{a.accountManager || '—'}</td>
+                        <td className="px-4 py-3 text-gray-600">{t.projectManager || '—'}</td>
+                        <td className="px-4 py-3 text-gray-600">
+                          <span className="flex items-center gap-1">
+                            <Calendar className="w-3 h-3" />
+                            {new Date(t.plannedEnd).toLocaleDateString()}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`font-semibold ${daysOverdue > 30 ? 'text-red-600' : daysOverdue > 7 ? 'text-amber-600' : 'text-gray-700'}`}>
+                            {daysOverdue}d
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="text-xs px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded-full">{t.phase}</span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </Card>
+          </div>
+        )}
+      </div>
+
     </div>
   );
 }
