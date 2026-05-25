@@ -338,6 +338,7 @@ export interface EscalationItem {
   projectName: string;
   priority: string;
   notes: string;
+  projectType?: string;
 }
 
 export interface CustomerSuccessEntry {
@@ -347,6 +348,15 @@ export interface CustomerSuccessEntry {
   workloadTypes: string[];
   activeProjects: number;
   completedProjects: number;
+  hasMigrationProjects?: boolean;
+  hasPocProjects?: boolean;
+  migrationProjectNames?: string[];
+  pocProjectNames?: string[];
+  migrationActiveCount?: number;
+  migrationCompletedCount?: number;
+  pocActiveCount?: number;
+  pocCompletedCount?: number;
+  pocProjectDetails?: Array<{ id: string; name: string; status: string; pocOutcome: string | null }>;
   csat: CsatData;
   cfMigrate: CfProductSignal;
   cfManage: CfProductSignal;
@@ -368,6 +378,7 @@ export interface RenewalDueItem {
   status: string;
   phase: string;
   planType: string;
+  projectType?: string;
 }
 
 export interface SignalItem {
