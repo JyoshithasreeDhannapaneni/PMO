@@ -51,7 +51,7 @@ export const accountManagerController = {
           customerName: row.customer_name,
           accountManager: row.account_manager || '',
           pocTrack: null,
-          migrationTrack: null,
+          migrationTracks: [],
           handoffDate: null,
           handoffBy: null,
           needsAttention: false,
@@ -85,7 +85,7 @@ export const accountManagerController = {
         if (row.poc_handoff_date) entry.handoffDate = row.poc_handoff_date;
         if (row.poc_handoff_to) entry.handoffBy = row.poc_handoff_to;
       } else {
-        entry.migrationTrack = mapProjectRow(row);
+        entry.migrationTracks.push(mapProjectRow(row));
         if (!entry.accountManager && row.account_manager) {
           entry.accountManager = row.account_manager;
         }
@@ -102,6 +102,8 @@ export const accountManagerController = {
 
     const accounts = Object.values(customerMap).map((entry: any) => ({
       ...entry,
+      // migrationTrack kept for backwards compatibility (first/primary project)
+      migrationTrack: entry.migrationTracks[0] ?? null,
       needsAttention: entry.attentionReasons.length > 0,
     }));
 

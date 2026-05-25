@@ -317,6 +317,7 @@ export interface AccountView {
   attentionReasons: string[];
   pocTrack: Project | null;
   migrationTrack: Project | null;
+  migrationTracks: Project[];
   handoffDate: string | null;
   handoffBy: string | null;
 }

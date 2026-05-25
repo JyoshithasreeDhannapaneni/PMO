@@ -58,16 +58,18 @@ export default function AccountManagerPage() {
   const today = new Date();
 
   // ── Derived summary data ──────────────────────────────────────────────────
-  const escalatedAccounts = accounts.filter(a => (a.migrationTrack as any)?.isEscalated);
+  const escalatedAccounts = accounts.filter(a =>
+    (a.migrationTracks || []).some((t: any) => t.isEscalated)
+  );
 
-  const renewalDueAccounts = accounts.filter(a => {
-    const t = a.migrationTrack;
-    if (!t || !t.plannedEnd) return false;
-    return new Date(t.plannedEnd) < today && t.status !== 'COMPLETED' && t.status !== 'CANCELLED';
-  });
+  const renewalDueAccounts = accounts.filter(a =>
+    (a.migrationTracks || []).some(t =>
+      t.plannedEnd && new Date(t.plannedEnd) < today && t.status !== 'COMPLETED' && t.status !== 'CANCELLED'
+    )
+  );
 
   const pocAccounts       = accounts.filter(a => a.pocTrack);
-  const migrationAccounts = accounts.filter(a => a.migrationTrack);
+  const migrationAccounts = accounts.filter(a => (a.migrationTracks || []).length > 0);
 
   // ── Attention accounts (auto-expand) ──────────────────────────────────────
   const attentionKeys = accounts.filter(a => a.needsAttention).map(a => a.customerName.toLowerCase());
@@ -96,17 +98,17 @@ export default function AccountManagerPage() {
     if (amFilter && a.accountManager !== amFilter) return false;
     if (search) {
       const q = search.toLowerCase();
-      const track = a.migrationTrack || a.pocTrack;
+      const tracks = [...(a.migrationTracks || []), ...(a.pocTrack ? [a.pocTrack] : [])];
       const matchesCustomer = a.customerName.toLowerCase().includes(q);
       const matchesAM       = (a.accountManager || '').toLowerCase().includes(q);
-      const matchesProject  = (track?.name || '').toLowerCase().includes(q);
-      const matchesPM       = (track?.projectManager || '').toLowerCase().includes(q);
+      const matchesProject  = tracks.some(t => (t.name || '').toLowerCase().includes(q));
+      const matchesPM       = tracks.some(t => (t.projectManager || '').toLowerCase().includes(q));
       if (!matchesCustomer && !matchesAM && !matchesProject && !matchesPM) return false;
     }
     if (workloadFilter) {
-      const track = a.pocTrack || a.migrationTrack;
-      if (!track) return false;
-      if (!(track.migrationTypes || '').toLowerCase().includes(workloadFilter.toLowerCase())) return false;
+      const tracks = [...(a.migrationTracks || []), ...(a.pocTrack ? [a.pocTrack] : [])];
+      const hasMatch = tracks.some(t => (t.migrationTypes || '').toLowerCase().includes(workloadFilter.toLowerCase()));
+      if (!hasMatch) return false;
     }
     return true;
   });
@@ -258,13 +260,14 @@ export default function AccountManagerPage() {
       ) : (
         <div className="space-y-3">
           {filtered.map(account => {
-            const key       = account.customerName.toLowerCase();
-            const expanded  = isExpanded(key);
-            const poc       = account.pocTrack;
-            const migration = account.migrationTrack;
+            const key            = account.customerName.toLowerCase();
+            const expanded       = isExpanded(key);
+            const poc            = account.pocTrack;
+            const migrations     = account.migrationTracks || [];
+            const migration      = migrations[0] ?? null;
             const workloads = Array.from(new Set([
               ...(poc?.migrationTypes || '').split(','),
-              ...(migration?.migrationTypes || '').split(','),
+              ...migrations.flatMap(m => (m.migrationTypes || '').split(',')),
             ].map(w => w.trim()).filter(Boolean)));
 
             const primaryProjectName = migration?.name || poc?.name;
@@ -306,9 +309,9 @@ export default function AccountManagerPage() {
                           POC: {poc.pocOutcome ? poc.pocOutcome.replace('_', ' ') : 'In Progress'}
                         </span>
                       )}
-                      {migration && (
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${DELAY_COLORS[(migration as any).delayStatus || 'NOT_DELAYED'] || 'bg-gray-100 text-gray-600'}`}>
-                          Migration: {(migration as any).delayStatus?.replace('_', ' ') || migration.status}
+                      {migrations.length > 0 && (
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${DELAY_COLORS[(migration as any)?.delayStatus || 'NOT_DELAYED'] || 'bg-gray-100 text-gray-600'}`}>
+                          {migrations.length > 1 ? `${migrations.length} Migrations` : `Migration: ${(migration as any)?.delayStatus?.replace('_', ' ') || migration?.status}`}
                         </span>
                       )}
                     </div>
@@ -373,29 +376,36 @@ export default function AccountManagerPage() {
                         )}
                       </div>
 
-                      {/* Migration Track */}
+                      {/* Migration Track(s) */}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-2">
                           <FolderKanban className="w-4 h-4 text-indigo-500" />
-                          <span className="text-sm font-semibold text-gray-700">Migration Track</span>
+                          <span className="text-sm font-semibold text-gray-700">
+                            Migration Track{migrations.length > 1 ? `s (${migrations.length})` : ''}
+                          </span>
                         </div>
-                        {migration ? (
-                          <div className="space-y-2">
-                            <p className="text-xs text-gray-500 capitalize">{migration.name}</p>
-                            <div className="flex flex-wrap gap-1">
-                              <span className="text-xs px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full">{migration.phase}</span>
-                              {(migration as any).delayStatus && (migration as any).delayStatus !== 'NOT_DELAYED' && (
-                                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${DELAY_COLORS[(migration as any).delayStatus]}`}>
-                                  {(migration as any).delayDays}d delayed
-                                </span>
-                              )}
-                            </div>
-                            {migration.projectManager && (
-                              <p className="text-xs text-gray-500 flex items-center gap-1"><User className="w-3 h-3" /> {migration.projectManager}</p>
-                            )}
-                            {migration.plannedEnd && (
-                              <p className="text-xs text-gray-500 flex items-center gap-1"><CalendarDays className="w-3 h-3" /> Due: {new Date(migration.plannedEnd).toLocaleDateString()}</p>
-                            )}
+                        {migrations.length > 0 ? (
+                          <div className="space-y-3">
+                            {migrations.map((m, idx) => (
+                              <div key={m.id || idx} className={`space-y-1 ${idx > 0 ? 'pt-2 border-t border-gray-200' : ''}`}>
+                                <p className="text-xs font-medium text-gray-700 capitalize">{m.name}</p>
+                                <div className="flex flex-wrap gap-1">
+                                  <span className="text-xs px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full">{m.phase}</span>
+                                  <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full">{m.status}</span>
+                                  {(m as any).delayStatus && (m as any).delayStatus !== 'NOT_DELAYED' && (
+                                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${DELAY_COLORS[(m as any).delayStatus]}`}>
+                                      {(m as any).delayDays}d delayed
+                                    </span>
+                                  )}
+                                </div>
+                                {m.projectManager && (
+                                  <p className="text-xs text-gray-500 flex items-center gap-1"><User className="w-3 h-3" /> {m.projectManager}</p>
+                                )}
+                                {m.plannedEnd && (
+                                  <p className="text-xs text-gray-500 flex items-center gap-1"><CalendarDays className="w-3 h-3" /> Due: {new Date(m.plannedEnd).toLocaleDateString()}</p>
+                                )}
+                              </div>
+                            ))}
                           </div>
                         ) : (
                           <p className="text-xs text-gray-400 italic">No migration project yet</p>
@@ -429,17 +439,16 @@ export default function AccountManagerPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {escalatedAccounts.map(a => {
-                    const t = a.migrationTrack!;
-                    return (
-                      <tr key={a.customerName} className="hover:bg-gray-50 transition">
+                  {escalatedAccounts.flatMap(a =>
+                    (a.migrationTracks || []).filter((t: any) => t.isEscalated).map((t: any) => (
+                      <tr key={`${a.customerName}-${t.id}`} className="hover:bg-gray-50 transition">
                         <td className="px-4 py-3 font-medium text-gray-900">{a.customerName}</td>
                         <td className="px-4 py-3 text-gray-600">{a.accountManager || '—'}</td>
                         <td className="px-4 py-3 text-gray-700">{t.name}</td>
                         <td className="px-4 py-3">
-                          {(t as any).escalationPriority ? (
+                          {t.escalationPriority ? (
                             <span className="text-xs px-2 py-0.5 bg-red-50 text-red-600 rounded-full border border-red-100 font-medium">
-                              {(t as any).escalationPriority}
+                              {t.escalationPriority}
                             </span>
                           ) : (
                             <span className="text-xs text-red-600 font-medium flex items-center gap-1">
@@ -451,8 +460,8 @@ export default function AccountManagerPage() {
                           <span className="text-xs px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded-full">{t.phase}</span>
                         </td>
                       </tr>
-                    );
-                  })}
+                    ))
+                  )}
                 </tbody>
               </table>
             </Card>
@@ -482,32 +491,35 @@ export default function AccountManagerPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {renewalDueAccounts.map(a => {
-                    const t = a.migrationTrack!;
-                    const daysOverdue = Math.floor((today.getTime() - new Date(t.plannedEnd).getTime()) / 86400000);
-                    return (
-                      <tr key={a.customerName} className="hover:bg-gray-50 transition">
-                        <td className="px-4 py-3 font-medium text-gray-900 capitalize">{t.name}</td>
-                        <td className="px-4 py-3 text-gray-700">{a.customerName}</td>
-                        <td className="px-4 py-3 text-gray-600">{a.accountManager || '—'}</td>
-                        <td className="px-4 py-3 text-gray-600">{t.projectManager || '—'}</td>
-                        <td className="px-4 py-3 text-gray-600">
-                          <span className="flex items-center gap-1">
-                            <Calendar className="w-3 h-3" />
-                            {new Date(t.plannedEnd).toLocaleDateString()}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className={`font-semibold ${daysOverdue > 30 ? 'text-red-600' : daysOverdue > 7 ? 'text-amber-600' : 'text-gray-700'}`}>
-                            {daysOverdue}d
-                          </span>
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className="text-xs px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded-full">{t.phase}</span>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                  {renewalDueAccounts.flatMap(a =>
+                    (a.migrationTracks || [])
+                      .filter(t => t.plannedEnd && new Date(t.plannedEnd) < today && t.status !== 'COMPLETED' && t.status !== 'CANCELLED')
+                      .map(t => {
+                        const daysOverdue = Math.floor((today.getTime() - new Date(t.plannedEnd!).getTime()) / 86400000);
+                        return (
+                          <tr key={`${a.customerName}-${t.id}`} className="hover:bg-gray-50 transition">
+                            <td className="px-4 py-3 font-medium text-gray-900 capitalize">{t.name}</td>
+                            <td className="px-4 py-3 text-gray-700">{a.customerName}</td>
+                            <td className="px-4 py-3 text-gray-600">{a.accountManager || '—'}</td>
+                            <td className="px-4 py-3 text-gray-600">{t.projectManager || '—'}</td>
+                            <td className="px-4 py-3 text-gray-600">
+                              <span className="flex items-center gap-1">
+                                <Calendar className="w-3 h-3" />
+                                {new Date(t.plannedEnd!).toLocaleDateString()}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className={`font-semibold ${daysOverdue > 30 ? 'text-red-600' : daysOverdue > 7 ? 'text-amber-600' : 'text-gray-700'}`}>
+                                {daysOverdue}d
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="text-xs px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded-full">{t.phase}</span>
+                            </td>
+                          </tr>
+                        );
+                      })
+                  )}
                 </tbody>
               </table>
             </Card>

@@ -897,10 +897,11 @@ function PhaseStepperView({ project: p, canEdit }: { project: Project; canEdit: 
                 <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Pre-Sales</p>
                 <select value={overviewForm.pocPreSalesOwner} onChange={e => setOF('pocPreSalesOwner', e.target.value)} className={inp}>
                   <option value="">— Select —</option>
-                  <option value="Nivas">Nivas</option>
-                  <option value="Vimlesh">Vimlesh</option>
-                  <option value="Vignesh">Vignesh</option>
-                  {overviewForm.pocPreSalesOwner && !['Nivas','Vimlesh','Vignesh'].includes(overviewForm.pocPreSalesOwner) && (
+                  {userNames.filter((n: string) => {
+                    const u = usersData?.data?.find((x: any) => x.name === n);
+                    return u?.role === 'PRE_SALES' || u?.role === 'ADMIN';
+                  }).map((n: string) => <option key={n} value={n}>{n}</option>)}
+                  {overviewForm.pocPreSalesOwner && !userNames.includes(overviewForm.pocPreSalesOwner) && (
                     <option value={overviewForm.pocPreSalesOwner}>{overviewForm.pocPreSalesOwner}</option>
                   )}
                 </select>
@@ -911,6 +912,8 @@ function PhaseStepperView({ project: p, canEdit }: { project: Project; canEdit: 
                   <option value="">Select...</option>
                   <option value="Joy Prakash">Joy Prakash</option>
                   <option value="Arundhati Sen">Arundhati Sen</option>
+                  <option value="Anthony Raymond">Anthony Raymond</option>
+                  <option value="Lennis Brown">Lennis Brown</option>
                   <option value="Deepak R J">Deepak R J</option>
                 </select>
               </div>
@@ -1232,8 +1235,11 @@ function PocRow({ project: p, canEdit, expandedId, setExpandedId, isDeleteConfir
 }
 
 // ── Create modal helpers ──────────────────────────────────────────────────────
+const VALID_AMS = ['Joy Prakash', 'Arundhati Sen', 'Anthony Raymond', 'Lennis Brown', 'Deepak R J'];
+
 const EMPTY = {
   name: '', customerName: '', accountManager: '', projectManager: '',
+  pocPreSalesOwner: '',
   planType: 'SILVER', plannedStart: '', plannedEnd: '',
   customerContact: '', description: '', pocDataVolume: '',
 };
@@ -1257,6 +1263,11 @@ export default function PocProjectsPage() {
   const { settings } = useSettings();
   const canEdit = user?.role === 'ADMIN' || user?.role === 'PRE_SALES';
   const allMigrationTypes = settings.migrationTypes || [];
+
+  const { data: allUsersData } = useAllUsers();
+  const preSalesUsers: string[] = Array.isArray(allUsersData?.data)
+    ? allUsersData.data.filter((u: any) => u.role === 'PRE_SALES' || u.role === 'ADMIN').map((u: any) => u.name).filter(Boolean).sort()
+    : [];
 
   const [outcomeFilter, setOutcomeFilter] = useState('');
   const [workloadFilter, setWorkloadFilter] = useState('');
@@ -1348,8 +1359,21 @@ export default function PocProjectsPage() {
             <div className="grid grid-cols-2 gap-4">
               <MField label="Project Name" required><input type="text" placeholder="e.g. Acme Corp POC" value={newForm.name} onChange={e => setNewForm(f => ({ ...f, name: e.target.value }))} className={mainInp} /></MField>
               <MField label="Customer / Account Name" required><input type="text" placeholder="e.g. Acme Corporation" value={newForm.customerName} onChange={e => setNewForm(f => ({ ...f, customerName: e.target.value }))} className={mainInp} /></MField>
-              <MField label="Pre-Sales Owner"><input type="text" placeholder="Who is running this POC?" value={newForm.projectManager} onChange={e => setNewForm(f => ({ ...f, projectManager: e.target.value }))} className={mainInp} /></MField>
-              <MField label="Account Manager"><input type="text" placeholder="Account Manager name" value={newForm.accountManager} onChange={e => setNewForm(f => ({ ...f, accountManager: e.target.value }))} className={mainInp} /></MField>
+              <MField label="Pre-Sales Person">
+                <select value={newForm.pocPreSalesOwner} onChange={e => setNewForm(f => ({ ...f, pocPreSalesOwner: e.target.value }))} className={mainInp}>
+                  <option value="">— Select —</option>
+                  {preSalesUsers.map(n => <option key={n} value={n}>{n}</option>)}
+                  {newForm.pocPreSalesOwner && !preSalesUsers.includes(newForm.pocPreSalesOwner) && (
+                    <option value={newForm.pocPreSalesOwner}>{newForm.pocPreSalesOwner}</option>
+                  )}
+                </select>
+              </MField>
+              <MField label="Account Manager">
+                <select value={newForm.accountManager} onChange={e => setNewForm(f => ({ ...f, accountManager: e.target.value }))} className={mainInp}>
+                  <option value="">— Select —</option>
+                  {VALID_AMS.map(n => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </MField>
               <MField label="Customer Contact"><input type="text" placeholder="Customer point of contact" value={newForm.customerContact} onChange={e => setNewForm(f => ({ ...f, customerContact: e.target.value }))} className={mainInp} /></MField>
               <MField label="Plan Type">
                 <select value={newForm.planType} onChange={e => setNewForm(f => ({ ...f, planType: e.target.value }))} className={mainInp}>

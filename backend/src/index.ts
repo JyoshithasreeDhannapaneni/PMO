@@ -306,6 +306,14 @@ async function runMigrations() {
     UNIQUE(project_id, migration_type, phase)
   )`);
   try { await execute(`CREATE INDEX IF NOT EXISTS idx_mig_chk_project ON migration_checklists(project_id)`); } catch {}
+
+  // Clear account manager values that are not in the approved list
+  await execute(`
+    UPDATE projects
+    SET account_manager = NULL
+    WHERE account_manager IS NOT NULL
+      AND account_manager NOT IN ('Joy Prakash','Arundhati Sen','Anthony Raymond','Lennis Brown','Deepak R J')
+  `);
 }
 
 // Start server
