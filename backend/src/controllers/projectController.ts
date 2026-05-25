@@ -20,16 +20,6 @@ getAll: asyncHandler(async (req: Request, res: Response): Promise<void> => {
       migrationType: req.query.migrationType as string,
       projectType: req.query.projectType as string,
     };
-    // Auto-filter by project manager for MANAGER role
-    const token = req.headers.authorization?.replace('Bearer ', '');
-    if (token) {
-      try {
-        const user = await authService.getUserFromToken(token);
-        if (user && user.role === 'PROJECT_MANAGER') {
-          filters.projectManager = user.name;
-        }
-      } catch {}
-    }
     const pagination: PaginationOptions = {
       page: parseInt(req.query.page as string) || 1,
       limit: parseInt(req.query.limit as string) || 20,
