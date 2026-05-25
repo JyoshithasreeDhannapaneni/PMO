@@ -231,13 +231,15 @@ class ProjectService {
       params.push(`%${filters.search}%`);
     }
     if (filters.projectManager) {
+      conditions.push(`project_manager ILIKE $${params.length + 1}`);
+      params.push(filters.projectManager);
     }
     if (filters.accountManager) {
-      conditions.push(`account_manager = $${params.length + 1}`);
+      conditions.push(`account_manager ILIKE $${params.length + 1}`);
       params.push(filters.accountManager);
     }
     if (filters.migrationType) {
-      conditions.push(`migration_types LIKE $${params.length + 1}`);
+      conditions.push(`migration_types ILIKE $${params.length + 1}`);
       params.push(`%${filters.migrationType}%`);
     }
     if (filters.projectType) {
