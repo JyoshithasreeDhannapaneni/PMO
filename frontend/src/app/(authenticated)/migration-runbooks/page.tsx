@@ -351,7 +351,7 @@ const STATUS_CONFIG: Record<ChecklistStatus, { label: string; color: string; ico
   pm_verified:        { label: 'PM Verified',          color: 'bg-green-100 text-green-700', icon: CheckCircle2 },
 };
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
+const API_BASE = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api`;
 
 const TYPE_TABS: { id: MigrationType; label: string; activeClass: string; emptyText: string }[] = [
   { id: 'content', label: 'Content Migration', activeClass: 'text-indigo-700 border-indigo-500 bg-indigo-50', emptyText: 'No content migration projects found.' },
