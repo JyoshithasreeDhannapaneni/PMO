@@ -1,9 +1,12 @@
 node_modules
 .next
 out
+scripts
 .env
 .env.local
+.env.*
 *.log
+*.tsbuildinfo
 .git
 .gitignore
 README.md
