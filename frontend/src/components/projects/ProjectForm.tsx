@@ -296,6 +296,8 @@ export function ProjectForm({ project, onSubmit, isLoading, defaultManagerName }
                   <option value="">Select account manager</option>
                   <option value="Joy Prakash">Joy Prakash</option>
                   <option value="Arundhati Sen">Arundhati Sen</option>
+                  <option value="Anthony Raymond">Anthony Raymond</option>
+                  <option value="Lennis Brown">Lennis Brown</option>
                   <option value="Deepak R J">Deepak R J</option>
                 </select>
                 {errors.accountManager && <p className="mt-1 text-xs text-red-600">{errors.accountManager.message}</p>}
