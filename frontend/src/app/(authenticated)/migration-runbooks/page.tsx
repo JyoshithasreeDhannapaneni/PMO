@@ -341,7 +341,7 @@ export default function MigrationValidationPage() {
   const { user } = useAuth();
   const { showToast } = useToast();
   const { settings } = useSettings();
-  const { data: projectsData } = useProjects();
+  const { data: projectsData } = useProjects({ limit: 500 });
 
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
   const [activeType, setActiveType] = useState<MigrationType>('content');
