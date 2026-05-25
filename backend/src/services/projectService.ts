@@ -225,7 +225,9 @@ class ProjectService {
       params.push(filters.delayStatus);
     }
     if (filters.search) {
-      conditions.push(`name ILIKE $${params.length + 1}`);
+      conditions.push(
+        `(name ILIKE $${params.length + 1} OR customer_name ILIKE $${params.length + 1} OR account_manager ILIKE $${params.length + 1} OR project_manager ILIKE $${params.length + 1} OR migration_types ILIKE $${params.length + 1})`
+      );
       params.push(`%${filters.search}%`);
     }
     if (filters.projectManager) {
