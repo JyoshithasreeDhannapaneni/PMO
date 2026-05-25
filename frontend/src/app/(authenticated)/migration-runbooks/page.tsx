@@ -4,9 +4,11 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { useProjects } from '@/hooks/useProjects';
+import { useSettings } from '@/context/SettingsContext';
 import {
   BookOpen, CheckCircle2, Clock, AlertTriangle, ChevronDown, ChevronRight,
   FileText, Send, ShieldCheck, RotateCcw, Flag, Loader2, Info, Lock, Unlock,
+  ArrowLeft, FolderOpen, User, Calendar, Layers,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -41,6 +43,14 @@ interface ChecklistRecord {
   verifiedAt?: string;
   pmNotes?: string;
 }
+
+// ── Category mapping ──────────────────────────────────────────────────────────
+
+const CATEGORY_TO_TYPE: Record<string, MigrationType> = {
+  'Content Migration': 'content',
+  'Messaging':         'message',
+  'Email':             'email',
+};
 
 // ── Checklist Config ──────────────────────────────────────────────────────────
 
@@ -319,11 +329,18 @@ const STATUS_CONFIG: Record<ChecklistStatus, { label: string; color: string; ico
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
 
+const TYPE_TABS: { id: MigrationType; label: string; activeClass: string; emptyText: string }[] = [
+  { id: 'content', label: 'Content Migration', activeClass: 'text-indigo-700 border-indigo-500 bg-indigo-50', emptyText: 'No content migration projects found.' },
+  { id: 'message', label: 'Message Migration', activeClass: 'text-purple-700 border-purple-500 bg-purple-50', emptyText: 'No message migration projects found.' },
+  { id: 'email',   label: 'Email Migration',   activeClass: 'text-blue-700 border-blue-500 bg-blue-50',   emptyText: 'No email migration projects found.' },
+];
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
-export default function MigrationRunbooksPage() {
+export default function MigrationValidationPage() {
   const { user } = useAuth();
   const { showToast } = useToast();
+  const { settings } = useSettings();
   const { data: projectsData } = useProjects();
 
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
@@ -340,8 +357,39 @@ export default function MigrationRunbooksPage() {
   const isPM = user?.role === 'PROJECT_MANAGER' || isAdmin;
   const canVerify = isPM;
 
-  const projects = ((projectsData as any)?.data || []) as any[];
-  const migrationProjects = projects.filter((p: any) => !p.projectType || p.projectType === 'MIGRATION');
+  const allProjects = ((projectsData as any)?.data || []) as any[];
+  const migrationProjects = allProjects.filter((p: any) => !p.projectType || p.projectType === 'MIGRATION');
+
+  // Build name→category and code→category lookups from settings
+  // Projects store migration types as names (e.g. "Box - OneDrive"), not codes
+  const nameToCategory = new Map<string, MigrationType>();
+  const codeToCategory = new Map<string, MigrationType>();
+  (settings.migrationTypes || []).forEach((mt: any) => {
+    const mapped = CATEGORY_TO_TYPE[mt.category];
+    if (mapped) {
+      nameToCategory.set(mt.name.toLowerCase(), mapped);
+      codeToCategory.set(mt.code.toUpperCase(), mapped);
+    }
+  });
+
+  // Determine which MigrationType a project belongs to (try name first, then code)
+  const getProjectType = (project: any): MigrationType | null => {
+    if (!project.migrationTypes) return null;
+    const parts = project.migrationTypes.split(',').map((c: string) => c.trim());
+    for (const part of parts) {
+      const byName = nameToCategory.get(part.toLowerCase());
+      if (byName) return byName;
+      const byCode = codeToCategory.get(part.toUpperCase());
+      if (byCode) return byCode;
+    }
+    return null;
+  };
+
+  // Projects for the active tab
+  const tabProjects = migrationProjects.filter((p: any) => getProjectType(p) === activeType);
+
+  // Selected project object
+  const selectedProject = migrationProjects.find((p: any) => p.id === selectedProjectId);
 
   // Load checklists when project changes
   useEffect(() => {
@@ -362,29 +410,35 @@ export default function MigrationRunbooksPage() {
     setLoading(false);
   };
 
-  // Get current checklist record
   const currentRecord = checklists.find(
     (c) => c.migrationType === activeType && c.phase === activePhase
   );
   const oneTimeRecord = checklists.find((c) => c.migrationType === activeType && c.phase === 'onetime');
   const deltaLocked = oneTimeRecord?.status !== 'pm_verified';
 
-  // Sync local form data from fetched record
   useEffect(() => {
     if (currentRecord?.checklistData && Object.keys(currentRecord.checklistData).length > 0) {
       setLocalData(currentRecord.checklistData);
     } else {
-      // Init empty
       const sections = CHECKLIST_CONFIG[activeType][activePhase];
       const empty: typeof localData = {};
-      sections.forEach((s) => {
-        empty[s.id] = { items: {}, notes: '' };
-      });
+      sections.forEach((s) => { empty[s.id] = { items: {}, notes: '' }; });
       setLocalData(empty);
     }
     setPmNotes(currentRecord?.pmNotes || '');
     setShowPmPanel(false);
   }, [currentRecord, activeType, activePhase]);
+
+  const handleSelectProject = (id: string) => {
+    setSelectedProjectId(id);
+    setChecklists([]);
+    setActivePhase('onetime');
+  };
+
+  const handleBack = () => {
+    setSelectedProjectId('');
+    setChecklists([]);
+  };
 
   const toggleItem = (sectionId: string, itemId: string) => {
     if (currentRecord?.status === 'pm_verified') return;
@@ -434,7 +488,6 @@ export default function MigrationRunbooksPage() {
     setSaving(true);
     try {
       const token = localStorage.getItem('auth_token');
-      // Save first, then submit
       await fetch(`${API_BASE}/migration-checklists/${selectedProjectId}/${activeType}/${activePhase}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -502,7 +555,6 @@ export default function MigrationRunbooksPage() {
     setSaving(false);
   };
 
-  // Progress calc
   const calcProgress = (record?: ChecklistRecord, type?: MigrationType, phase?: Phase) => {
     if (!record || !type || !phase) return { checked: 0, total: 0 };
     const sections = CHECKLIST_CONFIG[type][phase];
@@ -521,40 +573,96 @@ export default function MigrationRunbooksPage() {
     (currentRecord?.status === 'engineer_submitted' && !canVerify);
   const { checked, total } = calcProgress(currentRecord || { checklistData: localData } as any, activeType, activePhase);
 
-  const TYPE_TABS: { id: MigrationType; label: string; activeClass: string }[] = [
-    { id: 'content', label: 'Content Migration',  activeClass: 'text-indigo-700 border-indigo-500 bg-indigo-50' },
-    { id: 'message', label: 'Message Migration',  activeClass: 'text-purple-700 border-purple-500 bg-purple-50' },
-    { id: 'email',   label: 'Email Migration',    activeClass: 'text-blue-700 border-blue-500 bg-blue-50' },
-  ];
+  // ── Project card for the list view ──────────────────────────────────────────
+
+  const ProjectCard = ({ project }: { project: any }) => {
+    const otRec = checklists.find((c) => c.projectId === project.id && c.phase === 'onetime');
+    const deltaRec = checklists.find((c) => c.projectId === project.id && c.phase === 'delta');
+    const isSelected = project.id === selectedProjectId;
+
+    // Display the migration type names for this project
+    const mtNames = (project.migrationTypes || '')
+      .split(',')
+      .map((raw: string) => {
+        const t = raw.trim();
+        const mt = (settings.migrationTypes || []).find(
+          (m: any) => m.name.toLowerCase() === t.toLowerCase() || m.code === t.toUpperCase()
+        );
+        return mt ? mt.name : t;
+      })
+      .filter(Boolean)
+      .join(', ');
+
+    return (
+      <button
+        onClick={() => handleSelectProject(project.id)}
+        className={cn(
+          'w-full text-left bg-white rounded-xl border transition-all p-4 hover:shadow-md group',
+          isSelected
+            ? 'border-indigo-400 ring-2 ring-indigo-100 shadow-sm'
+            : 'border-slate-200 hover:border-indigo-300'
+        )}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-slate-800 truncate group-hover:text-indigo-700 transition-colors">
+              {project.name}
+            </p>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
+              <span className="flex items-center gap-1 text-xs text-slate-500">
+                <User className="w-3 h-3" />{project.customerName}
+              </span>
+              {project.projectManager && (
+                <span className="flex items-center gap-1 text-xs text-slate-500">
+                  <Layers className="w-3 h-3" />{project.projectManager}
+                </span>
+              )}
+            </div>
+            {mtNames && (
+              <p className="text-xs text-indigo-600 mt-1 font-medium truncate">{mtNames}</p>
+            )}
+          </div>
+          <div className="flex flex-col items-end gap-1 flex-shrink-0">
+            <span className={cn(
+              'text-[10px] px-2 py-0.5 rounded-full font-medium',
+              project.phase === 'COMPLETED' ? 'bg-green-100 text-green-700' :
+              project.phase === 'MIGRATION' ? 'bg-blue-100 text-blue-700' :
+              'bg-slate-100 text-slate-600'
+            )}>
+              {project.phase}
+            </span>
+          </div>
+        </div>
+
+        {/* Checklist status strip */}
+        <div className="flex items-center gap-2 mt-3 pt-3 border-t border-slate-100">
+          {(['onetime', 'delta'] as Phase[]).map((ph) => {
+            const rec = checklists.find((c) => c.projectId === project.id && c.migrationType === activeType && c.phase === ph);
+            const st = rec?.status || 'not_started';
+            const cfg = STATUS_CONFIG[st as ChecklistStatus];
+            return (
+              <span key={ph} className={cn('flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium', cfg.color)}>
+                <cfg.icon className="w-3 h-3" />
+                {ph === 'onetime' ? 'One-Time' : 'Delta'}: {cfg.label}
+              </span>
+            );
+          })}
+        </div>
+      </button>
+    );
+  };
 
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Header */}
       <div className="bg-white border-b border-slate-200 px-6 py-4">
-        <div className="flex items-center justify-between gap-4 flex-wrap">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-indigo-100 flex items-center justify-center">
-              <BookOpen className="w-5 h-5 text-indigo-600" />
-            </div>
-            <div>
-              <h1 className="text-lg font-bold text-slate-900">Migration Validation</h1>
-              <p className="text-xs text-slate-500">Engineers fill checklist · PM verifies · Approved → Final Validation</p>
-            </div>
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-lg bg-indigo-100 flex items-center justify-center">
+            <BookOpen className="w-5 h-5 text-indigo-600" />
           </div>
-
-          {/* Project selector */}
-          <div className="flex items-center gap-2">
-            <label className="text-xs font-medium text-slate-600">Project:</label>
-            <select
-              value={selectedProjectId}
-              onChange={(e) => { setSelectedProjectId(e.target.value); setChecklists([]); }}
-              className="text-sm border border-slate-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300 min-w-[220px]"
-            >
-              <option value="">— Select a project —</option>
-              {migrationProjects.map((p: any) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
+          <div>
+            <h1 className="text-lg font-bold text-slate-900">Migration Validation</h1>
+            <p className="text-xs text-slate-500">Engineers fill checklist · PM verifies · Approved → Final Validation</p>
           </div>
         </div>
       </div>
@@ -565,7 +673,12 @@ export default function MigrationRunbooksPage() {
           {TYPE_TABS.map((tab) => (
             <button
               key={tab.id}
-              onClick={() => { setActiveType(tab.id); setActivePhase('onetime'); }}
+              onClick={() => {
+                setActiveType(tab.id);
+                setActivePhase('onetime');
+                setSelectedProjectId('');
+                setChecklists([]);
+              }}
               className={cn(
                 'flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-all',
                 activeType === tab.id
@@ -575,23 +688,76 @@ export default function MigrationRunbooksPage() {
             >
               <FileText className="w-4 h-4" />
               {tab.label}
+              <span className={cn(
+                'text-[10px] px-1.5 py-0.5 rounded-full font-medium ml-0.5',
+                activeType === tab.id ? 'bg-current/10 text-current' : 'bg-slate-100 text-slate-500'
+              )}>
+                {migrationProjects.filter((p: any) => getProjectType(p) === tab.id).length}
+              </span>
             </button>
           ))}
         </div>
       </div>
 
+      {/* Body */}
       {!selectedProjectId ? (
-        <div className="flex flex-col items-center justify-center py-24 text-slate-400">
-          <BookOpen className="w-12 h-12 mb-3 opacity-30" />
-          <p className="text-sm font-medium">Select a project to view or fill its migration checklist</p>
-          <p className="text-xs mt-1">Engineers fill after each migration phase · Project Managers verify</p>
+        /* ── Project list ── */
+        <div className="max-w-5xl mx-auto px-6 py-6">
+          {tabProjects.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-24 text-slate-400">
+              <FolderOpen className="w-12 h-12 mb-3 opacity-30" />
+              <p className="text-sm font-medium">
+                {TYPE_TABS.find((t) => t.id === activeType)?.emptyText}
+              </p>
+              <p className="text-xs mt-1">Projects are categorised by their assigned migration type.</p>
+            </div>
+          ) : (
+            <>
+              <p className="text-xs text-slate-500 mb-4">
+                {tabProjects.length} project{tabProjects.length !== 1 ? 's' : ''} — click a project to fill or review its checklist
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {tabProjects.map((p: any) => (
+                  <ProjectCard key={p.id} project={p} />
+                ))}
+              </div>
+            </>
+          )}
         </div>
       ) : loading ? (
         <div className="flex items-center justify-center py-24">
           <Loader2 className="w-6 h-6 animate-spin text-indigo-500" />
         </div>
       ) : (
+        /* ── Checklist view ── */
         <div className="max-w-4xl mx-auto px-6 py-6 space-y-4">
+
+          {/* Back + project breadcrumb */}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleBack}
+              className="flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-indigo-600 transition-colors"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              Back to projects
+            </button>
+            <span className="text-slate-300">/</span>
+            <span className="text-xs font-semibold text-slate-700">{selectedProject?.name}</span>
+            {selectedProject?.customerName && (
+              <span className="text-xs text-slate-500">— {selectedProject.customerName}</span>
+            )}
+            {selectedProject?.migrationTypes && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 font-medium">
+                {(() => {
+                  const raw = selectedProject.migrationTypes.split(',')[0].trim();
+                  const mt = (settings.migrationTypes || []).find(
+                    (m: any) => m.name.toLowerCase() === raw.toLowerCase() || m.code === raw.toUpperCase()
+                  );
+                  return mt ? mt.name : raw;
+                })()}
+              </span>
+            )}
+          </div>
 
           {/* Phase switcher */}
           <div className="flex items-center gap-3">
@@ -654,7 +820,6 @@ export default function MigrationRunbooksPage() {
                   );
                 })()}
               </div>
-              {/* Progress */}
               <div className="flex items-center gap-2">
                 <div className="w-24 h-1.5 bg-slate-100 rounded-full overflow-hidden">
                   <div
@@ -685,7 +850,6 @@ export default function MigrationRunbooksPage() {
 
             return (
               <div key={section.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                {/* Section header */}
                 <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <h3 className="text-sm font-semibold text-slate-800">{section.title}</h3>
@@ -697,7 +861,6 @@ export default function MigrationRunbooksPage() {
                 </div>
 
                 <div className="px-5 py-4 space-y-3">
-                  {/* Warning / info callout */}
                   {section.warning && (
                     <div className="flex gap-2 bg-amber-50 border border-amber-200 rounded-lg p-3">
                       <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
@@ -711,16 +874,15 @@ export default function MigrationRunbooksPage() {
                     </div>
                   )}
 
-                  {/* Checklist items */}
                   <div className="space-y-2">
                     {section.items.map((item) => {
-                      const checked = !!sectionData.items[item.id];
+                      const isChecked = !!sectionData.items[item.id];
                       return (
                         <label
                           key={item.id}
                           className={cn(
                             'flex items-start gap-3 p-2.5 rounded-lg border transition-all cursor-pointer',
-                            checked
+                            isChecked
                               ? 'bg-green-50 border-green-200'
                               : 'bg-slate-50 border-slate-200 hover:border-indigo-200 hover:bg-indigo-50/30',
                             isReadOnly && 'cursor-default opacity-80'
@@ -728,12 +890,12 @@ export default function MigrationRunbooksPage() {
                         >
                           <input
                             type="checkbox"
-                            checked={checked}
+                            checked={isChecked}
                             onChange={() => toggleItem(section.id, item.id)}
                             disabled={isReadOnly}
                             className="mt-0.5 w-4 h-4 rounded accent-indigo-600 flex-shrink-0"
                           />
-                          <span className={cn('text-xs leading-relaxed', checked ? 'text-green-800 line-through decoration-green-400/60' : 'text-slate-700')}>
+                          <span className={cn('text-xs leading-relaxed', isChecked ? 'text-green-800 line-through decoration-green-400/60' : 'text-slate-700')}>
                             {item.label}
                           </span>
                         </label>
@@ -741,7 +903,6 @@ export default function MigrationRunbooksPage() {
                     })}
                   </div>
 
-                  {/* Notes */}
                   {section.hasNotes && (
                     <div>
                       <label className="block text-xs font-medium text-slate-500 mb-1">Notes / Remarks</label>
@@ -774,7 +935,6 @@ export default function MigrationRunbooksPage() {
               </div>
 
               <div className="flex items-center gap-2">
-                {/* Save */}
                 {currentRecord?.status !== 'pm_verified' && currentRecord?.status !== 'engineer_submitted' && (
                   <button
                     onClick={handleSave}
@@ -786,7 +946,6 @@ export default function MigrationRunbooksPage() {
                   </button>
                 )}
 
-                {/* Submit (engineer) */}
                 {(currentRecord?.status === 'not_started' || !currentRecord) && (
                   <button
                     onClick={handleSubmit}
@@ -798,7 +957,6 @@ export default function MigrationRunbooksPage() {
                   </button>
                 )}
 
-                {/* PM verify panel toggle */}
                 {currentRecord?.status === 'engineer_submitted' && canVerify && (
                   <button
                     onClick={() => setShowPmPanel((v) => !v)}
@@ -811,7 +969,6 @@ export default function MigrationRunbooksPage() {
               </div>
             </div>
 
-            {/* PM review panel */}
             {showPmPanel && currentRecord?.status === 'engineer_submitted' && canVerify && (
               <div className="mt-4 pt-4 border-t border-slate-100 space-y-3">
                 <h4 className="text-xs font-semibold text-slate-700">PM Verification</h4>
