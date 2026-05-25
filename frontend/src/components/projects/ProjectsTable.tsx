@@ -38,7 +38,7 @@ interface EditingCell {
   field: string;
 }
 
-type SortField = 'name' | 'projectManager' | 'accountManager' | 'planType' | 'status' | 'phase' | 'delayStatus' | 'plannedStart' | 'plannedEnd';
+type SortField = 'name' | 'projectManager' | 'accountManager' | 'planType' | 'status' | 'phase' | 'delayStatus' | 'plannedStart' | 'plannedEnd' | 'estimatedCost' | 'overageAmount';
 type SortOrder = 'asc' | 'desc';
 
 export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
@@ -97,19 +97,21 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
 
   // Sort projects
   const filteredAndSortedProjects = useMemo(() => {
-    // Sort
+    const numericFields: SortField[] = ['estimatedCost', 'overageAmount'];
     const sorted = [...projects].sort((a, b) => {
+      if (numericFields.includes(sortField)) {
+        const aVal = Number(a[sortField] ?? 0);
+        const bVal = Number(b[sortField] ?? 0);
+        return sortOrder === 'asc' ? aVal - bVal : bVal - aVal;
+      }
       let aVal = a[sortField] || '';
       let bVal = b[sortField] || '';
-      
       if (typeof aVal === 'string') aVal = aVal.toLowerCase();
       if (typeof bVal === 'string') bVal = bVal.toLowerCase();
-      
       if (aVal < bVal) return sortOrder === 'asc' ? -1 : 1;
       if (aVal > bVal) return sortOrder === 'asc' ? 1 : -1;
       return 0;
     });
-
     return sorted;
   }, [projects, sortField, sortOrder]);
 
@@ -384,8 +386,8 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
               <SortHeader field="projectManager" label="Project Manager" />
               <SortHeader field="accountManager" label="Account Manager" />
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Migration Types</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Budget</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Overage</th>
+              <SortHeader field="estimatedCost" label="Budget" />
+              <SortHeader field="overageAmount" label="Overage" />
               <SortHeader field="planType" label="Plan" />
               <SortHeader field="delayStatus" label="Delay Status" />
               <SortHeader field="phase" label="Current Phase" />
