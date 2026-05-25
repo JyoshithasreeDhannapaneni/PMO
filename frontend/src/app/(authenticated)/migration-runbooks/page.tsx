@@ -52,6 +52,30 @@ const CATEGORY_TO_TYPE: Record<string, MigrationType> = {
   'Email':             'email',
 };
 
+// Hardcoded fallback — used when settings DB lacks the category field on migration types
+const MESSAGING_CODES = new Set([
+  'SLACK_SLACK','CHAT_CHAT','TEAMS_TEAMS','META_CHAT','META_VIVA','META_TEAMS',
+  'SLACK_TEAMS','SLACK_CHAT','TEAMS_CHAT','CHAT_TEAMS','CHAT_TEAM','TEAMS_SLACK','CHAT_SLACK',
+]);
+const EMAIL_CODES = new Set([
+  'GMAIL_GMAIL','GMAIL_OUTLOOK','OUTLOOK_OUTLOOK','OUTLOOK_GMAIL',
+]);
+const MESSAGING_NAMES = new Set([
+  'slack - slack','chat - chat','teams - teams','meta - chat','meta - viva','meta - teams',
+  'slack - teams','slack - chat','teams - chat','chat - teams','chat - team','teams - slack','chat - slack',
+]);
+const EMAIL_NAMES = new Set([
+  'gmail - gmail','gmail - outlook','outlook - outlook','outlook - gmail',
+]);
+
+function inferTypeFromPart(part: string): MigrationType {
+  const lower = part.toLowerCase();
+  const upper = part.toUpperCase();
+  if (MESSAGING_NAMES.has(lower) || MESSAGING_CODES.has(upper)) return 'message';
+  if (EMAIL_NAMES.has(lower)     || EMAIL_CODES.has(upper))     return 'email';
+  return 'content';
+}
+
 // ── Checklist Config ──────────────────────────────────────────────────────────
 
 const CHECKLIST_CONFIG: Record<MigrationType, Record<Phase, ChecklistSection[]>> = {
@@ -372,17 +396,19 @@ export default function MigrationValidationPage() {
     }
   });
 
-  // Determine which MigrationType a project belongs to (try name first, then code)
+  // Determine which MigrationType a project belongs to (try name first, then code, then fallback)
   const getProjectType = (project: any): MigrationType | null => {
     if (!project.migrationTypes) return null;
-    const parts = project.migrationTypes.split(',').map((c: string) => c.trim());
+    const parts = project.migrationTypes.split(',').map((c: string) => c.trim()).filter(Boolean);
+    if (parts.length === 0) return null;
     for (const part of parts) {
       const byName = nameToCategory.get(part.toLowerCase());
       if (byName) return byName;
       const byCode = codeToCategory.get(part.toUpperCase());
       if (byCode) return byCode;
     }
-    return null;
+    // Settings DB lacks category field — use hardcoded fallback on the first part
+    return inferTypeFromPart(parts[0]);
   };
 
   // Projects for the active tab
