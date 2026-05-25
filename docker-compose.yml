@@ -7,7 +7,7 @@
 #   3. Change DB_PASSWORD to a strong value
 #   4. Run:  docker compose up -d --build
 #
-# The app will be available at https://SERVER_IP (port 443)
+# The app will be available at https://SERVER_IP (via system nginx → port 8091)
 # ─────────────────────────────────────────────────────────────────────────────
 
 services:
@@ -90,8 +90,8 @@ services:
     image: nginx:alpine
     container_name: pmo-nginx
     ports:
-      - "80:80"
-      - "443:443"
+      - "8089:80"
+      - "8091:443"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - /etc/letsencrypt:/etc/letsencrypt:ro
