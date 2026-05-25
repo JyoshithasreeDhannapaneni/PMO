@@ -414,8 +414,8 @@ export default function ProjectsPage() {
               <input
                 type="text"
                 value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value.toLowerCase())}
-                placeholder="Search by project name..."
+                onChange={(e) => setSearchInput(e.target.value)}
+                placeholder="Search by name, customer, PM, AM..."
                 className="w-full pl-10 pr-4 py-2.5 text-sm rounded-lg border border-gray-200 bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all"
               />
               {searchInput && (
