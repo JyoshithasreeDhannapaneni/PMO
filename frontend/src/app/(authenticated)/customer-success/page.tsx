@@ -6,7 +6,7 @@ import type { ReactNode } from 'react';
 import { Card } from '@/components/ui/Card';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
-import { useCustomerSuccess, useUpdateCustomerSuccess, useProjects } from '@/hooks/useProjects';
+import { useCustomerSuccess, useUpdateCustomerSuccess } from '@/hooks/useProjects';
 import type {
   CustomerSuccessEntry, CfProductSignal, CfSignalLevel,
   SignalItem, RenewalDueItem, CustomerSuccessPageData,
@@ -629,26 +629,15 @@ export default function CustomerSuccessPage() {
 
   const { data, isLoading, error } = useCustomerSuccess();
   const updateCS = useUpdateCustomerSuccess();
-  const { data: projectsData } = useProjects({ limit: 500 });
-  const allProjects = (projectsData?.data ?? []) as import('@/types').Project[];
 
-  function getProjectNames(customerName: string): string[] {
-    return allProjects
-      .filter(p => {
-        if (p.customerName.toLowerCase() !== customerName.toLowerCase()) return false;
-        return activeTab === 'poc'
-          ? p.projectType === 'POC'
-          : p.projectType !== 'POC';
-      })
-      .map(p => p.name)
-      .filter(Boolean);
+  function getProjectNames(account: CustomerSuccessEntry): string[] {
+    if (activeTab === 'poc') return account.pocProjectNames ?? [];
+    return account.migrationProjectNames ?? account.projectNames ?? [];
   }
 
-  function customerHasType(customerName: string, type: 'migration' | 'poc'): boolean {
-    return allProjects.some(p => {
-      if (p.customerName.toLowerCase() !== customerName.toLowerCase()) return false;
-      return type === 'poc' ? p.projectType === 'POC' : p.projectType !== 'POC';
-    });
+  function customerHasType(account: CustomerSuccessEntry, type: 'migration' | 'poc'): boolean {
+    if (type === 'poc') return account.hasPocProjects ?? false;
+    return account.hasMigrationProjects ?? true;
   }
 
   const pageData = (data?.data ?? null) as CustomerSuccessPageData | null;
@@ -659,17 +648,13 @@ export default function CustomerSuccessPage() {
 
   // Re-compute per-customer data scoped to the active tab's project type
   function applyTabFilter(account: CustomerSuccessEntry): CustomerSuccessEntry {
-    const tabProjects = allProjects.filter(p =>
-      p.customerName.toLowerCase() === account.customerName.toLowerCase() &&
-      (activeTab === 'poc' ? p.projectType === 'POC' : p.projectType !== 'POC')
-    );
     const tabEscalations = account.escalations.filter(e =>
-      tabProjects.some(p => p.id === e.projectId)
+      activeTab === 'poc' ? e.projectType === 'POC' : e.projectType !== 'POC'
     );
     return {
       ...account,
-      activeProjects:    tabProjects.filter(p => p.status === 'ACTIVE').length,
-      completedProjects: tabProjects.filter(p => p.status === 'COMPLETED').length,
+      activeProjects:    activeTab === 'poc' ? (account.pocActiveCount    ?? 0) : (account.migrationActiveCount    ?? account.activeProjects),
+      completedProjects: activeTab === 'poc' ? (account.pocCompletedCount ?? 0) : (account.migrationCompletedCount ?? account.completedProjects),
       escalations:       tabEscalations,
       hasEscalations:    tabEscalations.length > 0,
       escalationCount:   tabEscalations.length,
@@ -678,16 +663,15 @@ export default function CustomerSuccessPage() {
 
   // Filter renewal due list to only include projects matching the active tab
   const tabRenewalDue = renewalDue.filter(r => {
-    const proj = allProjects.find(p => p.id === r.id);
-    if (!proj) return activeTab === 'migration';
-    return activeTab === 'poc' ? proj.projectType === 'POC' : proj.projectType !== 'POC';
+    const ptype = r.projectType || 'MIGRATION';
+    return activeTab === 'poc' ? ptype === 'POC' : ptype !== 'POC';
   });
 
   const allAMs = Array.from(new Set(accounts.map(a => a.accountManager).filter(Boolean)));
 
   const filtered = accounts
     .filter(a => {
-      if (!customerHasType(a.customerName, activeTab)) return false;
+      if (!customerHasType(a, activeTab)) return false;
       if (search && !a.customerName.toLowerCase().includes(search.toLowerCase())) return false;
       if (amFilter && a.accountManager !== amFilter) return false;
       if (signalFilter) {
@@ -700,27 +684,19 @@ export default function CustomerSuccessPage() {
 
   const escalatedAccounts = filtered.filter(a => a.hasEscalations);
 
-  const migrationCount = accounts.filter(a => customerHasType(a.customerName, 'migration')).length;
-  const pocCount       = accounts.filter(a => customerHasType(a.customerName, 'poc')).length;
+  const migrationCount = accounts.filter(a => customerHasType(a, 'migration')).length;
+  const pocCount       = accounts.filter(a => customerHasType(a, 'poc')).length;
 
   // POC-specific upsell signals: conversion opportunities derived from POC outcomes
   const pocUpsellSignals: SignalItem[] = (() => {
-    const pocProjects = allProjects.filter(p => p.projectType === 'POC');
-    const byCustomer = new Map<string, { account: CustomerSuccessEntry; projects: typeof pocProjects }>();
-
-    for (const proj of pocProjects) {
-      const account = accounts.find(a => a.customerName.toLowerCase() === proj.customerName.toLowerCase());
-      if (!account) continue;
-      const key = proj.customerName.toLowerCase();
-      if (!byCustomer.has(key)) byCustomer.set(key, { account, projects: [] });
-      byCustomer.get(key)!.projects.push(proj);
-    }
-
     const signals: SignalItem[] = [];
-    for (const { account, projects } of byCustomer.values()) {
-      const won        = projects.filter(p => p.pocOutcome === 'won');
-      const extended   = projects.filter(p => p.pocOutcome === 'extended' || p.pocOutcome === 'on_hold');
-      const inProgress = projects.filter(p => !p.pocOutcome);
+    for (const account of accounts) {
+      const pocProjects = account.pocProjectDetails ?? [];
+      if (pocProjects.length === 0) continue;
+
+      const won        = pocProjects.filter(p => p.pocOutcome === 'won');
+      const extended   = pocProjects.filter(p => p.pocOutcome === 'extended' || p.pocOutcome === 'on_hold');
+      const inProgress = pocProjects.filter(p => !p.pocOutcome);
 
       if (won.length > 0) {
         signals.push({ customerName: account.customerName, accountManager: account.accountManager,
@@ -910,7 +886,7 @@ export default function CustomerSuccessPage() {
             <AccountCard
               key={account.customerName}
               account={account}
-              projectNames={getProjectNames(account.customerName)}
+              projectNames={getProjectNames(account)}
               canEdit={canEdit}
               onEdit={() => setEditingAccount(account)}
             />
