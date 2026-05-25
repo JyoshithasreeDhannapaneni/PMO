@@ -538,10 +538,7 @@ class DashboardService {
        FROM projects
        WHERE status NOT IN ('COMPLETED','CANCELLED')
              AND (escalation_archived IS NULL OR escalation_archived = false)
-             AND (
-               is_escalated = true
-               OR (status = 'ACTIVE' AND planned_end IS NOT NULL AND planned_end < CURRENT_TIMESTAMP)
-             ) ${aw}
+             AND is_escalated = true ${aw}
        ORDER BY CASE WHEN escalation_priority='HIGH' THEN 1 WHEN escalation_priority='MEDIUM' THEN 2 ELSE 3 END, delay_days DESC`,
       ap
     );
