@@ -38,7 +38,7 @@ export default function ProjectsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user } = useAuth();
-  const isManager = user?.role === 'PROJECT_MANAGER';
+  const isManager = false; // PROJECT_MANAGERs see all projects — no self-filter
   
   // Initialize filters from URL params
   const [filters, setFilters] = useState<FilterState>({
