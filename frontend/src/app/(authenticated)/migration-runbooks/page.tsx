@@ -494,10 +494,10 @@ const STATUS_CONFIG: Record<ChecklistStatus, { label: string; color: string; ico
 };
 
 const PHASE_CONFIG: Record<Phase, { label: string; shortLabel: string; activeColor: string; badgeColor: string }> = {
-  pre_onetime:  { label: 'Pre-Onetime',  shortLabel: 'Pre-OT',    activeColor: 'bg-indigo-600 text-white border-indigo-600',  badgeColor: 'bg-indigo-100 text-indigo-700' },
-  post_onetime: { label: 'Post-Onetime', shortLabel: 'Post-OT',   activeColor: 'bg-green-600 text-white border-green-600',    badgeColor: 'bg-green-100 text-green-700'   },
-  pre_delta:    { label: 'Pre-Delta',    shortLabel: 'Pre-Δ',     activeColor: 'bg-purple-600 text-white border-purple-600',  badgeColor: 'bg-purple-100 text-purple-700' },
-  post_delta:   { label: 'Post-Delta',   shortLabel: 'Post-Δ',    activeColor: 'bg-teal-600 text-white border-teal-600',      badgeColor: 'bg-teal-100 text-teal-700'     },
+  pre_onetime:  { label: 'Onetime pre-checks',  shortLabel: 'OT Pre',    activeColor: 'bg-indigo-600 text-white border-indigo-600',  badgeColor: 'bg-indigo-100 text-indigo-700' },
+  post_onetime: { label: 'Onetime post-checks', shortLabel: 'OT Post',   activeColor: 'bg-green-600 text-white border-green-600',    badgeColor: 'bg-green-100 text-green-700'   },
+  pre_delta:    { label: 'Delta pre-checks',    shortLabel: 'Δ Pre',     activeColor: 'bg-purple-600 text-white border-purple-600',  badgeColor: 'bg-purple-100 text-purple-700' },
+  post_delta:   { label: 'Delta post-checks',   shortLabel: 'Δ Post',    activeColor: 'bg-teal-600 text-white border-teal-600',      badgeColor: 'bg-teal-100 text-teal-700'     },
 };
 
 const API_BASE = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api`;
@@ -1226,7 +1226,7 @@ export default function MigrationValidationPage() {
                   </div>
                   <div>
                     <p className="text-sm font-bold text-green-800">All four phases verified!</p>
-                    <p className="text-xs text-green-700">Pre-Onetime, Post-Onetime, Pre-Delta, and Post-Delta checklists are all PM-approved. Ready to move to Final Validation.</p>
+                    <p className="text-xs text-green-700">Onetime pre-checks, Onetime post-checks, Delta pre-checks, and Delta post-checks are all PM-approved. Ready to move to Final Validation.</p>
                   </div>
                 </div>
                 <button
