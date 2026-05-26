@@ -322,6 +322,7 @@ const CHECKLIST_CONFIG: Record<MigrationType, Record<Phase, ChecklistSection[]>>
           { id: 'delta_complete_confirmed', label: 'Final delta message migration verified — all channels/DMs up to date' },
           { id: 'no_pending_tasks', label: 'No pending picking or message movement tasks remaining' },
           { id: 'final_dedup_check', label: 'Final deduplication check passed — no duplicate channels/DMs' },
+          { id: 'teams_channels_live', label: 'All Teams/Channels are properly went live along with source user in the destination' },
         ],
         hasNotes: true,
       },
@@ -626,6 +627,19 @@ export default function MigrationValidationPage() {
         ...prev[sectionId],
         items: { ...(prev[sectionId]?.items || {}), [itemId]: !(prev[sectionId]?.items?.[itemId]) },
       },
+    }));
+  };
+
+  const checkAllSection = (sectionId: string, items: ChecklistItem[], forceValue?: boolean) => {
+    if (currentRecord?.status === 'pm_verified') return;
+    if (currentRecord?.status === 'engineer_submitted' && !canVerify) return;
+    const allChecked = items.every((i) => localData[sectionId]?.items?.[i.id]);
+    const newValue = forceValue !== undefined ? forceValue : !allChecked;
+    const newItems: Record<string, boolean> = {};
+    items.forEach((i) => { newItems[i.id] = newValue; });
+    setLocalData((prev) => ({
+      ...prev,
+      [sectionId]: { ...prev[sectionId], items: newItems },
     }));
   };
 
@@ -1035,9 +1049,20 @@ export default function MigrationValidationPage() {
                     <h3 className="text-sm font-semibold text-slate-800">{section.title}</h3>
                     <span className="text-[10px] text-slate-400">{sectionChecked}/{section.items.length}</span>
                   </div>
-                  {sectionChecked === section.items.length && sectionChecked > 0 && (
-                    <CheckCircle2 className="w-4 h-4 text-green-500" />
-                  )}
+                  <div className="flex items-center gap-2">
+                    {!isReadOnly && (
+                      <button
+                        onClick={() => checkAllSection(section.id, section.items)}
+                        className="text-[11px] font-medium px-2.5 py-1 rounded-md border transition-all
+                          border-slate-200 text-slate-500 hover:border-indigo-300 hover:text-indigo-600 hover:bg-indigo-50"
+                      >
+                        {sectionChecked === section.items.length && sectionChecked > 0 ? 'Uncheck All' : 'Check All'}
+                      </button>
+                    )}
+                    {sectionChecked === section.items.length && sectionChecked > 0 && (
+                      <CheckCircle2 className="w-4 h-4 text-green-500" />
+                    )}
+                  </div>
                 </div>
 
                 <div className="px-5 py-4 space-y-3">
