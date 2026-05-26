@@ -169,10 +169,9 @@ const CHECKLIST_CONFIG: Record<MigrationType, Record<Phase, ChecklistSection[]>>
       {
         id: 'permission_mapping',
         title: 'Permission Mapping',
-        warning: 'Permission mapping MUST be confirmed TWICE. Once migration starts, it MUST NOT be changed.',
+        warning: 'Permission mapping MUST be confirmed. Once migration starts, it MUST NOT be changed.',
         items: [
-          { id: 'mapping_confirmed_1st', label: 'Permission mapping confirmed with customer (1st confirmation)' },
-          { id: 'mapping_confirmed_2nd', label: 'Permission mapping re-confirmed with customer (2nd confirmation)' },
+          { id: 'mapping_confirmed_1st', label: 'Permission mapping confirmed with customer' },
           { id: 'mapping_documented', label: 'Confirmation documented (date, time, customer contact) in ticket' },
         ],
         hasNotes: true,
@@ -195,6 +194,7 @@ const CHECKLIST_CONFIG: Record<MigrationType, Record<Phase, ChecklistSection[]>>
           { id: 'all_movement_complete', label: 'All message movement fully completed' },
           { id: 'retryable_conflicts_resolved', label: 'All retryable conflicts resolved' },
           { id: 'nonretryable_documented', label: 'Non-retryable conflicts documented as-is' },
+          { id: 'channels_dms_documented', label: 'All channels and DMs must be documented after the one-time migration' },
         ],
         hasNotes: true,
       },
