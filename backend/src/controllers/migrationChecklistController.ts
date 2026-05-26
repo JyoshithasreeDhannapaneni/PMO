@@ -160,10 +160,11 @@ export const migrationChecklistController = {
     );
 
     const verifiedPhases = verified.rows.map((r: any) => r.phase);
-    if (!verifiedPhases.includes('onetime') || !verifiedPhases.includes('delta')) {
+    const requiredPhases = ['pre_onetime', 'post_onetime', 'pre_delta', 'post_delta'];
+    if (!requiredPhases.every((ph) => verifiedPhases.includes(ph))) {
       res.status(400).json({
         success: false,
-        message: 'Both One-Time and Delta phases must be PM-verified before finalizing.',
+        message: 'All four phases (Pre-Onetime, Post-Onetime, Pre-Delta, Post-Delta) must be PM-verified before finalizing.',
       });
       return;
     }

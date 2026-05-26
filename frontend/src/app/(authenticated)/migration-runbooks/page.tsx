@@ -15,7 +15,7 @@ import { cn } from '@/lib/utils';
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type MigrationType = 'content' | 'message' | 'email';
-type Phase = 'onetime' | 'delta';
+type Phase = 'pre_onetime' | 'post_onetime' | 'pre_delta' | 'post_delta';
 type ChecklistStatus = 'not_started' | 'engineer_submitted' | 'pm_verified';
 
 interface ChecklistItem {
@@ -80,7 +80,7 @@ function inferTypeFromPart(part: string): MigrationType {
 
 const CHECKLIST_CONFIG: Record<MigrationType, Record<Phase, ChecklistSection[]>> = {
   content: {
-    onetime: [
+    pre_onetime: [
       {
         id: 'precheck1',
         title: 'Pre-Check 1 — Previous Migration Completion',
@@ -111,7 +111,30 @@ const CHECKLIST_CONFIG: Record<MigrationType, Record<Phase, ChecklistSection[]>>
         hasNotes: true,
       },
     ],
-    delta: [
+    post_onetime: [
+      {
+        id: 'post_ot_data_validation',
+        title: 'Post-Onetime Data Validation',
+        items: [
+          { id: 'all_files_migrated', label: 'All source files confirmed migrated to destination' },
+          { id: 'file_count_reconciled', label: 'File and folder count reconciliation complete (source vs destination)' },
+          { id: 'no_stuck_files_dest', label: 'No files in FAILED or IN_PROGRESS state at destination' },
+          { id: 'permissions_audit', label: 'Permission audit passed — destination permissions match source' },
+          { id: 'broken_links_reviewed', label: 'Broken links reviewed and within acceptable threshold' },
+        ],
+        hasNotes: true,
+      },
+      {
+        id: 'post_ot_signoff',
+        title: 'Post-Onetime Sign-off',
+        items: [
+          { id: 'customer_acknowledgement', label: 'Customer acknowledgement of one-time migration completion received' },
+          { id: 'ticket_updated', label: 'Post-migration status documented in ticket' },
+        ],
+        hasNotes: true,
+      },
+    ],
+    pre_delta: [
       {
         id: 'delta_precheck1',
         title: 'Pre-Check 1 — Delta Migration Completion',
@@ -162,10 +185,34 @@ const CHECKLIST_CONFIG: Record<MigrationType, Record<Phase, ChecklistSection[]>>
         hasNotes: true,
       },
     ],
+    post_delta: [
+      {
+        id: 'post_delta_verification',
+        title: 'Post-Delta Data Verification',
+        items: [
+          { id: 'delta_complete_confirmed', label: 'Final delta migration verified — no pending items remaining' },
+          { id: 'all_conflicts_resolved', label: 'All conflicts resolved or non-retryable conflicts documented' },
+          { id: 'final_count_match', label: 'Final file count reconciliation passed' },
+        ],
+        hasNotes: true,
+      },
+      {
+        id: 'post_delta_cutover',
+        title: 'Cutover & Decommission',
+        warning: 'Cutover is irreversible. Ensure customer has confirmed in writing before revoking source access.',
+        items: [
+          { id: 'cutover_date_confirmed', label: 'Cutover date confirmed with customer' },
+          { id: 'source_access_revoked', label: 'Source workspace access revoked / decommissioned' },
+          { id: 'users_notified', label: 'Users notified of cutover and directed to destination' },
+          { id: 'final_report_shared', label: 'Final migration report generated and shared with customer' },
+        ],
+        hasNotes: true,
+      },
+    ],
   },
 
   message: {
-    onetime: [
+    pre_onetime: [
       {
         id: 'permission_mapping',
         title: 'Permission Mapping',
@@ -199,7 +246,29 @@ const CHECKLIST_CONFIG: Record<MigrationType, Record<Phase, ChecklistSection[]>>
         hasNotes: true,
       },
     ],
-    delta: [
+    post_onetime: [
+      {
+        id: 'post_ot_message_validation',
+        title: 'Post-Onetime Message Validation',
+        items: [
+          { id: 'all_channels_present', label: 'All channels confirmed present at destination' },
+          { id: 'all_dms_present', label: 'All DMs confirmed present at destination' },
+          { id: 'message_count_spot_check', label: 'Message count spot-check passed on sample channels/DMs' },
+          { id: 'pins_and_descriptions', label: 'Pinned items and channel descriptions verified at destination' },
+        ],
+        hasNotes: true,
+      },
+      {
+        id: 'post_ot_signoff',
+        title: 'Post-Onetime Sign-off',
+        items: [
+          { id: 'customer_notified', label: 'Customer notified of one-time migration completion' },
+          { id: 'ticket_updated', label: 'Post-onetime migration status documented in ticket' },
+        ],
+        hasNotes: true,
+      },
+    ],
+    pre_delta: [
       {
         id: 'delta_prerequisites',
         title: 'Delta Migration Prerequisites',
@@ -245,10 +314,34 @@ const CHECKLIST_CONFIG: Record<MigrationType, Record<Phase, ChecklistSection[]>>
         hasNotes: true,
       },
     ],
+    post_delta: [
+      {
+        id: 'post_delta_message_verification',
+        title: 'Post-Delta Message Verification',
+        items: [
+          { id: 'delta_complete_confirmed', label: 'Final delta message migration verified — all channels/DMs up to date' },
+          { id: 'no_pending_tasks', label: 'No pending picking or message movement tasks remaining' },
+          { id: 'final_dedup_check', label: 'Final deduplication check passed — no duplicate channels/DMs' },
+        ],
+        hasNotes: true,
+      },
+      {
+        id: 'post_delta_cutover',
+        title: 'Cutover & Decommission',
+        warning: 'Cutover is irreversible. Ensure customer has confirmed in writing before freezing source.',
+        items: [
+          { id: 'cutover_confirmed', label: 'Cutover confirmed with customer' },
+          { id: 'source_frozen', label: 'Source workspace access revoked or frozen' },
+          { id: 'users_redirected', label: 'Users redirected to destination workspace' },
+          { id: 'migration_summary', label: 'Final migration summary documented and shared' },
+        ],
+        hasNotes: true,
+      },
+    ],
   },
 
   email: {
-    onetime: [
+    pre_onetime: [
       {
         id: 'permission_mapping',
         title: 'Permission Mapping',
@@ -294,7 +387,28 @@ const CHECKLIST_CONFIG: Record<MigrationType, Record<Phase, ChecklistSection[]>>
         hasNotes: true,
       },
     ],
-    delta: [
+    post_onetime: [
+      {
+        id: 'post_ot_email_validation',
+        title: 'Post-Onetime Email Validation',
+        items: [
+          { id: 'all_workspaces_migrated', label: 'All emailWorkspaces confirmed fully migrated (picking + moving + attachments)' },
+          { id: 'email_count_reconciled', label: 'Email count reconciliation done — source vs destination spot-check passed' },
+          { id: 'no_unresolved_conflicts', label: 'No unresolved conflicts in emailInfo or emailFolderInfo' },
+        ],
+        hasNotes: true,
+      },
+      {
+        id: 'post_ot_signoff',
+        title: 'Post-Onetime Sign-off',
+        items: [
+          { id: 'customer_signoff', label: 'Customer sign-off on post-onetime migration received' },
+          { id: 'ticket_updated', label: 'Post-onetime status documented in ticket' },
+        ],
+        hasNotes: true,
+      },
+    ],
+    pre_delta: [
       {
         id: 'onetime_complete',
         title: 'One-Time Migration Completion Check',
@@ -340,6 +454,30 @@ const CHECKLIST_CONFIG: Record<MigrationType, Record<Phase, ChecklistSection[]>>
         hasNotes: true,
       },
     ],
+    post_delta: [
+      {
+        id: 'post_delta_email_validation',
+        title: 'Post-Delta Email Validation',
+        items: [
+          { id: 'delta_picking_complete', label: 'All delta picking, moving, and attachment processing confirmed complete' },
+          { id: 'calendar_contacts_verified', label: 'Calendar and contact migration verified (if applicable)' },
+          { id: 'no_unresolved_conflicts', label: 'No unresolved conflicts in any email collection' },
+        ],
+        hasNotes: true,
+      },
+      {
+        id: 'post_delta_cutover',
+        title: 'Cutover & Decommission',
+        warning: 'Cutover is irreversible. Ensure customer confirmation before revoking source mailbox access.',
+        items: [
+          { id: 'cutover_confirmed', label: 'Cutover date confirmed with customer' },
+          { id: 'source_decommissioned', label: 'Source mailboxes decommissioned / access revoked' },
+          { id: 'users_notified', label: 'Users notified and redirected to destination mailboxes' },
+          { id: 'final_report_shared', label: 'Final migration report generated and shared' },
+        ],
+        hasNotes: true,
+      },
+    ],
   },
 };
 
@@ -349,6 +487,13 @@ const STATUS_CONFIG: Record<ChecklistStatus, { label: string; color: string; ico
   not_started:        { label: 'Not Started',         color: 'bg-gray-100 text-gray-600',   icon: Clock },
   engineer_submitted: { label: 'Awaiting PM Review',  color: 'bg-amber-100 text-amber-700', icon: Send },
   pm_verified:        { label: 'PM Verified',          color: 'bg-green-100 text-green-700', icon: CheckCircle2 },
+};
+
+const PHASE_CONFIG: Record<Phase, { label: string; shortLabel: string; activeColor: string; badgeColor: string }> = {
+  pre_onetime:  { label: 'Pre-Onetime',  shortLabel: 'Pre-OT',    activeColor: 'bg-indigo-600 text-white border-indigo-600',  badgeColor: 'bg-indigo-100 text-indigo-700' },
+  post_onetime: { label: 'Post-Onetime', shortLabel: 'Post-OT',   activeColor: 'bg-green-600 text-white border-green-600',    badgeColor: 'bg-green-100 text-green-700'   },
+  pre_delta:    { label: 'Pre-Delta',    shortLabel: 'Pre-Δ',     activeColor: 'bg-purple-600 text-white border-purple-600',  badgeColor: 'bg-purple-100 text-purple-700' },
+  post_delta:   { label: 'Post-Delta',   shortLabel: 'Post-Δ',    activeColor: 'bg-teal-600 text-white border-teal-600',      badgeColor: 'bg-teal-100 text-teal-700'     },
 };
 
 const API_BASE = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api`;
@@ -369,7 +514,7 @@ export default function MigrationValidationPage() {
 
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
   const [activeType, setActiveType] = useState<MigrationType>('content');
-  const [activePhase, setActivePhase] = useState<Phase>('onetime');
+  const [activePhase, setActivePhase] = useState<Phase>('pre_onetime');
   const [checklists, setChecklists] = useState<ChecklistRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -439,8 +584,14 @@ export default function MigrationValidationPage() {
   const currentRecord = checklists.find(
     (c) => c.migrationType === activeType && c.phase === activePhase
   );
-  const oneTimeRecord = checklists.find((c) => c.migrationType === activeType && c.phase === 'onetime');
-  const deltaLocked = oneTimeRecord?.status !== 'pm_verified';
+  const getPhaseRecord = (ph: Phase) => checklists.find((c) => c.migrationType === activeType && c.phase === ph);
+  const isPhaseUnlocked = (ph: Phase): boolean => {
+    if (ph === 'pre_onetime') return true;
+    if (ph === 'post_onetime') return getPhaseRecord('pre_onetime')?.status === 'pm_verified';
+    if (ph === 'pre_delta') return getPhaseRecord('post_onetime')?.status === 'pm_verified';
+    if (ph === 'post_delta') return getPhaseRecord('pre_delta')?.status === 'pm_verified';
+    return false;
+  };
 
   useEffect(() => {
     if (currentRecord?.checklistData && Object.keys(currentRecord.checklistData).length > 0) {
@@ -458,7 +609,7 @@ export default function MigrationValidationPage() {
   const handleSelectProject = (id: string) => {
     setSelectedProjectId(id);
     setChecklists([]);
-    setActivePhase('onetime');
+    setActivePhase('pre_onetime');
   };
 
   const handleBack = () => {
@@ -562,10 +713,10 @@ export default function MigrationValidationPage() {
 
   const handleFinalize = async () => {
     if (!selectedProjectId) return;
-    const bothVerified =
-      checklists.find((c) => c.migrationType === activeType && c.phase === 'onetime')?.status === 'pm_verified' &&
-      checklists.find((c) => c.migrationType === activeType && c.phase === 'delta')?.status === 'pm_verified';
-    if (!bothVerified) { showToast('error', 'Both One-Time and Delta phases must be PM-verified first'); return; }
+    const allVerified = (['pre_onetime', 'post_onetime', 'pre_delta', 'post_delta'] as Phase[]).every(
+      (ph) => checklists.find((c) => c.migrationType === activeType && c.phase === ph)?.status === 'pm_verified'
+    );
+    if (!allVerified) { showToast('error', 'All four phases must be PM-verified before finalizing'); return; }
     setSaving(true);
     try {
       const token = localStorage.getItem('token');
@@ -661,15 +812,16 @@ export default function MigrationValidationPage() {
         </div>
 
         {/* Checklist status strip */}
-        <div className="flex items-center gap-2 mt-3 pt-3 border-t border-slate-100">
-          {(['onetime', 'delta'] as Phase[]).map((ph) => {
+        <div className="flex flex-wrap items-center gap-1.5 mt-3 pt-3 border-t border-slate-100">
+          {(['pre_onetime', 'post_onetime', 'pre_delta', 'post_delta'] as Phase[]).map((ph) => {
             const rec = checklists.find((c) => c.projectId === project.id && c.migrationType === activeType && c.phase === ph);
             const st = rec?.status || 'not_started';
             const cfg = STATUS_CONFIG[st as ChecklistStatus];
+            const phCfg = PHASE_CONFIG[ph];
             return (
               <span key={ph} className={cn('flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium', cfg.color)}>
                 <cfg.icon className="w-3 h-3" />
-                {ph === 'onetime' ? 'One-Time' : 'Delta'}: {cfg.label}
+                {phCfg.shortLabel}
               </span>
             );
           })}
@@ -701,7 +853,7 @@ export default function MigrationValidationPage() {
               key={tab.id}
               onClick={() => {
                 setActiveType(tab.id);
-                setActivePhase('onetime');
+                setActivePhase('pre_onetime');
                 setSelectedProjectId('');
                 setChecklists([]);
               }}
@@ -786,33 +938,35 @@ export default function MigrationValidationPage() {
           </div>
 
           {/* Phase switcher */}
-          <div className="flex items-center gap-3">
-            {(['onetime', 'delta'] as Phase[]).map((phase) => {
+          <div className="flex flex-wrap items-center gap-2">
+            {(['pre_onetime', 'post_onetime', 'pre_delta', 'post_delta'] as Phase[]).map((phase, idx) => {
               const rec = checklists.find((c) => c.migrationType === activeType && c.phase === phase);
-              const locked = phase === 'delta' && deltaLocked;
+              const locked = !isPhaseUnlocked(phase);
               const statusCfg = rec ? STATUS_CONFIG[rec.status] : null;
+              const phCfg = PHASE_CONFIG[phase];
+              const prevLabel = idx > 0 ? PHASE_CONFIG[(['pre_onetime', 'post_onetime', 'pre_delta', 'post_delta'] as Phase[])[idx - 1]].label : '';
               return (
                 <button
                   key={phase}
                   onClick={() => !locked && setActivePhase(phase)}
                   disabled={locked}
+                  title={locked ? `Requires ${prevLabel} PM approval` : undefined}
                   className={cn(
                     'flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-medium transition-all',
                     activePhase === phase && !locked
-                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                      ? phCfg.activeColor + ' shadow-sm'
                       : locked
                       ? 'bg-slate-50 text-slate-400 border-slate-200 cursor-not-allowed'
-                      : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300 hover:text-indigo-600'
+                      : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400'
                   )}
                 >
                   {locked ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
-                  {phase === 'onetime' ? 'One-Time Migration' : 'Delta Migration'}
+                  {phCfg.label}
                   {statusCfg && (
                     <span className={cn('text-[10px] px-1.5 py-0.5 rounded-full font-medium ml-1', statusCfg.color)}>
                       {statusCfg.label}
                     </span>
                   )}
-                  {locked && <span className="text-[10px] text-slate-400 ml-1">Requires One-Time PM approval</span>}
                 </button>
               );
             })}
@@ -1032,9 +1186,10 @@ export default function MigrationValidationPage() {
 
           {/* Final Validation button */}
           {canVerify && (() => {
-            const otVerified = checklists.find((c) => c.migrationType === activeType && c.phase === 'onetime')?.status === 'pm_verified';
-            const deltaVerified = checklists.find((c) => c.migrationType === activeType && c.phase === 'delta')?.status === 'pm_verified';
-            if (!otVerified || !deltaVerified) return null;
+            const allVerified = (['pre_onetime', 'post_onetime', 'pre_delta', 'post_delta'] as Phase[]).every(
+              (ph) => checklists.find((c) => c.migrationType === activeType && c.phase === ph)?.status === 'pm_verified'
+            );
+            if (!allVerified) return null;
             return (
               <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-xl p-5 flex items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
@@ -1042,8 +1197,8 @@ export default function MigrationValidationPage() {
                     <Flag className="w-5 h-5 text-green-600" />
                   </div>
                   <div>
-                    <p className="text-sm font-bold text-green-800">All phases verified!</p>
-                    <p className="text-xs text-green-700">Both One-Time and Delta checklists are PM-approved. Ready to move to Final Validation.</p>
+                    <p className="text-sm font-bold text-green-800">All four phases verified!</p>
+                    <p className="text-xs text-green-700">Pre-Onetime, Post-Onetime, Pre-Delta, and Post-Delta checklists are all PM-approved. Ready to move to Final Validation.</p>
                   </div>
                 </div>
                 <button
