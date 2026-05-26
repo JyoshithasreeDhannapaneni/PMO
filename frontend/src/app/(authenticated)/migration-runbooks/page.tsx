@@ -194,7 +194,7 @@ const CHECKLIST_CONFIG: Record<MigrationType, Record<Phase, ChecklistSection[]>>
           { id: 'all_movement_complete', label: 'All message movement fully completed' },
           { id: 'retryable_conflicts_resolved', label: 'All retryable conflicts resolved' },
           { id: 'nonretryable_documented', label: 'Non-retryable conflicts documented as-is' },
-          { id: 'channels_dms_documented', label: 'All channels and DMs must be documented after the one-time migration' },
+          { id: 'channels_dms_documented', label: 'All channels and DMs are documented after onetime' },
         ],
         hasNotes: true,
       },
@@ -426,7 +426,7 @@ export default function MigrationValidationPage() {
   const fetchChecklists = async () => {
     setLoading(true);
     try {
-      const token = localStorage.getItem('auth_token');
+      const token = localStorage.getItem('token');
       const res = await fetch(`${API_BASE}/migration-checklists/${selectedProjectId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -490,7 +490,7 @@ export default function MigrationValidationPage() {
     if (!selectedProjectId) return;
     setSaving(true);
     try {
-      const token = localStorage.getItem('auth_token');
+      const token = localStorage.getItem('token');
       const res = await fetch(`${API_BASE}/migration-checklists/${selectedProjectId}/${activeType}/${activePhase}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -513,7 +513,7 @@ export default function MigrationValidationPage() {
     if (!selectedProjectId) return;
     setSaving(true);
     try {
-      const token = localStorage.getItem('auth_token');
+      const token = localStorage.getItem('token');
       await fetch(`${API_BASE}/migration-checklists/${selectedProjectId}/${activeType}/${activePhase}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -540,7 +540,7 @@ export default function MigrationValidationPage() {
     if (!selectedProjectId) return;
     setSaving(true);
     try {
-      const token = localStorage.getItem('auth_token');
+      const token = localStorage.getItem('token');
       const res = await fetch(`${API_BASE}/migration-checklists/${selectedProjectId}/${activeType}/${activePhase}/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -568,7 +568,7 @@ export default function MigrationValidationPage() {
     if (!bothVerified) { showToast('error', 'Both One-Time and Delta phases must be PM-verified first'); return; }
     setSaving(true);
     try {
-      const token = localStorage.getItem('auth_token');
+      const token = localStorage.getItem('token');
       const res = await fetch(`${API_BASE}/migration-checklists/${selectedProjectId}/finalize`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
