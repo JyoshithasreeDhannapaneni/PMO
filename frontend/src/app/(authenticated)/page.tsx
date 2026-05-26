@@ -459,6 +459,8 @@ export default function DashboardPage() {
   const allProjectsList: any[] = (allProjectsData?.data || []).filter(
     (p: any) => viewMode === 'overall' || !managerFilter || p.projectManager === managerFilter
   );
+  const migrationProjectsCount = allProjectsList.filter((p: any) => !p.projectType || p.projectType !== 'POC').length;
+  const pocProjectsCount = allProjectsList.filter((p: any) => p.projectType === 'POC').length;
 
   // Build category stats from settings + project data (reliable, no server-side grouping needed)
   const categoryStats = useMemo(() => {
@@ -619,7 +621,20 @@ export default function DashboardPage() {
               <div>
                 <p className="text-gray-500 text-sm font-medium">Total Projects</p>
                 <p className="text-3xl font-bold text-gray-900 mt-1">{stats.totalProjects}</p>
-                <p className="text-xs text-gray-400 mt-1">Excl. completed &amp; cancelled</p>
+                <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                  {migrationProjectsCount > 0 && (
+                    <span className="text-xs text-blue-500 font-medium">{migrationProjectsCount} migration</span>
+                  )}
+                  {migrationProjectsCount > 0 && pocProjectsCount > 0 && (
+                    <span className="text-xs text-gray-300">·</span>
+                  )}
+                  {pocProjectsCount > 0 && (
+                    <span className="text-xs text-violet-500 font-medium">{pocProjectsCount} POC</span>
+                  )}
+                  {pocProjectsCount === 0 && migrationProjectsCount === 0 && (
+                    <span className="text-xs text-gray-400">Excl. completed &amp; cancelled</span>
+                  )}
+                </div>
               </div>
               <div className="w-11 h-11 rounded-xl bg-blue-50 flex items-center justify-center">
                 <FolderKanban size={20} className="text-blue-600" />
