@@ -422,6 +422,7 @@ export default function DashboardPage() {
   const isManager = user?.role === 'PROJECT_MANAGER';
   // ADMIN defaults to overall; MANAGER/others default to my
   const [viewMode, setViewMode] = useState<ViewMode>(isAdmin ? 'overall' : 'my');
+  const pmFilter = viewMode === 'my' && user?.name ? `&projectManager=${encodeURIComponent(user.name)}` : '';
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showWeeklyReport, setShowWeeklyReport] = useState(false);
   const [weeklyTab, setWeeklyTab] = useState<'summary' | 'added' | 'closed' | 'changes'>('summary');
@@ -612,7 +613,7 @@ export default function DashboardPage() {
 
       {/* ── KPI Row ────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-        <Link href="/projects" className="col-span-2 lg:col-span-1 block group">
+        <Link href={`/projects${pmFilter ? `?${pmFilter.slice(1)}` : ''}`} className="col-span-2 lg:col-span-1 block group">
           <Card className="h-full transition-transform group-hover:scale-[1.02] group-hover:shadow-lg">
             <div className="flex items-center justify-between">
               <div>
@@ -626,7 +627,7 @@ export default function DashboardPage() {
             </div>
           </Card>
         </Link>
-        <Link href="/projects?status=ACTIVE" className="block group">
+        <Link href={`/projects?status=ACTIVE${pmFilter}`} className="block group">
           <Card className="h-full transition-transform group-hover:scale-[1.02] group-hover:shadow-lg border-green-200">
             <div className="flex items-center justify-between">
               <div className="flex-1 min-w-0">
@@ -650,7 +651,7 @@ export default function DashboardPage() {
             </div>
           </Card>
         </Link>
-        <Link href="/projects?status=ON_HOLD" className="block group">
+        <Link href={`/projects?status=ON_HOLD${pmFilter}`} className="block group">
           <Card className="h-full transition-transform group-hover:scale-[1.02] group-hover:shadow-lg border-yellow-200">
             <div className="flex items-center justify-between">
               <div>
@@ -664,7 +665,7 @@ export default function DashboardPage() {
             </div>
           </Card>
         </Link>
-        <Link href="/projects?status=COMPLETED" className="block group">
+        <Link href={`/projects?status=COMPLETED${pmFilter}`} className="block group">
           <Card className="h-full transition-transform group-hover:scale-[1.02] group-hover:shadow-lg border-blue-200">
             <div className="flex items-center justify-between">
               <div>
