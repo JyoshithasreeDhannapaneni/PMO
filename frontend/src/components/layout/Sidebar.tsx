@@ -6,9 +6,9 @@ import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { useSettings } from '@/context/SettingsContext';
 import {
-  LayoutDashboard, FolderKanban, AlertTriangle, FileText, Bell,
+  LayoutDashboard, FolderKanban, AlertTriangle, FileText,
   Settings, Layers, Users, Shuffle, BarChart2, ChevronDown,
-  ChevronRight, MessageSquare, LogOut, DollarSign, Siren, Menu, X, Archive,
+  ChevronRight, LogOut, DollarSign, Siren, Menu, X, Archive,
   FlaskConical, Building2, HeartHandshake, BookOpen,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
@@ -35,8 +35,6 @@ const allNavigation = [
     ],
   },
   { name: 'History Archive', href: '/archive',         icon: Archive,       adminOnly: false },
-  { name: 'Chat Bot',      href: '/?chatbot=open',  icon: MessageSquare, badge: 'chat', adminOnly: false },
-  { name: 'Notifications', href: '/notifications',  icon: Bell,          adminOnly: false },
 ];
 
 const badgeColors: Record<string, string> = {
