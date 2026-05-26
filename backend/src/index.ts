@@ -306,6 +306,11 @@ async function runMigrations() {
     UNIQUE(project_id, migration_type, phase)
   )`);
   try { await execute(`CREATE INDEX IF NOT EXISTS idx_mig_chk_project ON migration_checklists(project_id)`); } catch {}
+  // Rename legacy phase values to new 4-phase naming
+  try { await execute(`UPDATE migration_checklists SET phase='pre_onetime' WHERE phase='onetime'`); } catch {}
+  try { await execute(`UPDATE migration_checklists SET phase='pre_delta'   WHERE phase='delta'`);   } catch {}
+  // Widen phase column to accommodate new phase names
+  try { await execute(`ALTER TABLE migration_checklists ALTER COLUMN phase TYPE VARCHAR(30)`); } catch {}
 
   // Ensure account_manager allows NULL (needed before clearing invalid values)
   try { await execute(`ALTER TABLE projects ALTER COLUMN account_manager DROP NOT NULL`); } catch {}
