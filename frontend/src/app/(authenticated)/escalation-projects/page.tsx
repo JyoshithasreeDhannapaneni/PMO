@@ -126,6 +126,9 @@ export default function EscalationProjectsPage() {
   const [dailyNoteDate, setDailyNoteDate] = useState(() => new Date().toISOString().split('T')[0]);
   const { data: dailyNotesData, isLoading: loadingNotes } = useEscalationDailyNotes(dailyNotesProject?.id ?? null);
   const dailyNotes: any[] = dailyNotesData?.data || [];
+  // Also fetch daily notes for the history modal so they appear in the unified timeline
+  const { data: historyDailyNotesData } = useEscalationDailyNotes(historyProject?.id ?? null);
+  const historyDailyNotes: any[] = historyDailyNotesData?.data || [];
   const addDailyNote = useAddEscalationDailyNote();
   const deleteDailyNote = useDeleteEscalationDailyNote();
 
@@ -868,7 +871,7 @@ export default function EscalationProjectsPage() {
                 </div>
                 <div>
                   <h2 className="text-lg font-bold">{historyProject.name}</h2>
-                  <p className="text-xs opacity-80">{historyProject.customerName} · Escalation History</p>
+                  <p className="text-xs opacity-80">{historyProject.customerName} · Activity History</p>
                 </div>
               </div>
               <button onClick={() => setHistoryProject(null)} className="p-2 rounded-lg hover:bg-white/20 transition-colors">
@@ -876,41 +879,82 @@ export default function EscalationProjectsPage() {
               </button>
             </div>
 
-            {/* History list */}
+            {/* Unified activity timeline: escalation events + daily tracking notes */}
             <div className="flex-1 overflow-y-auto p-5 space-y-3">
-              {(historyProject.escalationHistory && historyProject.escalationHistory.length > 0) ? (
-                historyProject.escalationHistory.map((h: any, idx: number) => (
-                  <div key={h.id || idx} className="flex items-start gap-3 text-sm bg-gray-50 rounded-xl p-4 border border-gray-200">
-                    <div className="flex flex-col items-center gap-1 flex-shrink-0 pt-1">
-                      <span className={`w-2.5 h-2.5 rounded-full ${h.resolvedDate ? 'bg-green-400' : 'bg-red-500'}`} />
+              {(() => {
+                const escalationItems: any[] = (historyProject.escalationHistory || []).map((h: any) => ({
+                  type: 'escalation',
+                  sortDate: new Date(h.escalatedAt).getTime(),
+                  data: h,
+                }));
+                const noteItems: any[] = historyDailyNotes.map((n: any) => ({
+                  type: 'note',
+                  sortDate: new Date(n.noteDate ? (n.noteDate.split('T')[0] + 'T12:00:00') : (n.createdAt || new Date().toISOString())).getTime(),
+                  data: n,
+                }));
+                const combined = [...escalationItems, ...noteItems].sort((a, b) => b.sortDate - a.sortDate);
+
+                if (combined.length === 0) {
+                  return (
+                    <div className="text-center py-8 text-gray-400">
+                      <History size={32} className="mx-auto mb-2 opacity-30" />
+                      <p className="text-sm">No history or daily notes yet</p>
                     </div>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 flex-wrap mb-1">
-                        <span className="font-semibold text-gray-800 text-xs">
-                          {format(new Date(h.escalatedAt), 'MMM d, yyyy HH:mm')}
-                        </span>
-                        <span className={`px-1.5 py-0.5 rounded text-xs font-semibold ${h.priority === 'HIGH' ? 'bg-red-100 text-red-700' : h.priority === 'MEDIUM' ? 'bg-orange-100 text-orange-700' : 'bg-yellow-100 text-yellow-700'}`}>
-                          {h.priority}
-                        </span>
-                        {h.escalationType && (
-                          <span className="px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 text-xs">{h.escalationType}</span>
-                        )}
-                        {h.resolvedDate ? (
-                          <span className="px-1.5 py-0.5 rounded bg-green-100 text-green-700 text-xs font-medium">Resolved {format(new Date(h.resolvedDate), 'MMM d, yyyy')}</span>
-                        ) : (
-                          <span className="px-1.5 py-0.5 rounded bg-red-50 text-red-600 text-xs border border-red-200">Open</span>
-                        )}
+                  );
+                }
+
+                return combined.map((item, idx) => {
+                  if (item.type === 'escalation') {
+                    const h = item.data;
+                    return (
+                      <div key={`esc-${h.id || idx}`} className="flex items-start gap-3 text-sm bg-gray-50 rounded-xl p-4 border border-gray-200">
+                        <div className="flex-shrink-0 pt-1">
+                          <span className={`block w-2.5 h-2.5 rounded-full ${h.resolvedDate ? 'bg-green-400' : 'bg-red-500'}`} />
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 flex-wrap mb-1">
+                            <span className="font-semibold text-gray-800 text-xs">
+                              {format(new Date(h.escalatedAt), 'MMM d, yyyy HH:mm')}
+                            </span>
+                            <span className="px-1.5 py-0.5 rounded bg-red-50 text-red-600 text-[10px] border border-red-200 font-semibold">Escalation</span>
+                            <span className={`px-1.5 py-0.5 rounded text-xs font-semibold ${h.priority === 'HIGH' ? 'bg-red-100 text-red-700' : h.priority === 'MEDIUM' ? 'bg-orange-100 text-orange-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                              {h.priority}
+                            </span>
+                            {h.escalationType && (
+                              <span className="px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 text-xs">{h.escalationType}</span>
+                            )}
+                            {h.resolvedDate ? (
+                              <span className="px-1.5 py-0.5 rounded bg-green-100 text-green-700 text-xs font-medium">Resolved {format(new Date(h.resolvedDate), 'MMM d, yyyy')}</span>
+                            ) : (
+                              <span className="px-1.5 py-0.5 rounded bg-red-50 text-red-600 text-xs border border-red-200">Open</span>
+                            )}
+                          </div>
+                          {h.notes && <p className="text-gray-600 text-xs mt-1">{h.notes}</p>}
+                        </div>
                       </div>
-                      {h.notes && <p className="text-gray-600 text-xs mt-1">{h.notes}</p>}
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="text-center py-8 text-gray-400">
-                  <History size={32} className="mx-auto mb-2 opacity-30" />
-                  <p className="text-sm">No escalation history yet</p>
-                </div>
-              )}
+                    );
+                  } else {
+                    const n = item.data;
+                    return (
+                      <div key={`note-${n.id || idx}`} className="flex items-start gap-3 text-sm bg-teal-50 rounded-xl p-4 border border-teal-100">
+                        <div className="flex-shrink-0 pt-1">
+                          <span className="block w-2.5 h-2.5 rounded-full bg-teal-400" />
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 flex-wrap mb-1">
+                            <span className="font-semibold text-gray-800 text-xs">
+                              {format(new Date(n.noteDate ? (n.noteDate.split('T')[0] + 'T12:00:00') : (n.createdAt || new Date().toISOString())), 'MMM d, yyyy')}
+                            </span>
+                            <span className="px-1.5 py-0.5 rounded bg-teal-100 text-teal-700 text-[10px] border border-teal-200 font-semibold">Daily Note</span>
+                            {n.author && <span className="text-xs text-gray-400">by {n.author}</span>}
+                          </div>
+                          <p className="text-gray-700 text-xs mt-1 whitespace-pre-wrap">{n.note}</p>
+                        </div>
+                      </div>
+                    );
+                  }
+                });
+              })()}
             </div>
 
             {/* Add new note — only for admin or the project's PM */}
