@@ -9,13 +9,14 @@ import {
   LayoutDashboard, FolderKanban, AlertTriangle, FileText,
   Settings, Layers, Users, Shuffle, BarChart2, ChevronDown,
   ChevronRight, LogOut, DollarSign, Siren, Menu, X, Archive,
-  FlaskConical, Building2, HeartHandshake, BookOpen, ClipboardList,
+  FlaskConical, Building2, HeartHandshake, BookOpen, ClipboardList, Briefcase,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
 const allNavigation = [
   { name: 'Dashboard',          href: '/',                       icon: LayoutDashboard, adminOnly: false },
   { name: 'All Projects',        href: '/projects',               icon: FolderKanban,    adminOnly: false },
+  { name: 'Professional Services', href: '/professional-services', icon: Briefcase,       adminOnly: false },
   { name: 'Migration Validation', href: '/migration-runbooks',     icon: BookOpen,        adminOnly: false },
   { name: 'Overage Projects',   href: '/overage-projects',       icon: DollarSign,      adminOnly: false },
   { name: 'Escalated Projects', href: '/escalation-projects',    icon: Siren,           adminOnly: false },

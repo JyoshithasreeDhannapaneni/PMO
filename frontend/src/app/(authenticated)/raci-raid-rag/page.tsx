@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Card } from '@/components/ui/Card';
 import { cn } from '@/lib/utils';
 import { Shield, AlertTriangle, BarChart2, RefreshCw, ChevronDown } from 'lucide-react';
@@ -442,20 +443,171 @@ function RaciTab({ data, setData }: { data: typeof INITIAL_RACI; setData: (d: ty
 
 // ── RAID Tab ─────────────────────────────────────────────────────────────────
 
+const TYPE_CARD: Record<string, { color: string; bg: string; border: string; desc: string }> = {
+  R: { color: 'text-red-700',    bg: 'bg-red-50',    border: 'border-red-300',    desc: 'Something that could go wrong' },
+  A: { color: 'text-blue-700',   bg: 'bg-blue-50',   border: 'border-blue-300',   desc: 'Something assumed to be true' },
+  I: { color: 'text-amber-700',  bg: 'bg-amber-50',  border: 'border-amber-300',  desc: 'A current problem or blocker' },
+  D: { color: 'text-purple-700', bg: 'bg-purple-50', border: 'border-purple-300', desc: 'Something we rely on externally' },
+};
+
+function AddRaidModal({ teamPrefix, existingRows, onAdd, onClose }: {
+  teamPrefix: string;
+  existingRows: { id: string; type: string }[];
+  onAdd: (row: typeof INITIAL_RAID[0]['rows'][0]) => void;
+  onClose: () => void;
+}) {
+  const [step, setStep] = useState<'type' | 'form'>('type');
+  const [form, setForm] = useState({ type: '', description: '', probability: '—', severity: '—', owner: '', mitigation: '', dueDate: '', status: 'Open' });
+
+  const selectType = (t: string) => {
+    const countOfType = existingRows.filter(r => r.type === t).length + 1;
+    const id = `${teamPrefix}-${t}-${String(countOfType).padStart(3, '0')}`;
+    setForm(f => ({ ...f, type: t, id }));
+    setStep('form');
+  };
+
+  const submit = () => {
+    if (!form.description.trim()) return;
+    onAdd({ ...(form as any) });
+    onClose();
+  };
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <h2 className="text-sm font-semibold text-slate-800">
+            {step === 'type' ? 'Select Entry Type' : `New ${TYPE_LABEL[form.type]} — ${(form as any).id}`}
+          </h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
+        </div>
+
+        <div className="px-6 py-5">
+          {step === 'type' ? (
+            <div className="grid grid-cols-2 gap-3">
+              {Object.entries(TYPE_CARD).map(([k, cfg]) => (
+                <button
+                  key={k}
+                  onClick={() => selectType(k)}
+                  className={cn('flex flex-col items-start gap-1.5 p-4 rounded-xl border-2 text-left transition-all hover:scale-[1.02] hover:shadow-md', cfg.bg, cfg.border)}
+                >
+                  <span className={cn('text-sm font-bold', cfg.color)}>{k} — {TYPE_LABEL[k]}</span>
+                  <span className="text-xs text-gray-500">{cfg.desc}</span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Description <span className="text-red-500">*</span></label>
+                <textarea
+                  rows={3}
+                  placeholder="Describe the risk / assumption / issue / dependency…"
+                  value={form.description}
+                  onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-200 resize-none"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Probability</label>
+                  <select value={form.probability} onChange={e => setForm(f => ({ ...f, probability: e.target.value }))} className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-indigo-400">
+                    {['High', 'Medium', 'Low', '—'].map(o => <option key={o}>{o}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Severity</label>
+                  <select value={form.severity} onChange={e => setForm(f => ({ ...f, severity: e.target.value }))} className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-indigo-400">
+                    {['High', 'Medium', 'Low', '—'].map(o => <option key={o}>{o}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Owner</label>
+                <input value={form.owner} onChange={e => setForm(f => ({ ...f, owner: e.target.value }))} placeholder="e.g. Migration Manager" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs outline-none focus:border-indigo-400" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Mitigation / Action</label>
+                <textarea rows={2} value={form.mitigation} onChange={e => setForm(f => ({ ...f, mitigation: e.target.value }))} placeholder="Steps to mitigate or resolve…" className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs outline-none focus:border-indigo-400 resize-none" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Due Date</label>
+                  <input value={form.dueDate} onChange={e => setForm(f => ({ ...f, dueDate: e.target.value }))} placeholder="e.g. 30-Jun-26" className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs outline-none focus:border-indigo-400" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Status</label>
+                  <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))} className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-indigo-400">
+                    {['Open', 'Escalated', 'In progress', 'Closed'].map(o => <option key={o}>{o}</option>)}
+                  </select>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {step === 'form' && (
+          <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100 bg-gray-50">
+            <button onClick={() => setStep('type')} className="text-xs text-gray-500 hover:text-gray-700 transition-colors">← Change type</button>
+            <div className="flex gap-2">
+              <button onClick={onClose} className="px-4 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-600 hover:bg-gray-100 transition-colors">Cancel</button>
+              <button
+                onClick={submit}
+                disabled={!form.description.trim()}
+                className="px-4 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                Add Entry
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 function RaidTab({ data, setData }: { data: typeof INITIAL_RAID; setData: (d: typeof INITIAL_RAID) => void }) {
+  const [activeTeam, setActiveTeam] = useState(0);
+  const [showModal, setShowModal] = useState(false);
   const PROB_OPTS = ['High', 'Medium', 'Low', '—'];
   const STATUS_OPTS = ['Open', 'Escalated', 'In progress', 'Closed'];
+  const TYPE_OPTS = ['R', 'A', 'I', 'D'];
 
-  const updateField = (ti: number, ri: number, field: string, value: string) => {
-    const next = data.map((team, tIdx) => ({
-      ...team,
-      rows: team.rows.map((row, rIdx) => (ti === tIdx && ri === rIdx ? { ...row, [field]: value } : row)),
-    }));
-    setData(next);
+  const team = data[activeTeam];
+  const teamPrefix = team.team.startsWith('Pre') ? 'PS' : team.team.startsWith('Migration') ? 'MT' : team.team.startsWith('Account') ? 'AM' : 'DV';
+
+  const updateField = (ri: number, field: string, value: string) => {
+    setData(data.map((t, tIdx) => ({
+      ...t,
+      rows: tIdx === activeTeam
+        ? t.rows.map((row, rIdx) => (ri === rIdx ? { ...row, [field]: value } : row))
+        : t.rows,
+    })));
+  };
+
+  const addRow = (newRow: typeof INITIAL_RAID[0]['rows'][0]) => {
+    setData(data.map((t, tIdx) => tIdx === activeTeam ? { ...t, rows: [...t.rows, newRow] } : t));
+  };
+
+  const deleteRow = (ri: number) => {
+    setData(data.map((t, tIdx) => tIdx === activeTeam ? { ...t, rows: t.rows.filter((_, rIdx) => rIdx !== ri) } : t));
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
+      {showModal && (
+        <AddRaidModal
+          teamPrefix={teamPrefix}
+          existingRows={team.rows}
+          onAdd={addRow}
+          onClose={() => setShowModal(false)}
+        />
+      )}
+
       <div className="flex gap-4 flex-wrap text-xs text-gray-500">
         {Object.entries(TYPE_LABEL).map(([k, label]) => (
           <span key={k} className="flex items-center gap-1.5">
@@ -465,65 +617,98 @@ function RaidTab({ data, setData }: { data: typeof INITIAL_RAID; setData: (d: ty
         ))}
         <span className="text-gray-400 italic">Click any cell to edit</span>
       </div>
-      {data.map((team, ti) => (
-        <div key={team.team}>
-          <div className="flex items-center gap-2 mb-2">
-            <div className="w-2 h-2 rounded-full bg-indigo-500" />
-            <h3 className="text-sm font-semibold text-slate-700">{team.team}</h3>
-            <span className="text-xs text-gray-400">({team.rows.length} items)</span>
-          </div>
-          <div className="overflow-x-auto rounded-lg border border-slate-200">
-            <table className="w-full text-xs border-collapse">
-              <thead>
-                <tr className="bg-slate-50">
-                  <th className="text-left py-2 px-3 font-semibold text-slate-600 border-b border-slate-200 w-24">ID</th>
-                  <th className="text-left py-2 px-3 font-semibold text-slate-600 border-b border-slate-200 w-20">Type</th>
-                  <th className="text-left py-2 px-3 font-semibold text-slate-600 border-b border-slate-200">Description</th>
-                  <th className="text-center py-2 px-3 font-semibold text-slate-600 border-b border-slate-200 w-20">Probability</th>
-                  <th className="text-center py-2 px-3 font-semibold text-slate-600 border-b border-slate-200 w-20">Severity</th>
-                  <th className="text-left py-2 px-3 font-semibold text-slate-600 border-b border-slate-200 w-32">Owner</th>
-                  <th className="text-left py-2 px-3 font-semibold text-slate-600 border-b border-slate-200">Mitigation / Action</th>
-                  <th className="text-left py-2 px-3 font-semibold text-slate-600 border-b border-slate-200 w-24">Due Date</th>
-                  <th className="text-left py-2 px-3 font-semibold text-slate-600 border-b border-slate-200 w-24">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {team.rows.map((row, ri) => (
-                  <tr key={row.id} className="hover:bg-slate-50 transition-colors border-b border-slate-100 last:border-0">
-                    <td className="py-2 px-3 font-mono text-slate-500">{row.id}</td>
-                    <td className="py-2 px-3">
-                      <span className={cn('px-1.5 py-0.5 rounded text-[11px] font-semibold', TYPE_STYLE[row.type])}>
-                        {TYPE_LABEL[row.type]}
-                      </span>
-                    </td>
-                    <td className="py-1.5 px-2 max-w-xs">
-                      <EditableArea value={row.description} onChange={v => updateField(ti, ri, 'description', v)} />
-                    </td>
-                    <td className="py-1.5 px-2 text-center">
-                      <SelectCell value={row.probability} options={PROB_OPTS} style={PROB_STYLE} onChange={v => updateField(ti, ri, 'probability', v)} />
-                    </td>
-                    <td className="py-1.5 px-2 text-center">
-                      <SelectCell value={row.severity} options={PROB_OPTS} style={SEV_STYLE} onChange={v => updateField(ti, ri, 'severity', v)} />
-                    </td>
-                    <td className="py-1.5 px-2">
-                      <EditableText value={row.owner} onChange={v => updateField(ti, ri, 'owner', v)} />
-                    </td>
-                    <td className="py-1.5 px-2 max-w-xs">
-                      <EditableArea value={row.mitigation} onChange={v => updateField(ti, ri, 'mitigation', v)} />
-                    </td>
-                    <td className="py-1.5 px-2">
-                      <EditableText value={row.dueDate} onChange={v => updateField(ti, ri, 'dueDate', v)} />
-                    </td>
-                    <td className="py-1.5 px-2">
-                      <SelectCell value={row.status} options={STATUS_OPTS} style={STATUS_STYLE} onChange={v => updateField(ti, ri, 'status', v)} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+
+      {/* Sub-tabs + Add button */}
+      <div className="flex items-center justify-between">
+        <div className="flex gap-1 border-b border-gray-200 flex-1">
+          {data.map((t, ti) => (
+            <button
+              key={t.team}
+              onClick={() => setActiveTeam(ti)}
+              className={cn(
+                'flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition -mb-px',
+                activeTeam === ti
+                  ? 'border-indigo-600 text-indigo-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              )}
+            >
+              {t.team}
+              <span className={cn('text-xs px-1.5 py-0.5 rounded-full font-semibold', activeTeam === ti ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-500')}>
+                {t.rows.length}
+              </span>
+            </button>
+          ))}
         </div>
-      ))}
+        <button
+          onClick={() => setShowModal(true)}
+          className="ml-3 mb-px flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 transition-colors whitespace-nowrap"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>
+          Add Entry
+        </button>
+      </div>
+
+      {/* Table for active team */}
+      <div className="overflow-x-auto rounded-lg border border-slate-200">
+        <table className="w-full text-xs border-collapse">
+          <thead>
+            <tr className="bg-slate-50">
+              <th className="text-left py-2 px-3 font-semibold text-slate-600 border-b border-slate-200 w-24">ID</th>
+              <th className="text-left py-2 px-3 font-semibold text-slate-600 border-b border-slate-200 w-24">Type</th>
+              <th className="text-left py-2 px-3 font-semibold text-slate-600 border-b border-slate-200">Description</th>
+              <th className="text-center py-2 px-3 font-semibold text-slate-600 border-b border-slate-200 w-20">Probability</th>
+              <th className="text-center py-2 px-3 font-semibold text-slate-600 border-b border-slate-200 w-20">Severity</th>
+              <th className="text-left py-2 px-3 font-semibold text-slate-600 border-b border-slate-200 w-32">Owner</th>
+              <th className="text-left py-2 px-3 font-semibold text-slate-600 border-b border-slate-200">Mitigation / Action</th>
+              <th className="text-left py-2 px-3 font-semibold text-slate-600 border-b border-slate-200 w-24">Due Date</th>
+              <th className="text-left py-2 px-3 font-semibold text-slate-600 border-b border-slate-200 w-24">Status</th>
+              <th className="py-2 px-2 border-b border-slate-200 w-8" />
+            </tr>
+          </thead>
+          <tbody>
+            {team.rows.map((row, ri) => (
+              <tr key={row.id} className="hover:bg-slate-50 transition-colors border-b border-slate-100 last:border-0 group">
+                <td className="py-2 px-3">
+                  <EditableText value={row.id} onChange={v => updateField(ri, 'id', v)} className="font-mono text-slate-500" />
+                </td>
+                <td className="py-2 px-3">
+                  <SelectCell value={row.type} options={TYPE_OPTS} style={TYPE_STYLE} onChange={v => updateField(ri, 'type', v)} />
+                </td>
+                <td className="py-1.5 px-2 max-w-xs">
+                  <EditableArea value={row.description} onChange={v => updateField(ri, 'description', v)} />
+                </td>
+                <td className="py-1.5 px-2 text-center">
+                  <SelectCell value={row.probability} options={PROB_OPTS} style={PROB_STYLE} onChange={v => updateField(ri, 'probability', v)} />
+                </td>
+                <td className="py-1.5 px-2 text-center">
+                  <SelectCell value={row.severity} options={PROB_OPTS} style={SEV_STYLE} onChange={v => updateField(ri, 'severity', v)} />
+                </td>
+                <td className="py-1.5 px-2">
+                  <EditableText value={row.owner} onChange={v => updateField(ri, 'owner', v)} />
+                </td>
+                <td className="py-1.5 px-2 max-w-xs">
+                  <EditableArea value={row.mitigation} onChange={v => updateField(ri, 'mitigation', v)} />
+                </td>
+                <td className="py-1.5 px-2">
+                  <EditableText value={row.dueDate} onChange={v => updateField(ri, 'dueDate', v)} />
+                </td>
+                <td className="py-1.5 px-2">
+                  <SelectCell value={row.status} options={STATUS_OPTS} style={STATUS_STYLE} onChange={v => updateField(ri, 'status', v)} />
+                </td>
+                <td className="py-1.5 px-2 text-center">
+                  <button
+                    onClick={() => deleteRow(ri)}
+                    className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-300 hover:text-red-500 p-0.5 rounded"
+                    title="Delete row"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -537,12 +722,19 @@ function RagTab({
   cs: typeof INITIAL_RAG_CS; setCs: (d: typeof INITIAL_RAG_CS) => void;
   team: typeof INITIAL_RAG_TEAM; setTeam: (d: typeof INITIAL_RAG_TEAM) => void;
 }) {
+  const [activeSection, setActiveSection] = useState<'active' | 'cs' | 'team'>('active');
   const RAG_FIELDS_ACTIVE: (keyof (typeof INITIAL_RAG_ACTIVE)[0])[] = ['overall', 'schedule', 'scope', 'resource', 'customer', 'budget'];
   const RAG_FIELDS_CS: (keyof (typeof INITIAL_RAG_CS)[0])[] = ['overall', 'adoption', 'csat', 'tickets', 'renewal', 'upsell'];
   const RAG_FIELDS_TEAM: (keyof (typeof INITIAL_RAG_TEAM)[0])[] = ['overall', 'capacity', 'blockers'];
 
+  const sections = [
+    { key: 'active' as const, label: 'Active Projects', count: active.length },
+    { key: 'cs'     as const, label: 'Customer Success', count: cs.length },
+    { key: 'team'   as const, label: 'Team Health', count: team.length },
+  ];
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-4">
       <div className="flex gap-4 flex-wrap text-xs text-gray-500">
         {[['G', 'Green — on track', RAG_STYLE.G], ['A', 'Amber — at risk', RAG_STYLE.A], ['R', 'Red — critical', RAG_STYLE.R]].map(([k, label, cls]) => (
           <span key={k} className="flex items-center gap-1.5">
@@ -553,12 +745,29 @@ function RagTab({
         <span className="text-gray-400 italic">Click any RAG cell to change rating</span>
       </div>
 
-      {/* Section 1 */}
-      <div>
-        <h3 className="text-sm font-semibold text-slate-700 mb-2 flex items-center gap-2">
-          <span className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 text-xs flex items-center justify-center font-bold">1</span>
-          Active projects — POC and full migration
-        </h3>
+      {/* Sub-tabs */}
+      <div className="flex gap-1 border-b border-gray-200">
+        {sections.map(s => (
+          <button
+            key={s.key}
+            onClick={() => setActiveSection(s.key)}
+            className={cn(
+              'flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition -mb-px',
+              activeSection === s.key
+                ? 'border-indigo-600 text-indigo-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            )}
+          >
+            {s.label}
+            <span className={cn('text-xs px-1.5 py-0.5 rounded-full font-semibold', activeSection === s.key ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-500')}>
+              {s.count}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {/* Active Projects */}
+      {activeSection === 'active' && (
         <div className="overflow-x-auto rounded-lg border border-slate-200">
           <table className="w-full text-xs border-collapse">
             <thead>
@@ -587,14 +796,10 @@ function RagTab({
             </tbody>
           </table>
         </div>
-      </div>
+      )}
 
-      {/* Section 2 */}
-      <div>
-        <h3 className="text-sm font-semibold text-slate-700 mb-2 flex items-center gap-2">
-          <span className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 text-xs flex items-center justify-center font-bold">2</span>
-          Customer success — post-migration health
-        </h3>
+      {/* Customer Success */}
+      {activeSection === 'cs' && (
         <div className="overflow-x-auto rounded-lg border border-slate-200">
           <table className="w-full text-xs border-collapse">
             <thead>
@@ -623,14 +828,10 @@ function RagTab({
             </tbody>
           </table>
         </div>
-      </div>
+      )}
 
-      {/* Section 3 */}
-      <div>
-        <h3 className="text-sm font-semibold text-slate-700 mb-2 flex items-center gap-2">
-          <span className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 text-xs flex items-center justify-center font-bold">3</span>
-          Team health — delivery capacity and blockers
-        </h3>
+      {/* Team Health */}
+      {activeSection === 'team' && (
         <div className="overflow-x-auto rounded-lg border border-slate-200">
           <table className="w-full text-xs border-collapse">
             <thead>
@@ -659,7 +860,7 @@ function RagTab({
             </tbody>
           </table>
         </div>
-      </div>
+      )}
     </div>
   );
 }
