@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useProjects } from '@/hooks/useProjects';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -43,7 +44,10 @@ import {
   AlertCircle,
   CheckCircle,
   Copy,
-  Info
+  Info,
+  Activity,
+  AlertTriangle,
+  Shuffle
 } from 'lucide-react';
 import { exportToPDF, exportToWord } from '@/utils/exportCaseStudy';
 import { authApi, templatesApi, projectsApi } from '@/services/api';
@@ -389,6 +393,8 @@ export default function SettingsPage() {
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>(defaultTeamMembers);
   const [automationRules, setAutomationRules] = useState<AutomationRule[]>(defaultAutomationRules);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['1']));
+  const [selectedMigType, setSelectedMigType] = useState<string | null>(null);
+  const { data: allProjectsData } = useProjects({ limit: 500 });
 
   // SMTP Settings
   const [smtpSettings, setSmtpSettings] = useState({
@@ -2522,13 +2528,111 @@ export default function SettingsPage() {
     </div>
   );
 
-  const renderMigrationTab = () => (
+  const renderMigrationTab = () => {
+    const allProjects: any[] = allProjectsData?.data || [];
+    const enabledTypes = migrationTypes.filter((t) => t.enabled);
+    const getProjectsForType = (type: any) =>
+      allProjects.filter((p) => {
+        const mt = (p.migrationTypes || '').toUpperCase();
+        return mt.includes(type.code.toUpperCase()) || mt.includes(type.name.toUpperCase());
+      });
+    const selectedMigTypeObj = selectedMigType ? enabledTypes.find((t) => t.id === selectedMigType) : null;
+    const selectedMigProjects = selectedMigTypeObj ? getProjectsForType(selectedMigTypeObj) : [];
+
+    return (
     <div className="space-y-8">
-      {/* Migration Types */}
+      {/* Overview: clickable type cards */}
       <div>
+        <div className="flex items-center gap-2 mb-4">
+          <Shuffle size={18} className="text-primary-600" />
+          <h3 className="text-lg font-semibold text-gray-900">Migration Types Overview</h3>
+          <span className="text-sm text-gray-400 ml-1">— click a type to see its projects</span>
+        </div>
+        {enabledTypes.length === 0 ? (
+          <p className="text-sm text-gray-400 italic">No enabled migration types yet. Add one below.</p>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {enabledTypes.map((type) => {
+              const typeProjects = getProjectsForType(type);
+              const active    = typeProjects.filter((p) => p.status === 'ACTIVE').length;
+              const completed = typeProjects.filter((p) => p.status === 'COMPLETED').length;
+              const overaged  = typeProjects.filter((p) => p.status === 'ACTIVE' && new Date(p.plannedEnd) < new Date()).length;
+              const delayed   = typeProjects.filter((p) => p.delayStatus === 'DELAYED').length;
+              const isSelected = selectedMigType === type.id;
+              return (
+                <button
+                  key={type.id}
+                  onClick={() => setSelectedMigType(isSelected ? null : type.id)}
+                  className={`text-left w-full rounded-xl border-2 p-5 transition-all hover:shadow-md ${
+                    isSelected ? 'border-primary-500 bg-primary-50 shadow-md' : 'border-gray-200 bg-white hover:border-primary-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-3 mb-3">
+                    <span className="text-3xl">{type.icon}</span>
+                    <div>
+                      <h4 className="font-bold text-gray-900 text-base">{type.name} Migration</h4>
+                      <p className="text-xs text-gray-400">{typeProjects.length} projects total</p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="flex items-center gap-1.5 text-xs"><Activity size={12} className="text-green-500" /><span className="text-gray-600">{active} Active</span></div>
+                    <div className="flex items-center gap-1.5 text-xs"><CheckCircle size={12} className="text-blue-500" /><span className="text-gray-600">{completed} Done</span></div>
+                    <div className="flex items-center gap-1.5 text-xs"><Clock size={12} className="text-orange-500" /><span className="text-gray-600">{overaged} Overaged</span></div>
+                    <div className="flex items-center gap-1.5 text-xs"><AlertTriangle size={12} className="text-red-500" /><span className="text-gray-600">{delayed} Delayed</span></div>
+                  </div>
+                  <div className="mt-3 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                    <div className="h-full bg-primary-500 rounded-full" style={{ width: typeProjects.length > 0 ? `${Math.round((completed / typeProjects.length) * 100)}%` : '0%' }} />
+                  </div>
+                  <p className="text-[10px] text-gray-400 mt-1">
+                    {typeProjects.length > 0 ? Math.round((completed / typeProjects.length) * 100) : 0}% completion rate
+                  </p>
+                </button>
+              );
+            })}
+          </div>
+        )}
+        {selectedMigTypeObj && (
+          <Card className="mt-4">
+            <div className="flex items-center gap-2 mb-4">
+              <span className="text-2xl">{selectedMigTypeObj.icon}</span>
+              <h4 className="text-lg font-bold text-gray-900">{selectedMigTypeObj.name} Migration — Projects ({selectedMigProjects.length})</h4>
+            </div>
+            {selectedMigProjects.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-6">No projects found for this migration type.</p>
+            ) : (
+              <div className="overflow-x-auto rounded-xl border border-gray-200">
+                <table className="w-full text-sm">
+                  <thead className="bg-blue-50/60">
+                    <tr>{['Project Name', 'Customer', 'Manager', 'Status', 'Phase', 'SOW End', 'Delay'].map((h) => (
+                      <th key={h} className={`py-2.5 px-3 font-medium text-gray-500 text-xs uppercase ${h === 'Project Name' ? 'text-left' : 'text-center'}`}>{h}</th>
+                    ))}</tr>
+                  </thead>
+                  <tbody>
+                    {selectedMigProjects.map((p: any) => (
+                      <tr key={p.id} className="border-t border-gray-100 hover:bg-gray-50 cursor-pointer" onClick={() => (window.location.href = `/projects/${p.id}`)}>
+                        <td className="py-2.5 px-3 font-medium text-gray-900">{p.name}</td>
+                        <td className="text-center py-2.5 px-3 text-gray-500 text-xs">{p.customerName}</td>
+                        <td className="text-center py-2.5 px-3 text-gray-500 text-xs">{p.projectManager}</td>
+                        <td className="text-center py-2.5 px-3">
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${p.status === 'ACTIVE' ? 'bg-green-100 text-green-700' : p.status === 'COMPLETED' ? 'bg-blue-100 text-blue-700' : p.status === 'ON_HOLD' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>{p.status}</span>
+                        </td>
+                        <td className="text-center py-2.5 px-3 text-xs text-gray-500">{p.phase}</td>
+                        <td className="text-center py-2.5 px-3 text-xs text-gray-500">{p.plannedEnd ? new Date(p.plannedEnd).toLocaleDateString() : '—'}</td>
+                        <td className="text-center py-2.5 px-3">{p.delayDays > 0 ? <span className="text-xs font-semibold text-red-600">+{p.delayDays}d</span> : <span className="text-xs text-green-600">On Track</span>}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
+        )}
+      </div>
+
+      <div className="border-t border-gray-200 pt-6">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h3 className="text-lg font-semibold text-gray-900">Migration Types</h3>
+            <h3 className="text-lg font-semibold text-gray-900">Manage Migration Types</h3>
             <p className="text-sm text-gray-500">Configure the types of migrations your organization handles</p>
           </div>
         </div>
@@ -2917,6 +3021,7 @@ export default function SettingsPage() {
       </div>
     </div>
   );
+  };
 
   // ── Template Editor State ───────────────────────────────────────
   const [dbTemplates, setDbTemplates] = useState<any[]>([]);

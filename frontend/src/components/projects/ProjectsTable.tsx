@@ -346,6 +346,15 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
     );
   };
 
+  const accountManagerOptions = [
+    { value: '', label: '— None —' },
+    { value: 'Anthony Raymond',  label: 'Anthony Raymond' },
+    { value: 'Lennis Brown',     label: 'Lennis Brown' },
+    { value: 'Joy Prakash',      label: 'Joy Prakash' },
+    { value: 'Arundhati Sen',    label: 'Arundhati Sen' },
+    { value: 'Deepak R J',       label: 'Deepak R J' },
+  ];
+
   const planOptions = [
     { value: 'BRONZE', label: 'Bronze' },
     { value: 'SILVER', label: 'Silver' },
@@ -450,10 +459,16 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
 
                 {/* Account Manager - Editable */}
                 <td className="px-4 py-3">
-                  <EditableText
+                  <EditableSelect
                     projectId={project.id}
                     field="accountManager"
-                    value={project.accountManager}
+                    value={project.accountManager || ''}
+                    options={accountManagerOptions}
+                    displayComponent={
+                      <span className="text-sm text-gray-900">
+                        {project.accountManager || <span className="text-gray-400 italic">Not set</span>}
+                      </span>
+                    }
                   />
                 </td>
 

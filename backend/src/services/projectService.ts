@@ -204,8 +204,9 @@ function mapProjectRow(row: any) {
 class ProjectService {
   async getAll(filters: ProjectFilters = {}, pagination: PaginationOptions = {}) {
     const { page = 1, limit = 20, sortBy = 'created_at', sortOrder = 'desc' } = pagination;
-    
-    const conditions: string[] = [];
+
+    // Always exclude archived projects from the active list
+    const conditions: string[] = ['archived_at IS NULL'];
     const params: any[] = [];
 
     if (filters.status) {
@@ -647,6 +648,14 @@ class ProjectService {
       try {
         const { archiveService } = require('./archiveService');
         await archiveService.autoArchive(id, data.status);
+      } catch (_) { /* non-critical */ }
+    }
+
+    // Auto-archive when phase is set to CLOSURE
+    if (data.phase && data.phase.toUpperCase() === 'CLOSURE') {
+      try {
+        const { archiveService } = require('./archiveService');
+        await archiveService.archiveByPhase(id, 'CLOSURE');
       } catch (_) { /* non-critical */ }
     }
 
