@@ -51,7 +51,8 @@
       "Bash(del \"c:\\\\Users\\\\BharathTummaganti\\\\OneDrive - CloudFuze, Inc\\\\Documents\\\\PMO\\\\PMO\\\\backend\\\\generate-template.js\")",
       "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\BharathTummaganti\\\\OneDrive - CloudFuze, Inc\\\\Documents\\\\PMO\\\\PMO\\\\frontend\\\\src\" -Recurse -Filter \"*.tsx\" -o Name)",
       "Bash(Select-String -Pattern \"mig|valid|check\" -SimpleMatch)",
-      "Bash(grep -E \"\\\\.\\(sql|ts|js\\)$\")"
+      "Bash(grep -E \"\\\\.\\(sql|ts|js\\)$\")",
+      "Bash(curl -s http://localhost:3001/api/archive/c70fef54-ac10-4411-ac61-3309a4409b65/export)"
     ]
   }
 }

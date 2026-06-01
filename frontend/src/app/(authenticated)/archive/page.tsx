@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, Fragment } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
 import { Card } from '@/components/ui/Card';
@@ -111,13 +111,17 @@ export default function ArchivePage() {
   };
 
   async function handleExportProject(project: any) {
-    const res = await authFetch(`${API_BASE}/api/archive/${project.id}/export`);
-    if (!res.success) return;
-    const blob = new Blob([JSON.stringify(res.data, null, 2)], { type: 'application/json' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `archive-${project.name.replace(/[^a-z0-9]/gi, '_')}.json`;
-    a.click();
+    try {
+      const res = await authFetch(`${API_BASE}/api/archive/${project.id}/export`);
+      if (!res.success) { alert('Export failed: ' + (res.error || 'Unknown error')); return; }
+      const blob = new Blob([JSON.stringify(res.data, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `archive-${project.name.replace(/[^a-z0-9]/gi, '_')}.json`;
+      a.click();
+    } catch (e) {
+      alert('Export failed. Please try again.');
+    }
   }
 
   function downloadCSV() {
@@ -149,8 +153,13 @@ export default function ArchivePage() {
   }
 
   async function handleViewDetails(project: any) {
-    const res = await authFetch(`${API_BASE}/api/archive/${project.id}/export`);
-    if (res.success) setDetailProject(res.data);
+    try {
+      const res = await authFetch(`${API_BASE}/api/archive/${project.id}/export`);
+      if (res.success) setDetailProject(res.data);
+      else alert('Could not load project details: ' + (res.error || 'Unknown error'));
+    } catch (e) {
+      alert('Could not load project details. Please try again.');
+    }
   }
 
   const currentYear = new Date().getFullYear();
@@ -383,8 +392,8 @@ export default function ArchivePage() {
                     const isExpanded = expandedId === p.id;
                     const StatusIcon = STATUS_ICONS[p.status] || Archive;
                     return (
-                      <>
-                        <tr key={p.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30 cursor-pointer" onClick={() => setExpandedId(isExpanded ? null : p.id)}>
+                      <Fragment key={p.id}>
+                        <tr className="hover:bg-gray-50 dark:hover:bg-gray-700/30 cursor-pointer" onClick={() => setExpandedId(isExpanded ? null : p.id)}>
                           <td className="py-3 px-2 text-center">
                             <ChevronDown size={13} className={`text-gray-400 transition-transform mx-auto ${isExpanded ? 'rotate-180' : ''}`} />
                           </td>
@@ -426,11 +435,7 @@ export default function ArchivePage() {
                                 className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-primary-100 hover:text-primary-700 transition-colors">
                                 <Eye size={13} />
                               </button>
-                              <button onClick={() => handleExportProject(p)} title="Export project data (JSON)"
-                                className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 dark:bg-gray-700 text-blue-500 hover:bg-blue-100 transition-colors">
-                                <Download size={13} />
-                              </button>
-                              {isAdmin && (
+{isAdmin && (
                                 <button onClick={() => handleRestore(p)} title="Restore to Active"
                                   disabled={restoreMutation.isPending}
                                   className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 dark:bg-gray-700 text-green-600 hover:bg-green-100 transition-colors disabled:opacity-50">
@@ -496,7 +501,7 @@ export default function ArchivePage() {
                             </td>
                           </tr>
                         )}
-                      </>
+                      </Fragment>
                     );
                   })}
                 </tbody>
