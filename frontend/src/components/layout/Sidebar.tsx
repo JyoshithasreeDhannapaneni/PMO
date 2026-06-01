@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils';
 import { useSettings } from '@/context/SettingsContext';
 import {
   LayoutDashboard, FolderKanban, AlertTriangle, FileText,
-  Settings, Layers, Users, Shuffle, BarChart2, ChevronDown,
+  Settings, Layers, Users, BarChart2, ChevronDown,
   ChevronRight, LogOut, DollarSign, Siren, Menu, X, Archive,
   FlaskConical, Building2, HeartHandshake, BookOpen, ClipboardList, Briefcase,
 } from 'lucide-react';
@@ -25,7 +25,7 @@ const allNavigation = [
   { name: 'Account Manager View', href: '/account-manager',     icon: Building2,       adminOnly: false },
   { name: 'Customer Success',   href: '/customer-success',       icon: HeartHandshake,  adminOnly: false },
   { name: 'RACI / RAID / RAG',  href: '/raci-raid-rag',          icon: ClipboardList,   adminOnly: false },
-  { name: 'Migration Types',    href: '/migration-types',        icon: Shuffle,         adminOnly: true },
+  { name: 'History Archive',    href: '/archive',                icon: Archive,         adminOnly: false },
   { name: 'Templates',          href: '/templates',              icon: Layers,          adminOnly: false },
   { name: 'Case Studies',       href: '/case-studies',           icon: FileText,        adminOnly: false },
   { name: 'CS Template',        href: '/case-studies/template',  icon: Layers, badge: 'cstemplate', adminOnly: true },
@@ -36,7 +36,6 @@ const allNavigation = [
       { name: 'Monthly Reports', href: '/reports/monthly' },
     ],
   },
-  { name: 'History Archive', href: '/archive',         icon: Archive,       adminOnly: false },
 ];
 
 const badgeColors: Record<string, string> = {
