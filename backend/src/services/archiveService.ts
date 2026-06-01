@@ -30,6 +30,14 @@ class ArchiveService {
     }
   }
 
+  async archiveByPhase(projectId: string, phase: string, archivedBy?: string) {
+    await this.ensureColumns();
+    await execute(
+      `UPDATE projects SET archived_at = NOW(), archive_reason = ?, archived_by = ? WHERE id = ? AND archived_at IS NULL`,
+      [phase.toUpperCase(), archivedBy || 'system', projectId]
+    );
+  }
+
   async getArchivedProjects(filters: {
     search?: string;
     status?: string;
@@ -49,7 +57,7 @@ class ArchiveService {
     const sortBy = filters.sortBy || 'archived_at';
     const sortOrder = filters.sortOrder || 'desc';
 
-    const conditions: string[] = [`status IN ('COMPLETED','CANCELLED','CLOSED','DECOMMISSIONED')`];
+    const conditions: string[] = [`(status IN ('COMPLETED','CANCELLED','CLOSED','DECOMMISSIONED') OR archived_at IS NOT NULL)`];
     const params: any[] = [];
 
     if (filters.search) {
@@ -116,20 +124,20 @@ class ArchiveService {
     const [byStatus, byMigration, byYear, totals] = await Promise.all([
       query(
         `SELECT status, COUNT(*) as count FROM projects
-         WHERE status IN ('COMPLETED','CANCELLED','CLOSED','DECOMMISSIONED')
+         WHERE (status IN ('COMPLETED','CANCELLED','CLOSED','DECOMMISSIONED') OR archived_at IS NOT NULL)
          GROUP BY status`,
         []
       ),
       query(
         `SELECT migration_types, COUNT(*) as count FROM projects
-         WHERE status IN ('COMPLETED','CANCELLED','CLOSED','DECOMMISSIONED') AND migration_types IS NOT NULL
+         WHERE (status IN ('COMPLETED','CANCELLED','CLOSED','DECOMMISSIONED') OR archived_at IS NOT NULL) AND migration_types IS NOT NULL
          GROUP BY migration_types ORDER BY count DESC LIMIT 10`,
         []
       ),
       query(
         `SELECT EXTRACT(YEAR FROM COALESCE(archived_at, planned_end)) as year, COUNT(*) as count
          FROM projects
-         WHERE status IN ('COMPLETED','CANCELLED','CLOSED','DECOMMISSIONED')
+         WHERE (status IN ('COMPLETED','CANCELLED','CLOSED','DECOMMISSIONED') OR archived_at IS NOT NULL)
          GROUP BY year ORDER BY year DESC LIMIT 5`,
         []
       ),
@@ -142,7 +150,7 @@ class ArchiveService {
                 AVG(delay_days) as avgDelayDays,
                 SUM(actual_cost) as totalActualCost
          FROM projects
-         WHERE status IN ('COMPLETED','CANCELLED','CLOSED','DECOMMISSIONED')`,
+         WHERE (status IN ('COMPLETED','CANCELLED','CLOSED','DECOMMISSIONED') OR archived_at IS NOT NULL)`,
         []
       ),
     ]);
@@ -165,24 +173,9 @@ class ArchiveService {
 
   async getProjectFullData(projectId: string) {
     await this.ensureColumns();
-    const [projResult, phasesResult, escalationResult, overageResult] = await Promise.all([
-      query(
-        `SELECT * FROM projects WHERE id = ?`, [projectId]
-      ),
-      query(
-        `SELECT ph.*, GROUP_CONCAT(
-           JSON_OBJECT(
-             'id', t.id, 'name', t.name, 'status', t.status,
-             'plannedStart', t.planned_start, 'plannedEnd', t.planned_end,
-             'assignee', t.assignee, 'progress', t.progress, 'priority', t.priority
-           ) ORDER BY t.order_index
-         ) as tasks_json
-         FROM project_phases ph
-         LEFT JOIN project_tasks t ON t.phase_record_id = ph.id
-         WHERE ph.project_id = ?
-         GROUP BY ph.id ORDER BY ph.order_index`,
-        [projectId]
-      ),
+
+    const [projResult, escalationResult, overageResult] = await Promise.all([
+      query(`SELECT * FROM projects WHERE id = ?`, [projectId]),
       query(
         `SELECT * FROM escalation_history WHERE project_id = ? ORDER BY escalated_at DESC`,
         [projectId]
@@ -196,12 +189,33 @@ class ArchiveService {
     if (!projResult.rows[0]) return null;
     const proj = projResult.rows[0];
 
+    const [phasesResult, tasksResult] = await Promise.all([
+      query(
+        `SELECT id, phase_name, status, progress, planned_start, planned_end FROM project_phases WHERE project_id = ? ORDER BY order_index ASC`,
+        [projectId]
+      ).catch(() => ({ rows: [] })),
+      query(
+        `SELECT id, phase_record_id, name, status, planned_start, planned_end, assignee, progress, priority FROM project_tasks WHERE project_id = ? ORDER BY order_index ASC`,
+        [projectId]
+      ).catch(() => ({ rows: [] })),
+    ]);
+
+    const tasksByPhase: Record<string, any[]> = {};
+    for (const t of tasksResult.rows) {
+      if (!tasksByPhase[t.phase_record_id]) tasksByPhase[t.phase_record_id] = [];
+      tasksByPhase[t.phase_record_id].push({
+        id: t.id, name: t.name, status: t.status,
+        plannedStart: t.planned_start, plannedEnd: t.planned_end,
+        assignee: t.assignee, progress: t.progress, priority: t.priority,
+      });
+    }
+
     return {
       project: this.mapRow(proj),
       phases: phasesResult.rows.map((ph: any) => ({
         id: ph.id, phaseName: ph.phase_name, status: ph.status, progress: ph.progress,
         plannedStart: ph.planned_start, plannedEnd: ph.planned_end,
-        tasks: (() => { try { return ph.tasks_json ? JSON.parse(`[${ph.tasks_json}]`) : []; } catch { return []; } })(),
+        tasks: tasksByPhase[ph.id] || [],
       })),
       escalationHistory: escalationResult.rows,
       overageHistory: overageResult.rows,

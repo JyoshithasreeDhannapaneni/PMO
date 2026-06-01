@@ -3,9 +3,10 @@
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/context/AuthContext';
 import {
   Briefcase, Plus, ChevronLeft, ChevronDown, ChevronRight,
-  FileText, Layers, ClipboardCheck, X, Search, SlidersHorizontal,
+  FileText, Layers, ClipboardCheck, X, Search, SlidersHorizontal, Trash2,
 } from 'lucide-react';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -65,6 +66,7 @@ interface PSEngagement {
   priority: string; sowStatus: string; engagementDescription: string;
   clientObjectives: string; successCriteria: string; assumptions: string;
   outOfScope: string; phases: Phase[]; signoffs: SignoffSection[]; createdAt: string;
+  createdBy?: string;
 }
 
 // ── Default data factories ────────────────────────────────────────────────────
@@ -203,10 +205,11 @@ function EngagementCard({ eng, onClick }: { eng: PSEngagement; onClick: () => vo
 
 // ── New Engagement Modal ──────────────────────────────────────────────────────
 
-function NewEngagementModal({ existingCount, onAdd, onClose }: {
+function NewEngagementModal({ existingCount, onAdd, onClose, createdBy }: {
   existingCount: number;
   onAdd: (eng: PSEngagement) => void;
   onClose: () => void;
+  createdBy: string;
 }) {
   const year = new Date().getFullYear();
   const sowRefId = `CF-PS-${year}-${String(existingCount + 1).padStart(3, '0')}`;
@@ -235,6 +238,7 @@ function NewEngagementModal({ existingCount, onAdd, onClose }: {
     const eng: PSEngagement = {
       id: `ps-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
       sowRefId,
+      createdBy,
       ...form,
       phases: defaultPhases(),
       signoffs: defaultSignoffs(),
@@ -743,12 +747,14 @@ function SignoffTab({ signoffs, onUpdate }: { signoffs: SignoffSection[]; onUpda
 
 // ── Detail view ───────────────────────────────────────────────────────────────
 
-function PSDetailView({ eng, onUpdate, onBack, onSave, saved }: {
+function PSDetailView({ eng, onUpdate, onBack, onSave, saved, canEdit, onDelete }: {
   eng: PSEngagement;
   onUpdate: (field: string, value: any) => void;
   onBack: () => void;
   onSave: () => void;
   saved: boolean;
+  canEdit: boolean;
+  onDelete: () => void;
 }) {
   const [activeTab, setActiveTab] = useState<'sow' | 'scope' | 'signoff'>('sow');
 
@@ -786,15 +792,27 @@ function PSDetailView({ eng, onUpdate, onBack, onSave, saved }: {
               {eng.priority}
             </span>
           )}
-          <button
-            onClick={onSave}
-            className={cn(
-              'flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-medium transition-all',
-              saved ? 'bg-emerald-500 text-white' : 'bg-indigo-600 text-white hover:bg-indigo-700'
-            )}
-          >
-            {saved ? '✓ Saved' : 'Save Changes'}
-          </button>
+          {canEdit ? (
+            <>
+              <button
+                onClick={() => { if (confirm(`Delete engagement for "${eng.clientName}"? This cannot be undone.`)) onDelete(); }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-red-600 border border-red-200 hover:bg-red-50 transition-all"
+              >
+                <Trash2 className="w-3.5 h-3.5" /> Delete
+              </button>
+              <button
+                onClick={onSave}
+                className={cn(
+                  'flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-medium transition-all',
+                  saved ? 'bg-emerald-500 text-white' : 'bg-indigo-600 text-white hover:bg-indigo-700'
+                )}
+              >
+                {saved ? '✓ Saved' : 'Save Changes'}
+              </button>
+            </>
+          ) : (
+            <span className="text-xs px-3 py-1.5 rounded-lg bg-gray-100 text-gray-500 border border-gray-200">View only</span>
+          )}
         </div>
       </div>
 
@@ -843,6 +861,11 @@ function loadEngagements(): PSEngagement[] {
 }
 
 export default function ProfessionalServicesPage() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'ADMIN';
+  const canEditEngagement = (eng: PSEngagement) =>
+    isAdmin || (!!eng.createdBy && eng.createdBy === user?.name);
+
   const [engagements, setEngagements] = useState<PSEngagement[]>(() => loadEngagements());
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showNewModal, setShowNewModal] = useState(false);
@@ -885,6 +908,13 @@ export default function ProfessionalServicesPage() {
     setTimeout(() => setSaved(false), 2000);
   };
 
+  const deleteEngagement = (id: string) => {
+    const updated = engagements.filter(e => e.id !== id);
+    setEngagements(updated);
+    localStorage.setItem(LS_KEY, JSON.stringify(updated));
+    setSelectedId(null);
+  };
+
   if (selected) {
     return (
       <PSDetailView
@@ -893,6 +923,8 @@ export default function ProfessionalServicesPage() {
         onBack={() => setSelectedId(null)}
         onSave={handleSave}
         saved={saved}
+        canEdit={canEditEngagement(selected)}
+        onDelete={() => deleteEngagement(selected.id)}
       />
     );
   }
@@ -1081,6 +1113,7 @@ export default function ProfessionalServicesPage() {
                       <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500">Priority</th>
                       <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500">SOW Status</th>
                       <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500">Progress</th>
+                      <th className="py-3 px-4 text-xs font-semibold text-slate-500"></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1136,6 +1169,17 @@ export default function ProfessionalServicesPage() {
                               <span className="text-xs text-slate-400 w-8">{pct}%</span>
                             </div>
                           </td>
+                          <td className="py-3 px-4" onClick={e => e.stopPropagation()}>
+                            {canEditEngagement(eng) && (
+                              <button
+                                onClick={() => { if (confirm(`Delete engagement for "${eng.clientName}"? This cannot be undone.`)) deleteEngagement(eng.id); }}
+                                className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                                title="Delete engagement"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            )}
+                          </td>
                         </tr>
                       );
                     })}
@@ -1152,6 +1196,7 @@ export default function ProfessionalServicesPage() {
           existingCount={engagements.length}
           onAdd={addEngagement}
           onClose={() => setShowNewModal(false)}
+          createdBy={user?.name || ''}
         />
       )}
     </div>

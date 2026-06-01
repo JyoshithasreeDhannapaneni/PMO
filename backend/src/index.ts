@@ -325,6 +325,20 @@ async function runMigrations() {
     `);
   } catch {}
 
+  // Archive columns — must exist before getAll filters on archived_at
+  if (!await columnExists('projects', 'archived_at')) {
+    try { await execute(`ALTER TABLE projects ADD COLUMN archived_at TIMESTAMP NULL`); } catch {}
+  }
+  if (!await columnExists('projects', 'archive_reason')) {
+    try { await execute(`ALTER TABLE projects ADD COLUMN archive_reason VARCHAR(50) NULL`); } catch {}
+  }
+  if (!await columnExists('projects', 'archived_by')) {
+    try { await execute(`ALTER TABLE projects ADD COLUMN archived_by VARCHAR(100) NULL`); } catch {}
+  }
+  if (!await columnExists('projects', 'restore_count')) {
+    try { await execute(`ALTER TABLE projects ADD COLUMN restore_count INT NOT NULL DEFAULT 0`); } catch {}
+  }
+
 }
 
 // Start server
