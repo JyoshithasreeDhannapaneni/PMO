@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useEffect, useRef, Fragment } from 'react';
 import { Card } from '@/components/ui/Card';
 import { useAuth } from '@/context/AuthContext';
 import { useAccountManagerView } from '@/hooks/useProjects';
 import type { AccountView } from '@/types';
 import {
-  Building2, ChevronDown, Loader2, AlertTriangle,
+  Building2, ChevronDown, ChevronRight, Loader2, AlertTriangle,
   FlaskConical, FolderKanban, Clock, CheckCircle2,
   XCircle, Circle, RefreshCw, Calendar, Search,
   SlidersHorizontal, X, ChevronsUpDown, ArrowUp, ArrowDown,
@@ -91,6 +91,34 @@ function fmtDate(d: string | null | undefined) {
   try { return new Date(d).toLocaleDateString(); } catch { return '—'; }
 }
 
+type ProjectRow = {
+  id: string | number;
+  name: string;
+  customerName: string;
+  accountManager: string;
+  needsAttention: boolean;
+  projectManager: string;
+  status: string;
+  phase: string;
+  delayStatus: string;
+  delayDays?: number;
+  planType: string;
+  actualStart: string | null;
+  plannedEnd: string | null;
+  migrationTypes: string;
+  trackType: 'migration' | 'poc';
+  pocOutcome?: string | null;
+  [key: string]: any;
+};
+
+type CustomerGroup = {
+  customerName: string;
+  accountManager: string;
+  needsAttention: boolean;
+  attentionReasons: string[];
+  projects: ProjectRow[];
+};
+
 export default function AccountManagerPage() {
   const { user } = useAuth();
 
@@ -106,6 +134,7 @@ export default function AccountManagerPage() {
   const [attentionFilter, setAttentionFilter] = useState('');
   const [sortKey, setSortKey]             = useState<SortKey | null>(null);
   const [sortDir, setSortDir]             = useState<SortDir>('asc');
+  const [expandedCustomers, setExpandedCustomers] = useState<Set<string>>(new Set());
 
   const escalationRef = useRef<HTMLDivElement>(null);
   const renewalRef    = useRef<HTMLDivElement>(null);
@@ -114,6 +143,28 @@ export default function AccountManagerPage() {
   const accounts: AccountView[] = data?.data || [];
 
   const today = new Date();
+
+  // Auto-expand customers that need attention on first data load
+  useEffect(() => {
+    if (accounts.length > 0) {
+      setExpandedCustomers(prev => {
+        if (prev.size > 0) return prev;
+        const attentionSet = new Set(
+          accounts.filter(a => a.needsAttention).map(a => a.customerName)
+        );
+        return attentionSet;
+      });
+    }
+  }, [accounts]);
+
+  function toggleCustomer(customerName: string) {
+    setExpandedCustomers(prev => {
+      const next = new Set(prev);
+      if (next.has(customerName)) next.delete(customerName);
+      else next.add(customerName);
+      return next;
+    });
+  }
 
   const escalatedAccounts = accounts.filter(a =>
     (a.migrationTracks || []).some((t: any) => t.isEscalated)
@@ -137,115 +188,120 @@ export default function AccountManagerPage() {
     else { setSortKey(key); setSortDir('asc'); }
   }
 
-  // ── Flatten accounts into project rows ────────────────────────────────────
-  type ProjectRow = {
-    id: string | number;
-    name: string;
-    customerName: string;
-    accountManager: string;
-    needsAttention: boolean;
-    projectManager: string;
-    status: string;
-    phase: string;
-    delayStatus: string;
-    delayDays?: number;
-    planType: string;
-    actualStart: string | null;
-    plannedEnd: string | null;
-    migrationTypes: string;
-    trackType: 'migration' | 'poc';
-    pocOutcome?: string | null;
-    [key: string]: any;
-  };
-
   const tabAccounts = activeTab === 'poc' ? pocAccounts : migrationAccounts;
 
-  const allRows: ProjectRow[] = tabAccounts.flatMap(account => {
-    if (activeTab === 'poc' && account.pocTrack) {
-      const poc = account.pocTrack as any;
-      return [{
-        id: poc.id,
-        name: poc.name || account.customerName,
-        customerName: account.customerName,
-        accountManager: account.accountManager,
-        needsAttention: account.needsAttention,
-        projectManager: poc.projectManager || '',
-        status: poc.status || '',
-        phase: poc.phase || '',
-        delayStatus: poc.delayStatus || '',
-        delayDays: poc.delayDays,
-        planType: poc.planType || '',
-        actualStart: poc.actualStart || null,
-        plannedEnd: poc.pocDeadline || poc.plannedEnd || null,
-        migrationTypes: poc.migrationTypes || '',
-        trackType: 'poc' as const,
-        pocOutcome: poc.pocOutcome,
-        ...poc,
-      }];
-    }
-    return (account.migrationTracks || []).map((m: any) => ({
-      id: m.id,
-      name: m.name,
+  const allPMs = Array.from(new Set(
+    tabAccounts.flatMap(a =>
+      activeTab === 'poc'
+        ? [(a.pocTrack as any)?.projectManager].filter(Boolean)
+        : (a.migrationTracks || []).map((m: any) => m.projectManager).filter(Boolean)
+    )
+  )).sort() as string[];
+
+  const allAMs = Array.from(new Set(
+    tabAccounts.map(a => a.accountManager).filter(Boolean)
+  )).sort() as string[];
+
+  function sortProjects(projects: ProjectRow[]): ProjectRow[] {
+    if (!sortKey) return projects;
+    return [...projects].sort((a, b) => {
+      const aVal = a[sortKey] ?? '';
+      const bVal = b[sortKey] ?? '';
+      if (sortKey === 'actualStart' || sortKey === 'plannedEnd') {
+        const aT = aVal ? new Date(aVal as string).getTime() : 0;
+        const bT = bVal ? new Date(bVal as string).getTime() : 0;
+        return sortDir === 'asc' ? aT - bT : bT - aT;
+      }
+      const cmp = String(aVal).localeCompare(String(bVal), undefined, { sensitivity: 'base' });
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+  }
+
+  // Build grouped data with filters applied at project level
+  const customerGroups: CustomerGroup[] = tabAccounts.map(account => {
+    const rawProjects: ProjectRow[] =
+      activeTab === 'poc' && account.pocTrack
+        ? [{
+            id: (account.pocTrack as any).id,
+            name: (account.pocTrack as any).name || account.customerName,
+            customerName: account.customerName,
+            accountManager: account.accountManager,
+            needsAttention: account.needsAttention,
+            projectManager: (account.pocTrack as any).projectManager || '',
+            status: (account.pocTrack as any).status || '',
+            phase: (account.pocTrack as any).phase || '',
+            delayStatus: (account.pocTrack as any).delayStatus || '',
+            delayDays: (account.pocTrack as any).delayDays,
+            planType: (account.pocTrack as any).planType || '',
+            actualStart: (account.pocTrack as any).actualStart || null,
+            plannedEnd: (account.pocTrack as any).pocDeadline || (account.pocTrack as any).plannedEnd || null,
+            migrationTypes: (account.pocTrack as any).migrationTypes || '',
+            trackType: 'poc' as const,
+            pocOutcome: (account.pocTrack as any).pocOutcome,
+            ...(account.pocTrack as any),
+          }]
+        : (account.migrationTracks || []).map((m: any) => ({
+            id: m.id,
+            name: m.name,
+            customerName: account.customerName,
+            accountManager: account.accountManager,
+            needsAttention: account.needsAttention,
+            projectManager: m.projectManager || '',
+            status: m.status || '',
+            phase: m.phase || '',
+            delayStatus: m.delayStatus || '',
+            delayDays: m.delayDays,
+            planType: m.planType || '',
+            actualStart: m.actualStart || null,
+            plannedEnd: m.plannedEnd || null,
+            migrationTypes: m.migrationTypes || '',
+            trackType: 'migration' as const,
+            pocOutcome: undefined,
+            ...m,
+          }));
+
+    const filteredProjects = rawProjects.filter(row => {
+      if (statusFilter && row.status !== statusFilter) return false;
+      if (phaseFilter && row.phase !== phaseFilter) return false;
+      if (delayFilter && row.delayStatus !== delayFilter) return false;
+      if (planFilter && row.planType !== planFilter) return false;
+      if (pmFilter && row.projectManager !== pmFilter) return false;
+      if (search) {
+        const q = search.toLowerCase();
+        if (
+          !row.name?.toLowerCase().includes(q) &&
+          !row.customerName?.toLowerCase().includes(q) &&
+          !(row.accountManager || '').toLowerCase().includes(q) &&
+          !(row.projectManager || '').toLowerCase().includes(q)
+        ) return false;
+      }
+      return true;
+    });
+
+    return {
       customerName: account.customerName,
       accountManager: account.accountManager,
       needsAttention: account.needsAttention,
-      projectManager: m.projectManager || '',
-      status: m.status || '',
-      phase: m.phase || '',
-      delayStatus: m.delayStatus || '',
-      delayDays: m.delayDays,
-      planType: m.planType || '',
-      actualStart: m.actualStart || null,
-      plannedEnd: m.plannedEnd || null,
-      migrationTypes: m.migrationTypes || '',
-      trackType: 'migration' as const,
-      ...m,
-    }));
+      attentionReasons: (account as any).attentionReasons || [],
+      projects: sortProjects(filteredProjects),
+    };
+  }).filter(group => {
+    if (attentionFilter === 'attention' && !group.needsAttention) return false;
+    if (attentionFilter === 'ok' && group.needsAttention) return false;
+    if (amFilter && group.accountManager !== amFilter) return false;
+    return group.projects.length > 0;
+  }).sort((a, b) => {
+    // Attention customers always float to top
+    if (a.needsAttention && !b.needsAttention) return -1;
+    if (!a.needsAttention && b.needsAttention) return 1;
+    return a.customerName.localeCompare(b.customerName);
   });
 
-  // ── Derived filter options ────────────────────────────────────────────────
-  const allPMs = Array.from(new Set(allRows.map(r => r.projectManager).filter(Boolean))).sort();
-  const allAMs = Array.from(new Set(allRows.map(r => r.accountManager).filter(Boolean))).sort();
-
-  // ── Apply filters ─────────────────────────────────────────────────────────
-  const filteredRows = allRows.filter(row => {
-    if (attentionFilter === 'attention' && !row.needsAttention) return false;
-    if (attentionFilter === 'ok' && row.needsAttention) return false;
-    if (statusFilter && row.status !== statusFilter) return false;
-    if (phaseFilter && row.phase !== phaseFilter) return false;
-    if (delayFilter && row.delayStatus !== delayFilter) return false;
-    if (planFilter && row.planType !== planFilter) return false;
-    if (pmFilter && row.projectManager !== pmFilter) return false;
-    if (amFilter && row.accountManager !== amFilter) return false;
-    if (search) {
-      const q = search.toLowerCase();
-      if (
-        !row.name?.toLowerCase().includes(q) &&
-        !row.customerName?.toLowerCase().includes(q) &&
-        !(row.accountManager || '').toLowerCase().includes(q) &&
-        !(row.projectManager || '').toLowerCase().includes(q)
-      ) return false;
-    }
-    return true;
-  });
-
-  // ── Apply sort ────────────────────────────────────────────────────────────
-  const sortedRows = sortKey
-    ? [...filteredRows].sort((a, b) => {
-        let aVal = a[sortKey] ?? '';
-        let bVal = b[sortKey] ?? '';
-        // Date sort
-        if (sortKey === 'actualStart' || sortKey === 'plannedEnd') {
-          aVal = aVal ? new Date(aVal).getTime() : 0;
-          bVal = bVal ? new Date(bVal).getTime() : 0;
-          return sortDir === 'asc' ? (aVal as number) - (bVal as number) : (bVal as number) - (aVal as number);
-        }
-        const cmp = String(aVal).localeCompare(String(bVal), undefined, { sensitivity: 'base' });
-        return sortDir === 'asc' ? cmp : -cmp;
-      })
-    : filteredRows;
-
+  const totalProjects = customerGroups.reduce((sum, g) => sum + g.projects.length, 0);
   const activeFilterCount = [search, statusFilter, phaseFilter, delayFilter, planFilter, pmFilter, amFilter, attentionFilter].filter(Boolean).length;
+
+  // Number of detail columns (excluding the group-header colSpan row)
+  const colCount = activeTab === 'poc' ? 9 : 8;
 
   if (isLoading) return (
     <div className="flex items-center justify-center h-64">
@@ -353,7 +409,10 @@ export default function AccountManagerPage() {
             </button>
           )}
 
-          <span className="ml-auto text-xs text-gray-400">{sortedRows.length} project{sortedRows.length !== 1 ? 's' : ''}</span>
+          <span className="ml-auto text-xs text-gray-400">
+            {customerGroups.length} customer{customerGroups.length !== 1 ? 's' : ''},&nbsp;
+            {totalProjects} project{totalProjects !== 1 ? 's' : ''}
+          </span>
         </div>
 
         {showFilters && (
@@ -389,8 +448,8 @@ export default function AccountManagerPage() {
         )}
       </div>
 
-      {/* Projects table */}
-      {sortedRows.length === 0 ? (
+      {/* Grouped projects table */}
+      {customerGroups.length === 0 ? (
         <Card className="p-12 text-center text-gray-400">
           {activeTab === 'poc'
             ? <FlaskConical className="w-12 h-12 mx-auto mb-3 opacity-30" />
@@ -405,99 +464,180 @@ export default function AccountManagerPage() {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-100">
                 <tr>
-                  <SortTh label="Project"          sortKey="name"            current={sortKey} dir={sortDir} onSort={handleSort} />
-                  <SortTh label="Migration Types"  sortKey="migrationTypes"  current={sortKey} dir={sortDir} onSort={handleSort} />
-                  <SortTh label="Account Manager"  sortKey="accountManager"  current={sortKey} dir={sortDir} onSort={handleSort} />
-                  <SortTh label="Project Manager"  sortKey="projectManager"  current={sortKey} dir={sortDir} onSort={handleSort} />
-                  <SortTh label="Status"           sortKey="status"          current={sortKey} dir={sortDir} onSort={handleSort} />
-                  <SortTh label="Phase"            sortKey="phase"           current={sortKey} dir={sortDir} onSort={handleSort} />
-                  <SortTh label="Delay"            sortKey="delayStatus"     current={sortKey} dir={sortDir} onSort={handleSort} />
-                  <SortTh label="Plan"             sortKey="planType"        current={sortKey} dir={sortDir} onSort={handleSort} />
-                  <SortTh label="Kickoff Date"     sortKey="actualStart"     current={sortKey} dir={sortDir} onSort={handleSort} />
-                  <SortTh label="Planned End"      sortKey="plannedEnd"      current={sortKey} dir={sortDir} onSort={handleSort} />
-                  {activeTab === 'poc' && (
-                    <SortTh label="POC Outcome" sortKey="pocOutcome" current={sortKey} dir={sortDir} onSort={handleSort} />
-                  )}
+                  <SortTh label="Project"         sortKey="name"          current={sortKey} dir={sortDir} onSort={handleSort} />
+                  <SortTh label="Migration Types" sortKey="migrationTypes" current={sortKey} dir={sortDir} onSort={handleSort} />
+                  <SortTh label="Project Manager" sortKey="projectManager" current={sortKey} dir={sortDir} onSort={handleSort} />
+                  <SortTh label="Status"          sortKey="status"        current={sortKey} dir={sortDir} onSort={handleSort} />
+                  <SortTh label="Phase"           sortKey="phase"         current={sortKey} dir={sortDir} onSort={handleSort} />
+                  <SortTh label="Delay"           sortKey="delayStatus"   current={sortKey} dir={sortDir} onSort={handleSort} />
+                  <SortTh label="Plan"            sortKey="planType"      current={sortKey} dir={sortDir} onSort={handleSort} />
+                  <SortTh label="Kickoff Date"    sortKey="actualStart"   current={sortKey} dir={sortDir} onSort={handleSort} />
+                  {activeTab === 'poc'
+                    ? <SortTh label="POC Outcome" sortKey="pocOutcome" current={sortKey} dir={sortDir} onSort={handleSort} />
+                    : <SortTh label="Planned End" sortKey="plannedEnd" current={sortKey} dir={sortDir} onSort={handleSort} />
+                  }
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-50">
-                {sortedRows.map(row => (
-                  <tr key={`${row.customerName}-${row.id}`} className="hover:bg-gray-50 transition">
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-medium text-gray-900 capitalize">{row.name}</span>
-                        {row.needsAttention && (
-                          <AlertTriangle className="w-3.5 h-3.5 text-orange-500 flex-shrink-0" title="Needs Attention" />
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      {row.migrationTypes ? (
-                        <div className="flex flex-wrap gap-1">
-                          {row.migrationTypes.split(',').map((w: string) => w.trim()).filter(Boolean).map((w: string) => (
-                            <span key={w} className="text-xs px-2 py-0.5 bg-purple-50 text-purple-700 rounded-full">{w}</span>
-                          ))}
-                        </div>
-                      ) : '—'}
-                    </td>
-                    <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{row.accountManager || '—'}</td>
-                    <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{row.projectManager || '—'}</td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      {row.status ? (
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[row.status] || 'bg-gray-100 text-gray-600'}`}>
-                          {row.status.replace(/_/g, ' ')}
-                        </span>
-                      ) : '—'}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      {row.phase ? (
-                        <span className="text-xs px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded-full">{row.phase}</span>
-                      ) : '—'}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      {row.delayStatus ? (
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${DELAY_COLORS[row.delayStatus] || 'bg-gray-100 text-gray-600'}`}>
-                          {row.delayStatus.replace(/_/g, ' ')}
-                          {row.delayDays && row.delayStatus === 'DELAYED' ? ` (${row.delayDays}d)` : ''}
-                        </span>
-                      ) : '—'}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      {row.planType ? (
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${PLAN_BADGE[row.planType] || 'bg-gray-100 text-gray-600'}`}>
-                          {row.planType}
-                        </span>
-                      ) : '—'}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-600">
-                      <span className="flex items-center gap-1">
-                        <Calendar className="w-3 h-3 text-gray-400" />
-                        {fmtDate(row.actualStart)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-600">
-                      <span className="flex items-center gap-1">
-                        <CalendarDays className="w-3 h-3 text-gray-400" />
-                        {fmtDate(row.plannedEnd)}
-                      </span>
-                    </td>
-                    {activeTab === 'poc' && (
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        {row.pocOutcome ? (
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                            row.pocOutcome === 'won' ? 'bg-green-100 text-green-700' :
-                            row.pocOutcome === 'lost' ? 'bg-red-100 text-red-700' :
-                            'bg-blue-50 text-blue-600'
-                          }`}>
-                            {row.pocOutcome.replace('_', ' ')}
-                          </span>
-                        ) : (
-                          <span className="text-xs px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full">In Progress</span>
-                        )}
+              <tbody>
+                {customerGroups.map(group => {
+                  // Shared detail cells (columns 2 → last) reused by both single-row and sub-rows
+                  const DetailCells = ({ row }: { row: ProjectRow }) => (
+                    <>
+                      <td className="px-4 py-3">
+                        {row.migrationTypes ? (
+                          <div className="flex flex-wrap gap-1">
+                            {row.migrationTypes.split(',').map((w: string) => w.trim()).filter(Boolean).map((w: string) => (
+                              <span key={w} className="text-xs px-2 py-0.5 bg-purple-50 text-purple-700 rounded-full">{w}</span>
+                            ))}
+                          </div>
+                        ) : '—'}
                       </td>
-                    )}
-                  </tr>
-                ))}
+                      <td className="px-4 py-3 text-gray-600 whitespace-nowrap text-sm">{row.projectManager || '—'}</td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {row.status ? (
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[row.status] || 'bg-gray-100 text-gray-600'}`}>
+                            {row.status.replace(/_/g, ' ')}
+                          </span>
+                        ) : '—'}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {row.phase ? (
+                          <span className="text-xs px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded-full">{row.phase}</span>
+                        ) : '—'}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {row.delayStatus ? (
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${DELAY_COLORS[row.delayStatus] || 'bg-gray-100 text-gray-600'}`}>
+                            {row.delayStatus.replace(/_/g, ' ')}
+                            {row.delayDays && row.delayStatus === 'DELAYED' ? ` (${row.delayDays}d)` : ''}
+                          </span>
+                        ) : '—'}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {row.planType ? (
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${PLAN_BADGE[row.planType] || 'bg-gray-100 text-gray-600'}`}>
+                            {row.planType}
+                          </span>
+                        ) : '—'}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-600">
+                        <span className="flex items-center gap-1">
+                          <Calendar className="w-3 h-3 text-gray-400" />
+                          {fmtDate(row.actualStart)}
+                        </span>
+                      </td>
+                      {activeTab === 'poc' ? (
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          {row.pocOutcome ? (
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                              row.pocOutcome === 'won'  ? 'bg-green-100 text-green-700' :
+                              row.pocOutcome === 'lost' ? 'bg-red-100 text-red-700' :
+                              'bg-blue-50 text-blue-600'
+                            }`}>
+                              {row.pocOutcome.replace('_', ' ')}
+                            </span>
+                          ) : (
+                            <span className="text-xs px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full">In Progress</span>
+                          )}
+                        </td>
+                      ) : (
+                        <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-600">
+                          <span className="flex items-center gap-1">
+                            <CalendarDays className="w-3 h-3 text-gray-400" />
+                            {fmtDate(row.plannedEnd)}
+                          </span>
+                        </td>
+                      )}
+                    </>
+                  );
+
+                  // ── Single project: flat row, no expand/collapse ──────────
+                  if (group.projects.length === 1) {
+                    const row = group.projects[0];
+                    return (
+                      <tr key={group.customerName} className="hover:bg-gray-50 transition border-b border-gray-50">
+                        <td className="px-4 py-3">
+                          <div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-semibold text-gray-900">{group.customerName}</span>
+                              {group.needsAttention && (
+                                <span title={group.attentionReasons.join(' · ') || 'Needs Attention'}>
+                                  <AlertTriangle className="w-3.5 h-3.5 text-orange-500 flex-shrink-0" />
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-xs text-gray-400 capitalize mt-0.5">{row.name}</div>
+                          </div>
+                        </td>
+                        <DetailCells row={row} />
+                      </tr>
+                    );
+                  }
+
+                  // ── Multiple projects: collapsible group ─────────────────
+                  const isExpanded = expandedCustomers.has(group.customerName);
+                  const uniqueStatuses = Array.from(new Set(group.projects.map(p => p.status).filter(Boolean)));
+                  const hasDelayed = group.projects.some(p => p.delayStatus === 'DELAYED');
+                  const hasAtRisk  = group.projects.some(p => p.delayStatus === 'AT_RISK');
+
+                  return (
+                    <Fragment key={group.customerName}>
+                      {/* Group header row */}
+                      <tr
+                        className="bg-indigo-50/50 cursor-pointer hover:bg-indigo-100/60 transition border-t-2 border-indigo-100 select-none"
+                        onClick={() => toggleCustomer(group.customerName)}
+                      >
+                        <td colSpan={colCount} className="px-4 py-2.5">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <ChevronRight
+                              className={`w-4 h-4 text-indigo-400 flex-shrink-0 transition-transform duration-150 ${isExpanded ? 'rotate-90' : ''}`}
+                            />
+                            <span className="font-semibold text-gray-900 text-sm">{group.customerName}</span>
+                            {group.needsAttention && (
+                              <span title={group.attentionReasons.join(' · ') || 'Needs Attention'}>
+                                <AlertTriangle className="w-3.5 h-3.5 text-orange-500 flex-shrink-0" />
+                              </span>
+                            )}
+                            <span className="text-xs px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-full font-medium">
+                              {group.projects.length} projects
+                            </span>
+                            <span className="text-xs text-gray-500 font-medium">{group.accountManager || '—'}</span>
+                            <div className="ml-auto flex items-center gap-1.5 flex-wrap">
+                              {uniqueStatuses.map(s => (
+                                <span key={s} className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[s] || 'bg-gray-100 text-gray-600'}`}>
+                                  {s.replace(/_/g, ' ')}
+                                </span>
+                              ))}
+                              {hasDelayed && (
+                                <span className="text-xs px-2 py-0.5 bg-red-100 text-red-700 rounded-full font-medium">Delayed</span>
+                              )}
+                              {!hasDelayed && hasAtRisk && (
+                                <span className="text-xs px-2 py-0.5 bg-yellow-100 text-yellow-700 rounded-full font-medium">At Risk</span>
+                              )}
+                              {group.needsAttention && group.attentionReasons.length > 0 && (
+                                <span className="text-xs text-orange-600 font-medium truncate max-w-xs" title={group.attentionReasons.join(' · ')}>
+                                  {group.attentionReasons[0]}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+
+                      {/* Expanded sub-rows */}
+                      {isExpanded && group.projects.map(row => (
+                        <tr key={row.id} className="hover:bg-blue-50/30 transition border-b border-gray-50">
+                          <td className="px-4 py-2.5">
+                            <div className="flex items-center gap-2 pl-7">
+                              <span className="font-medium text-gray-800 capitalize text-sm">{row.name}</span>
+                            </div>
+                          </td>
+                          <DetailCells row={row} />
+                        </tr>
+                      ))}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
