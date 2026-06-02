@@ -40,7 +40,20 @@ export function initializeCronJobs(): void {
     }
   });
 
+  // Daily server alerts — runs at 8:00 AM every day
+  cron.schedule('0 8 * * *', async () => {
+    logger.info('Running daily server alert job...');
+    try {
+      const { serverAlertService } = require('../services/serverAlertService');
+      const result = await serverAlertService.runDailyAlerts();
+      logger.info(`Server alerts: sent=${result.sent} skipped=${result.skipped} failed=${result.failed}`);
+    } catch (error) {
+      logger.error('Server alert job failed:', error);
+    }
+  });
+
   logger.info('Cron jobs scheduled:');
   logger.info('  - Delay check: Daily at 6:00 AM');
   logger.info('  - Task status auto-update: Every hour');
+  logger.info('  - Server alerts: Daily at 8:00 AM');
 }

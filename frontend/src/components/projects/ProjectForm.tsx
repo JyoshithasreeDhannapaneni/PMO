@@ -24,6 +24,7 @@ const baseSchema = z.object({
   plannedEnd: z.string().min(1, 'SOW end date is required'),
   actualStart: z.string().optional(),
   actualEnd: z.string().optional(),
+  customerContact: z.string().optional(),
   phase: z.string().min(1, 'Phase is required'),
   status: z.string().optional(),
   description: z.string().optional(),
@@ -127,6 +128,7 @@ export function ProjectForm({ project, onSubmit, isLoading, defaultManagerName }
       plannedEnd: project.plannedEnd.split('T')[0],
       actualStart: project.actualStart?.split('T')[0] || '',
       actualEnd: project.actualEnd?.split('T')[0] || '',
+      customerContact: (project as any).customerContact || '',
       estimatedCost: project.estimatedCost || '',
       actualCost: project.actualCost || '',
       numberOfServers: (project as any).numberOfServers ?? '',
@@ -219,6 +221,7 @@ export function ProjectForm({ project, onSubmit, isLoading, defaultManagerName }
       plannedEnd: data.plannedEnd,
       actualStart: data.actualStart || undefined,
       actualEnd: data.actualEnd || undefined,
+      customerContact: data.customerContact || undefined,
       numberOfServers: data.numberOfServers != null && data.numberOfServers !== '' ? Number(data.numberOfServers) : undefined,
       projectMemory: data.projectMemory || undefined,
       estimatedCost: data.estimatedCost != null && data.estimatedCost !== '' ? Number(data.estimatedCost) : undefined,
@@ -416,6 +419,13 @@ export function ProjectForm({ project, onSubmit, isLoading, defaultManagerName }
               <Input label="Kick-off Start Date" type="date" {...register('actualStart')} error={errors.actualStart?.message} />
               <Input label="Project End Date" type="date" {...register('actualEnd')} error={errors.actualEnd?.message} />
             </div>
+            <Input
+              label="Customer Email (for server alerts)"
+              type="email"
+              placeholder="customer@example.com"
+              {...register('customerContact')}
+              error={errors.customerContact?.message}
+            />
           </div>
         )}
 

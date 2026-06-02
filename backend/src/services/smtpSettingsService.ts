@@ -57,6 +57,16 @@ class SmtpSettingsService {
     return this.get();
   }
 
+  async getRaw(): Promise<SmtpSettings | null> {
+    try {
+      await this.ensureTable();
+      const result = await query(`SELECT * FROM smtp_settings WHERE id = 1`);
+      const r = result.rows[0];
+      if (!r || !r.host) return null;
+      return { id: String(r.id), host: r.host, port: r.port, email: r.email, password: r.password, security: r.security };
+    } catch { return null; }
+  }
+
   async testConnection(
     settings: Omit<SmtpSettings, 'id' | 'updatedAt'>
   ): Promise<{ success: boolean; message: string }> {
