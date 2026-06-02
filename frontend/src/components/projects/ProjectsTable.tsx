@@ -370,13 +370,9 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
     { value: 'COMPLETED', label: 'Completed' },
   ];
 
-  const phaseOptions = [
-    { value: 'KICKOFF', label: 'Kickoff' },
-    { value: 'MIGRATION', label: 'Migration' },
-    { value: 'VALIDATION', label: 'Validation' },
-    { value: 'CLOSURE', label: 'Closure' },
-    { value: 'COMPLETED', label: 'Completed' },
-  ];
+  const phaseOptions = [...settings.phases]
+    .sort((a, b) => a.order - b.order)
+    .map(p => ({ value: (p.code || p.name).toUpperCase(), label: p.name }));
 
   const delayStatusOptions = [
     { value: 'NOT_DELAYED', label: 'On Track' },

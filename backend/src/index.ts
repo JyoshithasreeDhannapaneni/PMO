@@ -325,6 +325,17 @@ async function runMigrations() {
     `);
   } catch {}
 
+  // Archive projects that have phase=COMPLETED but no case study and no archived_at (legacy data)
+  try {
+    await execute(`
+      UPDATE projects
+      SET archived_at = NOW(), archive_reason = 'CASE_STUDY_COMPLETED', archived_by = 'system'
+      WHERE phase = 'COMPLETED'
+        AND archived_at IS NULL
+        AND id NOT IN (SELECT project_id FROM case_studies)
+    `);
+  } catch {}
+
   // Archive columns — must exist before getAll filters on archived_at
   if (!await columnExists('projects', 'archived_at')) {
     try { await execute(`ALTER TABLE projects ADD COLUMN archived_at TIMESTAMP NULL`); } catch {}
