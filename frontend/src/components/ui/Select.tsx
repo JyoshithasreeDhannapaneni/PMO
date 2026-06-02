@@ -43,7 +43,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
             <option value="" disabled>{placeholder}</option>
           )}
           {options.map((option, i) => (
-            <option key={option.value ?? i} value={option.value}>
+            <option key={`${option.value}-${i}`} value={option.value}>
               {option.label}
             </option>
           ))}
