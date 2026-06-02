@@ -6,9 +6,9 @@ import { useAuth } from '@/context/AuthContext';
 import { Card } from '@/components/ui/Card';
 import Link from 'next/link';
 import {
-  Archive, Search, RotateCcw, Download, ChevronLeft, ChevronRight,
+  Archive, Search, Download, ChevronLeft, ChevronRight,
   Eye, CheckCircle, XCircle, FileText, BarChart3, Calendar,
-  Filter, RefreshCw, ChevronDown, History, RotateCw, Layers,
+  RefreshCw, ChevronDown, History, RotateCw, Layers,
   AlertTriangle, DollarSign, Package,
 } from 'lucide-react';
 import { format } from 'date-fns';
@@ -49,7 +49,6 @@ export default function ArchivePage() {
   // Filters — non-admins are auto-scoped to their own name
   const [search, setSearch]               = useState('');
   const [statusFilter, setStatusFilter]   = useState('');
-  const [migTypeFilter, setMigTypeFilter] = useState('');
   const [managerFilter, setManagerFilter] = useState(!isAdmin && user?.name ? user.name : '');
   const [yearFrom, setYearFrom]           = useState('');
   const [yearTo, setYearTo]               = useState('');
@@ -58,14 +57,12 @@ export default function ArchivePage() {
   const [page, setPage]                   = useState(1);
   const [expandedId, setExpandedId]       = useState<string | null>(null);
   const [detailProject, setDetailProject] = useState<any | null>(null);
-  const [showFilters, setShowFilters]     = useState(false);
   const PER_PAGE = 20;
 
   const queryParams = useMemo(() => {
     const p = new URLSearchParams();
-    if (search)       p.set('search', search);
-    if (statusFilter) p.set('status', statusFilter);
-    if (migTypeFilter) p.set('migrationType', migTypeFilter);
+    if (search)        p.set('search', search);
+    if (statusFilter)  p.set('status', statusFilter);
     if (managerFilter) p.set('projectManager', managerFilter);
     if (yearFrom)     p.set('yearFrom', yearFrom);
     if (yearTo)       p.set('yearTo', yearTo);
@@ -74,7 +71,7 @@ export default function ArchivePage() {
     p.set('page', String(page));
     p.set('limit', String(PER_PAGE));
     return p.toString();
-  }, [search, statusFilter, migTypeFilter, managerFilter, yearFrom, yearTo, sortBy, sortOrder, page]);
+  }, [search, statusFilter, managerFilter, yearFrom, yearTo, sortBy, sortOrder, page]);
 
   const { data: archiveData, isLoading, refetch } = useQuery({
     queryKey: ['archive', queryParams],
@@ -105,7 +102,7 @@ export default function ArchivePage() {
   const managers = useMemo(() => [...new Set(projects.map((p) => p.projectManager).filter(Boolean))], [projects]);
 
   const resetFilters = () => {
-    setSearch(''); setStatusFilter(''); setMigTypeFilter('');
+    setSearch(''); setStatusFilter('');
     setManagerFilter(''); setYearFrom(''); setYearTo('');
     setSortBy('archived_at'); setSortOrder('desc'); setPage(1);
   };
@@ -297,66 +294,43 @@ export default function ArchivePage() {
               placeholder="Search project, customer, manager…"
               className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
           </div>
-          <select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
-            className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-            <option value="">All Statuses</option>
-            <option value="COMPLETED">Completed</option>
-            <option value="CANCELLED">Cancelled</option>
-            <option value="CLOSED">Closed</option>
-            <option value="DECOMMISSIONED">Decommissioned</option>
-          </select>
-          <button onClick={() => setShowFilters(!showFilters)}
-            className="flex items-center gap-1.5 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-            <Filter size={13} /> {showFilters ? 'Hide' : 'More'} Filters
-          </button>
-          <button onClick={resetFilters}
-            className="flex items-center gap-1.5 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-            <RotateCcw size={13} /> Reset
-          </button>
-        </div>
-        {showFilters && (
-          <div className="flex flex-wrap gap-3 mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
-            {isAdmin && (
-              <select value={managerFilter} onChange={(e) => { setManagerFilter(e.target.value); setPage(1); }}
-                className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-                <option value="">All Managers</option>
-                {managers.map((m) => <option key={m} value={m}>{m}</option>)}
-              </select>
-            )}
-            <input value={migTypeFilter} onChange={(e) => { setMigTypeFilter(e.target.value); setPage(1); }}
-              placeholder="Migration type…"
-              className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white w-44" />
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-500 dark:text-gray-400">Year:</span>
-              <select value={yearFrom} onChange={(e) => { setYearFrom(e.target.value); setPage(1); }}
-                className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-                <option value="">From</option>
-                {years.map(y => <option key={y} value={y}>{y}</option>)}
-              </select>
-              <span className="text-gray-400">—</span>
-              <select value={yearTo} onChange={(e) => { setYearTo(e.target.value); setPage(1); }}
-                className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-                <option value="">To</option>
-                {years.map(y => <option key={y} value={y}>{y}</option>)}
-              </select>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-500 dark:text-gray-400">Sort:</span>
-              <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}
-                className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-                <option value="archived_at">Archived Date</option>
-                <option value="name">Project Name</option>
-                <option value="status">Status</option>
-                <option value="planned_end">SOW End</option>
-                <option value="project_manager">Manager</option>
-              </select>
-              <button onClick={() => setSortOrder(o => o === 'asc' ? 'desc' : 'asc')}
-                className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600">
-                {sortOrder === 'asc' ? '↑ Asc' : '↓ Desc'}
-              </button>
-            </div>
+          {isAdmin && (
+            <select value={managerFilter} onChange={(e) => { setManagerFilter(e.target.value); setPage(1); }}
+              className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+              <option value="">All Managers</option>
+              {managers.map((m) => <option key={m} value={m}>{m}</option>)}
+            </select>
+          )}
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-500 dark:text-gray-400">Year:</span>
+            <select value={yearFrom} onChange={(e) => { setYearFrom(e.target.value); setPage(1); }}
+              className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+              <option value="">From</option>
+              {years.map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+            <span className="text-gray-400">—</span>
+            <select value={yearTo} onChange={(e) => { setYearTo(e.target.value); setPage(1); }}
+              className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+              <option value="">To</option>
+              {years.map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
           </div>
-        )}
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-500 dark:text-gray-400">Sort:</span>
+            <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}
+              className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+              <option value="archived_at">Archived Date</option>
+              <option value="name">Project Name</option>
+              <option value="status">Status</option>
+              <option value="planned_end">SOW End</option>
+              <option value="project_manager">Manager</option>
+            </select>
+            <button onClick={() => setSortOrder(o => o === 'asc' ? 'desc' : 'asc')}
+              className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600">
+              {sortOrder === 'asc' ? '↑ Asc' : '↓ Desc'}
+            </button>
+          </div>
+        </div>
       </Card>
 
       {/* Table */}

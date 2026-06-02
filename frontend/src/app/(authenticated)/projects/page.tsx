@@ -9,6 +9,7 @@ import { ProjectsTable } from '@/components/projects/ProjectsTable';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { useAuth } from '@/context/AuthContext';
+import { useSettings } from '@/context/SettingsContext';
 import {
   Loader2,
   Plus,
@@ -40,6 +41,7 @@ export default function ProjectsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user } = useAuth();
+  const { settings } = useSettings();
   const isManager = false; // PROJECT_MANAGERs see all projects — no self-filter
   
   // Initialize filters from URL params
@@ -205,14 +207,12 @@ export default function ProjectsPage() {
     { value: 'COMPLETED', label: 'Completed', color: 'blue' },
   ];
 
-  const phaseOptions = [
+  const phaseOptions = useMemo(() => [
     { value: '', label: 'All Phases', color: 'gray' },
-    { value: 'KICKOFF', label: 'Kickoff', color: 'purple' },
-    { value: 'MIGRATION', label: 'Migration', color: 'blue' },
-    { value: 'VALIDATION', label: 'Validation', color: 'yellow' },
-    { value: 'CLOSURE', label: 'Closure', color: 'orange' },
-    { value: 'COMPLETED', label: 'Completed', color: 'green' },
-  ];
+    ...[...settings.phases]
+      .sort((a, b) => a.order - b.order)
+      .map(p => ({ value: (p.code || p.name).toUpperCase(), label: p.name, color: p.color || 'gray' })),
+  ], [settings.phases]);
 
   const delayOptions = [
     { value: '', label: 'All Delay Status', color: 'gray' },
