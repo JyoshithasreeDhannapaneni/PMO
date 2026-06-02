@@ -31,6 +31,7 @@ import searchRoutes from './routes/searchRoutes';
 import exportRoutes from './routes/exportRoutes';
 import managerGoalsRoutes from './routes/managerGoalsRoutes';
 import smtpRoutes from './routes/smtpRoutes';
+<<<<<<< Updated upstream
 import pmoSettingsRoutes from './routes/pmoSettingsRoutes';
 import archiveRoutes from './routes/archiveRoutes';
 import { initializeCronJobs } from './jobs';
@@ -41,6 +42,11 @@ import pocDocumentsRoutes from './routes/pocDocumentsRoutes';
 import migrationChecklistRoutes from './routes/migrationChecklistRoutes';
 import serverAlertRoutes from './routes/serverAlertRoutes';
 
+=======
+import settingsRoutes from './routes/settingsRoutes';
+
+import { initializeCronJobs } from './jobs/index';
+>>>>>>> Stashed changes
 import { logger } from './utils/logger';
 import { authService } from './services/authService';
 import { templateService } from './services/templateService';
@@ -88,6 +94,7 @@ app.use('/api/search', searchRoutes);
 app.use('/api/export', exportRoutes);
 app.use('/api/manager-goals', managerGoalsRoutes);
 app.use('/api/smtp', smtpRoutes);
+<<<<<<< Updated upstream
 app.use('/api/pmo-settings', pmoSettingsRoutes);
 app.use('/api/archive', archiveRoutes);
 app.use('/api/settings', settingsRoutes);
@@ -96,6 +103,9 @@ app.use('/api/customer-success', customerSuccessRoutes);
 app.use('/api/poc-documents', pocDocumentsRoutes);
 app.use('/api/migration-checklists', migrationChecklistRoutes);
 app.use('/api/server-alerts', serverAlertRoutes);
+=======
+app.use('/api/settings', settingsRoutes);
+>>>>>>> Stashed changes
 
 app.use(notFoundHandler);
 app.use(errorHandler);

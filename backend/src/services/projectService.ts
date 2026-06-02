@@ -233,7 +233,11 @@ class ProjectService {
     }
     if (filters.projectManager) {
       conditions.push(`project_manager ILIKE $${params.length + 1}`);
+<<<<<<< Updated upstream
       params.push(filters.projectManager);
+=======
+      params.push(`%${filters.projectManager}%`);
+>>>>>>> Stashed changes
     }
     if (filters.accountManager) {
       conditions.push(`account_manager ILIKE $${params.length + 1}`);
