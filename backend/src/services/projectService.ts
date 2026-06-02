@@ -205,8 +205,8 @@ class ProjectService {
   async getAll(filters: ProjectFilters = {}, pagination: PaginationOptions = {}) {
     const { page = 1, limit = 20, sortBy = 'created_at', sortOrder = 'desc' } = pagination;
 
-    // Always exclude archived projects from the active list
-    const conditions: string[] = ['archived_at IS NULL'];
+    // Exclude archived projects and projects in the case-study stage
+    const conditions: string[] = ["archived_at IS NULL", "phase != 'COMPLETED'"];
     const params: any[] = [];
 
     if (filters.status) {
@@ -353,10 +353,8 @@ class ProjectService {
     const migrationTypes = data.migrationTypes?.toUpperCase().split(',').map(t => t.trim()) || [];
     const primaryMigrationType = migrationTypes[0] || null;
 
-    // Sanitise phase/planType — if column is still ENUM, only pass known values
-    const safePhase = ['KICKOFF','MIGRATION','VALIDATION','CLOSURE','COMPLETED'].includes((data.phase || '').toUpperCase())
-      ? (data.phase || 'KICKOFF').toUpperCase()
-      : 'KICKOFF';
+    // Phase is now dynamic (configured in Settings → Project Configuration)
+    const safePhase = (data.phase || 'KICKOFF').toUpperCase();
     const safePlanType = ['BRONZE','SILVER','GOLD','PLATINUM'].includes((data.planType || '').toUpperCase())
       ? (data.planType || 'SILVER').toUpperCase()
       : 'SILVER';
@@ -561,9 +559,7 @@ class ProjectService {
     if (data.description !== undefined) { updates.push(`description = $${params.length + 1}`); params.push(data.description); }
     if (data.notes !== undefined) { updates.push(`notes = $${params.length + 1}`); params.push(data.notes); }
     if (data.phase !== undefined) {
-      const sp = ['KICKOFF','MIGRATION','VALIDATION','CLOSURE','COMPLETED'].includes((data.phase||'').toUpperCase())
-        ? data.phase.toUpperCase() : data.phase;
-      updates.push(`phase = $${params.length + 1}`); params.push(sp);
+      updates.push(`phase = $${params.length + 1}`); params.push(data.phase.toUpperCase());
     }
     if (data.status !== undefined) { updates.push(`status = $${params.length + 1}`); params.push(data.status); }
     if (data.plannedStart !== undefined) { updates.push(`planned_start = $${params.length + 1}`); params.push(new Date(data.plannedStart)); }
@@ -643,32 +639,23 @@ class ProjectService {
       [...params, id]
     );
 
-    // Auto-archive when status becomes a terminal status
-    if (data.status && ['COMPLETED', 'CANCELLED', 'CLOSED', 'DECOMMISSIONED'].includes(data.status.toUpperCase())) {
+    // Auto-archive when status becomes CANCELLED, CLOSED, or DECOMMISSIONED (direct to archive, no case study)
+    if (data.status && ['CANCELLED', 'CLOSED', 'DECOMMISSIONED'].includes(data.status.toUpperCase())) {
       try {
         const { archiveService } = require('./archiveService');
         await archiveService.autoArchive(id, data.status);
       } catch (_) { /* non-critical */ }
     }
 
-    // Auto-archive when phase is set to CLOSURE
-    if (data.phase && data.phase.toUpperCase() === 'CLOSURE') {
-      try {
-        const { archiveService } = require('./archiveService');
-        await archiveService.archiveByPhase(id, 'CLOSURE');
-      } catch (_) { /* non-critical */ }
-    }
-
     const result = await query(`SELECT * FROM projects WHERE id = $1`, [id]);
     const project = mapProjectRow(result.rows[0]);
 
-    const isNowCompleted = data.status === 'COMPLETED' && existing.status !== 'COMPLETED';
-    const isNowClosed = data.phase === 'CLOSURE' && existing.phase !== 'CLOSURE';
+    // Auto-create case study when phase is set to COMPLETED — project moves to Case Studies page
     const isNowInCompletedPhase = data.phase === 'COMPLETED' && existing.phase !== 'COMPLETED';
 
     const caseStudyResult = await query(`SELECT id FROM case_studies WHERE project_id = $1`, [id]);
 
-    if ((isNowCompleted || isNowClosed || isNowInCompletedPhase) && caseStudyResult.rows.length === 0) {
+    if (isNowInCompletedPhase && caseStudyResult.rows.length === 0) {
       try {
         await caseStudyService.create({
           projectId: project.id,

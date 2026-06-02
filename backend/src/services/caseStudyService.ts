@@ -182,6 +182,25 @@ class CaseStudyService {
       [...params, id]
     );
 
+    // When case study is completed or published → archive the linked project
+    if (
+      (data.status === 'COMPLETED' || data.status === 'PUBLISHED') &&
+      existing.status !== 'COMPLETED' && existing.status !== 'PUBLISHED'
+    ) {
+      try {
+        await execute(
+          `UPDATE projects
+           SET archived_at = NOW(), archive_reason = 'CASE_STUDY_COMPLETED',
+               archived_by = 'system', status = 'COMPLETED'
+           WHERE id = $1 AND archived_at IS NULL`,
+          [existing.project_id]
+        );
+        logger.info(`Auto-archived project ${existing.project_id} after case study completion`);
+      } catch (err) {
+        logger.warn(`Could not auto-archive project ${existing.project_id}: ${err}`);
+      }
+    }
+
     const result = await query(`SELECT * FROM case_studies WHERE id = $1`, [id]);
     const caseStudy = mapCaseStudyRow(result.rows[0]);
     logger.info(`Case study updated: ${caseStudy.id}`);
