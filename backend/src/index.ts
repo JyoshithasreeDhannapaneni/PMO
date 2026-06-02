@@ -39,6 +39,7 @@ import accountManagerRoutes from './routes/accountManagerRoutes';
 import customerSuccessRoutes from './routes/customerSuccessRoutes';
 import pocDocumentsRoutes from './routes/pocDocumentsRoutes';
 import migrationChecklistRoutes from './routes/migrationChecklistRoutes';
+import serverAlertRoutes from './routes/serverAlertRoutes';
 
 import { logger } from './utils/logger';
 import { authService } from './services/authService';
@@ -94,6 +95,7 @@ app.use('/api/account-manager', accountManagerRoutes);
 app.use('/api/customer-success', customerSuccessRoutes);
 app.use('/api/poc-documents', pocDocumentsRoutes);
 app.use('/api/migration-checklists', migrationChecklistRoutes);
+app.use('/api/server-alerts', serverAlertRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
@@ -349,6 +351,20 @@ async function runMigrations() {
   if (!await columnExists('projects', 'restore_count')) {
     try { await execute(`ALTER TABLE projects ADD COLUMN restore_count INT NOT NULL DEFAULT 0`); } catch {}
   }
+
+  // Server alert logs
+  await execute(`CREATE TABLE IF NOT EXISTS server_alert_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL,
+    alert_type VARCHAR(20) NOT NULL,
+    sent_to VARCHAR(500) NOT NULL,
+    days_remaining INTEGER,
+    days_overdue INTEGER,
+    success BOOLEAN DEFAULT true,
+    error_message TEXT,
+    sent_at TIMESTAMP DEFAULT NOW()
+  )`);
+  try { await execute(`CREATE INDEX IF NOT EXISTS idx_alert_logs_project ON server_alert_logs(project_id)`); } catch {}
 
 }
 
