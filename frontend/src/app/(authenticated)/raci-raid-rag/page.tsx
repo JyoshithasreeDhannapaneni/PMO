@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { Card } from '@/components/ui/Card';
 import { cn } from '@/lib/utils';
 import { Shield, AlertTriangle, BarChart2, RefreshCw, ChevronDown } from 'lucide-react';
+import { useProjects } from '@/hooks/useProjects';
 
 // ── Color helpers ─────────────────────────────────────────────────────────────
 
@@ -120,16 +121,16 @@ const INITIAL_RAID = [
   {
     team: 'Pre-sales Team',
     rows: [
-      { id: 'PS-R-001', type: 'R', description: 'POC deadline missed due to customer IT delays in providing admin access', probability: 'High', severity: 'High', owner: 'Pre-sales Owner', mitigation: 'Raise blocker in PMO tracker immediately. AM to contact customer stakeholder within 24 hrs.', dueDate: '30-May-26', status: 'Open' },
-      { id: 'PS-R-002', type: 'R', description: 'Customer exits POC without sign-off, blocking commercial conversion', probability: 'Medium', severity: 'High', owner: 'Pre-sales Owner', mitigation: 'Success criteria must be agreed in Phase 1. PM to review if Phase 4 runs beyond 48 hrs without response.', dueDate: 'POC end date', status: 'Open' },
-      { id: 'PS-R-003', type: 'R', description: 'POC scope creep requested by customer mid-trial, delaying Phase 3', probability: 'Medium', severity: 'Medium', owner: 'Pre-sales Owner', mitigation: 'Any scope change post Phase 1 sign-off requires written agreement and may trigger POC extension fee.', dueDate: 'Ongoing', status: 'Open' },
-      { id: 'PS-A-001', type: 'A', description: 'Customer has admin / global admin access ready before POC Phase 2 environment setup', probability: '—', severity: '—', owner: 'Pre-sales Owner', mitigation: 'Confirm in discovery call. Document in POC Submission sheet. Chase weekly if not confirmed.', dueDate: 'Phase 1', status: 'Open' },
-      { id: 'PS-A-002', type: 'A', description: 'Source and destination platforms are supported by CF Migrate for the agreed workload types', probability: '—', severity: '—', owner: 'Pre-sales Owner', mitigation: 'Validate platform compatibility before POC kick-off. Raise to Dev team if unsupported connector needed.', dueDate: 'Pre-POC', status: 'Open' },
-      { id: 'PS-A-003', type: 'A', description: 'Customer stakeholder has authority to sign off POC outcome and progress to full migration', probability: '—', severity: '—', owner: 'Pre-sales Owner', mitigation: 'Confirm decision-maker in discovery call. Ensure sign-off contact is documented in POC record.', dueDate: 'Phase 1', status: 'Open' },
-      { id: 'PS-I-001', type: 'I', description: 'Alpine Systems — POC stale, no pre-sales update for 5 days, POC ends 30 May 2026', probability: '—', severity: 'Medium', owner: 'Pre-sales Owner', mitigation: 'AM to chase Dana M. today. If no update by 27 May, AM contacts Tom Reyes (customer) directly.', dueDate: '27-May-26', status: 'Escalated' },
-      { id: 'PS-I-002', type: 'I', description: 'Contoso Ltd — POC validation phase delayed, customer sign-off 2 days overdue', probability: '—', severity: 'High', owner: 'Pre-sales Owner', mitigation: 'Pre-sales to contact Sarah Lin. If unresolved in 24 hrs, AM to escalate to customer senior stakeholder.', dueDate: '28-May-26', status: 'Open' },
-      { id: 'PS-D-001', type: 'D', description: 'Admin access must be granted by customer IT before Phase 2 environment setup can begin', probability: '—', severity: 'High', owner: 'Customer IT', mitigation: 'Flagged in POC scope document. Pre-sales to chase weekly. Blocker to be logged in PMO tracker.', dueDate: 'Phase 2 start', status: 'Open' },
-      { id: 'PS-D-002', type: 'D', description: 'NDA and data handling agreement must be signed before trial migration data is processed', probability: '—', severity: 'High', owner: 'Pre-sales Owner', mitigation: 'Standard NDA to be sent with POC scope document. Legal to review if customer proposes amendments.', dueDate: 'Phase 1', status: 'Open' },
+      { id: 'PS-R-001', type: 'R', pocProject: 'Alpine Systems', description: 'POC deadline missed due to customer IT delays in providing admin access', probability: 'High', severity: 'High', owner: 'Pre-sales Owner', mitigation: 'Raise blocker in PMO tracker immediately. AM to contact customer stakeholder within 24 hrs.', dueDate: '30-May-26', status: 'Open' },
+      { id: 'PS-R-002', type: 'R', pocProject: '', description: 'Customer exits POC without sign-off, blocking commercial conversion', probability: 'Medium', severity: 'High', owner: 'Pre-sales Owner', mitigation: 'Success criteria must be agreed in Phase 1. PM to review if Phase 4 runs beyond 48 hrs without response.', dueDate: 'POC end date', status: 'Open' },
+      { id: 'PS-R-003', type: 'R', pocProject: '', description: 'POC scope creep requested by customer mid-trial, delaying Phase 3', probability: 'Medium', severity: 'Medium', owner: 'Pre-sales Owner', mitigation: 'Any scope change post Phase 1 sign-off requires written agreement and may trigger POC extension fee.', dueDate: 'Ongoing', status: 'Open' },
+      { id: 'PS-A-001', type: 'A', pocProject: '', description: 'Customer has admin / global admin access ready before POC Phase 2 environment setup', probability: '—', severity: '—', owner: 'Pre-sales Owner', mitigation: 'Confirm in discovery call. Document in POC Submission sheet. Chase weekly if not confirmed.', dueDate: 'Phase 1', status: 'Open' },
+      { id: 'PS-A-002', type: 'A', pocProject: '', description: 'Source and destination platforms are supported by CF Migrate for the agreed workload types', probability: '—', severity: '—', owner: 'Pre-sales Owner', mitigation: 'Validate platform compatibility before POC kick-off. Raise to Dev team if unsupported connector needed.', dueDate: 'Pre-POC', status: 'Open' },
+      { id: 'PS-A-003', type: 'A', pocProject: '', description: 'Customer stakeholder has authority to sign off POC outcome and progress to full migration', probability: '—', severity: '—', owner: 'Pre-sales Owner', mitigation: 'Confirm decision-maker in discovery call. Ensure sign-off contact is documented in POC record.', dueDate: 'Phase 1', status: 'Open' },
+      { id: 'PS-I-001', type: 'I', pocProject: 'Alpine Systems', description: 'Alpine Systems — POC stale, no pre-sales update for 5 days, POC ends 30 May 2026', probability: '—', severity: 'Medium', owner: 'Pre-sales Owner', mitigation: 'AM to chase Dana M. today. If no update by 27 May, AM contacts Tom Reyes (customer) directly.', dueDate: '27-May-26', status: 'Escalated' },
+      { id: 'PS-I-002', type: 'I', pocProject: 'Contoso Ltd', description: 'Contoso Ltd — POC validation phase delayed, customer sign-off 2 days overdue', probability: '—', severity: 'High', owner: 'Pre-sales Owner', mitigation: 'Pre-sales to contact Sarah Lin. If unresolved in 24 hrs, AM to escalate to customer senior stakeholder.', dueDate: '28-May-26', status: 'Open' },
+      { id: 'PS-D-001', type: 'D', pocProject: '', description: 'Admin access must be granted by customer IT before Phase 2 environment setup can begin', probability: '—', severity: 'High', owner: 'Customer IT', mitigation: 'Flagged in POC scope document. Pre-sales to chase weekly. Blocker to be logged in PMO tracker.', dueDate: 'Phase 2 start', status: 'Open' },
+      { id: 'PS-D-002', type: 'D', pocProject: '', description: 'NDA and data handling agreement must be signed before trial migration data is processed', probability: '—', severity: 'High', owner: 'Pre-sales Owner', mitigation: 'Standard NDA to be sent with POC scope document. Legal to review if customer proposes amendments.', dueDate: 'Phase 1', status: 'Open' },
     ],
   },
   {
@@ -570,15 +571,124 @@ function AddRaidModal({ teamPrefix, existingRows, onAdd, onClose }: {
   );
 }
 
-function RaidTab({ data, setData }: { data: typeof INITIAL_RAID; setData: (d: typeof INITIAL_RAID) => void }) {
+function PocProjectCell({ value, options, onChange }: { value: string; options: string[]; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) { setOpen(false); setDraft(value); } };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [value]);
+
+  const uniqueOptions = Array.from(new Set(options.filter(Boolean)));
+
+  const select = (v: string) => { onChange(v); setDraft(v); setOpen(false); };
+
+  const commit = () => { onChange(draft); setOpen(false); };
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => { setDraft(value); setOpen(!open); }}
+        className="flex items-center gap-1 px-2 py-0.5 rounded text-xs text-slate-700 hover:bg-blue-50 transition-colors w-full text-left"
+      >
+        <span className="flex-1 truncate">{value || <span className="text-gray-300 italic">—</span>}</span>
+        <ChevronDown className="w-3 h-3 text-gray-400 flex-shrink-0" />
+      </button>
+      {open && (
+        <div className="absolute z-50 top-7 left-0 bg-white rounded-lg shadow-xl border border-gray-200 min-w-[180px] overflow-hidden">
+          <div className="p-1.5 border-b border-gray-100">
+            <input
+              autoFocus
+              value={draft}
+              onChange={e => setDraft(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') { setOpen(false); setDraft(value); } }}
+              placeholder="Type or select…"
+              className="w-full border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:border-indigo-400"
+            />
+          </div>
+          <div className="max-h-40 overflow-y-auto py-1">
+            {uniqueOptions.length === 0 && (
+              <p className="px-3 py-2 text-xs text-gray-400 italic">No projects yet</p>
+            )}
+            {uniqueOptions.map(opt => (
+              <button
+                key={opt}
+                onClick={() => select(opt)}
+                className={`block w-full text-left px-3 py-1.5 text-xs hover:bg-indigo-50 hover:text-indigo-700 transition-colors ${value === opt ? 'font-semibold text-indigo-700 bg-indigo-50' : 'text-slate-700'}`}
+              >
+                {opt}
+              </button>
+            ))}
+            {draft && !uniqueOptions.includes(draft) && (
+              <button
+                onClick={() => select(draft)}
+                className="block w-full text-left px-3 py-1.5 text-xs text-indigo-600 hover:bg-indigo-50 transition-colors border-t border-gray-100 mt-1"
+              >
+                + Add &ldquo;{draft}&rdquo;
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+type RaidSortField = 'id' | 'type' | 'pocProject' | 'description' | 'probability' | 'severity' | 'owner' | 'mitigation' | 'dueDate' | 'status';
+
+const PROB_ORDER: Record<string, number> = { High: 0, Medium: 1, Low: 2, '—': 3 };
+const STATUS_ORDER: Record<string, number> = { Escalated: 0, Open: 1, 'In progress': 2, Closed: 3 };
+
+function sortRaidRows(rows: typeof INITIAL_RAID[0]['rows'], field: RaidSortField, dir: 'asc' | 'desc') {
+  return [...rows].sort((a, b) => {
+    let va: string | number = (a as any)[field] ?? '';
+    let vb: string | number = (b as any)[field] ?? '';
+    if (field === 'probability' || field === 'severity') {
+      va = PROB_ORDER[va] ?? 99;
+      vb = PROB_ORDER[vb] ?? 99;
+    } else if (field === 'status') {
+      va = STATUS_ORDER[va] ?? 99;
+      vb = STATUS_ORDER[vb] ?? 99;
+    }
+    const cmp = typeof va === 'number' && typeof vb === 'number'
+      ? va - vb
+      : String(va).localeCompare(String(vb));
+    return dir === 'asc' ? cmp : -cmp;
+  });
+}
+
+function RaidTab({ data, setData, projectManagers }: { data: typeof INITIAL_RAID; setData: (d: typeof INITIAL_RAID) => void; projectManagers: string[] }) {
   const [activeTeam, setActiveTeam] = useState(0);
   const [showModal, setShowModal] = useState(false);
+  const [sortField, setSortField] = useState<RaidSortField | null>(null);
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const PROB_OPTS = ['High', 'Medium', 'Low', '—'];
   const STATUS_OPTS = ['Open', 'Escalated', 'In progress', 'Closed'];
   const TYPE_OPTS = ['R', 'A', 'I', 'D'];
 
   const team = data[activeTeam];
-  const teamPrefix = team.team.startsWith('Pre') ? 'PS' : team.team.startsWith('Migration') ? 'MT' : team.team.startsWith('Account') ? 'AM' : 'DV';
+  const isPreSales = team.team.startsWith('Pre');
+  const isMigration = team.team.startsWith('Migration');
+  const teamPrefix = isPreSales ? 'PS' : isMigration ? 'MT' : team.team.startsWith('Account') ? 'AM' : 'DV';
+
+  const handleSort = (field: RaidSortField) => {
+    if (sortField === field) {
+      setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDir('asc');
+    }
+  };
+
+  const SortIcon = ({ field }: { field: RaidSortField }) => {
+    if (sortField !== field) return <span className="ml-1 text-slate-300">↕</span>;
+    return <span className="ml-1 text-indigo-500">{sortDir === 'asc' ? '↑' : '↓'}</span>;
+  };
+
+  const sortedRows = sortField ? sortRaidRows(team.rows, sortField, sortDir) : team.rows;
 
   const updateField = (ri: number, field: string, value: string) => {
     setData(data.map((t, tIdx) => ({
@@ -596,6 +706,8 @@ function RaidTab({ data, setData }: { data: typeof INITIAL_RAID; setData: (d: ty
   const deleteRow = (ri: number) => {
     setData(data.map((t, tIdx) => tIdx === activeTeam ? { ...t, rows: t.rows.filter((_, rIdx) => rIdx !== ri) } : t));
   };
+
+  const thClass = "py-2 px-3 font-semibold text-slate-600 border-b border-slate-200 cursor-pointer select-none hover:bg-slate-100 transition-colors whitespace-nowrap";
 
   return (
     <div className="space-y-4">
@@ -615,7 +727,7 @@ function RaidTab({ data, setData }: { data: typeof INITIAL_RAID; setData: (d: ty
             {label}
           </span>
         ))}
-        <span className="text-gray-400 italic">Click any cell to edit</span>
+        <span className="text-gray-400 italic">Click any cell to edit · Click column header to sort</span>
       </div>
 
       {/* Sub-tabs + Add button */}
@@ -624,7 +736,7 @@ function RaidTab({ data, setData }: { data: typeof INITIAL_RAID; setData: (d: ty
           {data.map((t, ti) => (
             <button
               key={t.team}
-              onClick={() => setActiveTeam(ti)}
+              onClick={() => { setActiveTeam(ti); setSortField(null); }}
               className={cn(
                 'flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition -mb-px',
                 activeTeam === ti
@@ -653,59 +765,80 @@ function RaidTab({ data, setData }: { data: typeof INITIAL_RAID; setData: (d: ty
         <table className="w-full text-xs border-collapse">
           <thead>
             <tr className="bg-slate-50">
-              <th className="text-left py-2 px-3 font-semibold text-slate-600 border-b border-slate-200 w-24">ID</th>
-              <th className="text-left py-2 px-3 font-semibold text-slate-600 border-b border-slate-200 w-24">Type</th>
-              <th className="text-left py-2 px-3 font-semibold text-slate-600 border-b border-slate-200">Description</th>
-              <th className="text-center py-2 px-3 font-semibold text-slate-600 border-b border-slate-200 w-20">Probability</th>
-              <th className="text-center py-2 px-3 font-semibold text-slate-600 border-b border-slate-200 w-20">Severity</th>
-              <th className="text-left py-2 px-3 font-semibold text-slate-600 border-b border-slate-200 w-32">Owner</th>
-              <th className="text-left py-2 px-3 font-semibold text-slate-600 border-b border-slate-200">Mitigation / Action</th>
-              <th className="text-left py-2 px-3 font-semibold text-slate-600 border-b border-slate-200 w-24">Due Date</th>
-              <th className="text-left py-2 px-3 font-semibold text-slate-600 border-b border-slate-200 w-24">Status</th>
+              <th className={cn(thClass, 'text-left w-24')} onClick={() => handleSort('id')}>ID<SortIcon field="id" /></th>
+              <th className={cn(thClass, 'text-left w-24')} onClick={() => handleSort('type')}>Type<SortIcon field="type" /></th>
+              {isPreSales && <th className={cn(thClass, 'text-left w-32')} onClick={() => handleSort('pocProject')}>POC Project<SortIcon field="pocProject" /></th>}
+              <th className={cn(thClass, 'text-left')} onClick={() => handleSort('description')}>Description<SortIcon field="description" /></th>
+              <th className={cn(thClass, 'text-center w-20')} onClick={() => handleSort('probability')}>Probability<SortIcon field="probability" /></th>
+              <th className={cn(thClass, 'text-center w-20')} onClick={() => handleSort('severity')}>Severity<SortIcon field="severity" /></th>
+              <th className={cn(thClass, 'text-left w-36')} onClick={() => handleSort('owner')}>{isPreSales ? 'Pre-Sales Engineer' : isMigration ? 'Migration Manager' : 'Owner'}<SortIcon field="owner" /></th>
+              <th className={cn(thClass, 'text-left')} onClick={() => handleSort('mitigation')}>Mitigation / Action<SortIcon field="mitigation" /></th>
+              <th className={cn(thClass, 'text-left w-24')} onClick={() => handleSort('dueDate')}>Due Date<SortIcon field="dueDate" /></th>
+              <th className={cn(thClass, 'text-left w-24')} onClick={() => handleSort('status')}>Status<SortIcon field="status" /></th>
               <th className="py-2 px-2 border-b border-slate-200 w-8" />
             </tr>
           </thead>
           <tbody>
-            {team.rows.map((row, ri) => (
-              <tr key={row.id} className="hover:bg-slate-50 transition-colors border-b border-slate-100 last:border-0 group">
-                <td className="py-2 px-3">
-                  <EditableText value={row.id} onChange={v => updateField(ri, 'id', v)} className="font-mono text-slate-500" />
-                </td>
-                <td className="py-2 px-3">
-                  <SelectCell value={row.type} options={TYPE_OPTS} style={TYPE_STYLE} onChange={v => updateField(ri, 'type', v)} />
-                </td>
-                <td className="py-1.5 px-2 max-w-xs">
-                  <EditableArea value={row.description} onChange={v => updateField(ri, 'description', v)} />
-                </td>
-                <td className="py-1.5 px-2 text-center">
-                  <SelectCell value={row.probability} options={PROB_OPTS} style={PROB_STYLE} onChange={v => updateField(ri, 'probability', v)} />
-                </td>
-                <td className="py-1.5 px-2 text-center">
-                  <SelectCell value={row.severity} options={PROB_OPTS} style={SEV_STYLE} onChange={v => updateField(ri, 'severity', v)} />
-                </td>
-                <td className="py-1.5 px-2">
-                  <EditableText value={row.owner} onChange={v => updateField(ri, 'owner', v)} />
-                </td>
-                <td className="py-1.5 px-2 max-w-xs">
-                  <EditableArea value={row.mitigation} onChange={v => updateField(ri, 'mitigation', v)} />
-                </td>
-                <td className="py-1.5 px-2">
-                  <EditableText value={row.dueDate} onChange={v => updateField(ri, 'dueDate', v)} />
-                </td>
-                <td className="py-1.5 px-2">
-                  <SelectCell value={row.status} options={STATUS_OPTS} style={STATUS_STYLE} onChange={v => updateField(ri, 'status', v)} />
-                </td>
-                <td className="py-1.5 px-2 text-center">
-                  <button
-                    onClick={() => deleteRow(ri)}
-                    className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-300 hover:text-red-500 p-0.5 rounded"
-                    title="Delete row"
-                  >
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-                  </button>
-                </td>
-              </tr>
-            ))}
+            {sortedRows.map((row, ri) => {
+              const originalRi = team.rows.indexOf(row);
+              return (
+                <tr key={row.id} className="hover:bg-slate-50 transition-colors border-b border-slate-100 last:border-0 group">
+                  <td className="py-2 px-3">
+                    <EditableText value={row.id} onChange={v => updateField(originalRi, 'id', v)} className="font-mono text-slate-500" />
+                  </td>
+                  <td className="py-2 px-3">
+                    <SelectCell value={row.type} options={TYPE_OPTS} style={TYPE_STYLE} onChange={v => updateField(originalRi, 'type', v)} />
+                  </td>
+                  {isPreSales && (
+                    <td className="py-1.5 px-2 whitespace-nowrap">
+                      <PocProjectCell
+                        value={(row as any).pocProject ?? ''}
+                        options={team.rows.map((r: any) => r.pocProject ?? '')}
+                        onChange={v => updateField(originalRi, 'pocProject', v)}
+                      />
+                    </td>
+                  )}
+                  <td className="py-1.5 px-2 max-w-xs">
+                    <EditableArea value={row.description} onChange={v => updateField(originalRi, 'description', v)} />
+                  </td>
+                  <td className="py-1.5 px-2 text-center">
+                    <SelectCell value={row.probability} options={PROB_OPTS} style={PROB_STYLE} onChange={v => updateField(originalRi, 'probability', v)} />
+                  </td>
+                  <td className="py-1.5 px-2 text-center">
+                    <SelectCell value={row.severity} options={PROB_OPTS} style={SEV_STYLE} onChange={v => updateField(originalRi, 'severity', v)} />
+                  </td>
+                  <td className="py-1.5 px-2">
+                    {isMigration ? (
+                      <PocProjectCell
+                        value={row.owner}
+                        options={projectManagers}
+                        onChange={v => updateField(originalRi, 'owner', v)}
+                      />
+                    ) : (
+                      <EditableText value={row.owner} onChange={v => updateField(originalRi, 'owner', v)} />
+                    )}
+                  </td>
+                  <td className="py-1.5 px-2 max-w-xs">
+                    <EditableArea value={row.mitigation} onChange={v => updateField(originalRi, 'mitigation', v)} />
+                  </td>
+                  <td className="py-1.5 px-2">
+                    <EditableText value={row.dueDate} onChange={v => updateField(originalRi, 'dueDate', v)} />
+                  </td>
+                  <td className="py-1.5 px-2">
+                    <SelectCell value={row.status} options={STATUS_OPTS} style={STATUS_STYLE} onChange={v => updateField(originalRi, 'status', v)} />
+                  </td>
+                  <td className="py-1.5 px-2 text-center">
+                    <button
+                      onClick={() => deleteRow(originalRi)}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-300 hover:text-red-500 p-0.5 rounded"
+                      title="Delete row"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -880,6 +1013,15 @@ export default function RaciRaidRagPage() {
   const [activeTab, setActiveTab] = useState<'raci' | 'raid' | 'rag'>('raci');
   const [saved, setSaved] = useState(false);
 
+  const { data: projectsData } = useProjects({ limit: 500 });
+  const projectManagers = Array.from(
+    new Set(
+      (projectsData?.data ?? [])
+        .map((p: any) => p.projectManager)
+        .filter(Boolean)
+    )
+  ) as string[];
+
   const [raciData, setRaciData] = useState(() => load(LS_KEYS.raci, INITIAL_RACI));
   const [raidData, setRaidData] = useState(() => load(LS_KEYS.raid, INITIAL_RAID));
   const [ragActive, setRagActive] = useState(() => load(LS_KEYS.rag_active, INITIAL_RAG_ACTIVE));
@@ -964,7 +1106,13 @@ export default function RaciRaidRagPage() {
 
         <div className="p-4">
           {activeTab === 'raci' && <RaciTab data={raciData} setData={setRaciData} />}
-          {activeTab === 'raid' && <RaidTab data={raidData} setData={setRaidData} />}
+          {activeTab === 'raid' && (
+            <RaidTab
+              data={raidData}
+              setData={setRaidData}
+              projectManagers={projectManagers}
+            />
+          )}
           {activeTab === 'rag'  && (
             <RagTab
               active={ragActive} setActive={setRagActive}
