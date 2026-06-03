@@ -203,17 +203,22 @@ const INITIAL_RAG_ACTIVE = [
 ];
 
 const INITIAL_RAG_CS = [
-  { account: 'Tailwind Toys', workload: 'Content + Messaging', csOwner: 'Priya S.', am: 'TBD', overall: 'G', adoption: 'G', csat: 'G', tickets: 'G', renewal: 'A', upsell: 'G', comment: 'Day 5. Adoption 74%. CSAT 4.4. Renewal due 15 Jun — initiate proposal this week.', updated: '27-May-26' },
-  { account: 'Woodgrove Bank', workload: 'Email', csOwner: 'Ravi K.', am: 'TBD', overall: 'G', adoption: 'G', csat: 'G', tickets: 'G', renewal: 'A', upsell: 'G', comment: 'Day 13. Mailbox access 98%. CSAT 4.6. Renewal 30 Jun. Upsell: content migration Div 2 + CF Manage.', updated: '27-May-26' },
-  { account: 'Fabrikam Inc', workload: 'Content + Messaging', csOwner: 'Arjun T.', am: 'TBD', overall: 'A', adoption: 'A', csat: 'A', tickets: 'G', renewal: 'A', upsell: 'A', comment: 'Day 45. Adoption plateaued at 58%. CSAT 3.6. Renewal 5 Aug. PS-led enablement programme to be proposed.', updated: '25-May-26' },
-  { account: 'Lucerne Publishing', workload: 'Content + Email', csOwner: 'Neha R.', am: 'TBD', overall: 'R', adoption: 'R', csat: 'R', tickets: 'R', renewal: 'R', upsell: '—', comment: 'Day 22. CSAT 2.8. 2 permission tickets 21 days open. Calendar sync failing. Recovery call required 28 May.', updated: '25-May-26' },
+  { account: 'Tailwind Toys', workload: 'Content + Messaging', csOwner: 'Priya S.', am: 'TBD', overall: 'G', adoption: 'G', csat: 'G', tickets: 'G', renewal: 'A', upsell: 'G', escalationStatus: 'G', renewalDate: '15-Jun-26', comment: 'Day 5. Adoption 74%. CSAT 4.4. Renewal due 15 Jun — initiate proposal this week.', updated: '27-May-26' },
+  { account: 'Woodgrove Bank', workload: 'Email', csOwner: 'Ravi K.', am: 'TBD', overall: 'G', adoption: 'G', csat: 'G', tickets: 'G', renewal: 'A', upsell: 'G', escalationStatus: 'G', renewalDate: '30-Jun-26', comment: 'Day 13. Mailbox access 98%. CSAT 4.6. Renewal 30 Jun. Upsell: content migration Div 2 + CF Manage.', updated: '27-May-26' },
+  { account: 'Fabrikam Inc', workload: 'Content + Messaging', csOwner: 'Arjun T.', am: 'TBD', overall: 'A', adoption: 'A', csat: 'A', tickets: 'G', renewal: 'A', upsell: 'A', escalationStatus: 'A', renewalDate: '05-Aug-26', comment: 'Day 45. Adoption plateaued at 58%. CSAT 3.6. Renewal 5 Aug. PS-led enablement programme to be proposed.', updated: '25-May-26' },
+  { account: 'Lucerne Publishing', workload: 'Content + Email', csOwner: 'Neha R.', am: 'TBD', overall: 'R', adoption: 'R', csat: 'R', tickets: 'R', renewal: 'R', upsell: '—', escalationStatus: 'R', renewalDate: '—', comment: 'Day 22. CSAT 2.8. 2 permission tickets 21 days open. Calendar sync failing. Recovery call required 28 May.', updated: '25-May-26' },
 ];
 
 const INITIAL_RAG_TEAM = [
-  { team: 'Pre-sales Team', lead: 'Pre-sales Lead', active: '3 POCs active', escalations: 1, overall: 'A', capacity: 'G', blockers: 'A', concern: 'Alpine Systems stale. POC deadline risk 30 May. Capacity stretched across 3 concurrent POCs.', updated: '27-May-26' },
-  { team: 'Migration Team', lead: 'Migration Lead', active: '4 migrations', escalations: 3, overall: 'R', capacity: 'A', blockers: 'R', concern: 'Two accounts blocked on credentials. Contoso and Northwind both critical. Engineering support needed.', updated: '27-May-26' },
-  { team: 'Account Management Team', lead: 'AM Lead', active: '7 accounts', escalations: 2, overall: 'A', capacity: 'G', blockers: 'A', concern: 'Lucerne Publishing recovery call overdue. Overage notice for Northwind not yet sent.', updated: '27-May-26' },
-  { team: 'Dev Team', lead: 'Dev Lead', active: '2 bugs active', escalations: 2, overall: 'A', capacity: 'G', blockers: 'A', concern: 'Permission replication bug and calendar sync fix both due 30 May. On track but watch closely.', updated: '27-May-26' },
+  { team: 'Pre-sales Team', lead: 'Pre-sales Lead', active: '3 POCs active', escalations: 1, overall: 'A', blockers: 'A', deliveryThisWeek: 'A', onTimeDelivery: 'G', trainingSkillGap: 'A', crossTeamDependency: 'G', winHighlight: 'G', processCompliance: 'G', concern: 'Alpine Systems stale. POC deadline risk 30 May. Capacity stretched across 3 concurrent POCs.', updated: '27-May-26' },
+  { team: 'Migration Team', lead: 'Migration Lead', active: '4 migrations', escalations: 3, overall: 'R', blockers: 'R', deliveryThisWeek: 'R', onTimeDelivery: 'A', trainingSkillGap: 'G', crossTeamDependency: 'R', winHighlight: 'A', processCompliance: 'A', concern: 'Two accounts blocked on credentials. Contoso and Northwind both critical. Engineering support needed.', updated: '27-May-26' },
+  { team: 'Account Management Team', lead: 'AM Lead', active: '7 accounts', escalations: 2, overall: 'A', blockers: 'A', deliveryThisWeek: 'G', onTimeDelivery: 'G', trainingSkillGap: 'G', crossTeamDependency: 'A', winHighlight: 'G', processCompliance: 'G', concern: 'Lucerne Publishing recovery call overdue. Overage notice for Northwind not yet sent.', updated: '27-May-26' },
+  { team: 'Dev Team', lead: 'Dev Lead', active: '2 bugs active', escalations: 2, overall: 'A', blockers: 'A', deliveryThisWeek: 'A', onTimeDelivery: 'G', trainingSkillGap: 'A', crossTeamDependency: 'G', winHighlight: 'G', processCompliance: 'G', concern: 'Permission replication bug and calendar sync fix both due 30 May. On track but watch closely.', updated: '27-May-26' },
+];
+
+const INITIAL_RAG_POC = [
+  { account: 'Alpine Systems', workload: 'Messaging', preSales: 'Dana M.', am: 'TBD', overall: 'A', phase: 'A', scope: 'G', environment: 'G', customer: 'A', outcome: 'G', comment: 'POC stale — no pre-sales update in 5 days. POC ends 30 May. AM to contact customer if unresolved today.', updated: '22-May-26' },
+  { account: 'Contoso Ltd', workload: 'Content + Email', preSales: 'Pre-sales Owner', am: 'TBD', overall: 'A', phase: 'A', scope: 'G', environment: 'G', customer: 'A', outcome: 'G', comment: 'POC validation phase delayed, customer sign-off 2 days overdue.', updated: '28-May-26' },
 ];
 
 // ── Cell components ───────────────────────────────────────────────────────────
@@ -571,27 +576,51 @@ function AddRaidModal({ teamPrefix, existingRows, onAdd, onClose }: {
   );
 }
 
-function PocProjectCell({ value, options, onChange }: { value: string; options: string[]; onChange: (v: string) => void }) {
+function TooltipBox({ text, title }: { text: string; title: string }) {
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  const handleEnter = (e: React.MouseEvent) => setPos({ x: e.clientX, y: e.clientY });
+  const handleMove  = (e: React.MouseEvent) => setPos({ x: e.clientX, y: e.clientY });
+  const handleLeave = () => setPos(null);
+  return (
+    <span className="inline-flex items-center ml-1" onMouseEnter={handleEnter} onMouseMove={handleMove} onMouseLeave={handleLeave}>
+      <span className="w-4 h-4 rounded-full bg-indigo-600 text-white text-[10px] font-bold flex items-center justify-center cursor-default select-none shadow-sm">?</span>
+      {pos && createPortal(
+        <div
+          style={{ position: 'fixed', left: pos.x + 14, top: pos.y - 12, zIndex: 9999 }}
+          className="w-80 bg-white border border-indigo-200 rounded-xl px-4 py-3 shadow-2xl pointer-events-none"
+        >
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="w-4 h-4 rounded-full bg-indigo-600 text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0">!</span>
+            <span className="text-xs font-semibold text-indigo-700">{title}</span>
+          </div>
+          <p className="text-xs text-slate-600 leading-relaxed">{text}</p>
+        </div>,
+        document.body
+      )}
+    </span>
+  );
+}
+
+function PocProjectCell({ value, options, onChange, allowAdd = false }: { value: string; options: string[]; onChange: (v: string) => void; allowAdd?: boolean }) {
   const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState(value);
+  const [draft, setDraft] = useState('');
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) { setOpen(false); setDraft(value); } };
+    const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) { setOpen(false); setDraft(''); } };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, [value]);
+  }, []);
 
   const uniqueOptions = Array.from(new Set(options.filter(Boolean)));
+  const filtered = draft ? uniqueOptions.filter(o => o.toLowerCase().includes(draft.toLowerCase())) : uniqueOptions;
 
-  const select = (v: string) => { onChange(v); setDraft(v); setOpen(false); };
-
-  const commit = () => { onChange(draft); setOpen(false); };
+  const select = (v: string) => { onChange(v); setDraft(''); setOpen(false); };
 
   return (
     <div ref={ref} className="relative">
       <button
-        onClick={() => { setDraft(value); setOpen(!open); }}
+        onClick={() => { setDraft(''); setOpen(!open); }}
         className="flex items-center gap-1 px-2 py-0.5 rounded text-xs text-slate-700 hover:bg-blue-50 transition-colors w-full text-left"
       >
         <span className="flex-1 truncate">{value || <span className="text-gray-300 italic">—</span>}</span>
@@ -599,21 +628,23 @@ function PocProjectCell({ value, options, onChange }: { value: string; options: 
       </button>
       {open && (
         <div className="absolute z-50 top-7 left-0 bg-white rounded-lg shadow-xl border border-gray-200 min-w-[180px] overflow-hidden">
-          <div className="p-1.5 border-b border-gray-100">
-            <input
-              autoFocus
-              value={draft}
-              onChange={e => setDraft(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') { setOpen(false); setDraft(value); } }}
-              placeholder="Type or select…"
-              className="w-full border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:border-indigo-400"
-            />
-          </div>
+          {allowAdd && (
+            <div className="p-1.5 border-b border-gray-100">
+              <input
+                autoFocus
+                value={draft}
+                onChange={e => setDraft(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && draft.trim()) select(draft.trim()); if (e.key === 'Escape') { setOpen(false); setDraft(''); } }}
+                placeholder="Type to search or add…"
+                className="w-full border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:border-indigo-400"
+              />
+            </div>
+          )}
           <div className="max-h-40 overflow-y-auto py-1">
-            {uniqueOptions.length === 0 && (
-              <p className="px-3 py-2 text-xs text-gray-400 italic">No projects yet</p>
+            {filtered.length === 0 && !draft && (
+              <p className="px-3 py-2 text-xs text-gray-400 italic">No options available</p>
             )}
-            {uniqueOptions.map(opt => (
+            {filtered.map(opt => (
               <button
                 key={opt}
                 onClick={() => select(opt)}
@@ -622,12 +653,12 @@ function PocProjectCell({ value, options, onChange }: { value: string; options: 
                 {opt}
               </button>
             ))}
-            {draft && !uniqueOptions.includes(draft) && (
+            {allowAdd && draft.trim() && !uniqueOptions.includes(draft.trim()) && (
               <button
-                onClick={() => select(draft)}
+                onClick={() => select(draft.trim())}
                 className="block w-full text-left px-3 py-1.5 text-xs text-indigo-600 hover:bg-indigo-50 transition-colors border-t border-gray-100 mt-1"
               >
-                + Add &ldquo;{draft}&rdquo;
+                + Add &ldquo;{draft.trim()}&rdquo;
               </button>
             )}
           </div>
@@ -660,7 +691,7 @@ function sortRaidRows(rows: typeof INITIAL_RAID[0]['rows'], field: RaidSortField
   });
 }
 
-function RaidTab({ data, setData, projectManagers }: { data: typeof INITIAL_RAID; setData: (d: typeof INITIAL_RAID) => void; projectManagers: string[] }) {
+function RaidTab({ data, setData, projectManagers, accountManagers }: { data: typeof INITIAL_RAID; setData: (d: typeof INITIAL_RAID) => void; projectManagers: string[]; accountManagers: string[] }) {
   const [activeTeam, setActiveTeam] = useState(0);
   const [showModal, setShowModal] = useState(false);
   const [sortField, setSortField] = useState<RaidSortField | null>(null);
@@ -672,7 +703,8 @@ function RaidTab({ data, setData, projectManagers }: { data: typeof INITIAL_RAID
   const team = data[activeTeam];
   const isPreSales = team.team.startsWith('Pre');
   const isMigration = team.team.startsWith('Migration');
-  const teamPrefix = isPreSales ? 'PS' : isMigration ? 'MT' : team.team.startsWith('Account') ? 'AM' : 'DV';
+  const isAccount = team.team.startsWith('Account');
+  const teamPrefix = isPreSales ? 'PS' : isMigration ? 'MT' : isAccount ? 'AM' : 'DV';
 
   const handleSort = (field: RaidSortField) => {
     if (sortField === field) {
@@ -727,7 +759,7 @@ function RaidTab({ data, setData, projectManagers }: { data: typeof INITIAL_RAID
             {label}
           </span>
         ))}
-        <span className="text-gray-400 italic">Click any cell to edit · Click column header to sort</span>
+        <span className="text-gray-400 italic">Click column header to sort</span>
       </div>
 
       {/* Sub-tabs + Add button */}
@@ -771,7 +803,7 @@ function RaidTab({ data, setData, projectManagers }: { data: typeof INITIAL_RAID
               <th className={cn(thClass, 'text-left')} onClick={() => handleSort('description')}>Description<SortIcon field="description" /></th>
               <th className={cn(thClass, 'text-center w-20')} onClick={() => handleSort('probability')}>Probability<SortIcon field="probability" /></th>
               <th className={cn(thClass, 'text-center w-20')} onClick={() => handleSort('severity')}>Severity<SortIcon field="severity" /></th>
-              <th className={cn(thClass, 'text-left w-36')} onClick={() => handleSort('owner')}>{isPreSales ? 'Pre-Sales Engineer' : isMigration ? 'Migration Manager' : 'Owner'}<SortIcon field="owner" /></th>
+              <th className={cn(thClass, 'text-left w-36')} onClick={() => handleSort('owner')}>{isPreSales ? 'Pre-Sales Engineer' : isMigration ? 'Migration Manager' : isAccount ? 'Account Manager' : team.team.startsWith('Dev') ? 'Dev Engineer' : 'Owner'}<SortIcon field="owner" /></th>
               <th className={cn(thClass, 'text-left')} onClick={() => handleSort('mitigation')}>Mitigation / Action<SortIcon field="mitigation" /></th>
               <th className={cn(thClass, 'text-left w-24')} onClick={() => handleSort('dueDate')}>Due Date<SortIcon field="dueDate" /></th>
               <th className={cn(thClass, 'text-left w-24')} onClick={() => handleSort('status')}>Status<SortIcon field="status" /></th>
@@ -814,6 +846,19 @@ function RaidTab({ data, setData, projectManagers }: { data: typeof INITIAL_RAID
                         options={projectManagers}
                         onChange={v => updateField(originalRi, 'owner', v)}
                       />
+                    ) : isAccount ? (
+                      <PocProjectCell
+                        value={row.owner}
+                        options={accountManagers}
+                        onChange={v => updateField(originalRi, 'owner', v)}
+                      />
+                    ) : team.team.startsWith('Dev') ? (
+                      <PocProjectCell
+                        value={row.owner}
+                        options={team.rows.map((r: any) => r.owner ?? '')}
+                        onChange={v => updateField(originalRi, 'owner', v)}
+                        allowAdd
+                      />
                     ) : (
                       <EditableText value={row.owner} onChange={v => updateField(originalRi, 'owner', v)} />
                     )}
@@ -849,19 +894,46 @@ function RaidTab({ data, setData, projectManagers }: { data: typeof INITIAL_RAID
 // ── RAG Tab ──────────────────────────────────────────────────────────────────
 
 function RagTab({
-  active, setActive, cs, setCs, team, setTeam,
+  active, setActive, cs, setCs, team, setTeam, poc, setPoc, managers,
 }: {
   active: typeof INITIAL_RAG_ACTIVE; setActive: (d: typeof INITIAL_RAG_ACTIVE) => void;
   cs: typeof INITIAL_RAG_CS; setCs: (d: typeof INITIAL_RAG_CS) => void;
   team: typeof INITIAL_RAG_TEAM; setTeam: (d: typeof INITIAL_RAG_TEAM) => void;
+  poc: typeof INITIAL_RAG_POC; setPoc: (d: typeof INITIAL_RAG_POC) => void;
+  managers: string[];
 }) {
-  const [activeSection, setActiveSection] = useState<'active' | 'cs' | 'team'>('active');
-  const RAG_FIELDS_ACTIVE: (keyof (typeof INITIAL_RAG_ACTIVE)[0])[] = ['overall', 'schedule', 'scope', 'resource', 'customer', 'budget'];
-  const RAG_FIELDS_CS: (keyof (typeof INITIAL_RAG_CS)[0])[] = ['overall', 'adoption', 'csat', 'tickets', 'renewal', 'upsell'];
-  const RAG_FIELDS_TEAM: (keyof (typeof INITIAL_RAG_TEAM)[0])[] = ['overall', 'capacity', 'blockers'];
+  const [activeSection, setActiveSection] = useState<'active' | 'cs' | 'team' | 'poc'>('active');
+  const [csSortField, setCsSortField] = useState<string | null>(null);
+  const [csSortDir, setCsSortDir] = useState<'asc' | 'desc'>('asc');
+  const RAG_FIELDS_ACTIVE: (keyof (typeof INITIAL_RAG_ACTIVE)[0])[] = ['overall', 'schedule', 'scope', 'customer', 'budget'];
+  const RAG_FIELDS_CS: (keyof (typeof INITIAL_RAG_CS)[0])[] = ['overall', 'adoption', 'csat', 'tickets', 'upsell'];
+  const RAG_FIELDS_TEAM: (keyof (typeof INITIAL_RAG_TEAM)[0])[] = ['overall', 'blockers', 'deliveryThisWeek', 'onTimeDelivery', 'trainingSkillGap', 'crossTeamDependency', 'winHighlight', 'processCompliance'];
+  const RAG_FIELDS_POC: (keyof (typeof INITIAL_RAG_POC)[0])[] = ['overall', 'phase', 'scope', 'environment', 'customer', 'outcome'];
+
+  const RAG_ORDER: Record<string, number> = { G: 0, A: 1, R: 2, '—': 3 };
+
+  const handleCsSort = (field: string) => {
+    if (csSortField === field) { setCsSortDir(d => d === 'asc' ? 'desc' : 'asc'); }
+    else { setCsSortField(field); setCsSortDir('asc'); }
+  };
+
+  const sortedCs = csSortField ? [...cs].sort((a, b) => {
+    const va = (a as any)[csSortField] ?? '';
+    const vb = (b as any)[csSortField] ?? '';
+    const ragFields = ['overall', 'adoption', 'csat', 'tickets', 'renewal', 'upsell', 'escalationStatus'];
+    let cmp = 0;
+    if (ragFields.includes(csSortField)) { cmp = (RAG_ORDER[va] ?? 99) - (RAG_ORDER[vb] ?? 99); }
+    else { cmp = String(va).localeCompare(String(vb)); }
+    return csSortDir === 'asc' ? cmp : -cmp;
+  }) : cs;
+
+  const CsSortIcon = ({ field }: { field: string }) => csSortField === field
+    ? <span className="ml-1 text-indigo-500">{csSortDir === 'asc' ? '↑' : '↓'}</span>
+    : <span className="ml-1 text-slate-300">↕</span>;
 
   const sections = [
-    { key: 'active' as const, label: 'Active Projects', count: active.length },
+    { key: 'active' as const, label: 'Migration Projects', count: active.length },
+    { key: 'poc'    as const, label: 'POC Projects', count: poc.length },
     { key: 'cs'     as const, label: 'Customer Success', count: cs.length },
     { key: 'team'   as const, label: 'Team Health', count: team.length },
   ];
@@ -905,7 +977,7 @@ function RagTab({
           <table className="w-full text-xs border-collapse">
             <thead>
               <tr className="bg-slate-50">
-                {['Account / project', 'Workload', 'Mgr / Pre-sales', 'Account Mgr', 'Overall', 'Schedule', 'Scope', 'Resource', 'Customer', 'Budget', 'Latest status comment', 'Updated'].map(h => (
+                {['Account / project', 'Workload', 'Mgr / Pre-sales', 'Account Mgr', 'Overall', 'Schedule', 'Scope', 'Customer', 'Budget', 'Latest status comment', 'Updated'].map(h => (
                   <th key={h} className="py-2.5 px-2 font-semibold text-slate-600 border-b border-slate-200 text-left whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -931,33 +1003,96 @@ function RagTab({
         </div>
       )}
 
+      {/* POC Projects */}
+      {activeSection === 'poc' && (
+        <div className="overflow-x-auto rounded-lg border border-slate-200">
+          <table className="w-full text-xs border-collapse">
+            <thead>
+              <tr className="bg-slate-50">
+                {['Account / project', 'Workload', 'Pre-Sales Engineer', 'Account Mgr', 'Overall', 'Phase', 'Scope', 'Environment', 'Customer', 'Outcome', 'Latest status comment', 'Updated'].map(h => (
+                  <th key={h} className="py-2.5 px-2 font-semibold text-slate-600 border-b border-slate-200 text-left whitespace-nowrap">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {poc.map((row, ri) => (
+                <tr key={ri} className="hover:bg-slate-50 border-b border-slate-100 last:border-0">
+                  <td className="py-2 px-2 font-medium text-slate-700 whitespace-nowrap"><EditableText value={row.account} onChange={v => setPoc(poc.map((r, i) => i === ri ? { ...r, account: v } : r))} /></td>
+                  <td className="py-2 px-2 text-slate-500 whitespace-nowrap"><EditableText value={row.workload} onChange={v => setPoc(poc.map((r, i) => i === ri ? { ...r, workload: v } : r))} /></td>
+                  <td className="py-2 px-2 text-slate-500 whitespace-nowrap"><EditableText value={row.preSales} onChange={v => setPoc(poc.map((r, i) => i === ri ? { ...r, preSales: v } : r))} /></td>
+                  <td className="py-2 px-2 text-slate-500 whitespace-nowrap"><EditableText value={row.am} onChange={v => setPoc(poc.map((r, i) => i === ri ? { ...r, am: v } : r))} /></td>
+                  {RAG_FIELDS_POC.map(f => (
+                    <td key={f} className="py-1.5 px-1 text-center">
+                      <RagCell value={row[f] as string} onChange={v => setPoc(poc.map((r, i) => i === ri ? { ...r, [f]: v } : r))} />
+                    </td>
+                  ))}
+                  <td className="py-1.5 px-2 max-w-xs"><EditableArea value={row.comment} onChange={v => setPoc(poc.map((r, i) => i === ri ? { ...r, comment: v } : r))} /></td>
+                  <td className="py-2 px-2 text-slate-400 whitespace-nowrap"><EditableText value={row.updated} onChange={v => setPoc(poc.map((r, i) => i === ri ? { ...r, updated: v } : r))} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       {/* Customer Success */}
       {activeSection === 'cs' && (
         <div className="overflow-x-auto rounded-lg border border-slate-200">
           <table className="w-full text-xs border-collapse">
             <thead>
               <tr className="bg-slate-50">
-                {['Account', 'Workload', 'CS Owner', 'Account Mgr', 'Overall', 'Adoption', 'CSAT', 'Tickets', 'Renewal', 'Upsell', 'Latest comment', 'Updated'].map(h => (
-                  <th key={h} className="py-2.5 px-2 font-semibold text-slate-600 border-b border-slate-200 text-left whitespace-nowrap">{h}</th>
+                {[
+                  { key: 'account', label: 'Account', tooltip: '' },
+                  { key: 'workload', label: 'Workload', tooltip: '' },
+                  { key: 'csOwner', label: 'Managers', tooltip: '' },
+                  { key: 'am', label: 'Account Mgr', tooltip: '' },
+                  { key: 'overall', label: 'Overall', tooltip: '' },
+                  { key: 'adoption', label: 'Adoption', tooltip: '' },
+                  { key: 'csat', label: 'CSAT', tooltip: '' },
+                  { key: 'tickets', label: 'Tickets', tooltip: '' },
+                  { key: 'upsell', label: 'Upsell', tooltip: '' },
+                  { key: 'escalationStatus', label: 'Escalation Status', tooltip: 'Whether a formal escalation is open. A customer with a red CSAT but no escalation flag is invisible to the delivery head during weekly review' },
+                  { key: 'renewalDate', label: 'Renewal Date', tooltip: 'Exact contract renewal date. Without this, the Renewal RAG column is just a gut feel — this makes it data-driven with auto-escalation at 90 / 60 / 30 days out' },
+                  { key: 'comment', label: 'Latest comment', tooltip: '' },
+                  { key: 'updated', label: 'Updated', tooltip: '' },
+                ].map(({ key, label, tooltip }) => (
+                  <th
+                    key={key}
+                    onClick={() => handleCsSort(key)}
+                    className="py-2.5 px-2 font-semibold text-slate-600 border-b border-slate-200 text-left whitespace-nowrap cursor-pointer select-none hover:bg-slate-100 transition-colors"
+                  >
+                    <span className="inline-flex items-center gap-0.5">
+                      {label}
+                      {tooltip && <TooltipBox text={tooltip} title={label} />}
+                      <CsSortIcon field={key} />
+                    </span>
+                  </th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {cs.map((row, ri) => (
-                <tr key={ri} className="hover:bg-slate-50 border-b border-slate-100 last:border-0">
-                  <td className="py-2 px-2 font-medium text-slate-700 whitespace-nowrap"><EditableText value={row.account} onChange={v => setCs(cs.map((r, i) => i === ri ? { ...r, account: v } : r))} /></td>
-                  <td className="py-2 px-2 text-slate-500 whitespace-nowrap"><EditableText value={row.workload} onChange={v => setCs(cs.map((r, i) => i === ri ? { ...r, workload: v } : r))} /></td>
-                  <td className="py-2 px-2 text-slate-500 whitespace-nowrap"><EditableText value={row.csOwner} onChange={v => setCs(cs.map((r, i) => i === ri ? { ...r, csOwner: v } : r))} /></td>
-                  <td className="py-2 px-2 text-slate-500 whitespace-nowrap"><EditableText value={row.am} onChange={v => setCs(cs.map((r, i) => i === ri ? { ...r, am: v } : r))} /></td>
-                  {RAG_FIELDS_CS.map(f => (
-                    <td key={f} className="py-1.5 px-1 text-center">
-                      <RagCell value={row[f] as string} onChange={v => setCs(cs.map((r, i) => i === ri ? { ...r, [f]: v } : r))} />
+              {sortedCs.map((row, ri) => {
+                const originalRi = cs.indexOf(row);
+                return (
+                  <tr key={ri} className="hover:bg-slate-50 border-b border-slate-100 last:border-0">
+                    <td className="py-2 px-2 font-medium text-slate-700 whitespace-nowrap"><EditableText value={row.account} onChange={v => setCs(cs.map((r, i) => i === originalRi ? { ...r, account: v } : r))} /></td>
+                    <td className="py-2 px-2 text-slate-500 whitespace-nowrap"><EditableText value={row.workload} onChange={v => setCs(cs.map((r, i) => i === originalRi ? { ...r, workload: v } : r))} /></td>
+                    <td className="py-2 px-2 text-slate-500 whitespace-nowrap"><PocProjectCell value={row.csOwner} options={managers} onChange={v => setCs(cs.map((r, i) => i === originalRi ? { ...r, csOwner: v } : r))} /></td>
+                    <td className="py-2 px-2 text-slate-500 whitespace-nowrap"><EditableText value={row.am} onChange={v => setCs(cs.map((r, i) => i === originalRi ? { ...r, am: v } : r))} /></td>
+                    {RAG_FIELDS_CS.map(f => (
+                      <td key={f} className="py-1.5 px-1 text-center">
+                        <RagCell value={row[f] as string} onChange={v => setCs(cs.map((r, i) => i === originalRi ? { ...r, [f]: v } : r))} />
+                      </td>
+                    ))}
+                    <td className="py-1.5 px-1 text-center">
+                      <RagCell value={(row as any).escalationStatus ?? '—'} onChange={v => setCs(cs.map((r, i) => i === originalRi ? { ...r, escalationStatus: v } : r))} />
                     </td>
-                  ))}
-                  <td className="py-1.5 px-2 max-w-xs"><EditableArea value={row.comment} onChange={v => setCs(cs.map((r, i) => i === ri ? { ...r, comment: v } : r))} /></td>
-                  <td className="py-2 px-2 text-slate-400 whitespace-nowrap"><EditableText value={row.updated} onChange={v => setCs(cs.map((r, i) => i === ri ? { ...r, updated: v } : r))} /></td>
-                </tr>
-              ))}
+                    <td className="py-2 px-2 text-slate-500 whitespace-nowrap"><EditableText value={(row as any).renewalDate ?? '—'} onChange={v => setCs(cs.map((r, i) => i === originalRi ? { ...r, renewalDate: v } : r))} /></td>
+                    <td className="py-1.5 px-2 max-w-xs"><EditableArea value={row.comment} onChange={v => setCs(cs.map((r, i) => i === originalRi ? { ...r, comment: v } : r))} /></td>
+                    <td className="py-2 px-2 text-slate-400 whitespace-nowrap"><EditableText value={row.updated} onChange={v => setCs(cs.map((r, i) => i === originalRi ? { ...r, updated: v } : r))} /></td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -969,8 +1104,28 @@ function RagTab({
           <table className="w-full text-xs border-collapse">
             <thead>
               <tr className="bg-slate-50">
-                {['Team', 'Team Lead', 'Active', 'Escalations', 'Overall', 'Capacity', 'Blockers', 'Key concern this week', 'Updated'].map(h => (
-                  <th key={h} className="py-2.5 px-2 font-semibold text-slate-600 border-b border-slate-200 text-left whitespace-nowrap">{h}</th>
+                {[
+                  { label: 'Team', tooltip: '' },
+                  { label: 'Team Lead', tooltip: '' },
+                  { label: 'Active', tooltip: '' },
+                  { label: 'Escalations', tooltip: '' },
+                  { label: 'Overall', tooltip: '' },
+                  { label: 'Blockers', tooltip: '' },
+                  { label: 'Delivery This Week', tooltip: '' },
+                  { label: 'On Time Delivery Rate', tooltip: '% of milestones delivered on schedule vs total committed this sprint or month. This is the single most objective measure of team performance — without it, RAG is purely subjective' },
+                  { label: 'Training / Skill Gap', tooltip: 'Whether any team member has a skill gap blocking a current project. Particularly relevant for the Dev and Migration teams when a new connector or platform type is introduced' },
+                  { label: 'Cross Team Dependency', tooltip: 'Whether this team is waiting on or blocking another team. E.g. Migration waiting on Dev for a connector fix, or Pre-sales blocked by CS for a reference. Surfaces inter-team friction' },
+                  { label: 'Win / Highlight This Week', tooltip: 'Balances the "Key concern" column with a positive signal. Keeps the tracker from being purely problem-focused and gives the delivery head material for team recognition' },
+                  { label: 'Process Compliance', tooltip: 'Whether the team is following defined processes — updating tickets, logging time, completing handoff docs. Useful for teams with repeated delivery issues caused by process gaps' },
+                  { label: 'Key concern this week', tooltip: '' },
+                  { label: 'Updated', tooltip: '' },
+                ].map(({ label, tooltip }) => (
+                  <th key={label} className="py-2.5 px-2 font-semibold text-slate-600 border-b border-slate-200 text-left whitespace-nowrap">
+                    <span className="inline-flex items-center gap-0.5">
+                      {label}
+                      {tooltip && <TooltipBox text={tooltip} title={label} />}
+                    </span>
+                  </th>
                 ))}
               </tr>
             </thead>
@@ -1000,7 +1155,7 @@ function RagTab({
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 
-const LS_KEYS = { raci: 'pmo_raci_v1', raid: 'pmo_raid_v1', rag_active: 'pmo_rag_active_v1', rag_cs: 'pmo_rag_cs_v1', rag_team: 'pmo_rag_team_v1' };
+const LS_KEYS = { raci: 'pmo_raci_v1', raid: 'pmo_raid_v1', rag_active: 'pmo_rag_active_v1', rag_cs: 'pmo_rag_cs_v1', rag_team: 'pmo_rag_team_v1', rag_poc: 'pmo_rag_poc_v1' };
 
 function load<T>(key: string, fallback: T): T {
   try {
@@ -1021,12 +1176,20 @@ export default function RaciRaidRagPage() {
         .filter(Boolean)
     )
   ) as string[];
+  const accountManagers = Array.from(
+    new Set(
+      (projectsData?.data ?? [])
+        .map((p: any) => p.accountManager)
+        .filter(Boolean)
+    )
+  ) as string[];
 
   const [raciData, setRaciData] = useState(() => load(LS_KEYS.raci, INITIAL_RACI));
   const [raidData, setRaidData] = useState(() => load(LS_KEYS.raid, INITIAL_RAID));
   const [ragActive, setRagActive] = useState(() => load(LS_KEYS.rag_active, INITIAL_RAG_ACTIVE));
   const [ragCs, setRagCs] = useState(() => load(LS_KEYS.rag_cs, INITIAL_RAG_CS));
   const [ragTeam, setRagTeam] = useState(() => load(LS_KEYS.rag_team, INITIAL_RAG_TEAM));
+  const [ragPoc, setRagPoc] = useState(() => load(LS_KEYS.rag_poc, INITIAL_RAG_POC));
 
   const handleSave = () => {
     localStorage.setItem(LS_KEYS.raci, JSON.stringify(raciData));
@@ -1034,6 +1197,7 @@ export default function RaciRaidRagPage() {
     localStorage.setItem(LS_KEYS.rag_active, JSON.stringify(ragActive));
     localStorage.setItem(LS_KEYS.rag_cs, JSON.stringify(ragCs));
     localStorage.setItem(LS_KEYS.rag_team, JSON.stringify(ragTeam));
+    localStorage.setItem(LS_KEYS.rag_poc, JSON.stringify(ragPoc));
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -1046,6 +1210,7 @@ export default function RaciRaidRagPage() {
     setRagActive(INITIAL_RAG_ACTIVE);
     setRagCs(INITIAL_RAG_CS);
     setRagTeam(INITIAL_RAG_TEAM);
+    setRagPoc(INITIAL_RAG_POC);
   };
 
   const tabs = [
@@ -1111,6 +1276,7 @@ export default function RaciRaidRagPage() {
               data={raidData}
               setData={setRaidData}
               projectManagers={projectManagers}
+              accountManagers={accountManagers}
             />
           )}
           {activeTab === 'rag'  && (
@@ -1118,6 +1284,8 @@ export default function RaciRaidRagPage() {
               active={ragActive} setActive={setRagActive}
               cs={ragCs} setCs={setRagCs}
               team={ragTeam} setTeam={setRagTeam}
+              poc={ragPoc} setPoc={setRagPoc}
+              managers={projectManagers}
             />
           )}
         </div>
