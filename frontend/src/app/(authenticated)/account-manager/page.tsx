@@ -36,7 +36,7 @@ const PLAN_BADGE: Record<string, string> = {
 type SortKey =
   | 'name' | 'customerName' | 'accountManager' | 'projectManager'
   | 'status' | 'phase' | 'delayStatus' | 'planType'
-  | 'actualStart' | 'plannedEnd' | 'migrationTypes' | 'pocOutcome';
+  | 'actualStart' | 'plannedEnd' | 'expectedEnd' | 'migrationTypes' | 'pocOutcome';
 type SortDir = 'asc' | 'desc';
 
 function scrollTo(ref: React.RefObject<HTMLDivElement>) {
@@ -110,6 +110,7 @@ type ProjectRow = {
   planType: string;
   actualStart: string | null;
   plannedEnd: string | null;
+  expectedEnd: string | null;
   migrationTypes: string;
   trackType: 'migration' | 'poc';
   pocOutcome?: string | null;
@@ -215,9 +216,10 @@ export default function AccountManagerPage() {
       (STATUS_RANK[m.status] || 0) > (STATUS_RANK[w.status] || 0) ? m : w
     , tracks[0]);
 
-    // Earliest kickoff, latest planned end
-    const starts = tracks.map((m: any) => m.actualStart).filter(Boolean).sort();
-    const ends   = tracks.map((m: any) => m.plannedEnd).filter(Boolean).sort();
+    // Earliest kickoff, latest planned end, latest expected end
+    const starts       = tracks.map((m: any) => m.actualStart).filter(Boolean).sort();
+    const ends         = tracks.map((m: any) => m.plannedEnd).filter(Boolean).sort();
+    const expectedEnds = tracks.map((m: any) => m.expectedEnd).filter(Boolean).sort();
 
     // Any escalated project means this row is escalated
     const anyEscalated = tracks.some((m: any) => m.isEscalated);
@@ -238,6 +240,7 @@ export default function AccountManagerPage() {
       planType: primary.planType || '',
       actualStart: starts[0] || null,
       plannedEnd: ends[ends.length - 1] || null,
+      expectedEnd: expectedEnds[expectedEnds.length - 1] || null,
       migrationTypes: allTypes.join(', '),
       trackType: 'migration' as const,
       isEscalated: anyEscalated,
@@ -456,8 +459,8 @@ export default function AccountManagerPage() {
                   <SortTh label="Plan"            sortKey="planType"        current={sortKey} dir={sortDir} onSort={handleSort} />
                   <SortTh label="Kickoff Date"    sortKey="actualStart"     current={sortKey} dir={sortDir} onSort={handleSort} />
                   {activeTab === 'poc'
-                    ? <SortTh label="POC Outcome" sortKey="pocOutcome"   current={sortKey} dir={sortDir} onSort={handleSort} />
-                    : <SortTh label="Planned End" sortKey="plannedEnd"   current={sortKey} dir={sortDir} onSort={handleSort} />
+                    ? <SortTh label="POC Outcome"  sortKey="pocOutcome"   current={sortKey} dir={sortDir} onSort={handleSort} />
+                    : <SortTh label="Project End"  sortKey="expectedEnd"  current={sortKey} dir={sortDir} onSort={handleSort} />
                   }
                 </tr>
               </thead>
@@ -559,7 +562,7 @@ export default function AccountManagerPage() {
                       <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-600">
                         <span className="flex items-center gap-1">
                           <CalendarDays className="w-3 h-3 text-gray-400" />
-                          {fmtDate(row.plannedEnd)}
+                          {fmtDate(row.expectedEnd || row.plannedEnd)}
                         </span>
                       </td>
                     )}
