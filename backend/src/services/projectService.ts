@@ -347,8 +347,9 @@ class ProjectService {
   async create(data: CreateProjectDTO) {
     const plannedEnd = new Date(data.plannedEnd);
     const plannedStart = new Date(data.plannedStart);
+    const actualStart = data.actualStart ? new Date(data.actualStart) : null;
     const actualEnd = data.actualEnd ? new Date(data.actualEnd) : null;
-    const { delayDays, delayStatus } = calculateDelay(plannedEnd, actualEnd);
+    const { delayDays, delayStatus } = calculateDelay(plannedStart, plannedEnd, actualStart, actualEnd);
 
     const migrationTypes = data.migrationTypes?.toUpperCase().split(',').map(t => t.trim()) || [];
     const primaryMigrationType = migrationTypes[0] || null;
@@ -526,12 +527,16 @@ class ProjectService {
     }
 
     const existing = existingResult.rows[0];
+    const plannedStart = data.plannedStart ? new Date(data.plannedStart) : existing.planned_start;
     const plannedEnd = data.plannedEnd ? new Date(data.plannedEnd) : existing.planned_end;
+    const actualStart = data.actualStart !== undefined
+      ? (data.actualStart ? new Date(data.actualStart) : null)
+      : existing.actual_start;
     const actualEnd = data.actualEnd !== undefined
       ? (data.actualEnd ? new Date(data.actualEnd) : null)
       : existing.actual_end;
 
-    const calculated = calculateDelay(plannedEnd, actualEnd);
+    const calculated = calculateDelay(plannedStart, plannedEnd, actualStart, actualEnd);
     const delayDays = Math.floor(Number(calculated.delayDays) || 0);
     const delayStatus = data.delayStatus || calculated.delayStatus;
 
@@ -697,7 +702,10 @@ class ProjectService {
     let updatedCount = 0;
 
     for (const row of result.rows) {
-      const { delayDays, delayStatus } = calculateDelay(row.planned_end, row.actual_end);
+      const { delayDays, delayStatus } = calculateDelay(
+        row.planned_start, row.planned_end,
+        row.actual_start, row.actual_end
+      );
 
       if (delayDays !== row.delay_days || delayStatus !== row.delay_status) {
         await query(

@@ -6,51 +6,51 @@ interface DelayCalculationResult {
 }
 
 /**
- * Calculate delay days and status for a project
- * Business Logic:
- * - delay_days = actual_end - planned_end (in days)
- * - If delay_days > 0 → "DELAYED"
- * - If delay_days > -7 and delay_days <= 0 → "AT_RISK" (within 7 days of deadline)
- * - Otherwise → "NOT_DELAYED"
+ * Calculate delay days and status for a project.
+ *
+ * Expected-end formula (kickoff-adjusted):
+ *   sow_duration  = plannedEnd − plannedStart
+ *   expected_end  = actualStart + sow_duration   (if kickoff has happened)
+ *                 = plannedEnd                    (fallback when no kickoff yet)
+ *
+ * Example: SOW Apr 1 → Jun 1 (61 days), kickoff Apr 10 → expected end Jun 11.
  */
 export function calculateDelay(
+  plannedStart: Date,
   plannedEnd: Date,
+  actualStart: Date | null,
   actualEnd: Date | null,
   currentDate: Date = new Date()
 ): DelayCalculationResult {
-  // If project has actual end date, calculate based on that
+  const MS_PER_DAY = 1000 * 60 * 60 * 24;
+
+  // SOW duration in milliseconds
+  const sowDurationMs = plannedEnd.getTime() - plannedStart.getTime();
+
+  // Kickoff-adjusted expected end (or fall back to SOW end)
+  const expectedEnd = actualStart
+    ? new Date(actualStart.getTime() + sowDurationMs)
+    : plannedEnd;
+
+  // Project already completed
   if (actualEnd) {
-    const delayMs = actualEnd.getTime() - plannedEnd.getTime();
-    const delayDays = Math.ceil(delayMs / (1000 * 60 * 60 * 24));
-    
+    const delayDays = Math.ceil((actualEnd.getTime() - expectedEnd.getTime()) / MS_PER_DAY);
     return {
       delayDays: Math.max(0, delayDays),
       delayStatus: delayDays > 0 ? 'DELAYED' : 'NOT_DELAYED',
     };
   }
-  
-  // If project is ongoing, calculate based on current date vs planned end
-  const remainingMs = plannedEnd.getTime() - currentDate.getTime();
-  const remainingDays = Math.ceil(remainingMs / (1000 * 60 * 60 * 24));
-  
+
+  // Ongoing project — compare today against expected end
+  const remainingDays = Math.ceil((expectedEnd.getTime() - currentDate.getTime()) / MS_PER_DAY);
+
   if (remainingDays < 0) {
-    // Already past deadline
-    return {
-      delayDays: Math.abs(remainingDays),
-      delayStatus: 'DELAYED',
-    };
-  } else if (remainingDays <= 7) {
-    // Within 7 days of deadline - at risk
-    return {
-      delayDays: 0,
-      delayStatus: 'AT_RISK',
-    };
+    return { delayDays: Math.abs(remainingDays), delayStatus: 'DELAYED' };
   }
-  
-  return {
-    delayDays: 0,
-    delayStatus: 'NOT_DELAYED',
-  };
+  if (remainingDays <= 7) {
+    return { delayDays: 0, delayStatus: 'AT_RISK' };
+  }
+  return { delayDays: 0, delayStatus: 'NOT_DELAYED' };
 }
 
 /**
