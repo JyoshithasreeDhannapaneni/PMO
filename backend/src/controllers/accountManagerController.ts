@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { query } from '../config/database';
 import { asyncHandler } from '../middleware/errorHandler';
+import { calculateDelay } from '../utils/delayCalculator';
 
 export const accountManagerController = {
   getView: asyncHandler(async (req: Request, res: Response): Promise<void> => {
@@ -90,9 +91,10 @@ export const accountManagerController = {
           entry.accountManager = row.account_manager;
         }
 
-        // Attention checks for migration
-        if (row.delay_status === 'DELAYED') {
-          entry.attentionReasons.push(`Migration delayed ${row.delay_days} days`);
+        // Attention checks for migration (use live computed delay)
+        const track = entry.migrationTracks[entry.migrationTracks.length - 1];
+        if (track?.delayStatus === 'DELAYED') {
+          entry.attentionReasons.push(`Migration delayed ${track.delayDays} days`);
         }
         if (row.is_escalated) {
           entry.attentionReasons.push(`Escalated (${row.escalation_priority || 'MEDIUM'})`);
@@ -118,6 +120,21 @@ export const accountManagerController = {
 };
 
 function mapProjectRow(row: any) {
+  // Compute delay live so it's always accurate (never stale from DB)
+  let liveDelayStatus = row.delay_status;
+  let liveDelayDays   = Number(row.delay_days) || 0;
+  if (row.status !== 'COMPLETED' && row.status !== 'CANCELLED' &&
+      row.planned_start && row.planned_end) {
+    const result = calculateDelay(
+      new Date(row.planned_start),
+      new Date(row.planned_end),
+      row.actual_start ? new Date(row.actual_start) : null,
+      row.actual_end   ? new Date(row.actual_end)   : null,
+    );
+    liveDelayStatus = result.delayStatus;
+    liveDelayDays   = result.delayDays;
+  }
+
   return {
     id: row.id,
     name: row.name,
@@ -126,8 +143,8 @@ function mapProjectRow(row: any) {
     accountManager: row.account_manager,
     phase: row.phase,
     status: row.status,
-    delayStatus: row.delay_status,
-    delayDays: row.delay_days,
+    delayStatus: liveDelayStatus,
+    delayDays: liveDelayDays,
     planType: row.plan_type,
     plannedStart: row.planned_start,
     plannedEnd: row.planned_end,
