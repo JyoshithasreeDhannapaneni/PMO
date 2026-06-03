@@ -42,10 +42,13 @@ export function calculateDelay(
   }
 
   // Ongoing project — compare today against expected end
-  const remainingDays = Math.ceil((expectedEnd.getTime() - currentDate.getTime()) / MS_PER_DAY);
+  const rawDiffMs = expectedEnd.getTime() - currentDate.getTime();
+  const remainingDays = Math.ceil(rawDiffMs / MS_PER_DAY);
 
-  if (remainingDays < 0) {
-    return { delayDays: Math.abs(remainingDays), delayStatus: 'DELAYED' };
+  if (rawDiffMs < 0) {
+    // Past the expected end — use floor so we show complete days of delay
+    const delayDays = Math.floor(-rawDiffMs / MS_PER_DAY);
+    return { delayDays, delayStatus: 'DELAYED' };
   }
   if (remainingDays <= 7) {
     return { delayDays: 0, delayStatus: 'AT_RISK' };
