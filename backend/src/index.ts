@@ -43,6 +43,7 @@ import serverAlertRoutes from './routes/serverAlertRoutes';
 import { logger } from './utils/logger';
 import { authService } from './services/authService';
 import { templateService } from './services/templateService';
+import { projectService } from './services/projectService';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -389,6 +390,13 @@ app.listen(PORT, async () => {
     await templateService.seedDefaultTemplates();
   } catch (error) {
     logger.warn('Could not seed templates (may already exist)');
+  }
+
+  try {
+    const refreshed = await projectService.updateAllDelays();
+    logger.info(`🔄 Delay recalculation on startup: ${refreshed} projects updated`);
+  } catch (error) {
+    logger.warn('Startup delay recalculation failed (non-fatal):', error);
   }
 
   if (process.env.ENABLE_CRON_JOBS === 'true') {
