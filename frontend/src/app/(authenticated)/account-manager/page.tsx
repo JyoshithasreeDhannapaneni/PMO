@@ -159,13 +159,17 @@ export default function AccountManagerPage() {
     else { setSortKey(key); setSortDir('asc'); }
   }
 
-  // Build flat project rows from accounts
+  // Build ONE consolidated row per customer account
   const tabAccounts = activeTab === 'poc' ? pocAccounts : migrationAccounts;
 
-  const allRows: ProjectRow[] = tabAccounts.flatMap(account => {
+  const DELAY_RANK: Record<string, number> = { DELAYED: 3, AT_RISK: 2, NOT_DELAYED: 1 };
+  const STATUS_RANK: Record<string, number> = { ACTIVE: 5, ON_HOLD: 4, INACTIVE: 3, COMPLETED: 2, CANCELLED: 1 };
+
+  const allRows: ProjectRow[] = tabAccounts.map(account => {
+    // ── POC tab: one row from the POC track ──────────────────────────────────
     if (activeTab === 'poc' && account.pocTrack) {
       const poc = account.pocTrack as any;
-      return [{
+      return {
         id: poc.id,
         name: poc.name || account.customerName,
         customerName: account.customerName,
@@ -182,46 +186,63 @@ export default function AccountManagerPage() {
         migrationTypes: poc.migrationTypes || '',
         trackType: 'poc' as const,
         pocOutcome: poc.pocOutcome,
+        isEscalated: !!poc.isEscalated,
         ...poc,
-      }];
+      } as ProjectRow;
     }
-    // Consolidate tracks with the same project name — merge their migration types
-    const consolidated: Record<string, ProjectRow> = {};
-    for (const m of (account.migrationTracks || [])) {
-      const key = (m.name || '').toLowerCase().trim();
-      if (consolidated[key]) {
-        // Merge migration types from duplicate project rows
-        const prev = consolidated[key].migrationTypes || '';
-        const next = m.migrationTypes || '';
-        const merged = Array.from(new Set(
-          [...prev.split(','), ...next.split(',')]
-            .map((t: string) => t.trim())
-            .filter(Boolean)
-        ));
-        consolidated[key].migrationTypes = merged.join(', ');
-      } else {
-        consolidated[key] = {
-          id: m.id,
-          name: m.name,
-          customerName: account.customerName,
-          accountManager: account.accountManager,
-          needsAttention: account.needsAttention,
-          projectManager: m.projectManager || '',
-          status: m.status || '',
-          phase: m.phase || '',
-          delayStatus: m.delayStatus || '',
-          delayDays: m.delayDays,
-          planType: m.planType || '',
-          actualStart: m.actualStart || null,
-          plannedEnd: m.plannedEnd || null,
-          migrationTypes: m.migrationTypes || '',
-          trackType: 'migration' as const,
-          ...m,
-        };
-      }
-    }
-    return Object.values(consolidated);
-  });
+
+    // ── Migration tab: merge ALL tracks for this customer into one row ────────
+    const tracks: any[] = account.migrationTracks || [];
+    if (tracks.length === 0) return null;
+
+    // Combine all migration types (de-duplicated)
+    const allTypes = Array.from(new Set(
+      tracks.flatMap((m: any) =>
+        (m.migrationTypes || '').split(',').map((t: string) => t.trim()).filter(Boolean)
+      )
+    ));
+
+    // All distinct project managers
+    const allPMNames = Array.from(new Set(tracks.map((m: any) => m.projectManager).filter(Boolean)));
+
+    // Worst delay status
+    const worstDelay = tracks.reduce((w: any, m: any) =>
+      (DELAY_RANK[m.delayStatus] || 0) > (DELAY_RANK[w.delayStatus] || 0) ? m : w
+    , tracks[0]);
+
+    // Most active status
+    const worstStatus = tracks.reduce((w: any, m: any) =>
+      (STATUS_RANK[m.status] || 0) > (STATUS_RANK[w.status] || 0) ? m : w
+    , tracks[0]);
+
+    // Earliest kickoff, latest planned end
+    const starts = tracks.map((m: any) => m.actualStart).filter(Boolean).sort();
+    const ends   = tracks.map((m: any) => m.plannedEnd).filter(Boolean).sort();
+
+    // Any escalated project means this row is escalated
+    const anyEscalated = tracks.some((m: any) => m.isEscalated);
+
+    const primary = tracks[0];
+
+    return {
+      id: primary.id,
+      name: primary.name,
+      customerName: account.customerName,
+      accountManager: account.accountManager,
+      needsAttention: account.needsAttention,
+      projectManager: allPMNames.join(', '),
+      status: worstStatus.status || '',
+      phase: worstDelay.phase || primary.phase || '',
+      delayStatus: worstDelay.delayStatus || '',
+      delayDays: worstDelay.delayDays,
+      planType: primary.planType || '',
+      actualStart: starts[0] || null,
+      plannedEnd: ends[ends.length - 1] || null,
+      migrationTypes: allTypes.join(', '),
+      trackType: 'migration' as const,
+      isEscalated: anyEscalated,
+    } as ProjectRow;
+  }).filter(Boolean) as ProjectRow[];
 
   const allPMs = Array.from(new Set(allRows.map(r => r.projectManager).filter(Boolean))).sort() as string[];
   const allAMs = Array.from(new Set(allRows.map(r => r.accountManager).filter(Boolean))).sort() as string[];
@@ -262,12 +283,6 @@ export default function AccountManagerPage() {
         return sortDir === 'asc' ? cmp : -cmp;
       })
     : filteredRows;
-
-  // Determine which customers have multiple projects (for the badge)
-  const customerProjectCount = allRows.reduce<Record<string, number>>((acc, r) => {
-    acc[r.customerName] = (acc[r.customerName] || 0) + 1;
-    return acc;
-  }, {});
 
   const activeFilterCount = [search, statusFilter, phaseFilter, delayFilter, planFilter, pmFilter, amFilter, attentionFilter].filter(Boolean).length;
 
@@ -455,14 +470,9 @@ export default function AccountManagerPage() {
                       <div className="flex flex-col gap-0.5">
                         <div className="flex items-center gap-1.5">
                           <span className="font-medium text-gray-900 capitalize">{row.name}</span>
-                          {row.needsAttention && (
-                            <span title="Needs Attention">
+                          {(row.delayStatus === 'DELAYED' || row.isEscalated) && (
+                            <span title={row.isEscalated ? 'Escalated' : 'Delayed'}>
                               <AlertTriangle className="w-3.5 h-3.5 text-orange-500 flex-shrink-0" />
-                            </span>
-                          )}
-                          {(customerProjectCount[row.customerName] || 0) > 1 && (
-                            <span className="text-[10px] px-1.5 py-0.5 bg-indigo-50 text-indigo-500 rounded-full font-medium border border-indigo-100">
-                              {customerProjectCount[row.customerName]} projects
                             </span>
                           )}
                         </div>
