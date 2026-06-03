@@ -185,24 +185,42 @@ export default function AccountManagerPage() {
         ...poc,
       }];
     }
-    return (account.migrationTracks || []).map((m: any) => ({
-      id: m.id,
-      name: m.name,
-      customerName: account.customerName,
-      accountManager: account.accountManager,
-      needsAttention: account.needsAttention,
-      projectManager: m.projectManager || '',
-      status: m.status || '',
-      phase: m.phase || '',
-      delayStatus: m.delayStatus || '',
-      delayDays: m.delayDays,
-      planType: m.planType || '',
-      actualStart: m.actualStart || null,
-      plannedEnd: m.plannedEnd || null,
-      migrationTypes: m.migrationTypes || '',
-      trackType: 'migration' as const,
-      ...m,
-    }));
+    // Consolidate tracks with the same project name — merge their migration types
+    const consolidated: Record<string, ProjectRow> = {};
+    for (const m of (account.migrationTracks || [])) {
+      const key = (m.name || '').toLowerCase().trim();
+      if (consolidated[key]) {
+        // Merge migration types from duplicate project rows
+        const prev = consolidated[key].migrationTypes || '';
+        const next = m.migrationTypes || '';
+        const merged = Array.from(new Set(
+          [...prev.split(','), ...next.split(',')]
+            .map((t: string) => t.trim())
+            .filter(Boolean)
+        ));
+        consolidated[key].migrationTypes = merged.join(', ');
+      } else {
+        consolidated[key] = {
+          id: m.id,
+          name: m.name,
+          customerName: account.customerName,
+          accountManager: account.accountManager,
+          needsAttention: account.needsAttention,
+          projectManager: m.projectManager || '',
+          status: m.status || '',
+          phase: m.phase || '',
+          delayStatus: m.delayStatus || '',
+          delayDays: m.delayDays,
+          planType: m.planType || '',
+          actualStart: m.actualStart || null,
+          plannedEnd: m.plannedEnd || null,
+          migrationTypes: m.migrationTypes || '',
+          trackType: 'migration' as const,
+          ...m,
+        };
+      }
+    }
+    return Object.values(consolidated);
   });
 
   const allPMs = Array.from(new Set(allRows.map(r => r.projectManager).filter(Boolean))).sort() as string[];
