@@ -123,16 +123,20 @@ function mapProjectRow(row: any) {
   // Compute delay live so it's always accurate (never stale from DB)
   let liveDelayStatus = row.delay_status;
   let liveDelayDays   = Number(row.delay_days) || 0;
-  if (row.status !== 'COMPLETED' && row.status !== 'CANCELLED' &&
-      row.planned_start && row.planned_end) {
-    const result = calculateDelay(
-      new Date(row.planned_start),
-      new Date(row.planned_end),
-      row.actual_start ? new Date(row.actual_start) : null,
-      row.actual_end   ? new Date(row.actual_end)   : null,
-    );
-    liveDelayStatus = result.delayStatus;
-    liveDelayDays   = result.delayDays;
+  let expectedEnd: string | null = null;
+
+  if (row.planned_start && row.planned_end) {
+    const ps = new Date(row.planned_start);
+    const pe = new Date(row.planned_end);
+    const as = row.actual_start ? new Date(row.actual_start) : null;
+    const expEnd = as ? new Date(as.getTime() + (pe.getTime() - ps.getTime())) : pe;
+    expectedEnd = expEnd.toISOString().split('T')[0];
+
+    if (row.status !== 'COMPLETED' && row.status !== 'CANCELLED') {
+      const result = calculateDelay(ps, pe, as, row.actual_end ? new Date(row.actual_end) : null);
+      liveDelayStatus = result.delayStatus;
+      liveDelayDays   = result.delayDays;
+    }
   }
 
   return {
@@ -145,6 +149,7 @@ function mapProjectRow(row: any) {
     status: row.status,
     delayStatus: liveDelayStatus,
     delayDays: liveDelayDays,
+    expectedEnd,
     planType: row.plan_type,
     plannedStart: row.planned_start,
     plannedEnd: row.planned_end,

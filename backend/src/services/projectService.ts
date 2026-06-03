@@ -105,6 +105,24 @@ export interface PaginationOptions {
 }
 
 function mapProjectRow(row: any) {
+  // Compute delay live so all pages reflect current status without waiting for cron
+  let liveDelayStatus = row.delay_status;
+  let liveDelayDays   = Number(row.delay_days) || 0;
+  let expectedEnd: Date | null = null;
+
+  if (row.planned_start && row.planned_end) {
+    const ps = new Date(row.planned_start);
+    const pe = new Date(row.planned_end);
+    const as = row.actual_start ? new Date(row.actual_start) : null;
+    expectedEnd = as ? new Date(as.getTime() + (pe.getTime() - ps.getTime())) : pe;
+
+    if (row.status !== 'COMPLETED' && row.status !== 'CANCELLED') {
+      const result = calculateDelay(ps, pe, as, row.actual_end ? new Date(row.actual_end) : null);
+      liveDelayStatus = result.delayStatus;
+      liveDelayDays   = result.delayDays;
+    }
+  }
+
   return {
     id: row.id,
     name: row.name,
@@ -114,10 +132,11 @@ function mapProjectRow(row: any) {
     planType: row.plan_type,
     plannedStart: row.planned_start,
     plannedEnd: row.planned_end,
+    expectedEnd: expectedEnd ? expectedEnd.toISOString().split('T')[0] : null,
     actualStart: row.actual_start,
     actualEnd: row.actual_end,
-    delayDays: row.delay_days,
-    delayStatus: row.delay_status,
+    delayDays: liveDelayDays,
+    delayStatus: liveDelayStatus,
     phase: row.phase,
     status: row.status,
     migrationTypes: row.migration_types,
