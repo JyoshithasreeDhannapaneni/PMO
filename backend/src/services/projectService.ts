@@ -116,11 +116,14 @@ function mapProjectRow(row: any) {
     const as = row.actual_start ? new Date(row.actual_start) : null;
     expectedEnd = as ? new Date(as.getTime() + (pe.getTime() - ps.getTime())) : pe;
 
-    if (row.status !== 'COMPLETED' && row.status !== 'CANCELLED') {
-      const result = calculateDelay(ps, pe, as, row.actual_end ? new Date(row.actual_end) : null);
-      liveDelayStatus = result.delayStatus;
-      liveDelayDays   = result.delayDays;
-    }
+    // Only pass actualEnd for truly finished projects — ACTIVE/ON_HOLD projects
+    // may have actualEnd filled as "expected end" by users, which would cause
+    // calculateDelay to treat them as completed (always NOT_DELAYED).
+    const isFinished = row.status === 'COMPLETED' || row.status === 'CANCELLED';
+    const actualEndForDelay = isFinished && row.actual_end ? new Date(row.actual_end) : null;
+    const result = calculateDelay(ps, pe, as, actualEndForDelay);
+    liveDelayStatus = result.delayStatus;
+    liveDelayDays   = result.delayDays;
   }
 
   return {
@@ -721,9 +724,10 @@ class ProjectService {
     let updatedCount = 0;
 
     for (const row of result.rows) {
+      // ACTIVE/ON_HOLD: ignore actualEnd (may be filled as "expected end" by users)
       const { delayDays, delayStatus } = calculateDelay(
         row.planned_start, row.planned_end,
-        row.actual_start, row.actual_end
+        row.actual_start, null
       );
 
       if (delayDays !== row.delay_days || delayStatus !== row.delay_status) {
