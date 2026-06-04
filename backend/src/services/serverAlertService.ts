@@ -174,17 +174,32 @@ class ServerAlertService {
 
   private async resolveTenantId(): Promise<string> {
     const configured = process.env.MICROSOFT_TENANT_ID;
-    if (configured && configured !== 'common') return configured;
-    // Auto-discover from email domain
+    // Must be a real tenant GUID or domain — 'common' does not work with client_credentials
+    if (configured && configured !== 'common') {
+      logger.info(`[Graph] Using tenant from env: ${configured}`);
+      return configured;
+    }
+    // Auto-discover from the sender email's domain
     try {
       const fromEmail = process.env.ALERT_FROM_EMAIL || 'Bharath.Tummaganti@cloudfuze.com';
       const domain = fromEmail.split('@')[1];
+      logger.info(`[Graph] Auto-discovering tenant for domain: ${domain}`);
       const res = await fetch(`https://login.microsoftonline.com/${domain}/.well-known/openid-configuration`);
       const data = await res.json() as any;
       const match = (data.token_endpoint as string)?.match(/\/([a-f0-9-]{36})\//);
-      if (match?.[1]) return match[1];
-    } catch {}
-    return 'common';
+      if (match?.[1]) {
+        logger.info(`[Graph] Discovered tenant ID: ${match[1]}`);
+        return match[1];
+      }
+      logger.warn(`[Graph] Discovery response did not contain a tenant GUID. token_endpoint=${data.token_endpoint}`);
+    } catch (err: any) {
+      logger.warn(`[Graph] Tenant auto-discovery threw: ${err.message}`);
+    }
+    // 'common' will be rejected by AAD for client_credentials — surface this clearly
+    throw new Error(
+      'Cannot determine Microsoft tenant ID. Set MICROSOFT_TENANT_ID to your Azure AD tenant GUID in .env ' +
+      '(find it in Azure Portal → Azure Active Directory → Overview → Tenant ID).'
+    );
   }
 
   private async sendViaGraph(to: string, subject: string, html: string): Promise<void> {
@@ -192,11 +207,13 @@ class ServerAlertService {
     const clientSecret = process.env.MICROSOFT_CLIENT_SECRET;
     const fromEmail = process.env.ALERT_FROM_EMAIL || 'Bharath.Tummaganti@cloudfuze.com';
 
-    if (!clientId || !clientSecret) throw new Error('MICROSOFT_CLIENT_ID and MICROSOFT_CLIENT_SECRET must be set in .env');
+    if (!clientId || !clientSecret) {
+      throw new Error('MICROSOFT_CLIENT_ID and MICROSOFT_CLIENT_SECRET must be set in .env');
+    }
 
     const tenantId = await this.resolveTenantId();
+    logger.info(`[Graph] Requesting token for tenant=${tenantId} clientId=${clientId.slice(0, 8)}…`);
 
-    // Get access token via client credentials
     const tokenRes = await fetch(`https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -210,10 +227,12 @@ class ServerAlertService {
 
     const tokenData = await tokenRes.json() as any;
     if (!tokenData.access_token) {
-      throw new Error(`Failed to get Microsoft token: ${tokenData.error_description || tokenData.error}`);
+      const detail = tokenData.error_description || tokenData.error || JSON.stringify(tokenData);
+      logger.error(`[Graph] Token request failed (HTTP ${tokenRes.status}): ${detail}`);
+      throw new Error(`Microsoft token request failed: ${detail}`);
     }
+    logger.info(`[Graph] Token acquired — sending to ${to} from ${fromEmail}`);
 
-    // Send email via Graph API
     const sendRes = await fetch(`https://graph.microsoft.com/v1.0/users/${fromEmail}/sendMail`, {
       method: 'POST',
       headers: {
@@ -232,8 +251,10 @@ class ServerAlertService {
 
     if (!sendRes.ok) {
       const errText = await sendRes.text();
-      throw new Error(`Graph API error (${sendRes.status}): ${errText}`);
+      logger.error(`[Graph] sendMail failed (HTTP ${sendRes.status}): ${errText}`);
+      throw new Error(`Graph API sendMail failed (${sendRes.status}): ${errText}`);
     }
+    logger.info(`[Graph] Email sent successfully to ${to}`);
   }
 
   async sendAlert(project: AlertProject, type: AlertType, daysRemaining: number): Promise<{ success: boolean; error?: string }> {

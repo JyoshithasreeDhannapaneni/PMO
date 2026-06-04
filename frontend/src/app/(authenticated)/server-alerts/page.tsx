@@ -62,14 +62,18 @@ export default function ServerAlertsPage() {
     setSending(id);
     try {
       const result = await authFetch(`${API_BASE}/api/server-alerts/${id}/send`, { method: 'POST' });
+      console.log('[ServerAlerts] sendManual result:', result);
       if (result.success) {
         showToast('success', 'Email sent successfully');
         qc.invalidateQueries({ queryKey: ['server-alerts-status'] });
         qc.invalidateQueries({ queryKey: ['server-alerts-logs'] });
       } else {
-        showToast('error', 'Failed to send email', result.error || 'Unknown error');
+        const errMsg = result.error || result.message || 'Unknown error — check browser console and backend logs';
+        console.error('[ServerAlerts] Send failed:', errMsg);
+        showToast('error', 'Failed to send email', errMsg);
       }
     } catch (err: any) {
+      console.error('[ServerAlerts] Fetch/parse error:', err);
       showToast('error', 'Failed to send email', err.message || 'Network error');
     } finally {
       setSending(null);
