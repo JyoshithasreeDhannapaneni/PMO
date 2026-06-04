@@ -460,9 +460,9 @@ export default function AccountManagerPage() {
         </Card>
       ) : (
         <Card className="overflow-hidden">
-          <div className="overflow-x-auto">
+          <div className="overflow-auto max-h-[calc(100vh-14rem)]">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b border-gray-100">
+              <thead className="bg-gray-50 border-b border-gray-100 sticky top-0 z-10">
                 <tr>
                   <SortTh label="Project"         sortKey="name"           current={sortKey} dir={sortDir} onSort={handleSort} />
                   <SortTh label="Migration Types" sortKey="migrationTypes"  current={sortKey} dir={sortDir} onSort={handleSort} />

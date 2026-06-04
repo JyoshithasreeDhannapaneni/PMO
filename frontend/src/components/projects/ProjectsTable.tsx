@@ -383,9 +383,9 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
   return (
     <div>
       {/* Table */}
-      <div className="overflow-x-auto">
+      <div className="overflow-auto max-h-[calc(100vh-14rem)]">
         <table className="w-full">
-          <thead className="bg-blue-50/60 border-b border-gray-200">
+          <thead className="bg-blue-50/60 border-b border-gray-200 sticky top-0 z-10">
             <tr>
               <SortHeader field="name" label="Project Name" />
               <SortHeader field="projectManager" label="Project Manager" />
