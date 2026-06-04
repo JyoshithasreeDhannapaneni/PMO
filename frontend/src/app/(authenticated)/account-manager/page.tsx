@@ -36,7 +36,7 @@ const PLAN_BADGE: Record<string, string> = {
 type SortKey =
   | 'name' | 'customerName' | 'accountManager' | 'projectManager'
   | 'status' | 'phase' | 'delayStatus' | 'planType'
-  | 'actualStart' | 'plannedEnd' | 'expectedEnd' | 'migrationTypes' | 'pocOutcome';
+  | 'actualStart' | 'plannedStart' | 'plannedEnd' | 'expectedEnd' | 'migrationTypes' | 'pocOutcome';
 type SortDir = 'asc' | 'desc';
 
 function scrollTo(ref: React.RefObject<HTMLDivElement>) {
@@ -96,6 +96,18 @@ function fmtDate(d: string | null | undefined) {
   try { return new Date(d).toLocaleDateString(); } catch { return '—'; }
 }
 
+function sowDuration(plannedStart: string | null | undefined, plannedEnd: string | null | undefined): string {
+  if (!plannedStart || !plannedEnd) return '—';
+  try {
+    const s = new Date(plannedStart);
+    const e = new Date(plannedEnd);
+    const months = (e.getFullYear() - s.getFullYear()) * 12 + (e.getMonth() - s.getMonth());
+    const extraDays = e.getDate() - s.getDate();
+    const total = extraDays > 7 ? months + 1 : Math.max(months, 1);
+    return `${total} month${total !== 1 ? 's' : ''}`;
+  } catch { return '—'; }
+}
+
 type ProjectRow = {
   id: string | number;
   name: string;
@@ -109,6 +121,7 @@ type ProjectRow = {
   delayDays?: number;
   planType: string;
   actualStart: string | null;
+  plannedStart: string | null;
   plannedEnd: string | null;
   expectedEnd: string | null;
   migrationTypes: string;
@@ -216,8 +229,9 @@ export default function AccountManagerPage() {
       (STATUS_RANK[m.status] || 0) > (STATUS_RANK[w.status] || 0) ? m : w
     , tracks[0]);
 
-    // Earliest kickoff, latest planned end, latest expected end
+    // Earliest kickoff, earliest SOW start, latest SOW end, latest expected end
     const starts       = tracks.map((m: any) => m.actualStart).filter(Boolean).sort();
+    const sowStarts    = tracks.map((m: any) => m.plannedStart).filter(Boolean).sort();
     const ends         = tracks.map((m: any) => m.plannedEnd).filter(Boolean).sort();
     const expectedEnds = tracks.map((m: any) => m.expectedEnd).filter(Boolean).sort();
 
@@ -239,6 +253,7 @@ export default function AccountManagerPage() {
       delayDays: worstDelay.delayDays,
       planType: primary.planType || '',
       actualStart: starts[0] || null,
+      plannedStart: sowStarts[0] || null,
       plannedEnd: ends[ends.length - 1] || null,
       expectedEnd: expectedEnds[expectedEnds.length - 1] || null,
       migrationTypes: allTypes.join(', '),
@@ -457,6 +472,9 @@ export default function AccountManagerPage() {
                   <SortTh label="Phase"           sortKey="phase"           current={sortKey} dir={sortDir} onSort={handleSort} />
                   <SortTh label="Delay"           sortKey="delayStatus"     current={sortKey} dir={sortDir} onSort={handleSort} />
                   <SortTh label="Plan"            sortKey="planType"        current={sortKey} dir={sortDir} onSort={handleSort} />
+                  <SortTh label="SOW Start"       sortKey="plannedStart"    current={sortKey} dir={sortDir} onSort={handleSort} />
+                  <SortTh label="SOW End"         sortKey="plannedEnd"      current={sortKey} dir={sortDir} onSort={handleSort} />
+                  <th className="text-left px-4 py-3 font-medium text-gray-600 whitespace-nowrap">Duration</th>
                   <SortTh label="Kickoff Date"    sortKey="actualStart"     current={sortKey} dir={sortDir} onSort={handleSort} />
                   {activeTab === 'poc'
                     ? <SortTh label="POC Outcome"  sortKey="pocOutcome"   current={sortKey} dir={sortDir} onSort={handleSort} />
@@ -533,6 +551,29 @@ export default function AccountManagerPage() {
                           {row.planType}
                         </span>
                       ) : '—'}
+                    </td>
+
+                    {/* SOW Start */}
+                    <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-600">
+                      <span className="flex items-center gap-1">
+                        <CalendarDays className="w-3 h-3 text-gray-400" />
+                        {fmtDate(row.plannedStart)}
+                      </span>
+                    </td>
+
+                    {/* SOW End */}
+                    <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-600">
+                      <span className="flex items-center gap-1">
+                        <CalendarDays className="w-3 h-3 text-gray-400" />
+                        {fmtDate(row.plannedEnd)}
+                      </span>
+                    </td>
+
+                    {/* Duration */}
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-blue-50 text-blue-700">
+                        {sowDuration(row.plannedStart, row.plannedEnd)}
+                      </span>
                     </td>
 
                     {/* Kickoff Date */}
