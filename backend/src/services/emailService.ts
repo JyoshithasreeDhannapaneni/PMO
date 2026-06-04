@@ -70,6 +70,7 @@ function brandedEmail(title: string, body: string, accentColor = BRAND_COLOR): s
 
 async function resolveTenantId(): Promise<string> {
   const configured = process.env.MICROSOFT_TENANT_ID;
+  // 'common' does not work with client_credentials — must be a real tenant GUID or domain
   if (configured && configured !== 'common') return configured;
   try {
     const fromEmail = process.env.ALERT_FROM_EMAIL || 'Bharath.Tummaganti@cloudfuze.com';
@@ -78,8 +79,14 @@ async function resolveTenantId(): Promise<string> {
     const data = await res.json() as any;
     const match = (data.token_endpoint as string)?.match(/\/([a-f0-9-]{36})\//);
     if (match?.[1]) return match[1];
-  } catch {}
-  return 'common';
+    logger.warn(`[Graph/Email] Discovery response missing tenant GUID for domain ${domain}`);
+  } catch (err: any) {
+    logger.warn(`[Graph/Email] Tenant discovery threw: ${err.message}`);
+  }
+  throw new Error(
+    'Cannot determine Microsoft tenant ID. Set MICROSOFT_TENANT_ID to your Azure AD tenant GUID in .env ' +
+    '(Azure Portal → Azure Active Directory → Overview → Tenant ID).'
+  );
 }
 
 async function sendViaGraph(to: string, subject: string, html: string): Promise<void> {
@@ -104,7 +111,9 @@ async function sendViaGraph(to: string, subject: string, html: string): Promise<
 
   const tokenData = await tokenRes.json() as any;
   if (!tokenData.access_token) {
-    throw new Error(`Failed to get Microsoft token: ${tokenData.error_description || tokenData.error}`);
+    const detail = tokenData.error_description || tokenData.error || JSON.stringify(tokenData);
+    logger.error(`[Graph/Email] Token request failed: ${detail}`);
+    throw new Error(`Microsoft token request failed: ${detail}`);
   }
 
   const sendRes = await fetch(`https://graph.microsoft.com/v1.0/users/${fromEmail}/sendMail`, {
@@ -125,7 +134,8 @@ async function sendViaGraph(to: string, subject: string, html: string): Promise<
 
   if (!sendRes.ok) {
     const errText = await sendRes.text();
-    throw new Error(`Graph API error (${sendRes.status}): ${errText}`);
+    logger.error(`[Graph/Email] sendMail failed (HTTP ${sendRes.status}): ${errText}`);
+    throw new Error(`Graph API sendMail failed (${sendRes.status}): ${errText}`);
   }
 }
 
