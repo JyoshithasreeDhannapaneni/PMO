@@ -260,19 +260,19 @@ class ServerAlertService {
   async runDailyAlerts(): Promise<{ sent: number; skipped: number; failed: number }> {
     await this.ensureTable();
     const res = await query(
-      `SELECT id, name, customer_name, customer_contact, account_manager, actual_start, actual_end, status
+      `SELECT id, name, customer_name, customer_contact, account_manager, planned_start, planned_end, status
        FROM projects
        WHERE status NOT IN ('CANCELLED','CLOSED','DECOMMISSIONED')
          AND archived_at IS NULL
          AND customer_contact IS NOT NULL AND customer_contact LIKE '%@%'
-         AND actual_start IS NOT NULL AND actual_end IS NOT NULL`
+         AND planned_start IS NOT NULL AND planned_end IS NOT NULL`
     );
     let sent = 0, skipped = 0, failed = 0;
     for (const row of res.rows) {
       const project: AlertProject = {
         id: row.id, name: row.name, customerName: row.customer_name,
         customerContact: row.customer_contact, accountManager: row.account_manager,
-        plannedStart: row.actual_start, plannedEnd: row.actual_end, status: row.status,
+        plannedStart: row.planned_start, plannedEnd: row.planned_end, status: row.status,
       };
       const { type, daysRemaining } = this.getAlertType(project.plannedStart, project.plannedEnd);
       if (!type) { skipped++; continue; }
@@ -288,7 +288,7 @@ class ServerAlertService {
     await this.ensureTable();
     const res = await query(
       `SELECT p.id, p.name, p.customer_name, p.customer_contact, p.account_manager,
-              p.actual_start, p.actual_end, p.status, p.phase,
+              p.planned_start, p.planned_end, p.status, p.phase,
               l.alert_type as last_alert_type, l.sent_at as last_sent_at, l.success as last_success
        FROM projects p
        LEFT JOIN LATERAL (
@@ -297,15 +297,15 @@ class ServerAlertService {
        ) l ON true
        WHERE p.status NOT IN ('CANCELLED','CLOSED','DECOMMISSIONED')
          AND p.archived_at IS NULL
-         AND p.actual_start IS NOT NULL AND p.actual_end IS NOT NULL
-       ORDER BY p.actual_end ASC`
+         AND p.planned_start IS NOT NULL AND p.planned_end IS NOT NULL
+       ORDER BY p.planned_end ASC`
     );
     return res.rows.map((row: any) => {
-      const { type, daysRemaining, daysFromKickoff } = this.getAlertType(row.actual_start, row.actual_end);
+      const { type, daysRemaining, daysFromKickoff } = this.getAlertType(row.planned_start, row.planned_end);
       return {
         id: row.id, name: row.name, customerName: row.customer_name,
         customerContact: row.customer_contact, accountManager: row.account_manager,
-        plannedStart: row.actual_start, plannedEnd: row.actual_end,
+        plannedStart: row.planned_start, plannedEnd: row.planned_end,
         status: row.status, phase: row.phase,
         alertType: type, daysRemaining, daysFromKickoff,
         hasEmail: !!(row.customer_contact?.includes('@')),
@@ -330,17 +330,17 @@ class ServerAlertService {
   async sendManual(projectId: string): Promise<{ success: boolean; error?: string }> {
     await this.ensureTable();
     const res = await query(
-      `SELECT id, name, customer_name, customer_contact, account_manager, actual_start, actual_end, status
+      `SELECT id, name, customer_name, customer_contact, account_manager, planned_start, planned_end, status
        FROM projects WHERE id = $1`, [projectId]
     );
     if (!res.rows[0]) return { success: false, error: 'Project not found' };
     const row = res.rows[0];
     if (!row.customer_contact?.includes('@')) return { success: false, error: 'No valid email on project' };
-    if (!row.actual_start || !row.actual_end) return { success: false, error: 'Kickoff start or project end date missing' };
+    if (!row.planned_start || !row.planned_end) return { success: false, error: 'SOW start or end date missing' };
     const project: AlertProject = {
       id: row.id, name: row.name, customerName: row.customer_name,
       customerContact: row.customer_contact, accountManager: row.account_manager,
-      plannedStart: row.actual_start, plannedEnd: row.actual_end, status: row.status,
+      plannedStart: row.planned_start, plannedEnd: row.planned_end, status: row.status,
     };
     const { type, daysRemaining } = this.getAlertType(project.plannedStart, project.plannedEnd);
     return this.sendAlert(project, type || 'active', daysRemaining);
