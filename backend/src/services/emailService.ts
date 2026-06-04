@@ -1,7 +1,5 @@
 'use strict';
-import nodemailer from 'nodemailer';
 import { logger } from '../utils/logger';
-import { query } from '../config/database';
 
 export interface EmailOptions {
   to: string | string[];
@@ -70,75 +68,79 @@ function brandedEmail(title: string, body: string, accentColor = BRAND_COLOR): s
 </html>`;
 }
 
-/** Fetch active SMTP settings from the DB, falling back to env vars. */
-async function loadSmtpConfig(): Promise<{
-  host: string; port: number; user: string; pass: string; secure: boolean; from: string;
-} | null> {
-  // Try DB first
+async function resolveTenantId(): Promise<string> {
+  const configured = process.env.MICROSOFT_TENANT_ID;
+  if (configured && configured !== 'common') return configured;
   try {
-    const res = await query(`SELECT * FROM smtp_settings WHERE id = 1`);
-    const r = res.rows[0];
-    if (r && r.host && r.email) {
-      const secure = r.security === 'SSL';
-      return {
-        host: r.host,
-        port: Number(r.port) || 587,
-        user: r.email,
-        pass: r.password || '',
-        secure,
-        from: `"CloudFuze PMO" <${r.email}>`,
-      };
-    }
-  } catch {
-    // table might not exist yet — fall through to env
+    const fromEmail = process.env.ALERT_FROM_EMAIL || 'Bharath.Tummaganti@cloudfuze.com';
+    const domain = fromEmail.split('@')[1];
+    const res = await fetch(`https://login.microsoftonline.com/${domain}/.well-known/openid-configuration`);
+    const data = await res.json() as any;
+    const match = (data.token_endpoint as string)?.match(/\/([a-f0-9-]{36})\//);
+    if (match?.[1]) return match[1];
+  } catch {}
+  return 'common';
+}
+
+async function sendViaGraph(to: string, subject: string, html: string): Promise<void> {
+  const clientId = process.env.MICROSOFT_CLIENT_ID;
+  const clientSecret = process.env.MICROSOFT_CLIENT_SECRET;
+  const fromEmail = process.env.ALERT_FROM_EMAIL || 'Bharath.Tummaganti@cloudfuze.com';
+
+  if (!clientId || !clientSecret) throw new Error('MICROSOFT_CLIENT_ID and MICROSOFT_CLIENT_SECRET must be set in .env');
+
+  const tenantId = await resolveTenantId();
+
+  const tokenRes = await fetch(`https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'client_credentials',
+      client_id: clientId,
+      client_secret: clientSecret,
+      scope: 'https://graph.microsoft.com/.default',
+    }).toString(),
+  });
+
+  const tokenData = await tokenRes.json() as any;
+  if (!tokenData.access_token) {
+    throw new Error(`Failed to get Microsoft token: ${tokenData.error_description || tokenData.error}`);
   }
 
-  // Fall back to environment variables
-  if (process.env.SMTP_HOST && process.env.SMTP_USER) {
-    return {
-      host: process.env.SMTP_HOST,
-      port: parseInt(process.env.SMTP_PORT || '587'),
-      secure: process.env.SMTP_PORT === '465',
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS || '',
-      from: process.env.SMTP_FROM || `"CloudFuze PMO" <${process.env.SMTP_USER}>`,
-    };
-  }
+  const sendRes = await fetch(`https://graph.microsoft.com/v1.0/users/${fromEmail}/sendMail`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${tokenData.access_token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      message: {
+        subject,
+        body: { contentType: 'HTML', content: html },
+        toRecipients: [{ emailAddress: { address: to } }],
+      },
+      saveToSentItems: false,
+    }),
+  });
 
-  return null;
+  if (!sendRes.ok) {
+    const errText = await sendRes.text();
+    throw new Error(`Graph API error (${sendRes.status}): ${errText}`);
+  }
 }
 
 class EmailService {
-  /** Core send method — loads config fresh from DB every call so UI changes take effect immediately. */
   async sendEmail(options: EmailOptions): Promise<void> {
-    const to = Array.isArray(options.to) ? options.to.join(', ') : options.to;
-    const cfg = await loadSmtpConfig();
+    const recipients = Array.isArray(options.to) ? options.to : [options.to];
 
-    if (!cfg) {
-      logger.warn(`[EMAIL NO-OP] SMTP not configured. To: ${to} | Subject: ${options.subject}`);
-      return;
-    }
-
-    const transporter = nodemailer.createTransport({
-      host: cfg.host,
-      port: cfg.port,
-      secure: cfg.secure,
-      auth: { user: cfg.user, pass: cfg.pass },
-      tls: { rejectUnauthorized: false },
-    });
-
-    try {
-      const info = await transporter.sendMail({
-        from: cfg.from,
-        to,
-        subject: options.subject,
-        html: options.html,
-        text: options.text,
-      });
-      logger.info(`Email sent → ${to} | messageId: ${info.messageId}`);
-    } catch (err: any) {
-      logger.error(`Email failed → ${to} | ${err.message}`);
-      throw err;
+    for (const to of recipients) {
+      try {
+        await sendViaGraph(to, options.subject, options.html);
+        logger.info(`Email sent → ${to} | Subject: ${options.subject}`);
+      } catch (err: any) {
+        logger.error(`Email failed → ${to} | ${err.message}`);
+        throw err;
+      }
     }
   }
 
