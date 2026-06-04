@@ -203,12 +203,12 @@ class ServerAlertService {
   }
 
   private async sendViaGraph(to: string, subject: string, html: string): Promise<void> {
-    const clientId = process.env.MICROSOFT_CLIENT_ID;
-    const clientSecret = process.env.MICROSOFT_CLIENT_SECRET;
+    const clientId = process.env.AZURE_CLIENT_ID || process.env.MICROSOFT_CLIENT_ID;
+    const clientSecret = process.env.AZURE_CLIENT_SECRET || process.env.MICROSOFT_CLIENT_SECRET;
     const fromEmail = process.env.ALERT_FROM_EMAIL || 'Bharath.Tummaganti@cloudfuze.com';
 
     if (!clientId || !clientSecret) {
-      throw new Error('MICROSOFT_CLIENT_ID and MICROSOFT_CLIENT_SECRET must be set in .env');
+      throw new Error('AZURE_CLIENT_ID and AZURE_CLIENT_SECRET must be set in .env');
     }
 
     const tenantId = await this.resolveTenantId();
