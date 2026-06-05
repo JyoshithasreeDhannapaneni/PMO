@@ -90,16 +90,13 @@ export default function CaseStudiesPage() {
           : all);
       }
 
-      // Fetch completed projects without case studies
-      const projParams = new URLSearchParams({ status: 'COMPLETED' });
-      if (isManager && user?.name) projParams.set('projectManager', user.name);
-      const projResponse = await fetch(`${API_URL}/api/projects?${projParams}`, { headers });
-      const projData = await projResponse.json();
-      if (projData.success) {
-        const projectsWithoutCS = (projData.data || []).filter(
-          (p: Project) => !p.caseStudy
-        );
-        setCompletedProjects(projectsWithoutCS);
+      // Fetch phase=COMPLETED projects that don't have a case study yet
+      const awaitingParams = new URLSearchParams();
+      if (isManager && user?.name) awaitingParams.set('projectManager', user.name);
+      const awaitingResponse = await fetch(`${API_URL}/api/case-studies/awaiting?${awaitingParams}`, { headers });
+      const awaitingData = await awaitingResponse.json();
+      if (awaitingData.success) {
+        setCompletedProjects(awaitingData.data || []);
       }
     } catch (error) {
       console.error('Failed to fetch data:', error);
@@ -277,7 +274,7 @@ export default function CaseStudiesPage() {
         </Card>
       </div>
 
-      {/* Pending Case Studies - Auto-created from completed projects */}
+      {/* Pending Case Studies */}
       {stats.pending > 0 && (
         <Card className="border-2 border-yellow-300 bg-yellow-50">
           <div className="flex items-center justify-between mb-4">
@@ -288,7 +285,7 @@ export default function CaseStudiesPage() {
               <div>
                 <h3 className="text-lg font-semibold text-gray-900">Pending Case Studies</h3>
                 <p className="text-sm text-gray-600">
-                  These case studies were auto-created when projects were completed. Click to start documenting!
+                  Case studies awaiting documentation. Click to start writing.
                 </p>
               </div>
             </div>

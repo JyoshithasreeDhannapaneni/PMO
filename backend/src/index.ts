@@ -345,18 +345,6 @@ async function runMigrations() {
     `);
   } catch {}
 
-  // Archive projects that have phase=COMPLETED but no case study and no archived_at (legacy data)
-  // This runs AFTER archived_at is guaranteed to exist (added at top of runMigrations)
-  try {
-    await execute(`
-      UPDATE projects
-      SET archived_at = NOW(), archive_reason = 'CASE_STUDY_COMPLETED', archived_by = 'system'
-      WHERE phase = 'COMPLETED'
-        AND archived_at IS NULL
-        AND id NOT IN (SELECT project_id FROM case_studies)
-    `);
-  } catch {}
-
   // Server alert logs
   await execute(`CREATE TABLE IF NOT EXISTS server_alert_logs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

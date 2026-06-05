@@ -6,6 +6,9 @@ const router = Router();
 // GET /api/case-studies - Get all case studies
 router.get('/', caseStudyController.getAll);
 
+// GET /api/case-studies/awaiting - Projects with phase=COMPLETED but no case study yet
+router.get('/awaiting', caseStudyController.getAwaiting);
+
 // GET /api/case-studies/:id - Get case study by ID
 router.get('/:id', caseStudyController.getById);
 

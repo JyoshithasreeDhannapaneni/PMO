@@ -48,6 +48,16 @@ export const caseStudyController = {
   }),
 
   /**
+   * GET /api/case-studies/awaiting
+   * Projects with phase=COMPLETED but no case study yet
+   */
+  getAwaiting: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const projectManager = req.query.projectManager as string | undefined;
+    const projects = await caseStudyService.getAwaiting(projectManager);
+    res.json({ success: true, data: projects });
+  }),
+
+  /**
    * POST /api/case-studies
    * Create a new case study
    */
