@@ -188,16 +188,16 @@ class CaseStudyService {
       existing.status !== 'COMPLETED' && existing.status !== 'PUBLISHED'
     ) {
       try {
-        await execute(
-          `UPDATE projects
-           SET archived_at = NOW(), archive_reason = 'CASE_STUDY_COMPLETED',
-               archived_by = 'system', status = 'COMPLETED'
-           WHERE id = $1 AND archived_at IS NULL`,
+        // Step 1: set archived_at (safe regardless of status column type)
+        const r1 = await execute(
+          `UPDATE projects SET archived_at = NOW(), archive_reason = 'CASE_STUDY_COMPLETED', archived_by = 'system' WHERE id = $1 AND archived_at IS NULL`,
           [existing.project_id]
         );
-        logger.info(`Auto-archived project ${existing.project_id} after case study completion`);
-      } catch (err) {
-        logger.warn(`Could not auto-archive project ${existing.project_id}: ${err}`);
+        logger.info(`[CaseStudy] archived_at set for project ${existing.project_id} — rows: ${r1.rowCount}`);
+        // Step 2: mark project COMPLETED (separate statement avoids ENUM cast issue on some servers)
+        await execute(`UPDATE projects SET status = 'COMPLETED' WHERE id = $1`, [existing.project_id]);
+      } catch (err: any) {
+        logger.error(`[CaseStudy] Failed to archive project ${existing.project_id}: ${err?.message || err}`);
       }
     }
 

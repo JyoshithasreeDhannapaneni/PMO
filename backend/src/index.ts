@@ -114,8 +114,12 @@ async function columnExists(table: string, column: string): Promise<boolean> {
 }
 
 async function runMigrations() {
+  // Convert ENUM columns to VARCHAR so queries can use values like 'CLOSED','DECOMMISSIONED'
+  // that are not in the original ENUM definition without throwing a type error.
   const alterStatements = [
     `ALTER TABLE projects ALTER COLUMN phase TYPE VARCHAR(50)`,
+    `ALTER TABLE projects ALTER COLUMN status TYPE VARCHAR(50)`,
+    `ALTER TABLE projects ALTER COLUMN delay_status TYPE VARCHAR(50)`,
     `ALTER TABLE projects ALTER COLUMN plan_type TYPE VARCHAR(50)`,
     `ALTER TABLE projects ALTER COLUMN migration_types TYPE VARCHAR(500)`,
     `ALTER TABLE projects ALTER COLUMN source_platform TYPE VARCHAR(500)`,
@@ -123,6 +127,20 @@ async function runMigrations() {
   ];
   for (const sql of alterStatements) {
     try { await execute(sql); } catch { /* already correct type — ignore */ }
+  }
+
+  // Archive columns must exist BEFORE any migration that references archived_at
+  if (!await columnExists('projects', 'archived_at')) {
+    try { await execute(`ALTER TABLE projects ADD COLUMN archived_at TIMESTAMP NULL`); } catch {}
+  }
+  if (!await columnExists('projects', 'archive_reason')) {
+    try { await execute(`ALTER TABLE projects ADD COLUMN archive_reason VARCHAR(50) NULL`); } catch {}
+  }
+  if (!await columnExists('projects', 'archived_by')) {
+    try { await execute(`ALTER TABLE projects ADD COLUMN archived_by VARCHAR(100) NULL`); } catch {}
+  }
+  if (!await columnExists('projects', 'restore_count')) {
+    try { await execute(`ALTER TABLE projects ADD COLUMN restore_count INT NOT NULL DEFAULT 0`); } catch {}
   }
 
   if (!await columnExists('projects', 'number_of_servers')) {
@@ -328,6 +346,7 @@ async function runMigrations() {
   } catch {}
 
   // Archive projects that have phase=COMPLETED but no case study and no archived_at (legacy data)
+  // This runs AFTER archived_at is guaranteed to exist (added at top of runMigrations)
   try {
     await execute(`
       UPDATE projects
@@ -337,20 +356,6 @@ async function runMigrations() {
         AND id NOT IN (SELECT project_id FROM case_studies)
     `);
   } catch {}
-
-  // Archive columns — must exist before getAll filters on archived_at
-  if (!await columnExists('projects', 'archived_at')) {
-    try { await execute(`ALTER TABLE projects ADD COLUMN archived_at TIMESTAMP NULL`); } catch {}
-  }
-  if (!await columnExists('projects', 'archive_reason')) {
-    try { await execute(`ALTER TABLE projects ADD COLUMN archive_reason VARCHAR(50) NULL`); } catch {}
-  }
-  if (!await columnExists('projects', 'archived_by')) {
-    try { await execute(`ALTER TABLE projects ADD COLUMN archived_by VARCHAR(100) NULL`); } catch {}
-  }
-  if (!await columnExists('projects', 'restore_count')) {
-    try { await execute(`ALTER TABLE projects ADD COLUMN restore_count INT NOT NULL DEFAULT 0`); } catch {}
-  }
 
   // Server alert logs
   await execute(`CREATE TABLE IF NOT EXISTS server_alert_logs (
