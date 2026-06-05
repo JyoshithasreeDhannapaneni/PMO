@@ -37,11 +37,12 @@ class CaseStudyService {
       SELECT cs.*, p.id as p_id, p.name as p_name, p.customer_name, p.project_manager
       FROM case_studies cs
       JOIN projects p ON cs.project_id = p.id
+      WHERE p.archived_at IS NULL
     `;
     const params: any[] = [];
 
     if (status) {
-      queryStr += ` WHERE cs.status = $1`;
+      queryStr += ` AND cs.status = $1`;
       params.push(status);
     }
 
@@ -220,7 +221,9 @@ class CaseStudyService {
 
   async getPendingCount(): Promise<number> {
     const result = await query(
-      `SELECT COUNT(*) as count FROM case_studies WHERE status = 'PENDING'`
+      `SELECT COUNT(*) as count FROM case_studies cs
+       JOIN projects p ON cs.project_id = p.id
+       WHERE cs.status = 'PENDING' AND p.archived_at IS NULL`
     );
     return parseInt(result.rows[0].count || result.rows[0]['COUNT(*)']);
   }

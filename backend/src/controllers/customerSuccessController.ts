@@ -174,7 +174,10 @@ export const customerSuccessController = {
     renewalDue.sort((a, b) => b.daysOverdue - a.daysOverdue);
     upsellSignals.sort((a, b) => (a.level === 'strong' ? -1 : 1) - (b.level === 'strong' ? -1 : 1));
 
-    res.json({ success: true, data: { accounts, renewalDue, upsellSignals, crossSellSignals } });
+    const totalProjects = projectsResult.rows.length;
+    const totalCustomers = accounts.length;
+
+    res.json({ success: true, data: { accounts, renewalDue, upsellSignals, crossSellSignals }, meta: { totalProjects, totalCustomers } });
   }),
 
   updateEntry: asyncHandler(async (req: Request, res: Response): Promise<void> => {

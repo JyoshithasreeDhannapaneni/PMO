@@ -57,7 +57,7 @@ class ArchiveService {
     const sortBy = filters.sortBy || 'archived_at';
     const sortOrder = filters.sortOrder || 'desc';
 
-    const conditions: string[] = [`(status IN ('COMPLETED','CANCELLED','CLOSED','DECOMMISSIONED') OR archived_at IS NOT NULL)`];
+    const conditions: string[] = [`archived_at IS NOT NULL`];
     const params: any[] = [];
 
     if (filters.search) {
@@ -124,20 +124,20 @@ class ArchiveService {
     const [byStatus, byMigration, byYear, totals] = await Promise.all([
       query(
         `SELECT status, COUNT(*) as count FROM projects
-         WHERE (status IN ('COMPLETED','CANCELLED','CLOSED','DECOMMISSIONED') OR archived_at IS NOT NULL)
+         WHERE archived_at IS NOT NULL
          GROUP BY status`,
         []
       ),
       query(
         `SELECT migration_types, COUNT(*) as count FROM projects
-         WHERE (status IN ('COMPLETED','CANCELLED','CLOSED','DECOMMISSIONED') OR archived_at IS NOT NULL) AND migration_types IS NOT NULL
+         WHERE archived_at IS NOT NULL AND migration_types IS NOT NULL
          GROUP BY migration_types ORDER BY count DESC LIMIT 10`,
         []
       ),
       query(
         `SELECT EXTRACT(YEAR FROM COALESCE(archived_at, planned_end)) as year, COUNT(*) as count
          FROM projects
-         WHERE (status IN ('COMPLETED','CANCELLED','CLOSED','DECOMMISSIONED') OR archived_at IS NOT NULL)
+         WHERE archived_at IS NOT NULL
          GROUP BY year ORDER BY year DESC LIMIT 5`,
         []
       ),
@@ -150,7 +150,7 @@ class ArchiveService {
                 AVG(delay_days) as avgDelayDays,
                 SUM(actual_cost) as totalActualCost
          FROM projects
-         WHERE (status IN ('COMPLETED','CANCELLED','CLOSED','DECOMMISSIONED') OR archived_at IS NOT NULL)`,
+         WHERE archived_at IS NOT NULL`,
         []
       ),
     ]);
