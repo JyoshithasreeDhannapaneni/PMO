@@ -26,7 +26,7 @@ const allNavigation = [
   { name: 'Customer Success',   href: '/customer-success',       icon: HeartHandshake,  adminOnly: false },
   { name: 'RACI / RAID / RAG',  href: '/raci-raid-rag',          icon: ClipboardList,   adminOnly: false },
   { name: 'History Archive',    href: '/archive',                icon: Archive,         adminOnly: false },
-  { name: 'Server Alerts',      href: '/server-alerts',          icon: Bell,            adminOnly: false },
+  { name: 'Server Notifications', href: '/server-alerts',         icon: Bell,            adminOnly: false },
   { name: 'Templates',          href: '/templates',              icon: Layers,          adminOnly: false },
   { name: 'Case Studies',       href: '/case-studies',           icon: FileText,        adminOnly: false },
   { name: 'CS Template',        href: '/case-studies/template',  icon: Layers, badge: 'cstemplate', adminOnly: true },
