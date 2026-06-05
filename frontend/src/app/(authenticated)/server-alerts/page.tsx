@@ -8,7 +8,7 @@ import { Card } from '@/components/ui/Card';
 import { format } from 'date-fns';
 import {
   Bell, Mail, AlertTriangle, CheckCircle, Clock, Send,
-  RefreshCw, Play, Eye, X, Info, Zap,
+  RefreshCw, Play, Eye, X, Info, Zap, Users, BellOff,
 } from 'lucide-react';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
@@ -22,18 +22,21 @@ function authFetch(url: string, options?: RequestInit) {
 }
 
 const ALERT_CFG = {
-  active:  { label: 'Active',   color: 'bg-blue-100 text-blue-700',   icon: CheckCircle,     border: 'border-blue-300' },
-  warning: { label: 'Warning',  color: 'bg-amber-100 text-amber-700', icon: AlertTriangle,   border: 'border-amber-300' },
-  overdue: { label: 'Overdue',  color: 'bg-red-100 text-red-700',     icon: AlertTriangle,   border: 'border-red-300' },
+  active:  { label: 'Active',   color: 'bg-blue-100 text-blue-700',   icon: CheckCircle,   border: 'border-blue-300' },
+  warning: { label: 'Warning',  color: 'bg-amber-100 text-amber-700', icon: AlertTriangle, border: 'border-amber-300' },
+  overdue: { label: 'Overdue',  color: 'bg-red-100 text-red-700',     icon: AlertTriangle, border: 'border-red-300' },
 };
 
-export default function ServerAlertsPage() {
+type FilterKey = 'total' | 'noEmail' | 'active' | 'warning' | 'overdue' | 'idle';
+
+export default function ServerNotificationsPage() {
   const { user } = useAuth();
   const { showToast } = useToast();
   const isAdmin = user?.role === 'ADMIN';
   const qc = useQueryClient();
   const [showLogs, setShowLogs] = useState(false);
   const [sending, setSending] = useState<string | null>(null);
+  const [activeFilter, setActiveFilter] = useState<FilterKey | null>(null);
 
   const { data: statusData, isLoading, refetch } = useQuery({
     queryKey: ['server-alerts-status'],
@@ -62,18 +65,15 @@ export default function ServerAlertsPage() {
     setSending(id);
     try {
       const result = await authFetch(`${API_BASE}/api/server-alerts/${id}/send`, { method: 'POST' });
-      console.log('[ServerAlerts] sendManual result:', result);
       if (result.success) {
         showToast('success', 'Email sent successfully');
         qc.invalidateQueries({ queryKey: ['server-alerts-status'] });
         qc.invalidateQueries({ queryKey: ['server-alerts-logs'] });
       } else {
         const errMsg = result.error || result.message || 'Unknown error — check browser console and backend logs';
-        console.error('[ServerAlerts] Send failed:', errMsg);
         showToast('error', 'Failed to send email', errMsg);
       }
     } catch (err: any) {
-      console.error('[ServerAlerts] Fetch/parse error:', err);
       showToast('error', 'Failed to send email', err.message || 'Network error');
     } finally {
       setSending(null);
@@ -84,13 +84,36 @@ export default function ServerAlertsPage() {
   const logs: any[] = logsData?.data || [];
 
   const stats = {
-    total: projects.length,
+    total:   projects.length,
     noEmail: projects.filter(p => !p.hasEmail).length,
-    active: projects.filter(p => p.alertType === 'active').length,
+    active:  projects.filter(p => p.alertType === 'active').length,
     warning: projects.filter(p => p.alertType === 'warning').length,
     overdue: projects.filter(p => p.alertType === 'overdue').length,
-    idle: projects.filter(p => !p.alertType).length,
+    idle:    projects.filter(p => !p.alertType).length,
   };
+
+  // Filter projects based on active card
+  const filteredProjects = (() => {
+    if (!activeFilter || activeFilter === 'total') return projects;
+    if (activeFilter === 'noEmail') return projects.filter(p => !p.hasEmail);
+    if (activeFilter === 'idle')    return projects.filter(p => !p.alertType);
+    return projects.filter(p => p.alertType === activeFilter);
+  })();
+
+  function handleCardClick(key: FilterKey) {
+    setActiveFilter(prev => prev === key ? null : key);
+  }
+
+  const statCards: { key: FilterKey; label: string; value: number; color: string; bg: string; activeBg: string; icon: any }[] = [
+    { key: 'total',   label: 'Total Projects',  value: stats.total,   color: 'text-gray-700',   bg: 'bg-gray-100',   activeBg: 'bg-gray-200',   icon: Users },
+    { key: 'noEmail', label: 'No Email Set',    value: stats.noEmail, color: 'text-gray-500',   bg: 'bg-gray-100',   activeBg: 'bg-gray-300',   icon: BellOff },
+    { key: 'active',  label: 'Active Alerts',   value: stats.active,  color: 'text-blue-700',   bg: 'bg-blue-100',   activeBg: 'bg-blue-200',   icon: CheckCircle },
+    { key: 'warning', label: 'Warning',         value: stats.warning, color: 'text-amber-700',  bg: 'bg-amber-100',  activeBg: 'bg-amber-200',  icon: AlertTriangle },
+    { key: 'overdue', label: 'Overdue',         value: stats.overdue, color: 'text-red-700',    bg: 'bg-red-100',    activeBg: 'bg-red-200',    icon: AlertTriangle },
+    { key: 'idle',    label: 'Idle (no alert)', value: stats.idle,    color: 'text-gray-500',   bg: 'bg-gray-100',   activeBg: 'bg-gray-300',   icon: Clock },
+  ];
+
+  const activeCard = activeFilter ? statCards.find(c => c.key === activeFilter) : null;
 
   return (
     <div className="space-y-6">
@@ -98,7 +121,7 @@ export default function ServerAlertsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <Bell size={24} className="text-primary-600" /> Server Alerts
+            <Bell size={24} className="text-primary-600" /> Server Notifications
           </h1>
           <p className="text-sm text-gray-500 mt-0.5">
             Automated SOW usage emails — active every 7 days, warning at &lt;7 days, overdue daily
@@ -129,31 +152,39 @@ export default function ServerAlertsPage() {
         </div>
       )}
 
-      {/* Stats */}
+      {/* Stats — clickable cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-        {[
-          { label: 'Total Projects', value: stats.total, color: 'text-gray-900', bg: 'bg-gray-100' },
-          { label: 'No Email Set', value: stats.noEmail, color: 'text-gray-500', bg: 'bg-gray-100' },
-          { label: 'Active Alerts', value: stats.active, color: 'text-blue-700', bg: 'bg-blue-100' },
-          { label: 'Warning', value: stats.warning, color: 'text-amber-700', bg: 'bg-amber-100' },
-          { label: 'Overdue', value: stats.overdue, color: 'text-red-700', bg: 'bg-red-100' },
-          { label: 'Idle (no alert)', value: stats.idle, color: 'text-gray-500', bg: 'bg-gray-100' },
-        ].map(s => (
-          <Card key={s.label} padding="sm">
-            <div className={`w-8 h-8 rounded-full ${s.bg} flex items-center justify-center mb-2`}>
-              <Bell size={14} className={s.color} />
-            </div>
-            <p className="text-xs text-gray-500">{s.label}</p>
-            <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
-          </Card>
-        ))}
+        {statCards.map(s => {
+          const Icon = s.icon;
+          const isActive = activeFilter === s.key;
+          return (
+            <button
+              key={s.key}
+              onClick={() => handleCardClick(s.key)}
+              className={`text-left rounded-xl border-2 p-4 transition-all shadow-sm hover:shadow-md focus:outline-none ${
+                isActive
+                  ? `${s.activeBg} border-current ${s.color} ring-2 ring-offset-1 ring-current`
+                  : 'bg-white border-transparent hover:border-gray-200'
+              }`}
+            >
+              <div className={`w-8 h-8 rounded-full ${isActive ? 'bg-white bg-opacity-60' : s.bg} flex items-center justify-center mb-2`}>
+                <Icon size={14} className={s.color} />
+              </div>
+              <p className="text-xs text-gray-500">{s.label}</p>
+              <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
+              {isActive && (
+                <p className="text-[10px] mt-1 opacity-70">Click to clear filter</p>
+              )}
+            </button>
+          );
+        })}
       </div>
 
       {/* How it works info */}
       <div className="flex items-start gap-3 px-4 py-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
         <Info size={16} className="mt-0.5 flex-shrink-0" />
         <div>
-          <strong>How automated alerts work:</strong> Every day at 8:00 AM, the system checks all active projects that have a Customer Email, a Kickoff Start Date, and a Project End Date.
+          <strong>How automated notifications work:</strong> Every day at 8:00 AM, the system checks all active projects that have a Customer Email, a Kickoff Start Date, and a Project End Date.
           It sends an <strong>Active</strong> update every 7 days from the Kickoff Start Date, switches to a daily <strong>Warning</strong> email when &le;7 days remain, and sends a daily <strong>Overdue</strong> email once the Project End Date has passed.
           Duplicate emails on the same day are automatically skipped. Set the customer email in the project form on the Timeline step.
         </div>
@@ -163,19 +194,42 @@ export default function ServerAlertsPage() {
       <Card>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-base font-semibold text-gray-900 flex items-center gap-2">
-            <Zap size={16} className="text-primary-600" /> Project Alert Status
+            <Zap size={16} className="text-primary-600" />
+            {activeCard
+              ? <span>Showing: <span className={`font-bold ${activeCard.color}`}>{activeCard.label}</span> <span className="text-gray-400 font-normal">({filteredProjects.length} project{filteredProjects.length !== 1 ? 's' : ''})</span></span>
+              : <span>Project Notification Status <span className="text-gray-400 font-normal">({projects.length} total)</span></span>
+            }
           </h2>
-          <button onClick={() => setShowLogs(!showLogs)} className="flex items-center gap-1.5 text-sm text-primary-600 hover:text-primary-700">
-            <Eye size={14} /> {showLogs ? 'Hide' : 'View'} Send History
-          </button>
+          <div className="flex items-center gap-2">
+            {activeFilter && (
+              <button
+                onClick={() => setActiveFilter(null)}
+                className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                <X size={11} /> Clear filter
+              </button>
+            )}
+            <button onClick={() => setShowLogs(!showLogs)} className="flex items-center gap-1.5 text-sm text-primary-600 hover:text-primary-700">
+              <Eye size={14} /> {showLogs ? 'Hide' : 'View'} Send History
+            </button>
+          </div>
         </div>
 
         {isLoading ? (
           <div className="flex justify-center py-12 text-gray-400"><RefreshCw size={24} className="animate-spin" /></div>
-        ) : projects.length === 0 ? (
+        ) : filteredProjects.length === 0 ? (
           <div className="text-center py-12 text-gray-400">
             <Bell size={36} className="mx-auto mb-3 opacity-30" />
-            <p className="text-sm">No active projects with SOW dates found</p>
+            <p className="text-sm">
+              {activeFilter
+                ? `No projects match the "${activeCard?.label}" filter`
+                : 'No active projects with SOW dates found'}
+            </p>
+            {activeFilter && (
+              <button onClick={() => setActiveFilter(null)} className="mt-2 text-xs text-primary-600 hover:underline">
+                Clear filter
+              </button>
+            )}
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -188,7 +242,7 @@ export default function ServerAlertsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {projects.map((p: any) => {
+                {filteredProjects.map((p: any) => {
                   const cfg = p.alertType ? ALERT_CFG[p.alertType as keyof typeof ALERT_CFG] : null;
                   const AlertIcon = cfg?.icon || Clock;
                   return (
@@ -246,7 +300,7 @@ export default function ServerAlertsPage() {
                           <button
                             onClick={() => handleSend(p.id)}
                             disabled={sending === p.id}
-                            title="Send alert email now"
+                            title="Send notification email now"
                             className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium bg-primary-50 text-primary-700 border border-primary-200 rounded-lg hover:bg-primary-100 disabled:opacity-50 transition-colors"
                           >
                             {sending === p.id ? <RefreshCw size={11} className="animate-spin" /> : <Send size={11} />}
