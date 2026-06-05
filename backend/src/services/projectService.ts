@@ -677,24 +677,6 @@ class ProjectService {
     const result = await query(`SELECT * FROM projects WHERE id = $1`, [id]);
     const project = mapProjectRow(result.rows[0]);
 
-    // Auto-create case study when phase is set to COMPLETED — project moves to Case Studies page
-    const isNowInCompletedPhase = data.phase === 'COMPLETED' && existing.phase !== 'COMPLETED';
-
-    const caseStudyResult = await query(`SELECT id FROM case_studies WHERE project_id = $1`, [id]);
-
-    if (isNowInCompletedPhase && caseStudyResult.rows.length === 0) {
-      try {
-        await caseStudyService.create({
-          projectId: project.id,
-          title: `${project.customerName} - ${project.name} Case Study`,
-          status: 'PENDING',
-        });
-        logger.info(`Auto-created case study for completed project: ${project.id}`);
-      } catch (error) {
-        logger.warn(`Could not auto-create case study for project ${project.id}: ${error}`);
-      }
-    }
-
     logger.info(`Project updated: ${project.id} - ${project.name}`);
     return project;
   }

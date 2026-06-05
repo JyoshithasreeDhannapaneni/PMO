@@ -37,12 +37,11 @@ class CaseStudyService {
       SELECT cs.*, p.id as p_id, p.name as p_name, p.customer_name, p.project_manager
       FROM case_studies cs
       JOIN projects p ON cs.project_id = p.id
-      WHERE p.archived_at IS NULL
     `;
     const params: any[] = [];
 
     if (status) {
-      queryStr += ` AND cs.status = $1`;
+      queryStr += ` WHERE cs.status = $1`;
       params.push(status);
     }
 
@@ -217,6 +216,32 @@ class CaseStudyService {
 
     await query(`DELETE FROM case_studies WHERE id = $1`, [id]);
     logger.info(`Case study deleted: ${id}`);
+  }
+
+  async getAwaiting(projectManager?: string) {
+    let sql = `
+      SELECT p.id, p.name, p.customer_name, p.project_manager, p.status, p.phase
+      FROM projects p
+      LEFT JOIN case_studies cs ON cs.project_id = p.id
+      WHERE p.phase = 'COMPLETED'
+        AND p.archived_at IS NULL
+        AND cs.id IS NULL
+    `;
+    const params: any[] = [];
+    if (projectManager) {
+      sql += ` AND p.project_manager = $1`;
+      params.push(projectManager);
+    }
+    sql += ` ORDER BY p.updated_at DESC`;
+    const result = await query(sql, params);
+    return result.rows.map((r: any) => ({
+      id: r.id,
+      name: r.name,
+      customerName: r.customer_name,
+      projectManager: r.project_manager,
+      status: r.status,
+      phase: r.phase,
+    }));
   }
 
   async getPendingCount(): Promise<number> {
