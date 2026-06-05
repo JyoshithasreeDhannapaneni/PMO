@@ -112,10 +112,13 @@ export const accountManagerController = {
     // Sort: attention first, then alphabetically
     accounts.sort((a: any, b: any) => {
       if (a.needsAttention !== b.needsAttention) return a.needsAttention ? -1 : 1;
-      return a.customerName.localeCompare(b.customerName);
+      return (a.customerName || '').localeCompare(b.customerName || '');
     });
 
-    res.json({ success: true, data: accounts });
+    const totalProjects = rows.length;
+    const totalCustomers = accounts.length;
+
+    res.json({ success: true, data: accounts, meta: { totalProjects, totalCustomers } });
   }),
 };
 

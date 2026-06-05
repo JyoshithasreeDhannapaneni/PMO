@@ -677,6 +677,7 @@ export default function CustomerSuccessPage() {
   }
 
   const pageData = (data?.data ?? null) as CustomerSuccessPageData | null;
+  const totalProjects: number = (data as any)?.meta?.totalProjects ?? 0;
   const accounts: CustomerSuccessEntry[] = pageData?.accounts ?? [];
   const renewalDue: RenewalDueItem[]     = pageData?.renewalDue ?? [];
   const upsellSignals: SignalItem[]      = pageData?.upsellSignals ?? [];
@@ -824,17 +825,23 @@ export default function CustomerSuccessPage() {
         <HeartHandshake className="w-7 h-7 text-pink-600" />
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Customer Success</h1>
-          <p className="text-sm text-gray-500">{accounts.length} account{accounts.length !== 1 ? 's' : ''}</p>
+          <p className="text-sm text-gray-500">
+            {accounts.length} customer account{accounts.length !== 1 ? 's' : ''}
+            {totalProjects > 0 && (
+              <span className="ml-2 text-pink-600 font-medium">· {totalProjects} total project{totalProjects !== 1 ? 's' : ''}</span>
+            )}
+          </p>
         </div>
       </div>
 
       {/* Summary strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         {([
-          { icon: <HeartHandshake className="w-4 h-4" />, label: 'Total Accounts', value: accounts.length,          color: 'text-pink-600',  bg: 'bg-pink-50',   scrollRef: null          },
-          { icon: <AlertTriangle   className="w-4 h-4" />, label: 'Escalations',   value: escalatedAccounts.length, color: 'text-red-600',   bg: 'bg-red-50',    scrollRef: escalationRef },
-          { icon: <TrendingUp      className="w-4 h-4" />, label: 'Upsell Opps',  value: activeTab === 'poc' ? pocUpsellSignals.length : upsellSignals.length, color: 'text-blue-600', bg: 'bg-blue-50', scrollRef: upsellRef },
-          { icon: <RefreshCw       className="w-4 h-4" />, label: 'Renewal Due',  value: tabRenewalDue.length,      color: 'text-amber-600', bg: 'bg-amber-50',  scrollRef: renewalRef    },
+          { icon: <HeartHandshake className="w-4 h-4" />, label: 'Customer Accounts', value: accounts.length,          color: 'text-pink-600',  bg: 'bg-pink-50',   scrollRef: null          },
+          { icon: <FolderKanban   className="w-4 h-4" />, label: 'Total Projects',    value: totalProjects,            color: 'text-indigo-600', bg: 'bg-indigo-50', scrollRef: null          },
+          { icon: <AlertTriangle  className="w-4 h-4" />, label: 'Escalations',       value: escalatedAccounts.length, color: 'text-red-600',   bg: 'bg-red-50',    scrollRef: escalationRef },
+          { icon: <TrendingUp     className="w-4 h-4" />, label: 'Upsell Opps',       value: activeTab === 'poc' ? pocUpsellSignals.length : upsellSignals.length, color: 'text-blue-600', bg: 'bg-blue-50', scrollRef: upsellRef },
+          { icon: <RefreshCw      className="w-4 h-4" />, label: 'Renewal Due',       value: tabRenewalDue.length,     color: 'text-amber-600', bg: 'bg-amber-50',  scrollRef: renewalRef    },
         ]).map(s => (
           <div key={s.label}
             onClick={() => s.scrollRef && scrollTo(s.scrollRef)}

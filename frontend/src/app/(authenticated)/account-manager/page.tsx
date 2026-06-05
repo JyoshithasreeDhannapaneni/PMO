@@ -151,6 +151,7 @@ export default function AccountManagerPage() {
 
   const { data, isLoading, error } = useAccountManagerView();
   const accounts: AccountView[] = data?.data || [];
+  const totalProjects: number = data?.meta?.totalProjects ?? 0;
   const today = new Date();
 
   const escalatedAccounts  = accounts.filter(a => (a.migrationTracks || []).some((t: any) => t.isEscalated));
@@ -319,14 +320,20 @@ export default function AccountManagerPage() {
         <Building2 className="w-7 h-7 text-indigo-600" />
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Account Manager View</h1>
-          <p className="text-sm text-gray-500">{accounts.length} account{accounts.length !== 1 ? 's' : ''}</p>
+          <p className="text-sm text-gray-500">
+            {accounts.length} customer account{accounts.length !== 1 ? 's' : ''}
+            {totalProjects > 0 && (
+              <span className="ml-2 text-indigo-600 font-medium">· {totalProjects} total project{totalProjects !== 1 ? 's' : ''}</span>
+            )}
+          </p>
         </div>
       </div>
 
       {/* Summary strip */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-4 gap-3">
         {[
-          { icon: <Building2 className="w-4 h-4" />, label: 'Total Accounts', value: accounts.length, color: 'text-indigo-600', bg: 'bg-indigo-50', ref: null },
+          { icon: <Building2 className="w-4 h-4" />, label: 'Customer Accounts', value: accounts.length, color: 'text-indigo-600', bg: 'bg-indigo-50', ref: null },
+          { icon: <FolderKanban className="w-4 h-4" />, label: 'Total Projects', value: totalProjects, color: 'text-blue-600', bg: 'bg-blue-50', ref: null },
           { icon: <AlertTriangle className="w-4 h-4" />, label: 'Escalations', value: escalatedAccounts.length, color: 'text-red-600', bg: 'bg-red-50', ref: escalationRef },
           { icon: <RefreshCw className="w-4 h-4" />, label: 'Renewal Due', value: renewalDueAccounts.length, color: 'text-amber-600', bg: 'bg-amber-50', ref: renewalRef },
         ].map(s => (
