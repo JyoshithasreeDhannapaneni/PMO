@@ -103,7 +103,7 @@ class ServerAlertService {
       <p style="color:#15803d;margin:0;font-size:13px;">Your server usage is currently within the agreed SOW period. Please ensure your migration activities are progressing as planned to avoid overage charges once the SOW window closes.</p>
     </div>
     <p style="color:#475569;font-size:13px;">If you anticipate needing additional time or server capacity beyond <strong>${end}</strong>, please reach out to your account manager at the earliest to explore extension options.</p>
-    <p style="color:#475569;margin:24px 0 0;font-size:13px;">Best regards,<br><strong>${am}</strong><br>CloudFuze Customer Success | <a href="mailto:migrations@cloudfuze.com" style="color:#2563eb;">migrations@cloudfuze.com</a></p>
+    <p style="color:#475569;margin:24px 0 0;font-size:13px;">Best regards,<br><strong>CloudFuze Team</strong></p>
   </div>
 </div>`,
       };
@@ -127,15 +127,10 @@ class ServerAlertService {
       ${this.row('Status', '<span style="color:#d97706;font-weight:700;">Expiring soon</span>')}
     </table>
     <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:16px;margin:0 0 24px;">
-      <p style="color:#92400e;margin:0 0 12px;font-weight:600;">We strongly recommend:</p>
-      <ol style="color:#92400e;margin:0;padding-left:20px;font-size:13px;line-height:1.8;">
-        <li>Reviewing your current migration progress and identifying any blockers.</li>
-        <li>Contacting your account manager to discuss an SOW extension if needed.</li>
-        <li>Prioritising critical data migrations within the remaining window.</li>
-      </ol>
+      <p style="color:#92400e;margin:0;font-size:13px;">Please contact your account manager immediately to discuss an SOW extension or to ensure your critical migrations are completed before the deadline.</p>
     </div>
     <p style="color:#475569;font-size:13px;">Please take immediate action to avoid unexpected costs. Our team is available to assist you.</p>
-    <p style="color:#475569;margin:24px 0 0;font-size:13px;">Best regards,<br><strong>${am}</strong><br>CloudFuze Customer Success | <a href="mailto:migrations@cloudfuze.com" style="color:#2563eb;">migrations@cloudfuze.com</a></p>
+    <p style="color:#475569;margin:24px 0 0;font-size:13px;">Best regards,<br><strong>CloudFuze Team</strong></p>
   </div>
 </div>`,
       };
@@ -158,15 +153,11 @@ class ServerAlertService {
       ${this.row('Status', '<span style="color:#dc2626;font-weight:700;">Overdue — charges active</span>')}
     </table>
     <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:16px;margin:0 0 24px;">
-      <p style="color:#991b1b;margin:0 0 12px;font-weight:600;">To stop overage charges, please take one of the following actions at the earliest:</p>
-      <ol style="color:#991b1b;margin:0;padding-left:20px;font-size:13px;line-height:1.8;">
-        <li>Complete the migration and decommission server usage, or</li>
-        <li>Sign an SOW extension with your account manager to formalise the additional usage period.</li>
-      </ol>
+      <p style="color:#991b1b;margin:0;font-size:13px;font-weight:600;">To stop overage charges, please sign an SOW extension with your account manager at the earliest to formalise the additional usage period.</p>
     </div>
     <p style="color:#475569;font-size:13px;">If you have already taken action or believe this notification is in error, please contact your account manager or reply to this email immediately.</p>
     <p style="color:#475569;font-size:13px;margin-top:12px;">We value your partnership and want to resolve this quickly — our team is available to assist at any time.</p>
-    <p style="color:#475569;margin:24px 0 0;font-size:13px;">Best regards,<br><strong>${am}</strong><br>CloudFuze Customer Success | <a href="mailto:migrations@cloudfuze.com" style="color:#2563eb;">migrations@cloudfuze.com</a></p>
+    <p style="color:#475569;margin:24px 0 0;font-size:13px;">Best regards,<br><strong>CloudFuze Team</strong></p>
   </div>
 </div>`,
     };

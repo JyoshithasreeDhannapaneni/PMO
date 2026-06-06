@@ -345,6 +345,11 @@ async function runMigrations() {
     `);
   } catch {}
 
+  // Onetime migration progress (stored as integer: 10, 20, ..., 90)
+  if (!await columnExists('projects', 'onetime_progress')) {
+    try { await execute(`ALTER TABLE projects ADD COLUMN onetime_progress SMALLINT DEFAULT NULL`); } catch {}
+  }
+
   // Server alert logs
   await execute(`CREATE TABLE IF NOT EXISTS server_alert_logs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -218,6 +218,7 @@ function mapProjectRow(row: any) {
     pocPhase5Checklist: row.poc_phase5_checklist ?? null,
     pocPreSalesOwner: row.poc_pre_sales_owner ?? null,
     pocCriticalNotes: row.poc_critical_notes ?? null,
+    onetimeProgress: row.onetime_progress ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -660,17 +661,33 @@ class ProjectService {
     if ((data as any).pocPhase5Checklist !== undefined) { updates.push(`poc_phase5_checklist = $${params.length + 1}`); params.push((data as any).pocPhase5Checklist ?? null); }
     if ((data as any).pocPreSalesOwner !== undefined) { updates.push(`poc_pre_sales_owner = $${params.length + 1}`); params.push((data as any).pocPreSalesOwner ?? null); }
     if ((data as any).pocCriticalNotes !== undefined) { updates.push(`poc_critical_notes = $${params.length + 1}`); params.push((data as any).pocCriticalNotes); }
+    if ((data as any).onetimeProgress !== undefined) {
+      const pv = (data as any).onetimeProgress;
+      updates.push(`onetime_progress = $${params.length + 1}`);
+      params.push(pv !== null && pv !== '' ? Number(pv) : null);
+    }
 
     await execute(
       `UPDATE projects SET ${updates.join(', ')}, updated_at = NOW() WHERE id = $${params.length + 1}`,
       [...params, id]
     );
 
-    // Auto-archive when status becomes CANCELLED, CLOSED, or DECOMMISSIONED (direct to archive, no case study)
+    // Auto-archive when status becomes CANCELLED, CLOSED, or DECOMMISSIONED
     if (data.status && ['CANCELLED', 'CLOSED', 'DECOMMISSIONED'].includes(data.status.toUpperCase())) {
       try {
         const { archiveService } = require('./archiveService');
         await archiveService.autoArchive(id, data.status);
+      } catch (_) { /* non-critical */ }
+    }
+
+    // Clear archived_at when status moves back to an active state (ACTIVE or ON_HOLD)
+    // This prevents stale archived_at from a previous cancellation showing the project in the archive
+    if (data.status && ['ACTIVE', 'ON_HOLD'].includes(data.status.toUpperCase())) {
+      try {
+        await execute(
+          `UPDATE projects SET archived_at = NULL, archive_reason = NULL, archived_by = NULL WHERE id = $1`,
+          [id]
+        );
       } catch (_) { /* non-critical */ }
     }
 

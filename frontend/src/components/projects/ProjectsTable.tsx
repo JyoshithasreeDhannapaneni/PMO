@@ -141,6 +141,16 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
     setEditValue('');
   };
 
+  const saveOnetimeProgress = async (projectId: string, value: string) => {
+    try {
+      await updateProject.mutateAsync({ id: projectId, data: { onetimeProgress: value ? Number(value) : null } as any });
+      showToast('success', 'Progress updated');
+    } catch (error: any) {
+      const msg = error?.response?.data?.error?.message || error?.message || 'Update failed';
+      showToast('error', 'Failed to update', msg);
+    }
+  };
+
   const saveEdit = async (projectId: string, field: string) => {
     try {
       const updateData: any = {};
@@ -374,6 +384,15 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
     .sort((a, b) => a.order - b.order)
     .map(p => ({ value: (p.code || p.name).toUpperCase(), label: p.name }));
 
+  // Find the phase code that corresponds to "Onetime Migration" by name match
+  const onetimePhaseCode = useMemo(() => {
+    const match = settings.phases.find(p =>
+      p.name.toLowerCase().replace(/\s+/g, '') === 'onetimemigration' ||
+      (p.code || p.name).toUpperCase() === 'ONETIME'
+    );
+    return match ? (match.code || match.name).toUpperCase() : null;
+  }, [settings.phases]);
+
   const delayStatusOptions = [
     { value: 'NOT_DELAYED', label: 'On Track' },
     { value: 'AT_RISK', label: 'At Risk' },
@@ -544,13 +563,35 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
 
                 {/* Phase - Editable */}
                 <td className="px-4 py-3">
-                  <EditableSelect
-                    projectId={project.id}
-                    field="phase"
-                    value={project.phase}
-                    options={phaseOptions}
-                    displayComponent={<StatusBadge status={project.phase} variant="phase" />}
-                  />
+                  <div className="space-y-1.5">
+                    <EditableSelect
+                      projectId={project.id}
+                      field="phase"
+                      value={project.phase}
+                      options={phaseOptions}
+                      displayComponent={<StatusBadge status={project.phase} variant="phase" />}
+                    />
+                    {onetimePhaseCode && project.phase?.toUpperCase() === onetimePhaseCode && (
+                      (user?.role === 'ADMIN' || user?.role === 'PROJECT_MANAGER') ? (
+                        <select
+                          value={String(project.onetimeProgress ?? '')}
+                          onChange={(e) => { e.stopPropagation(); saveOnetimeProgress(project.id, e.target.value); }}
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-xs px-1.5 py-0.5 border border-blue-200 rounded bg-blue-50 text-blue-700 font-medium cursor-pointer hover:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                          title="Onetime migration progress"
+                        >
+                          <option value="">— %</option>
+                          {[10,20,30,40,50,60,70,80,90].map(v => (
+                            <option key={v} value={String(v)}>{v}%</option>
+                          ))}
+                        </select>
+                      ) : project.onetimeProgress != null ? (
+                        <span className="text-xs px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 font-medium">
+                          {project.onetimeProgress}%
+                        </span>
+                      ) : null
+                    )}
+                  </div>
                 </td>
 
                 {/* Status - Editable */}

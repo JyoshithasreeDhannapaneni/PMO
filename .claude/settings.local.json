@@ -53,7 +53,12 @@
       "Bash(Select-String -Pattern \"mig|valid|check\" -SimpleMatch)",
       "Bash(grep -E \"\\\\.\\(sql|ts|js\\)$\")",
       "Bash(curl -s http://localhost:3001/api/archive/c70fef54-ac10-4411-ac61-3309a4409b65/export)",
-      "Bash(echo \"Exit: $?\")"
+      "Bash(echo \"Exit: $?\")",
+      "Bash(ping -n 5 127.0.0.1)",
+      "Bash(curl -s http://localhost:3001/health)",
+      "Bash(curl -s \"http://localhost:3001/api/settings\")",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); phases=d.get\\('data',{}\\).get\\('phases',[]\\); [print\\(p\\) for p in phases]\")",
+      "Bash(curl -s \"http://localhost:3001/api/pmo-settings\")"
     ]
   }
 }
