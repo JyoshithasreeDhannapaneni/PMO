@@ -104,6 +104,7 @@ export interface Project {
   pocPhase5Checklist?: string | null;
   pocPreSalesOwner?: string | null;
   pocCriticalNotes?: string | null;
+  onetimeProgress?: number | null;
   createdAt: string;
   updatedAt: string;
   phases?: ProjectPhaseRecord[];
@@ -303,6 +304,7 @@ export interface UpdateProjectInput extends Partial<CreateProjectInput> {
   pocPermissionsIntact?: boolean | null;
   pocMetadataIntact?: boolean | null;
   pocHandoffNotes?: string | null;
+  onetimeProgress?: number | null;
 }
 
 export interface CfProductSignal {
