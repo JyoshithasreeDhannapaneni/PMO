@@ -49,7 +49,7 @@ export default function ArchivePage() {
   // Filters — non-admins are auto-scoped to their own name
   const [search, setSearch]               = useState('');
   const [statusFilter, setStatusFilter]   = useState('');
-  const [managerFilter, setManagerFilter] = useState(!isAdmin && user?.name ? user.name : '');
+  const [managerFilter, setManagerFilter] = useState('');
   const [yearFrom, setYearFrom]           = useState('');
   const [yearTo, setYearTo]               = useState('');
   const [sortBy, setSortBy]               = useState('archived_at');

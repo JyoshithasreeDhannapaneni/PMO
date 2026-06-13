@@ -33,6 +33,32 @@ export const auditController = {
     res.json({ success: true, data: logs });
   }),
 
+  getUserProjectSummary: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const { startDate, endDate } = req.query;
+    if (!startDate || !endDate) {
+      res.status(400).json({ success: false, error: { message: 'startDate and endDate are required' } });
+      return;
+    }
+    const result = await auditService.getUserProjectSummary(
+      new Date(startDate as string),
+      new Date(endDate as string)
+    );
+    res.json({ success: true, data: result });
+  }),
+
+  getActivitySummary: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const { startDate, endDate } = req.query;
+    if (!startDate || !endDate) {
+      res.status(400).json({ success: false, error: { message: 'startDate and endDate are required' } });
+      return;
+    }
+    const result = await auditService.getActivitySummary(
+      new Date(startDate as string),
+      new Date(endDate as string)
+    );
+    res.json({ success: true, data: result });
+  }),
+
   getRecent: asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const { limit } = req.query;
     const logs = await auditService.getRecentActivity(limit ? parseInt(limit as string) : undefined);

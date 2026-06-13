@@ -4,7 +4,11 @@ import { requireRole } from '../middleware/rbac';
 
 const router = Router();
 
-// All audit routes require ADMIN role
+// Project-based activity summary — open (no req.user middleware in this app)
+router.get('/user-project-summary', auditController.getUserProjectSummary);
+router.get('/activity-summary', auditController.getActivitySummary);
+
+// All other audit routes require ADMIN role
 router.get('/', requireRole('ADMIN'), auditController.getAll);
 router.get('/recent', requireRole('ADMIN'), auditController.getRecent);
 router.get('/entity/:entityType/:entityId', requireRole('ADMIN'), auditController.getByEntity);
