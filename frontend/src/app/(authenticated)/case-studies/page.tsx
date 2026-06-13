@@ -84,15 +84,11 @@ export default function CaseStudiesPage() {
       const csData = await csResponse.json();
       if (csData.success) {
         const all: CaseStudy[] = csData.data || [];
-        // Manager: show only case studies for their projects
-        setCaseStudies(isManager && user?.name
-          ? all.filter((cs) => cs.project?.projectManager === user.name)
-          : all);
+        setCaseStudies(all);
       }
 
       // Fetch phase=COMPLETED projects that don't have a case study yet
       const awaitingParams = new URLSearchParams();
-      if (isManager && user?.name) awaitingParams.set('projectManager', user.name);
       const awaitingResponse = await fetch(`${API_URL}/api/case-studies/awaiting?${awaitingParams}`, { headers });
       const awaitingData = await awaitingResponse.json();
       if (awaitingData.success) {

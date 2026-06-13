@@ -29,12 +29,13 @@ const allNavigation = [
   { name: 'Server Notifications', href: '/server-alerts',         icon: Bell,            adminOnly: false },
   { name: 'Templates',          href: '/templates',              icon: Layers,          adminOnly: false },
   { name: 'Case Studies',       href: '/case-studies',           icon: FileText,        adminOnly: false },
-  { name: 'CS Template',        href: '/case-studies/template',  icon: Layers, badge: 'cstemplate', adminOnly: true },
+  { name: 'CS Template',        href: '/case-studies/template',  icon: Layers, badge: 'cstemplate', adminOnly: false },
   {
     name: 'Reports', href: '#', icon: BarChart2, adminOnly: false,
     children: [
       { name: 'Weekly Reports',  href: '/reports/weekly' },
       { name: 'Monthly Reports', href: '/reports/monthly' },
+      { name: 'Audit Dashboard', href: '/reports/audit' },
     ],
   },
 ];

@@ -203,10 +203,7 @@ export default function ManagersPage() {
     onError: () => showToast('error', 'Failed to delete goal'),
   });
 
-  let stats: ManagerStat[] = statsData?.data || [];
-  if (isManager && user?.name) {
-    stats = stats.filter((s) => s.manager === user.name);
-  }
+  const stats: ManagerStat[] = statsData?.data || [];
   const goals: ManagerGoal[] = goalsData?.data || [];
   const managerNames = (statsData?.data || []).map((s: ManagerStat) => s.manager);
 
