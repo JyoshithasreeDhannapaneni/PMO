@@ -364,6 +364,20 @@ async function runMigrations() {
   )`);
   try { await execute(`CREATE INDEX IF NOT EXISTS idx_alert_logs_project ON server_alert_logs(project_id)`); } catch {}
 
+  // Heal projects that were incorrectly marked COMPLETED due to the phase-code bug
+  // (a phase renamed to e.g. "Delta" kept code='COMPLETED', so selecting it set status=COMPLETED).
+  // Only resets projects that have NO case study and are NOT archived — those were never
+  // intentionally completed; projects with a real case study or archived_at are left untouched.
+  try {
+    await execute(`
+      UPDATE projects
+      SET status = 'ACTIVE'
+      WHERE status = 'COMPLETED'
+        AND archived_at IS NULL
+        AND id NOT IN (SELECT project_id FROM case_studies)
+    `);
+  } catch {}
+
 }
 
 // Start server

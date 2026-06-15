@@ -228,8 +228,10 @@ class ProjectService {
   async getAll(filters: ProjectFilters = {}, pagination: PaginationOptions = {}) {
     const { page = 1, limit = 20, sortBy = 'created_at', sortOrder = 'desc' } = pagination;
 
-    // Exclude archived projects and projects in the case-study stage
-    const conditions: string[] = ["archived_at IS NULL", "phase != 'COMPLETED'"];
+    // Exclude archived projects and projects that have been fully completed (moved to case-study stage).
+    // Use status='COMPLETED' rather than phase='COMPLETED' so user-configured custom phase names
+    // (e.g. a phase literally named "Delta") never accidentally trigger the completed-project filter.
+    const conditions: string[] = ["archived_at IS NULL", "status != 'COMPLETED'"];
     const params: any[] = [];
 
     if (filters.status) {

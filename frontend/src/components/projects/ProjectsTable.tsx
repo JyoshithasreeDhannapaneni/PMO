@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useUpdateProject, useEscalationDailyNotes, useAddEscalationDailyNote, useDeleteEscalationDailyNote } from '@/hooks/useProjects';
 import { StatusBadge } from '@/components/ui/StatusBadge';
@@ -27,6 +27,130 @@ import {
   BookOpen,
   Send,
 } from 'lucide-react';
+
+// ── EditableSelect ────────────────────────────────────────────────────────────
+// Module-level so its function reference is stable. Defined inside ProjectsTable it would
+// get a new reference on every render, causing React to remount the component — which
+// re-opens the dropdown via autoFocus and can cause accidental value changes (e.g. the
+// dropdown jumping to COMPLETED when the user wanted Final Validation).
+interface EditableSelectProps {
+  projectId: string;
+  field: string;
+  value: string;
+  options: { value: string; label: string }[];
+  displayComponent: React.ReactNode;
+  editingCell: { projectId: string; field: string } | null;
+  onStartEdit: (projectId: string, field: string, value: string) => void;
+  onSave: (projectId: string, field: string, value: string) => void;
+  onCancel: () => void;
+  isPending: boolean;
+}
+
+function EditableSelect({ projectId, field, value, options, displayComponent, editingCell, onStartEdit, onSave, onCancel, isPending }: EditableSelectProps) {
+  const isEditing = editingCell?.projectId === projectId && editingCell?.field === field;
+  const [localValue, setLocalValue] = useState(value);
+
+  useEffect(() => {
+    if (isEditing) setLocalValue(value);
+  }, [isEditing]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (isEditing) {
+    return (
+      <div className="flex items-center gap-1">
+        <select
+          value={localValue}
+          onChange={(e) => setLocalValue(e.target.value)}
+          className="text-xs px-2 py-1 border border-primary-300 rounded focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
+          autoFocus
+        >
+          {options.map(opt => (
+            <option key={opt.value} value={opt.value}>{opt.label}</option>
+          ))}
+        </select>
+        <button
+          onClick={() => onSave(projectId, field, localValue)}
+          className="p-1 text-green-600 hover:bg-green-100 rounded"
+          disabled={isPending}
+        >
+          {isPending ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+        </button>
+        <button onClick={onCancel} className="p-1 text-red-600 hover:bg-red-100 rounded">
+          <X size={14} />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="cursor-pointer hover:bg-gray-100 rounded px-1 py-0.5 -mx-1 transition-colors"
+      onClick={(e) => { e.stopPropagation(); onStartEdit(projectId, field, value); }}
+      title="Click to edit"
+    >
+      {displayComponent}
+    </div>
+  );
+}
+
+// ── EditableDate ───────────────────────────────────────────────────────────────
+// Defined at module level so its function reference is stable across ProjectsTable re-renders.
+// If defined inside ProjectsTable, React would unmount/remount it on every parent re-render,
+// destroying the native date-picker popup mid-selection.
+interface EditableDateProps {
+  projectId: string;
+  field: string;
+  value: string | null | undefined;
+  editingCell: { projectId: string; field: string } | null;
+  onStartEdit: (projectId: string, field: string, value: string) => void;
+  onSave: (projectId: string, field: string, value: string) => void;
+  onCancel: () => void;
+  isPending: boolean;
+}
+
+function EditableDate({ projectId, field, value, editingCell, onStartEdit, onSave, onCancel, isPending }: EditableDateProps) {
+  const isEditing = editingCell?.projectId === projectId && editingCell?.field === field;
+  const dateValue = value ? value.split('T')[0] : '';
+  const [localDate, setLocalDate] = useState(dateValue);
+
+  useEffect(() => {
+    if (isEditing) setLocalDate(dateValue);
+  }, [isEditing]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (isEditing) {
+    return (
+      <div className="flex items-center gap-1">
+        <input
+          type="date"
+          value={localDate}
+          onChange={(e) => setLocalDate(e.target.value)}
+          className="text-xs px-2 py-1 border border-primary-300 rounded focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
+          autoFocus
+        />
+        <button
+          onClick={() => onSave(projectId, field, localDate)}
+          className="p-1 text-green-600 hover:bg-green-100 rounded"
+          disabled={isPending}
+        >
+          {isPending ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+        </button>
+        <button onClick={onCancel} className="p-1 text-red-600 hover:bg-red-100 rounded">
+          <X size={14} />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="cursor-pointer hover:bg-gray-100 rounded px-1 py-0.5 -mx-1 transition-colors flex items-center gap-1 text-sm"
+      onClick={(e) => { e.stopPropagation(); onStartEdit(projectId, field, dateValue); }}
+      title="Click to edit"
+    >
+      <Calendar size={12} className="text-gray-400" />
+      {value ? formatDate(value) : <span className="text-gray-400 italic">Not set</span>}
+    </div>
+  );
+}
 
 interface ProjectsTableProps {
   projects: Project[];
@@ -90,10 +214,13 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
-  // Reset to page 1 whenever the projects list changes (e.g. after a backend search)
+  // Reset to page 1 only when the SET of project IDs changes (filter/search applied, project added/removed).
+  // Watching the full `projects` array would also fire on data-only updates (e.g. a date edit refetch),
+  // which would kick the user back to page 1 while they're paginating.
+  const projectIdKey = useMemo(() => projects.map(p => p.id).join(','), [projects]);
   useEffect(() => {
     setCurrentPage(1);
-  }, [projects]);
+  }, [projectIdKey]);
 
   // Sort projects
   const filteredAndSortedProjects = useMemo(() => {
@@ -187,64 +314,6 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
     </th>
   );
 
-  const EditableSelect = ({ 
-    projectId, 
-    field, 
-    value, 
-    options,
-    displayComponent
-  }: { 
-    projectId: string; 
-    field: string; 
-    value: string;
-    options: { value: string; label: string }[];
-    displayComponent: React.ReactNode;
-  }) => {
-    const isEditing = editingCell?.projectId === projectId && editingCell?.field === field;
-    
-    if (isEditing) {
-      return (
-        <div className="flex items-center gap-1">
-          <select
-            value={editValue}
-            onChange={(e) => setEditValue(e.target.value)}
-            className="text-xs px-2 py-1 border border-primary-300 rounded focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
-            autoFocus
-          >
-            {options.map(opt => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-          </select>
-          <button 
-            onClick={() => saveEdit(projectId, field)}
-            className="p-1 text-green-600 hover:bg-green-100 rounded"
-            disabled={updateProject.isPending}
-          >
-            {updateProject.isPending ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-          </button>
-          <button 
-            onClick={cancelEditing}
-            className="p-1 text-red-600 hover:bg-red-100 rounded"
-          >
-            <X size={14} />
-          </button>
-        </div>
-      );
-    }
-
-    return (
-      <div 
-        className="cursor-pointer hover:bg-gray-100 rounded px-1 py-0.5 -mx-1 transition-colors"
-        onClick={(e) => {
-          e.stopPropagation();
-          startEditing(projectId, field, value);
-        }}
-        title="Click to edit"
-      >
-        {displayComponent}
-      </div>
-    );
-  };
 
   const EditableText = ({ 
     projectId, 
@@ -302,58 +371,23 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
     );
   };
 
-  const EditableDate = ({
-    projectId,
-    field,
-    value
-  }: {
-    projectId: string;
-    field: string;
-    value: string | null;
-  }) => {
-    const isEditing = editingCell?.projectId === projectId && editingCell?.field === field;
-    const dateValue = value ? value.split('T')[0] : '';
-    
-    if (isEditing) {
-      return (
-        <div className="flex items-center gap-1">
-          <input
-            type="date"
-            value={editValue}
-            onChange={(e) => setEditValue(e.target.value)}
-            className="text-xs px-2 py-1 border border-primary-300 rounded focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
-            autoFocus
-          />
-          <button 
-            onClick={() => saveEdit(projectId, field)}
-            className="p-1 text-green-600 hover:bg-green-100 rounded"
-            disabled={updateProject.isPending}
-          >
-            {updateProject.isPending ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-          </button>
-          <button 
-            onClick={cancelEditing}
-            className="p-1 text-red-600 hover:bg-red-100 rounded"
-          >
-            <X size={14} />
-          </button>
-        </div>
-      );
+  const saveDateEdit = useCallback(async (projectId: string, field: string, dateVal: string) => {
+    try {
+      await updateProject.mutateAsync({ id: projectId, data: { [field]: dateVal || null } as any });
+      setEditingCell(null);
+      showToast('success', 'Updated');
+    } catch (error: any) {
+      const msg = error?.response?.data?.error?.message || error?.message || 'Update failed';
+      showToast('error', 'Failed to update', msg);
     }
+  }, [updateProject, showToast]);
 
-    return (
-      <div 
-        className="cursor-pointer hover:bg-gray-100 rounded px-1 py-0.5 -mx-1 transition-colors flex items-center gap-1 text-sm"
-        onClick={(e) => {
-          e.stopPropagation();
-          startEditing(projectId, field, dateValue);
-        }}
-        title="Click to edit"
-      >
-        <Calendar size={12} className="text-gray-400" />
-        {value ? formatDate(value) : <span className="text-gray-400 italic">Not set</span>}
-      </div>
-    );
+  const dateEditProps: Omit<EditableDateProps, 'projectId' | 'field' | 'value'> = {
+    editingCell,
+    onStartEdit: startEditing,
+    onSave: saveDateEdit,
+    onCancel: cancelEditing,
+    isPending: updateProject.isPending,
   };
 
   const accountManagerOptions = [
@@ -383,6 +417,36 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
   const phaseOptions = [...settings.phases]
     .sort((a, b) => a.order - b.order)
     .map(p => ({ value: (p.code || p.name).toUpperCase(), label: p.name }));
+
+  const saveSelectEdit = useCallback(async (projectId: string, field: string, value: string) => {
+    try {
+      const updateData: any = { [field]: value };
+      if (field === 'phase') {
+        // Detect completion by the phase LABEL, not the code value.
+        // Using value==='COMPLETED' was fragile: if the user renamed the default "Completed"
+        // phase to "Delta" in settings, its code stayed 'COMPLETED' (old bug) and would
+        // accidentally trigger completion. Checking the label avoids that.
+        const selectedOption = phaseOptions.find(opt => opt.value === value);
+        if (selectedOption?.label?.trim().toLowerCase() === 'completed') {
+          updateData.status = 'COMPLETED';
+        }
+      }
+      await updateProject.mutateAsync({ id: projectId, data: updateData });
+      setEditingCell(null);
+      showToast('success', 'Updated');
+    } catch (error: any) {
+      const msg = error?.response?.data?.error?.message || error?.message || 'Update failed';
+      showToast('error', 'Failed to update', msg);
+    }
+  }, [updateProject, showToast, phaseOptions]);
+
+  const selectEditProps: Omit<EditableSelectProps, 'projectId' | 'field' | 'value' | 'options' | 'displayComponent'> = {
+    editingCell,
+    onStartEdit: startEditing,
+    onSave: saveSelectEdit,
+    onCancel: cancelEditing,
+    isPending: updateProject.isPending,
+  };
 
   // Find the phase code that corresponds to "Onetime Migration" by name match
   const onetimePhaseCode = useMemo(() => {
@@ -484,6 +548,7 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
                         {project.accountManager || <span className="text-gray-400 italic">Not set</span>}
                       </span>
                     }
+                    {...selectEditProps}
                   />
                 </td>
 
@@ -541,6 +606,7 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
                     value={project.planType}
                     options={planOptions}
                     displayComponent={<StatusBadge status={project.planType} variant="plan" />}
+                    {...selectEditProps}
                   />
                 </td>
 
@@ -558,6 +624,7 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
                         size="sm"
                       />
                     }
+                    {...selectEditProps}
                   />
                 </td>
 
@@ -570,6 +637,7 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
                       value={project.phase}
                       options={phaseOptions}
                       displayComponent={<StatusBadge status={project.phase} variant="phase" />}
+                      {...selectEditProps}
                     />
                     {onetimePhaseCode && project.phase?.toUpperCase() === onetimePhaseCode && (
                       (user?.role === 'ADMIN' || user?.role === 'PROJECT_MANAGER') ? (
@@ -602,17 +670,18 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
                     value={project.status}
                     options={statusOptions}
                     displayComponent={<StatusBadge status={project.status} variant="status" />}
+                    {...selectEditProps}
                   />
                 </td>
 
                 {/* SOW Start - Editable */}
                 <td className="px-4 py-3">
-                  <EditableDate projectId={project.id} field="plannedStart" value={project.plannedStart} />
+                  <EditableDate projectId={project.id} field="plannedStart" value={project.plannedStart} {...dateEditProps} />
                 </td>
 
                 {/* SOW End - Editable */}
                 <td className="px-4 py-3">
-                  <EditableDate projectId={project.id} field="plannedEnd" value={project.plannedEnd} />
+                  <EditableDate projectId={project.id} field="plannedEnd" value={project.plannedEnd} {...dateEditProps} />
                 </td>
 
                 {/* Actual Start - Editable */}
@@ -621,6 +690,7 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
                     projectId={project.id}
                     field="actualStart"
                     value={project.actualStart}
+                    {...dateEditProps}
                   />
                 </td>
 
@@ -628,9 +698,9 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
                 <td className="px-4 py-3">
                   <div className="space-y-1">
                     <div className="text-xs text-gray-400">Start</div>
-                    <EditableDate projectId={project.id} field="cloudAddingStart" value={project.cloudAddingStart ?? null} />
+                    <EditableDate projectId={project.id} field="cloudAddingStart" value={project.cloudAddingStart ?? null} {...dateEditProps} />
                     <div className="text-xs text-gray-400 mt-1">End</div>
-                    <EditableDate projectId={project.id} field="cloudAddingEnd" value={project.cloudAddingEnd ?? null} />
+                    <EditableDate projectId={project.id} field="cloudAddingEnd" value={project.cloudAddingEnd ?? null} {...dateEditProps} />
                     <button onClick={(e) => { e.stopPropagation(); openColumnNotes(project, 'Cloud Adding'); }} className="mt-1 flex items-center gap-1 text-xs px-1.5 py-0.5 rounded transition-colors text-teal-600 bg-teal-50 hover:bg-teal-100" title="Daily tracking notes">
                       <MessageSquare size={11} /><span>Notes</span>
                     </button>
@@ -641,9 +711,9 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
                 <td className="px-4 py-3">
                   <div className="space-y-1">
                     <div className="text-xs text-gray-400">Start</div>
-                    <EditableDate projectId={project.id} field="pilotMigrationStart" value={project.pilotMigrationStart ?? null} />
+                    <EditableDate projectId={project.id} field="pilotMigrationStart" value={project.pilotMigrationStart ?? null} {...dateEditProps} />
                     <div className="text-xs text-gray-400 mt-1">End</div>
-                    <EditableDate projectId={project.id} field="pilotMigrationEnd" value={project.pilotMigrationEnd ?? null} />
+                    <EditableDate projectId={project.id} field="pilotMigrationEnd" value={project.pilotMigrationEnd ?? null} {...dateEditProps} />
                     <button onClick={(e) => { e.stopPropagation(); openColumnNotes(project, 'Pilot Migration'); }} className="mt-1 flex items-center gap-1 text-xs px-1.5 py-0.5 rounded transition-colors text-teal-600 bg-teal-50 hover:bg-teal-100" title="Daily tracking notes">
                       <MessageSquare size={11} /><span>Notes</span>
                     </button>
@@ -654,9 +724,9 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
                 <td className="px-4 py-3">
                   <div className="space-y-1">
                     <div className="text-xs text-gray-400">Start</div>
-                    <EditableDate projectId={project.id} field="onetimeMigrationStart" value={project.onetimeMigrationStart ?? null} />
+                    <EditableDate projectId={project.id} field="onetimeMigrationStart" value={project.onetimeMigrationStart ?? null} {...dateEditProps} />
                     <div className="text-xs text-gray-400 mt-1">End</div>
-                    <EditableDate projectId={project.id} field="onetimeMigrationEnd" value={project.onetimeMigrationEnd ?? null} />
+                    <EditableDate projectId={project.id} field="onetimeMigrationEnd" value={project.onetimeMigrationEnd ?? null} {...dateEditProps} />
                     <button onClick={(e) => { e.stopPropagation(); openColumnNotes(project, 'Onetime Migration'); }} className="mt-1 flex items-center gap-1 text-xs px-1.5 py-0.5 rounded transition-colors text-teal-600 bg-teal-50 hover:bg-teal-100" title="Daily tracking notes">
                       <MessageSquare size={11} /><span>Notes</span>
                     </button>
@@ -667,9 +737,9 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
                 <td className="px-4 py-3">
                   <div className="space-y-1">
                     <div className="text-xs text-gray-400">Start</div>
-                    <EditableDate projectId={project.id} field="deltaMigrationStart" value={project.deltaMigrationStart ?? null} />
+                    <EditableDate projectId={project.id} field="deltaMigrationStart" value={project.deltaMigrationStart ?? null} {...dateEditProps} />
                     <div className="text-xs text-gray-400 mt-1">End</div>
-                    <EditableDate projectId={project.id} field="deltaMigrationEnd" value={project.deltaMigrationEnd ?? null} />
+                    <EditableDate projectId={project.id} field="deltaMigrationEnd" value={project.deltaMigrationEnd ?? null} {...dateEditProps} />
                     <button onClick={(e) => { e.stopPropagation(); openColumnNotes(project, 'Delta Migration'); }} className="mt-1 flex items-center gap-1 text-xs px-1.5 py-0.5 rounded transition-colors text-teal-600 bg-teal-50 hover:bg-teal-100" title="Daily tracking notes">
                       <MessageSquare size={11} /><span>Notes</span>
                     </button>
@@ -680,9 +750,9 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
                 <td className="px-4 py-3">
                   <div className="space-y-1">
                     <div className="text-xs text-gray-400">Start</div>
-                    <EditableDate projectId={project.id} field="finalValidationStart" value={project.finalValidationStart ?? null} />
+                    <EditableDate projectId={project.id} field="finalValidationStart" value={project.finalValidationStart ?? null} {...dateEditProps} />
                     <div className="text-xs text-gray-400 mt-1">End</div>
-                    <EditableDate projectId={project.id} field="finalValidationEnd" value={project.finalValidationEnd ?? null} />
+                    <EditableDate projectId={project.id} field="finalValidationEnd" value={project.finalValidationEnd ?? null} {...dateEditProps} />
                     <button onClick={(e) => { e.stopPropagation(); openColumnNotes(project, 'Final Validation'); }} className="mt-1 flex items-center gap-1 text-xs px-1.5 py-0.5 rounded transition-colors text-teal-600 bg-teal-50 hover:bg-teal-100" title="Daily tracking notes">
                       <MessageSquare size={11} /><span>Notes</span>
                     </button>
@@ -695,6 +765,7 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
                     projectId={project.id}
                     field="actualEnd"
                     value={project.actualEnd}
+                    {...dateEditProps}
                   />
                 </td>
 
