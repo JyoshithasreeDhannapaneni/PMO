@@ -654,7 +654,17 @@ export default function SettingsPage() {
   };
 
   const updatePhase = (id: string, field: keyof ProjectPhase, value: string | number) => {
-    setPhases(phases.map((p) => (p.id === id ? { ...p, [field]: value } : p)));
+    setPhases(phases.map((p) => {
+      if (p.id !== id) return p;
+      const updated: any = { ...p, [field]: value };
+      // When name changes, regenerate the code from the new name.
+      // Without this, renaming "Completed" → "Delta" keeps code='COMPLETED',
+      // causing the dropdown to send value='COMPLETED' and accidentally triggering completion.
+      if (field === 'name' && typeof value === 'string') {
+        updated.code = toCode(value);
+      }
+      return updated;
+    }));
   };
 
   // Team member handlers

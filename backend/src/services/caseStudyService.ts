@@ -223,7 +223,7 @@ class CaseStudyService {
       SELECT p.id, p.name, p.customer_name, p.project_manager, p.status, p.phase
       FROM projects p
       LEFT JOIN case_studies cs ON cs.project_id = p.id
-      WHERE p.phase = 'COMPLETED'
+      WHERE p.status = 'COMPLETED'
         AND p.archived_at IS NULL
         AND cs.id IS NULL
     `;
