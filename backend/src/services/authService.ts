@@ -403,7 +403,8 @@ class AuthService {
 
   async loginWithMicrosoft(microsoftUser: MicrosoftUserInfo): Promise<AuthResult> {
     const email = microsoftUser.mail.toLowerCase();
-    
+    const ADMIN_EMAIL = 'bharath.tummaganti@cloudfuze.com';
+
     // Check if user exists
     let result = await query(
       `SELECT * FROM users WHERE email = $1 OR microsoft_id = $2 LIMIT 1`,
@@ -416,7 +417,8 @@ class AuthService {
       // Create new user from Microsoft account
       const userId = uuidv4();
       const username = email.split('@')[0].toLowerCase();
-      
+      const role = email === ADMIN_EMAIL ? 'ADMIN' : 'VIEWER';
+
       await execute(
         `INSERT INTO users (id, name, email, username, password, role, microsoft_id, department, is_active, auth_provider)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true, 'microsoft')`,
@@ -425,8 +427,8 @@ class AuthService {
           microsoftUser.displayName,
           email,
           username,
-          '', // No password for Microsoft users
-          'VIEWER', // Default role
+          '',
+          role,
           microsoftUser.id,
           microsoftUser.department || null,
         ]
@@ -434,8 +436,13 @@ class AuthService {
 
       result = await query(`SELECT * FROM users WHERE id = $1`, [userId]);
       user = result.rows[0];
-      logger.info(`New user created via Microsoft login: ${email}`);
+      logger.info(`New user created via Microsoft login: ${email} (role: ${role})`);
     } else {
+      // Always keep bharath as ADMIN regardless of what's stored
+      if (email === ADMIN_EMAIL && user.role !== 'ADMIN') {
+        await execute(`UPDATE users SET role = 'ADMIN' WHERE id = $1`, [user.id]);
+        user.role = 'ADMIN';
+      }
       // Update Microsoft ID if not set
       if (!user.microsoft_id) {
         await execute(

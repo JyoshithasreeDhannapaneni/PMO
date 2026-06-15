@@ -202,6 +202,9 @@ async function runMigrations() {
   // Rename MANAGER role to PROJECT_MANAGER
   try { await execute(`UPDATE users SET role = 'PROJECT_MANAGER' WHERE role = 'MANAGER'`); } catch {}
 
+  // Ensure bharath.tummaganti@cloudfuze.com is always ADMIN
+  try { await execute(`UPDATE users SET role = 'ADMIN' WHERE email = 'bharath.tummaganti@cloudfuze.com'`); } catch {}
+
   // Updated roles constraint including PROJECT_MANAGER
   try {
     await execute(`ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check`);
