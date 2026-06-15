@@ -411,7 +411,6 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
     { value: 'INACTIVE', label: 'Inactive' },
     { value: 'ON_HOLD', label: 'On Hold' },
     { value: 'CANCELLED', label: 'Cancelled' },
-    { value: 'COMPLETED', label: 'Completed' },
   ];
 
   const phaseOptions = [...settings.phases]
