@@ -268,6 +268,13 @@ CREATE TABLE IF NOT EXISTS project_team_members (
 );
 CREATE INDEX IF NOT EXISTS idx_project_team_members_project_id ON project_team_members(project_id);
 
+ALTER TABLE project_team_members ADD COLUMN IF NOT EXISTS shift VARCHAR(100);
+ALTER TABLE project_team_members ADD COLUMN IF NOT EXISTS shift_timezone VARCHAR(20);
+ALTER TABLE project_team_members ADD COLUMN IF NOT EXISTS working_pattern VARCHAR(50);
+ALTER TABLE project_team_members ADD COLUMN IF NOT EXISTS migration_types VARCHAR(100);
+ALTER TABLE project_team_members ADD COLUMN IF NOT EXISTS capacity INTEGER DEFAULT 100;
+ALTER TABLE project_team_members ADD COLUMN IF NOT EXISTS reporting_to VARCHAR(255);
+
 CREATE TABLE IF NOT EXISTS project_documents (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
