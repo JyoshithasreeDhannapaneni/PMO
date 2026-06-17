@@ -46,6 +46,18 @@ interface EditableSelectProps {
   isPending: boolean;
 }
 
+function sowDuration(plannedStart: string | null | undefined, plannedEnd: string | null | undefined): string {
+  if (!plannedStart || !plannedEnd) return '—';
+  try {
+    const s = new Date(plannedStart);
+    const e = new Date(plannedEnd);
+    const months = (e.getFullYear() - s.getFullYear()) * 12 + (e.getMonth() - s.getMonth());
+    const extraDays = e.getDate() - s.getDate();
+    const total = extraDays > 7 ? months + 1 : Math.max(months, 1);
+    return `${total} month${total !== 1 ? 's' : ''}`;
+  } catch { return '—'; }
+}
+
 function EditableSelect({ projectId, field, value, options, displayComponent, editingCell, onStartEdit, onSave, onCancel, isPending }: EditableSelectProps) {
   const isEditing = editingCell?.projectId === projectId && editingCell?.field === field;
   const [localValue, setLocalValue] = useState(value);
@@ -481,6 +493,9 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
               <SortHeader field="status" label="Status" />
               <SortHeader field="plannedStart" label="SOW Start" />
               <SortHeader field="plannedEnd" label="SOW End" />
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap">
+                Duration (months)
+              </th>
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                 Kickoff Start Date
               </th>
@@ -681,6 +696,13 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
                 {/* SOW End - Editable */}
                 <td className="px-4 py-3">
                   <EditableDate projectId={project.id} field="plannedEnd" value={project.plannedEnd} {...dateEditProps} />
+                </td>
+
+                {/* Duration */}
+                <td className="px-4 py-3 whitespace-nowrap">
+                  <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-blue-50 text-blue-700">
+                    {sowDuration(project.plannedStart, project.plannedEnd)}
+                  </span>
                 </td>
 
                 {/* Actual Start - Editable */}
