@@ -29,12 +29,7 @@ export const errorHandler = (
   }
 
   // Log error
-  logger.error({
-    message: err.message,
-    stack: err.stack,
-    path: req.path,
-    method: req.method,
-  });
+  logger.error(`${req.method} ${req.path} — ${err.message || err}`, { stack: err.stack });
 
   // Send response
   res.status(statusCode).json({

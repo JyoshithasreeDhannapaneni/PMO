@@ -9,7 +9,8 @@ import path from 'path';
 
 import { errorHandler } from './middleware/errorHandler';
 import { notFoundHandler } from './middleware/notFoundHandler';
-import { query, execute } from './config/db';
+import { query, execute, pool } from './config/db';
+import { schema as dbSchema } from './db/init';
 
 import authRoutes from './routes/authRoutes';
 import projectRoutes from './routes/projectRoutes';
@@ -387,6 +388,15 @@ async function runMigrations() {
 app.listen(PORT, async () => {
   logger.info(`🚀 Server running on port ${PORT}`);
   logger.info(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
+
+  try {
+    const schemaClient = await pool.connect();
+    await schemaClient.query(dbSchema);
+    schemaClient.release();
+    logger.info('✅ Schema initialized');
+  } catch (err) {
+    logger.warn('Schema init warning (non-fatal):', err);
+  }
 
   try {
     await runMigrations();
