@@ -349,10 +349,14 @@ export const authController = {
       return res.redirect(`${frontendUrl}/login?error=invalid_state`);
     }
 
-    const { accessToken } = await authService.exchangeMicrosoftCode(code, codeVerifier);
-    const microsoftUser = await authService.getMicrosoftUserInfo(accessToken);
-    const result = await authService.loginWithMicrosoft(microsoftUser);
-
-    res.redirect(`${frontendUrl}/auth/callback?token=${result.token}&name=${encodeURIComponent(result.user.name)}&email=${encodeURIComponent(result.user.email)}&role=${result.user.role}&id=${result.user.id}`);
+    try {
+      const { accessToken } = await authService.exchangeMicrosoftCode(code, codeVerifier);
+      const microsoftUser = await authService.getMicrosoftUserInfo(accessToken);
+      const result = await authService.loginWithMicrosoft(microsoftUser);
+      res.redirect(`${frontendUrl}/auth/callback?token=${result.token}&name=${encodeURIComponent(result.user.name)}&email=${encodeURIComponent(result.user.email)}&role=${result.user.role}&id=${result.user.id}`);
+    } catch (err: any) {
+      const msg = err?.message || 'microsoft_auth_failed';
+      res.redirect(`${frontendUrl}/login?error=${encodeURIComponent(msg)}`);
+    }
   }),
 };
