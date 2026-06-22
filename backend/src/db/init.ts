@@ -28,7 +28,7 @@ async function ensureDatabaseExists() {
 
 const pool = new Pool({ host: DB_HOST, user: DB_USER, password: DB_PASSWORD, database: DB_NAME, port: DB_PORT });
 
-const schema = `
+export const schema = `
 -- Enum types (CREATE TYPE ... IF NOT EXISTS requires PG 9.x trick)
 DO $$ BEGIN
   CREATE TYPE plan_type AS ENUM ('BRONZE', 'SILVER', 'GOLD', 'PLATINUM');
@@ -562,4 +562,7 @@ async function initDatabase() {
   }
 }
 
-initDatabase().catch(console.error);
+// Only auto-run when this file is the entry point (npm run db:init)
+if (require.main === module) {
+  initDatabase().catch(console.error);
+}
