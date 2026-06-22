@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { Shield, AlertCircle } from 'lucide-react';
 import Image from 'next/image';
 import { useSearchParams } from 'next/navigation';
@@ -13,7 +13,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   access_denied: 'Access was denied. Please try again or contact your administrator.',
 };
 
-export default function LoginPage() {
+function LoginContent() {
   const [mounted, setMounted] = useState(false);
   const searchParams = useSearchParams();
   const rawError = searchParams.get('error');
@@ -93,5 +93,13 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginContent />
+    </Suspense>
   );
 }
