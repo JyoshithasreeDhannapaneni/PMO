@@ -73,7 +73,11 @@
       "PowerShell($env:Path = [System.Environment]::GetEnvironmentVariable\\(\"Path\",\"Machine\"\\) + \";\" + [System.Environment]::GetEnvironmentVariable\\(\"Path\",\"User\"\\); netstat -an | Select-String \":5432\")",
       "PowerShell($nodePath = \\(Get-ChildItem \"C:\\\\Program Files\\\\nodejs\" -ErrorAction SilentlyContinue | Select-Object -First 1\\).FullName; if \\(-not $nodePath\\) { $nodePath = \\(where.exe node 2>$null | Split-Path\\) }; Write-Host \"Node path: $nodePath\")",
       "PowerShell($env:Path = [System.Environment]::GetEnvironmentVariable\\(\"Path\",\"Machine\"\\) + \";\" + [System.Environment]::GetEnvironmentVariable\\(\"Path\",\"User\"\\); docker ps --filter \"name=pmo-postgres\" --format \"{{.Names}} {{.Status}}\" 2>&1)",
-      "PowerShell(Get-Service | Where-Object { $_.DisplayName -match 'postgres|sql' } | Select-Object Name, DisplayName, Status; Test-NetConnection -ComputerName localhost -Port 5432 -WarningAction SilentlyContinue | Select-Object TcpTestSucceeded)"
+      "PowerShell(Get-Service | Where-Object { $_.DisplayName -match 'postgres|sql' } | Select-Object Name, DisplayName, Status; Test-NetConnection -ComputerName localhost -Port 5432 -WarningAction SilentlyContinue | Select-Object TcpTestSucceeded)",
+      "Bash(rm \"c:\\\\Users\\\\BharathTummaganti\\\\OneDrive - CloudFuze, Inc\\\\Documents\\\\PMO\\\\PMO\\\\docker-compose.dev.yml\")"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\BharathTummaganti\\OneDrive - CloudFuze, Inc\\Documents\\PMO\\PMO"
     ]
   }
 }
