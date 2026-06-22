@@ -1,13 +1,25 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Shield } from 'lucide-react';
+import { useState, useEffect, Suspense } from 'react';
+import { Shield, AlertCircle } from 'lucide-react';
 import Image from 'next/image';
+import { useSearchParams } from 'next/navigation';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
-export default function LoginPage() {
+const ERROR_MESSAGES: Record<string, string> = {
+  invalid_state: 'Login session expired. Please try signing in again.',
+  missing_params: 'Incomplete response from Microsoft. Please try again.',
+  access_denied: 'Access was denied. Please try again or contact your administrator.',
+};
+
+function LoginContent() {
   const [mounted, setMounted] = useState(false);
+  const searchParams = useSearchParams();
+  const rawError = searchParams.get('error');
+  const errorMessage = rawError
+    ? (ERROR_MESSAGES[rawError] ?? `Sign-in failed: ${rawError}`)
+    : null;
 
   useEffect(() => { setMounted(true); }, []);
 
@@ -52,6 +64,13 @@ export default function LoginPage() {
             <p className="text-sm text-slate-400 mt-1">Sign in to your PMO Tracker account</p>
           </div>
 
+          {errorMessage && (
+            <div className="mb-5 flex items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+              <AlertCircle size={16} className="text-red-500 shrink-0 mt-0.5" />
+              <p className="text-sm text-red-700">{errorMessage}</p>
+            </div>
+          )}
+
           <button
             type="button"
             onClick={handleMicrosoftLogin}
@@ -74,5 +93,13 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginContent />
+    </Suspense>
   );
 }
