@@ -219,6 +219,8 @@ function mapProjectRow(row: any) {
     pocPreSalesOwner: row.poc_pre_sales_owner ?? null,
     pocCriticalNotes: row.poc_critical_notes ?? null,
     onetimeProgress: row.onetime_progress ?? null,
+    customerSuccess: row.customer_success ?? null,
+    csatScore: row.csat_score != null ? parseFloat(row.csat_score) : null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -228,10 +230,7 @@ class ProjectService {
   async getAll(filters: ProjectFilters = {}, pagination: PaginationOptions = {}) {
     const { page = 1, limit = 20, sortBy = 'created_at', sortOrder = 'desc' } = pagination;
 
-    // Exclude archived projects and projects that have been fully completed (moved to case-study stage).
-    // Use status='COMPLETED' rather than phase='COMPLETED' so user-configured custom phase names
-    // (e.g. a phase literally named "Delta") never accidentally trigger the completed-project filter.
-    const conditions: string[] = ["archived_at IS NULL", "status != 'COMPLETED'"];
+    const conditions: string[] = ["archived_at IS NULL"];
     const params: any[] = [];
 
     if (filters.status) {
@@ -667,6 +666,12 @@ class ProjectService {
       const pv = (data as any).onetimeProgress;
       updates.push(`onetime_progress = $${params.length + 1}`);
       params.push(pv !== null && pv !== '' ? Number(pv) : null);
+    }
+    if ((data as any).customerSuccess !== undefined) { updates.push(`customer_success = $${params.length + 1}`); params.push((data as any).customerSuccess ?? null); }
+    if ((data as any).csatScore !== undefined) {
+      const cv = (data as any).csatScore;
+      updates.push(`csat_score = $${params.length + 1}`);
+      params.push(cv !== null && cv !== '' ? parseFloat(cv) : null);
     }
 
     await execute(

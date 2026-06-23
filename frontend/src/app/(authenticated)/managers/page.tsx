@@ -706,6 +706,17 @@ function GartnerSection({ isAdmin }: { isAdmin: boolean }) {
     onError: () => showToast('error', 'Failed to update stats'),
   });
 
+  const deleteGartnerMutation = useMutation({
+    mutationFn: (managerName: string) =>
+      api.delete(`/manager-goals/gartner-stats/${encodeURIComponent(managerName)}`).then((r) => r.data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['gartnerStats'] });
+      showToast('success', 'Stats deleted');
+      setEditingRow(null);
+    },
+    onError: () => showToast('error', 'Failed to delete stats'),
+  });
+
   const stats: GartnerStat[] = data?.data || [];
 
   // Inline edit state
@@ -911,6 +922,14 @@ function GartnerSection({ isAdmin }: { isAdmin: boolean }) {
                                 className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 text-gray-500 hover:bg-gray-200 transition-colors"
                               >
                                 <X size={13} />
+                              </button>
+                              <button
+                                onClick={() => deleteGartnerMutation.mutate(s.managerName)}
+                                disabled={deleteGartnerMutation.isPending}
+                                title="Delete stats"
+                                className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-red-100 text-red-600 hover:bg-red-200 transition-colors"
+                              >
+                                {deleteGartnerMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
                               </button>
                             </div>
                           ) : (
