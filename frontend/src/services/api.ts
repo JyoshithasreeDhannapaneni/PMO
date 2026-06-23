@@ -459,4 +459,47 @@ export const pmoSettingsApi = {
   },
 };
 
+// Template Combinations API
+export const templateCombinationsApi = {
+  getCombinations: async () => {
+    const { data } = await api.get('/template-combinations');
+    return data.data as any[];
+  },
+  createCombination: async (payload: {
+    migrationCategory: string;
+    sourceName: string;
+    targetName: string;
+    sourceIcon?: string;
+    targetIcon?: string;
+  }) => {
+    const { data } = await api.post('/template-combinations', payload);
+    return data.data;
+  },
+  deleteCombination: async (id: string) => {
+    await api.delete(`/template-combinations/${id}`);
+  },
+  getDocuments: async (combinationId: string) => {
+    const { data } = await api.get(`/template-combinations/${combinationId}/documents`);
+    return data.data as any[];
+  },
+  uploadDocument: async (combinationId: string, payload: {
+    fileName: string;
+    docType: string;
+    fileData: string; // base64
+    mimeType: string;
+    fileSize: number;
+    uploadedBy?: string;
+  }) => {
+    const { data } = await api.post(`/template-combinations/${combinationId}/documents`, payload);
+    return data.data;
+  },
+  renameDocument: async (docId: string, fileName: string) => {
+    await api.patch(`/template-combinations/documents/${docId}`, { fileName });
+  },
+  deleteDocument: async (docId: string) => {
+    await api.delete(`/template-combinations/documents/${docId}`);
+  },
+  getDownloadUrl: (docId: string) => `/api/template-combinations/documents/${docId}/download`,
+};
+
 export default api;

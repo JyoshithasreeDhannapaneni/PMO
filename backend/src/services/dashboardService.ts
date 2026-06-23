@@ -43,7 +43,7 @@ class DashboardService {
       avgDelayResult,
       overagedResult,
     ] = await Promise.all([
-      query(`SELECT COUNT(*) as count FROM projects WHERE status NOT IN ('COMPLETED','CANCELLED') ${aw}`, ap),
+      query(`SELECT COUNT(*) as count FROM projects WHERE status != 'CANCELLED' ${aw}`, ap),
       query(`SELECT COUNT(*) as count FROM projects WHERE status = 'ACTIVE' ${aw}`, ap),
       query(`SELECT COUNT(*) as count FROM projects WHERE status = 'ON_HOLD' ${aw}`, ap),
       query(`SELECT COUNT(*) as count FROM projects WHERE status = 'COMPLETED' ${aw}`, ap),

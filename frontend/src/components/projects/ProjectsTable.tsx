@@ -411,6 +411,24 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
     { value: 'Deepak R J',       label: 'Deepak R J' },
   ];
 
+  const customerSuccessOptions = [
+    { value: '', label: '— None —' },
+    { value: 'Harika Reddy',       label: 'Harika Reddy' },
+    { value: 'Lakshmi Prasanna',   label: 'Lakshmi Prasanna' },
+    { value: 'Abhishek Nair',      label: 'Abhishek Nair' },
+    { value: 'Venkatesh Iyer',     label: 'Venkatesh Iyer' },
+    { value: 'Kavya Sharma',       label: 'Kavya Sharma' },
+    { value: 'Priya Menon',        label: 'Priya Menon' },
+    { value: 'Rahul Verma',        label: 'Rahul Verma' },
+  ];
+
+  function csatHealth(score: number | null | undefined): { label: string; color: string; bg: string } {
+    if (score == null) return { label: 'Not set', color: 'text-gray-400', bg: 'bg-gray-100' };
+    if (score >= 4.0) return { label: 'Healthy', color: 'text-green-700', bg: 'bg-green-100' };
+    if (score >= 2.5) return { label: 'At Risk', color: 'text-yellow-700', bg: 'bg-yellow-100' };
+    return { label: 'Critical', color: 'text-red-700', bg: 'bg-red-100' };
+  }
+
   const planOptions = [
     { value: 'BRONZE', label: 'Bronze' },
     { value: 'SILVER', label: 'Silver' },
@@ -423,6 +441,7 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
     { value: 'INACTIVE', label: 'Inactive' },
     { value: 'ON_HOLD', label: 'On Hold' },
     { value: 'CANCELLED', label: 'Cancelled' },
+    { value: 'COMPLETED', label: 'Completed' },
   ];
 
   const phaseOptions = [...settings.phases]
@@ -484,6 +503,7 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
               <SortHeader field="name" label="Project Name" />
               <SortHeader field="projectManager" label="Project Manager" />
               <SortHeader field="accountManager" label="Account Manager" />
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap">Customer Satisfaction</th>
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Migration Types</th>
               <SortHeader field="estimatedCost" label="Budget" />
               <SortHeader field="overageAmount" label="Overage" />
@@ -564,6 +584,57 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
                     }
                     {...selectEditProps}
                   />
+                </td>
+
+                {/* Customer Health (CSAT badge + editable score) */}
+                <td className="px-4 py-3">
+                  {(() => {
+                    const h = csatHealth(project.csatScore);
+                    const isEditingScore = editingCell?.projectId === project.id && editingCell?.field === 'csatScore';
+                    return (
+                      <div className="space-y-1 min-w-[110px]">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${h.bg} ${h.color}`}>
+                          {h.label}
+                        </span>
+                        {isEditingScore ? (
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="number"
+                              min="0" max="5" step="0.1"
+                              value={editValue}
+                              onChange={(e) => {
+                                const v = parseFloat(e.target.value);
+                                if (e.target.value === '' || e.target.value === '-') { setEditValue(e.target.value); return; }
+                                if (!isNaN(v)) setEditValue(String(Math.min(5, Math.max(0, Math.round(v * 10) / 10))));
+                              }}
+                              className="text-xs w-16 px-1.5 py-1 border border-primary-300 rounded focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
+                              autoFocus
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') saveEdit(project.id, 'csatScore');
+                                if (e.key === 'Escape') cancelEditing();
+                              }}
+                            />
+                            <button onClick={() => saveEdit(project.id, 'csatScore')} className="p-1 text-green-600 hover:bg-green-100 rounded" disabled={updateProject.isPending}>
+                              {updateProject.isPending ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+                            </button>
+                            <button onClick={cancelEditing} className="p-1 text-red-600 hover:bg-red-100 rounded"><X size={13} /></button>
+                          </div>
+                        ) : (
+                          <div
+                            className="cursor-pointer hover:bg-gray-100 rounded px-1 py-0.5 -mx-1 transition-colors text-xs text-gray-600 flex items-center gap-0.5"
+                            onClick={(e) => { e.stopPropagation(); startEditing(project.id, 'csatScore', project.csatScore != null ? String(project.csatScore) : ''); }}
+                            title="Click to edit CSAT score"
+                          >
+                            {project.csatScore != null ? (
+                              <><span className="font-medium">{project.csatScore.toFixed(1)}</span><span className="text-gray-400">/ 5 ★</span></>
+                            ) : (
+                              <span className="text-gray-400 italic">Set score</span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </td>
 
                 {/* Migration Types */}
