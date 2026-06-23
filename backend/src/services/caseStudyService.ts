@@ -1,4 +1,4 @@
-import { query, execute } from '../config/database';
+import { query, execute, transaction } from '../config/database';
 import { AppError } from '../middleware/errorHandler';
 import { logger } from '../utils/logger';
 import { v4 as uuidv4 } from 'uuid';
@@ -188,14 +188,17 @@ class CaseStudyService {
       existing.status !== 'COMPLETED' && existing.status !== 'PUBLISHED'
     ) {
       try {
-        // Step 1: set archived_at (safe regardless of status column type)
-        const r1 = await execute(
-          `UPDATE projects SET archived_at = NOW(), archive_reason = 'CASE_STUDY_COMPLETED', archived_by = 'system' WHERE id = $1 AND archived_at IS NULL`,
-          [existing.project_id]
-        );
-        logger.info(`[CaseStudy] archived_at set for project ${existing.project_id} — rows: ${r1.rowCount}`);
-        // Step 2: mark project COMPLETED (separate statement avoids ENUM cast issue on some servers)
-        await execute(`UPDATE projects SET status = 'COMPLETED' WHERE id = $1`, [existing.project_id]);
+        await transaction(async (client) => {
+          await client.query(
+            `UPDATE projects SET archived_at = NOW(), archive_reason = 'CASE_STUDY_COMPLETED', archived_by = 'system' WHERE id = $1 AND archived_at IS NULL`,
+            [existing.project_id]
+          );
+          await client.query(
+            `UPDATE projects SET status = 'COMPLETED' WHERE id = $1`,
+            [existing.project_id]
+          );
+        });
+        logger.info(`[CaseStudy] Project ${existing.project_id} archived and marked COMPLETED`);
       } catch (err: any) {
         logger.error(`[CaseStudy] Failed to archive project ${existing.project_id}: ${err?.message || err}`);
       }

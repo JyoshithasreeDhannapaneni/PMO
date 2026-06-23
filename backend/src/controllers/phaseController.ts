@@ -33,20 +33,6 @@ export const phaseController = {
   }),
 
   /**
-   * POST /api/phases/:projectId/complete/:phaseName
-   * Complete a phase and move to next
-   */
-  completePhase: asyncHandler(async (req: Request, res: Response): Promise<void> => {
-    const { projectId, phaseName } = req.params;
-    await phaseService.completePhase(projectId, phaseName as any);
-
-    res.json({
-      success: true,
-      message: `Phase ${phaseName} completed successfully`,
-    });
-  }),
-
-  /**
    * GET /api/phases/stats
    * Get phase statistics
    */

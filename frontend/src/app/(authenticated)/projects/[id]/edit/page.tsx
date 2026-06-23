@@ -1,10 +1,12 @@
 'use client';
 
+import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useProject, useUpdateProject } from '@/hooks/useProjects';
 import { ProjectForm } from '@/components/projects/ProjectForm';
 import { Button } from '@/components/ui/Button';
 import { useToast } from '@/context/ToastContext';
+import { useAuth } from '@/context/AuthContext';
 import { Loader2, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import type { CreateProjectInput } from '@/types';
@@ -15,9 +17,18 @@ interface EditProjectPageProps {
 
 export default function EditProjectPage({ params }: EditProjectPageProps) {
   const router = useRouter();
+  const { user } = useAuth();
   const { data, isLoading, error } = useProject(params.id);
   const updateProject = useUpdateProject();
   const { showToast } = useToast();
+
+  useEffect(() => {
+    if (user && user.role !== 'ADMIN' && user.role !== 'PROJECT_MANAGER') {
+      router.replace(`/projects/${params.id}`);
+    }
+  }, [user, params.id, router]);
+
+  if (user && user.role !== 'ADMIN' && user.role !== 'PROJECT_MANAGER') return null;
 
   const handleSubmit = async (formData: CreateProjectInput) => {
     try {

@@ -1133,7 +1133,7 @@ export default function DashboardPage() {
                   <Link href="/projects" className="text-xs text-primary-600 hover:text-primary-700 font-medium flex items-center gap-0.5">View Details <ChevronRight size={12} /></Link>
                 </div>
                 <BarChart bars={(projectsByPhase as any[] || []).filter((p) => p.count > 0).map((p: any) => {
-                  const colors: Record<string, string> = { KICKOFF: '#a855f7', MIGRATION: '#3b82f6', VALIDATION: '#eab308', CLOSURE: '#22c55e', COMPLETED: '#10b981', PLANNING: '#6366f1', 'IN PROGRESS': '#3b82f6', TESTING: '#f97316' };
+                  const colors: Record<string, string> = { KICKOFF: '#a855f7', CLOUD_ADDING: '#3b82f6', PILOT_MIGRATION: '#f59e0b', ONETIME_MIGRATION: '#10b981', DELTA: '#ef4444', FINAL_VALIDATION: '#6366f1', COMPLETED: '#10b981' };
                   return { label: p.phase?.charAt(0) + p.phase?.slice(1).toLowerCase(), value: p.count, color: colors[p.phase] || '#6b7280' };
                 })} />
               </Card>

@@ -27,6 +27,7 @@ import {
 import Link from 'next/link';
 import { WeeklyReport } from './WeeklyReport';
 import { useSettings } from '@/context/SettingsContext';
+import { useAuth } from '@/context/AuthContext';
 
 interface ProjectDetailProps {
   project: Project;
@@ -34,6 +35,8 @@ interface ProjectDetailProps {
 
 export function ProjectDetail({ project }: ProjectDetailProps) {
   const { settings } = useSettings();
+  const { user } = useAuth();
+  const canEdit = user?.role === 'ADMIN' || user?.role === 'PROJECT_MANAGER';
 
   const migrationTypesList: { code: string; name: string; icon: string; color: string }[] = (() => {
     if (!project.migrationTypes) return [];
@@ -66,9 +69,11 @@ export function ProjectDetail({ project }: ProjectDetailProps) {
               Manage
             </Button>
           </Link>
-          <Link href={`/projects/${project.id}/edit`}>
-            <Button variant="outline">Edit Project</Button>
-          </Link>
+          {canEdit && (
+            <Link href={`/projects/${project.id}/edit`}>
+              <Button variant="outline">Edit Project</Button>
+            </Link>
+          )}
         </div>
       </div>
 
@@ -353,39 +358,51 @@ function CostItem({ label, value, highlight, isNegative }: { label: string; valu
 }
 
 function PhaseTimeline({ phases, currentPhase }: { phases: ProjectPhaseRecord[]; currentPhase: string }) {
-  const phaseOrder = ['KICKOFF', 'MIGRATION', 'VALIDATION', 'CLOSURE', 'COMPLETED'];
-  const currentIndex = phaseOrder.indexOf(currentPhase);
+  const { settings } = useSettings();
+
+  // Build ordered display list from the actual phase records (DB-driven, not hardcoded).
+  // Exclude COMPLETED from the visual steps — it's the terminal state, not a step.
+  const orderedPhases = [...phases]
+    .sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0))
+    .filter(p => p.phaseName !== 'COMPLETED');
+
+  const currentIndex = orderedPhases.findIndex(p => p.phaseName === currentPhase);
+
+  const getDisplayName = (code: string) => {
+    const found = settings.phases.find(p => p.code === code);
+    return found?.name ?? code.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  };
 
   return (
     <div className="relative">
       <div className="flex items-center justify-between">
-        {phaseOrder.slice(0, -1).map((phase, index) => {
-          const isCompleted = index < currentIndex;
+        {orderedPhases.map((phaseRecord, index) => {
+          const isCompleted = phaseRecord.status === 'COMPLETED';
           const isCurrent = index === currentIndex;
-          const phaseRecord = phases.find(p => p.phaseName === phase);
 
           return (
-            <div key={phase} className="flex flex-col items-center flex-1">
+            <div key={phaseRecord.phaseName} className="flex flex-col items-center flex-1">
               <div className="relative flex items-center w-full">
-                {/* Connector line */}
+                {/* Connector line left */}
                 {index > 0 && (
                   <div className={`absolute left-0 right-1/2 h-0.5 -translate-y-1/2 top-1/2 ${
                     isCompleted ? 'bg-green-500' : 'bg-gray-200'
                   }`} />
                 )}
-                {index < phaseOrder.length - 2 && (
+                {/* Connector line right */}
+                {index < orderedPhases.length - 1 && (
                   <div className={`absolute left-1/2 right-0 h-0.5 -translate-y-1/2 top-1/2 ${
                     isCompleted ? 'bg-green-500' : 'bg-gray-200'
                   }`} />
                 )}
-                
+
                 {/* Phase circle */}
                 <div className="relative z-10 mx-auto">
                   <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                    isCompleted 
-                      ? 'bg-green-500 text-white' 
-                      : isCurrent 
-                        ? 'bg-primary-500 text-white ring-4 ring-primary-100' 
+                    isCompleted
+                      ? 'bg-green-500 text-white'
+                      : isCurrent
+                        ? 'bg-primary-500 text-white ring-4 ring-primary-100'
                         : 'bg-gray-200 text-gray-400'
                   }`}>
                     {isCompleted ? (
@@ -398,13 +415,13 @@ function PhaseTimeline({ phases, currentPhase }: { phases: ProjectPhaseRecord[];
                   </div>
                 </div>
               </div>
-              
+
               {/* Phase label */}
               <div className="mt-2 text-center">
                 <span className={`text-xs font-medium ${
                   isCurrent ? 'text-primary-600' : isCompleted ? 'text-green-600' : 'text-gray-500'
                 }`}>
-                  {phase}
+                  {getDisplayName(phaseRecord.phaseName)}
                 </span>
                 {phaseRecord?.actualDate && (
                   <p className="text-xs text-gray-400 mt-0.5">

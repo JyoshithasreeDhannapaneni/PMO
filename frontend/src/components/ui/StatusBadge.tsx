@@ -18,11 +18,13 @@ const statusColors: Record<string, string> = {
 };
 
 const defaultPhaseColors: Record<string, string> = {
-  KICKOFF: 'bg-purple-100 text-purple-800 border-purple-200',
-  MIGRATION: 'bg-blue-100 text-blue-800 border-blue-200',
-  VALIDATION: 'bg-orange-100 text-orange-800 border-orange-200',
-  CLOSURE: 'bg-teal-100 text-teal-800 border-teal-200',
-  COMPLETED: 'bg-green-100 text-green-800 border-green-200',
+  KICKOFF:           'bg-purple-100 text-purple-800 border-purple-200',
+  CLOUD_ADDING:      'bg-blue-100 text-blue-800 border-blue-200',
+  PILOT_MIGRATION:   'bg-amber-100 text-amber-800 border-amber-200',
+  ONETIME_MIGRATION: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+  DELTA:             'bg-red-100 text-red-800 border-red-200',
+  FINAL_VALIDATION:  'bg-indigo-100 text-indigo-800 border-indigo-200',
+  COMPLETED:         'bg-green-100 text-green-800 border-green-200',
 };
 
 const defaultPlanColors: Record<string, string> = {

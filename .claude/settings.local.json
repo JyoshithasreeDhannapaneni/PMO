@@ -74,7 +74,16 @@
       "PowerShell($nodePath = \\(Get-ChildItem \"C:\\\\Program Files\\\\nodejs\" -ErrorAction SilentlyContinue | Select-Object -First 1\\).FullName; if \\(-not $nodePath\\) { $nodePath = \\(where.exe node 2>$null | Split-Path\\) }; Write-Host \"Node path: $nodePath\")",
       "PowerShell($env:Path = [System.Environment]::GetEnvironmentVariable\\(\"Path\",\"Machine\"\\) + \";\" + [System.Environment]::GetEnvironmentVariable\\(\"Path\",\"User\"\\); docker ps --filter \"name=pmo-postgres\" --format \"{{.Names}} {{.Status}}\" 2>&1)",
       "PowerShell(Get-Service | Where-Object { $_.DisplayName -match 'postgres|sql' } | Select-Object Name, DisplayName, Status; Test-NetConnection -ComputerName localhost -Port 5432 -WarningAction SilentlyContinue | Select-Object TcpTestSucceeded)",
-      "Bash(rm \"c:\\\\Users\\\\BharathTummaganti\\\\OneDrive - CloudFuze, Inc\\\\Documents\\\\PMO\\\\PMO\\\\docker-compose.dev.yml\")"
+      "Bash(rm \"c:\\\\Users\\\\BharathTummaganti\\\\OneDrive - CloudFuze, Inc\\\\Documents\\\\PMO\\\\PMO\\\\docker-compose.dev.yml\")",
+      "Bash(xargs grep -l \"interface.*User\\\\|type.*User\")",
+      "Bash(xargs grep -l \"project\\\\|Project\")",
+      "Bash(xargs grep -l \"middleware\\\\|requireAuth\\\\|requireRole\\\\|checkAuth\")",
+      "Bash(Get-ChildItem -Path services, controllers, routes -Filter \"*.ts\" -File)",
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\BharathTummaganti\\\\OneDrive - CloudFuze, Inc\\\\Documents\\\\PMO\\\\PMO\\\\frontend\\\\src\\\\app\\\\\\(authenticated\\)\" -Recurse -Filter \"*.tsx\")",
+      "Bash(Select-Object FullName)",
+      "PowerShell(Get-ChildItem -Path \"c:\\\\Users\\\\BharathTummaganti\\\\OneDrive - CloudFuze, Inc\\\\Documents\\\\PMO\\\\PMO\\\\frontend\\\\src\\\\app\\\\\\(authenticated\\)\" -Recurse -Directory | ForEach-Object { $_.FullName } | Sort-Object)",
+      "PowerShell(Get-ChildItem -Path \"c:\\\\Users\\\\BharathTummaganti\\\\OneDrive - CloudFuze, Inc\\\\Documents\\\\PMO\\\\PMO\\\\frontend\\\\src\\\\app\\\\\\(authenticated\\)\" -Recurse -Filter \"page.tsx\" | ForEach-Object { $_.FullName } | Sort-Object)"
     ],
     "additionalDirectories": [
       "c:\\Users\\BharathTummaganti\\OneDrive - CloudFuze, Inc\\Documents\\PMO\\PMO"

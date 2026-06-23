@@ -552,6 +552,26 @@ class ProjectService {
     }
 
     const existing = existingResult.rows[0];
+
+    // Guard: once a project is COMPLETED with a case study, it cannot be moved back to ACTIVE/ON_HOLD.
+    // The only way to re-open it is to delete the case study first (admin action).
+    if (
+      data.status !== undefined &&
+      existing.status === 'COMPLETED' &&
+      ['ACTIVE', 'ON_HOLD'].includes(data.status.toUpperCase())
+    ) {
+      const caseStudyCheck = await query(
+        `SELECT id FROM case_studies WHERE project_id = $1 LIMIT 1`,
+        [id]
+      );
+      if (caseStudyCheck.rows.length > 0) {
+        throw new AppError(
+          'This project is completed and has a case study. It cannot be moved back to an active state. Delete the case study first if re-opening is required.',
+          400
+        );
+      }
+    }
+
     const plannedStart = data.plannedStart ? new Date(data.plannedStart) : existing.planned_start;
     const plannedEnd = data.plannedEnd ? new Date(data.plannedEnd) : existing.planned_end;
     const actualStart = data.actualStart !== undefined
@@ -684,7 +704,10 @@ class ProjectService {
 
     // Clear archived_at when status moves back to an active state (ACTIVE or ON_HOLD)
     // This prevents stale archived_at from a previous cancellation showing the project in the archive
-    if (data.status && ['ACTIVE', 'ON_HOLD'].includes(data.status.toUpperCase())) {
+    if (data.status && (
+      ['ACTIVE', 'ON_HOLD'].includes(data.status.toUpperCase()) ||
+      (data.status.toUpperCase() === 'COMPLETED' && existing.status !== 'COMPLETED')
+    )) {
       try {
         await execute(
           `UPDATE projects SET archived_at = NULL, archive_reason = NULL, archived_by = NULL WHERE id = $1`,

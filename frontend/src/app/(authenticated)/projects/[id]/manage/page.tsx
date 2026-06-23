@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react';
 import { useProject } from '@/hooks/useProjects';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { 
+import { useToast } from '@/context/ToastContext';
+import {
   Loader2, ArrowLeft, AlertTriangle, Users, FileText,
   BarChart3, GitPullRequest, Plus, Edit2, Trash2, Check,
   X, Clock, Shield, ChevronDown, ChevronRight, Pencil
@@ -21,6 +22,12 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
 export default function ProjectManagePage({ params }: ProjectManagePageProps) {
   const { data, isLoading, error } = useProject(params.id);
+  const { showToast } = useToast();
+  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+  const authHeaders: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
   const [activeTab, setActiveTab] = useState<TabType>('risks');
   
   // Data states
@@ -71,9 +78,9 @@ export default function ProjectManagePage({ params }: ProjectManagePageProps) {
           break;
       }
       
-      const res = await fetch(`${API_URL}${endpoint}`);
+      const res = await fetch(`${API_URL}${endpoint}`, { headers: authHeaders });
       const json = await res.json();
-      
+
       if (json.success) {
         switch (tab) {
           case 'risks': setRisks(json.data); break;
@@ -85,6 +92,7 @@ export default function ProjectManagePage({ params }: ProjectManagePageProps) {
       }
     } catch (err) {
       console.error('Failed to load data:', err);
+      showToast('error', 'Failed to load data', 'Could not fetch tab data. Please try again.');
     }
     setLoadingData(false);
   };
@@ -102,10 +110,11 @@ export default function ProjectManagePage({ params }: ProjectManagePageProps) {
     }
     
     try {
-      await fetch(`${API_URL}${endpoint}`, { method: 'DELETE' });
+      await fetch(`${API_URL}${endpoint}`, { method: 'DELETE', headers: authHeaders });
       loadTabData(tab);
     } catch (err) {
       console.error('Delete failed:', err);
+      showToast('error', 'Delete failed', 'Could not delete this item. Please try again.');
     }
   };
 
@@ -113,14 +122,18 @@ export default function ProjectManagePage({ params }: ProjectManagePageProps) {
     try {
       const res = await fetch(`${API_URL}/api/reports/project/${params.id}/generate`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders,
         body: JSON.stringify({ createdBy: 'System' }),
       });
       if (res.ok) {
         loadTabData('reports');
+        showToast('success', 'Report generated');
+      } else {
+        showToast('error', 'Failed to generate report', 'Please try again.');
       }
     } catch (err) {
       console.error('Failed to generate report:', err);
+      showToast('error', 'Failed to generate report', 'Please try again.');
     }
   };
 
