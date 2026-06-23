@@ -13,6 +13,12 @@ interface CreateTeamMemberInput {
   allocation?: number;
   startDate?: Date;
   endDate?: Date;
+  shift?: string;
+  shiftTimezone?: string;
+  workingPattern?: string;
+  migrationTypes?: string;
+  capacity?: number;
+  reportingTo?: string;
 }
 
 interface UpdateTeamMemberInput {
@@ -24,6 +30,12 @@ interface UpdateTeamMemberInput {
   startDate?: Date;
   endDate?: Date;
   isActive?: boolean;
+  shift?: string;
+  shiftTimezone?: string;
+  workingPattern?: string;
+  migrationTypes?: string;
+  capacity?: number;
+  reportingTo?: string;
 }
 
 function mapTeamMemberRow(row: any) {
@@ -38,6 +50,12 @@ function mapTeamMemberRow(row: any) {
     startDate: row.start_date,
     endDate: row.end_date,
     isActive: row.is_active,
+    shift: row.shift,
+    shiftTimezone: row.shift_timezone,
+    workingPattern: row.working_pattern,
+    migrationTypes: row.migration_types,
+    capacity: row.capacity ?? 100,
+    reportingTo: row.reporting_to,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -73,8 +91,10 @@ class TeamService {
   async create(data: CreateTeamMemberInput) {
     const memberId = uuidv4();
     await execute(
-      `INSERT INTO project_team_members (id, project_id, name, email, role, department, allocation, start_date, end_date, is_active)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true)`,
+      `INSERT INTO project_team_members
+        (id, project_id, name, email, role, department, allocation, start_date, end_date, is_active,
+         shift, shift_timezone, working_pattern, migration_types, capacity, reporting_to)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true, $10, $11, $12, $13, $14, $15)`,
       [
         memberId,
         data.projectId,
@@ -82,9 +102,15 @@ class TeamService {
         data.email,
         data.role || 'TEAM_MEMBER',
         data.department,
-        data.allocation || 100,
+        data.allocation ?? 100,
         data.startDate,
         data.endDate,
+        data.shift ?? null,
+        data.shiftTimezone ?? null,
+        data.workingPattern ?? null,
+        data.migrationTypes ?? null,
+        data.capacity ?? 100,
+        data.reportingTo ?? null,
       ]
     );
 
@@ -107,6 +133,12 @@ class TeamService {
     if (data.startDate !== undefined) { updates.push(`start_date = $${paramIndex++}`); params.push(data.startDate); }
     if (data.endDate !== undefined) { updates.push(`end_date = $${paramIndex++}`); params.push(data.endDate); }
     if (data.isActive !== undefined) { updates.push(`is_active = $${paramIndex++}`); params.push(data.isActive); }
+    if (data.shift !== undefined) { updates.push(`shift = $${paramIndex++}`); params.push(data.shift); }
+    if (data.shiftTimezone !== undefined) { updates.push(`shift_timezone = $${paramIndex++}`); params.push(data.shiftTimezone); }
+    if (data.workingPattern !== undefined) { updates.push(`working_pattern = $${paramIndex++}`); params.push(data.workingPattern); }
+    if (data.migrationTypes !== undefined) { updates.push(`migration_types = $${paramIndex++}`); params.push(data.migrationTypes); }
+    if (data.capacity !== undefined) { updates.push(`capacity = $${paramIndex++}`); params.push(data.capacity); }
+    if (data.reportingTo !== undefined) { updates.push(`reporting_to = $${paramIndex++}`); params.push(data.reportingTo); }
 
     await execute(
       `UPDATE project_team_members SET ${updates.join(', ')} WHERE id = $${paramIndex}`,
