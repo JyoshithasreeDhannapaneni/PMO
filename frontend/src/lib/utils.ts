@@ -54,18 +54,14 @@ export function getStatusColor(status: string): string {
 
 export function getPhaseColor(phase: string): string {
   switch (phase) {
-    case 'KICKOFF':
-      return 'text-purple-600 bg-purple-50';
-    case 'MIGRATION':
-      return 'text-blue-600 bg-blue-50';
-    case 'VALIDATION':
-      return 'text-orange-600 bg-orange-50';
-    case 'CLOSURE':
-      return 'text-teal-600 bg-teal-50';
-    case 'COMPLETED':
-      return 'text-green-600 bg-green-50';
-    default:
-      return 'text-gray-600 bg-gray-50';
+    case 'KICKOFF':           return 'text-purple-600 bg-purple-50';
+    case 'CLOUD_ADDING':      return 'text-blue-600 bg-blue-50';
+    case 'PILOT_MIGRATION':   return 'text-amber-600 bg-amber-50';
+    case 'ONETIME_MIGRATION': return 'text-emerald-600 bg-emerald-50';
+    case 'DELTA':             return 'text-red-600 bg-red-50';
+    case 'FINAL_VALIDATION':  return 'text-indigo-600 bg-indigo-50';
+    case 'COMPLETED':         return 'text-green-600 bg-green-50';
+    default:                  return 'text-gray-600 bg-gray-50';
   }
 }
 

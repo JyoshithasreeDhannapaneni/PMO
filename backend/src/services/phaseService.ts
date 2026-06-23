@@ -3,7 +3,14 @@ import { AppError } from '../middleware/errorHandler';
 import { logger } from '../utils/logger';
 
 type PhaseStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'SKIPPED';
-type ProjectPhase = 'KICKOFF' | 'MIGRATION' | 'VALIDATION' | 'CLOSURE' | 'COMPLETED';
+type ProjectPhase =
+  | 'KICKOFF'
+  | 'CLOUD_ADDING'
+  | 'PILOT_MIGRATION'
+  | 'ONETIME_MIGRATION'
+  | 'DELTA'
+  | 'FINAL_VALIDATION'
+  | 'COMPLETED';
 
 export interface UpdatePhaseDTO {
   actualStart?: Date | string | null;
@@ -89,47 +96,38 @@ class PhaseService {
     const phase = mapPhaseRow(result.rows[0]);
 
     if (data.status === 'COMPLETED') {
-      await this.updateProjectPhase(existing.project_id, existing.phase_name);
+      await this.advanceProjectPhase(existing.project_id);
     }
 
     logger.info(`Phase updated: ${id} - ${existing.phase_name}`);
     return phase;
   }
 
-  async completePhase(projectId: string, phaseName: ProjectPhase): Promise<void> {
-    await query(
-      `UPDATE project_phases SET status = 'COMPLETED', actual_end = NOW() 
-       WHERE project_id = $1 AND phase_name = $2`,
-      [projectId, phaseName]
+  // Data-driven phase advance: reads project_phases order from DB, no hardcoded list.
+  private async advanceProjectPhase(projectId: string): Promise<void> {
+    // Find the next phase that is still PENDING, ordered by order_index
+    const nextResult = await query(
+      `SELECT phase_name FROM project_phases
+       WHERE project_id = $1 AND status = 'PENDING'
+       ORDER BY order_index ASC LIMIT 1`,
+      [projectId]
     );
 
-    await this.updateProjectPhase(projectId, phaseName);
-  }
-
-  private async updateProjectPhase(projectId: string, completedPhase: string): Promise<void> {
-    const phaseOrder: ProjectPhase[] = ['KICKOFF', 'MIGRATION', 'VALIDATION', 'CLOSURE', 'COMPLETED'];
-    const currentIndex = phaseOrder.indexOf(completedPhase as ProjectPhase);
-
-    if (currentIndex < phaseOrder.length - 1) {
-      const nextPhase = phaseOrder[currentIndex + 1];
-
-      if (nextPhase === 'COMPLETED') {
-        await query(
-          `UPDATE projects SET phase = $1, status = 'COMPLETED', actual_end = NOW() WHERE id = $2`,
-          [nextPhase, projectId]
-        );
-      } else {
-        await query(
-          `UPDATE projects SET phase = $1 WHERE id = $2`,
-          [nextPhase, projectId]
-        );
-
-        await query(
-          `UPDATE project_phases SET status = 'IN_PROGRESS', actual_start = NOW() 
-           WHERE project_id = $1 AND phase_name = $2`,
-          [projectId, nextPhase]
-        );
-      }
+    if (nextResult.rows.length > 0) {
+      const nextPhaseName: string = nextResult.rows[0].phase_name;
+      // Advance the project's current phase column
+      await execute(`UPDATE projects SET phase = $1 WHERE id = $2`, [nextPhaseName, projectId]);
+      // Mark the next phase as IN_PROGRESS
+      await execute(
+        `UPDATE project_phases
+         SET status = 'IN_PROGRESS', actual_start = COALESCE(actual_start, NOW())
+         WHERE project_id = $1 AND phase_name = $2`,
+        [projectId, nextPhaseName]
+      );
+    } else {
+      // No pending phases remain — check if the project is fully complete
+      const { taskService } = require('./taskService');
+      await taskService.checkProjectCompletion(projectId);
     }
   }
 
@@ -142,9 +140,11 @@ class PhaseService {
 
     const stats: Record<string, number> = {
       KICKOFF: 0,
-      MIGRATION: 0,
-      VALIDATION: 0,
-      CLOSURE: 0,
+      CLOUD_ADDING: 0,
+      PILOT_MIGRATION: 0,
+      ONETIME_MIGRATION: 0,
+      DELTA: 0,
+      FINAL_VALIDATION: 0,
       COMPLETED: 0,
     };
 

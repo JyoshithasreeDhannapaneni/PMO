@@ -100,14 +100,4 @@ export const taskController = {
     });
   }),
 
-  autoUpdateStatuses: asyncHandler(async (req: Request, res: Response): Promise<void> => {
-    const { projectId } = req.params;
-    const updatedCount = await taskService.autoUpdateTaskStatuses(projectId);
-    
-    res.json({
-      success: true,
-      message: `Auto-updated ${updatedCount} phase(s) based on task dates`,
-      data: { updatedPhases: updatedCount },
-    });
-  }),
 };

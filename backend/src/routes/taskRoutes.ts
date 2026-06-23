@@ -15,9 +15,6 @@ router.post('/project/:projectId', taskController.createTask);
 // POST /api/tasks/project/:projectId/from-template - Create tasks from template
 router.post('/project/:projectId/from-template', taskController.createFromTemplate);
 
-// POST /api/tasks/project/:projectId/auto-update - Auto-update task statuses based on dates
-router.post('/project/:projectId/auto-update', taskController.autoUpdateStatuses);
-
 // GET /api/tasks/:taskId - Get single task
 router.get('/:taskId', taskController.getTaskById);
 

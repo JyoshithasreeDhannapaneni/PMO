@@ -149,7 +149,6 @@ export function ProjectForm({ project, onSubmit, isLoading, defaultManagerName }
   });
 
   useEffect(() => {
-    if (project) return;
     const validPlanCodes = planTypes.map((p) => p.code || p.name.toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '')).filter(Boolean);
     const validPhaseCodes = phases.map((p) => p.code || p.name.toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '')).filter(Boolean);
     const cp = getValues('planType');

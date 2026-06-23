@@ -137,10 +137,6 @@ export const phasesApi = {
     return data;
   },
 
-  complete: async (projectId: string, phaseName: string): Promise<ApiResponse<void>> => {
-    const { data } = await api.post(`/phases/${projectId}/complete/${phaseName}`);
-    return data;
-  },
 };
 
 // Templates API

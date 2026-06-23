@@ -23,11 +23,13 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 const PHASE_COLORS: Record<string, string> = {
-  KICKOFF: '#8b5cf6',
-  MIGRATION: '#3b82f6',
-  VALIDATION: '#f97316',
-  CLOSURE: '#14b8a6',
-  COMPLETED: '#22c55e',
+  KICKOFF:           '#8b5cf6',
+  CLOUD_ADDING:      '#3b82f6',
+  PILOT_MIGRATION:   '#f59e0b',
+  ONETIME_MIGRATION: '#10b981',
+  DELTA:             '#ef4444',
+  FINAL_VALIDATION:  '#6366f1',
+  COMPLETED:         '#22c55e',
 };
 
 const PLAN_COLORS: Record<string, string> = {

@@ -259,6 +259,7 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
   };
 
   const startEditing = (projectId: string, field: string, currentValue: string) => {
+    if (user?.role !== 'ADMIN' && user?.role !== 'PROJECT_MANAGER') return;
     setEditingCell({ projectId, field });
     setEditValue(currentValue || '');
   };
@@ -357,8 +358,12 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
       );
     }
 
+    if (user?.role !== 'ADMIN' && user?.role !== 'PROJECT_MANAGER') {
+      return <div className="text-sm text-gray-900 px-1">{value || <span className="text-gray-400 italic">Not set</span>}</div>;
+    }
+
     return (
-      <div 
+      <div
         className="cursor-pointer hover:bg-gray-100 rounded px-1 py-0.5 -mx-1 transition-colors text-sm text-gray-900"
         onClick={(e) => {
           e.stopPropagation();
@@ -781,16 +786,18 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
                     >
                       <Eye size={16} />
                     </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        router.push(`/projects/${project.id}/edit`);
-                      }}
-                      className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                      title="Full Edit"
-                    >
-                      <Edit size={16} />
-                    </button>
+                    {(user?.role === 'ADMIN' || user?.role === 'PROJECT_MANAGER') && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          router.push(`/projects/${project.id}/edit`);
+                        }}
+                        className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                        title="Full Edit"
+                      >
+                        <Edit size={16} />
+                      </button>
+                    )}
                     {onDelete && (
                       <button
                         onClick={(e) => {
