@@ -224,6 +224,8 @@ function mapProjectRow(row: any) {
     pocPreSalesOwner: row.poc_pre_sales_owner ?? null,
     pocCriticalNotes: row.poc_critical_notes ?? null,
     onetimeProgress: row.onetime_progress ?? null,
+    customerSuccess: row.customer_success ?? null,
+    csatScore: row.csat_score != null ? parseFloat(row.csat_score) : null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -233,14 +235,7 @@ class ProjectService {
   async getAll(filters: ProjectFilters = {}, pagination: PaginationOptions = {}) {
     const { page = 1, limit = 20, sortBy = 'created_at', sortOrder = 'desc' } = pagination;
 
-    // Exclude archived projects, completed projects, and any project that already has a case study
-    // (regardless of status). A project moves to the case-studies page the moment a case study
-    // exists for it — either auto-created by checkProjectCompletion or manually by staff.
-    const conditions: string[] = [
-      "archived_at IS NULL",
-      "status != 'COMPLETED'",
-      "NOT EXISTS (SELECT 1 FROM case_studies WHERE project_id = projects.id)",
-    ];
+    const conditions: string[] = ["archived_at IS NULL"];
     const params: any[] = [];
 
     if (filters.status) {
@@ -696,6 +691,12 @@ class ProjectService {
       const pv = (data as any).onetimeProgress;
       updates.push(`onetime_progress = $${params.length + 1}`);
       params.push(pv !== null && pv !== '' ? Number(pv) : null);
+    }
+    if ((data as any).customerSuccess !== undefined) { updates.push(`customer_success = $${params.length + 1}`); params.push((data as any).customerSuccess ?? null); }
+    if ((data as any).csatScore !== undefined) {
+      const cv = (data as any).csatScore;
+      updates.push(`csat_score = $${params.length + 1}`);
+      params.push(cv !== null && cv !== '' ? parseFloat(cv) : null);
     }
 
     await execute(
