@@ -34,6 +34,7 @@ export interface Project {
   actualEnd: string | null;
   delayDays: number;
   delayStatus: DelayStatus;
+  expectedEnd?: string | null;
   phase: ProjectPhase;
   status: ProjectStatus;
   migrationTypes: string | null;
