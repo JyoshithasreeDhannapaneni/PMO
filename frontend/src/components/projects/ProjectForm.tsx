@@ -149,7 +149,6 @@ export function ProjectForm({ project, onSubmit, isLoading, defaultManagerName }
   });
 
   useEffect(() => {
-    if (project) return;
     const validPlanCodes = planTypes.map((p) => p.code || p.name.toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '')).filter(Boolean);
     const validPhaseCodes = phases.map((p) => p.code || p.name.toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '')).filter(Boolean);
     const cp = getValues('planType');
@@ -250,8 +249,14 @@ export function ProjectForm({ project, onSubmit, isLoading, defaultManagerName }
     return templates.find((t) => t.code === migrationType.code.toUpperCase() || t.name.toUpperCase().includes(migrationType.code.toUpperCase())) || null;
   })();
 
+  const handleCreateClick = async () => {
+    const valid = await trigger(STEP_FIELDS[step]);
+    if (!valid) { showToast('error', 'Please fix errors', 'Check all required fields on this step first.'); return; }
+    handleSubmit(handleFormSubmit, () => { showToast('error', 'Please fix errors', 'Check all required fields.'); })();
+  };
+
   return (
-    <form onSubmit={handleSubmit(handleFormSubmit, () => { showToast('error', 'Please fix errors', 'Check all required fields.'); })}
+    <form onSubmit={(e) => e.preventDefault()}
       className="flex flex-col h-full" onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}>
 
       {/* ── Step tabs ───────────────────────────────────────────── */}
@@ -483,7 +488,7 @@ export function ProjectForm({ project, onSubmit, isLoading, defaultManagerName }
               Next →
             </Button>
           ) : (
-            <Button type="submit" isLoading={isLoading}>
+            <Button type="button" onClick={handleCreateClick} isLoading={isLoading}>
               {project ? 'Update Project' : 'Create Project'}
             </Button>
           )}

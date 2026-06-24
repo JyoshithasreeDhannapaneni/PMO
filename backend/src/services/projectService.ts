@@ -114,14 +114,18 @@ function mapProjectRow(row: any) {
     const ps = new Date(row.planned_start);
     const pe = new Date(row.planned_end);
     const as = row.actual_start ? new Date(row.actual_start) : null;
-    expectedEnd = as ? new Date(as.getTime() + (pe.getTime() - ps.getTime())) : pe;
+    const extEnd = row.extended_end_date ? new Date(row.extended_end_date) : null;
+
+    // Deadline = extended end date (overage) if set, otherwise original SOW end.
+    // No kickoff adjustment: delay is always relative to the contractual end date.
+    expectedEnd = extEnd || pe;
 
     // Only pass actualEnd for truly finished projects — ACTIVE/ON_HOLD projects
     // may have actualEnd filled as "expected end" by users, which would cause
     // calculateDelay to treat them as completed (always NOT_DELAYED).
     const isFinished = row.status === 'COMPLETED' || row.status === 'CANCELLED';
     const actualEndForDelay = isFinished && row.actual_end ? new Date(row.actual_end) : null;
-    const result = calculateDelay(ps, pe, as, actualEndForDelay);
+    const result = calculateDelay(ps, pe, as, actualEndForDelay, new Date(), extEnd);
     liveDelayStatus = result.delayStatus;
     liveDelayDays   = result.delayDays;
   }
@@ -158,6 +162,7 @@ function mapProjectRow(row: any) {
     escalatedAt: row.escalated_at ?? null,
     escalationNotes: row.escalation_notes ?? null,
     overageAmount: row.overage_amount ?? null,
+    extendedEndDate: row.extended_end_date ?? null,
     cloudAddingStart: row.cloud_adding_start ?? null,
     cloudAddingEnd: row.cloud_adding_end ?? null,
     pilotMigrationStart: row.pilot_migration_start ?? null,
@@ -551,6 +556,26 @@ class ProjectService {
     }
 
     const existing = existingResult.rows[0];
+
+    // Guard: once a project is COMPLETED with a case study, it cannot be moved back to ACTIVE/ON_HOLD.
+    // The only way to re-open it is to delete the case study first (admin action).
+    if (
+      data.status !== undefined &&
+      existing.status === 'COMPLETED' &&
+      ['ACTIVE', 'ON_HOLD'].includes(data.status.toUpperCase())
+    ) {
+      const caseStudyCheck = await query(
+        `SELECT id FROM case_studies WHERE project_id = $1 LIMIT 1`,
+        [id]
+      );
+      if (caseStudyCheck.rows.length > 0) {
+        throw new AppError(
+          'This project is completed and has a case study. It cannot be moved back to an active state. Delete the case study first if re-opening is required.',
+          400
+        );
+      }
+    }
+
     const plannedStart = data.plannedStart ? new Date(data.plannedStart) : existing.planned_start;
     const plannedEnd = data.plannedEnd ? new Date(data.plannedEnd) : existing.planned_end;
     const actualStart = data.actualStart !== undefined
@@ -689,13 +714,52 @@ class ProjectService {
 
     // Clear archived_at when status moves back to an active state (ACTIVE or ON_HOLD)
     // This prevents stale archived_at from a previous cancellation showing the project in the archive
-    if (data.status && ['ACTIVE', 'ON_HOLD'].includes(data.status.toUpperCase())) {
+    if (data.status && (
+      ['ACTIVE', 'ON_HOLD'].includes(data.status.toUpperCase()) ||
+      (data.status.toUpperCase() === 'COMPLETED' && existing.status !== 'COMPLETED')
+    )) {
       try {
         await execute(
           `UPDATE projects SET archived_at = NULL, archive_reason = NULL, archived_by = NULL WHERE id = $1`,
           [id]
         );
       } catch (_) { /* non-critical */ }
+    }
+
+    // When phase is set to COMPLETED, auto-create case study and mark project COMPLETED.
+    // This is the canonical trigger: phase → COMPLETED means the project is done.
+    if (data.phase && data.phase.toUpperCase() === 'COMPLETED') {
+      try {
+        const existingCS = await query(
+          `SELECT id FROM case_studies WHERE project_id = $1 LIMIT 1`, [id]
+        );
+        if (existingCS.rows.length === 0) {
+          const proj = await query(`SELECT * FROM projects WHERE id = $1`, [id]);
+          if (proj.rows.length > 0) {
+            const p = proj.rows[0];
+            const caseStudyId = uuidv4();
+            await transaction(async (client) => {
+              await client.query(
+                `INSERT INTO case_studies (id, project_id, title, content, status) VALUES ($1, $2, $3, NULL, 'PENDING')`,
+                [caseStudyId, id, `${p.customer_name} - ${p.name} Case Study`]
+              );
+              await client.query(
+                `UPDATE projects SET status = 'COMPLETED', actual_end = COALESCE(actual_end, NOW()) WHERE id = $1`,
+                [id]
+              );
+            });
+            logger.info(`Project ${id} phase set to COMPLETED — case study auto-created`);
+          }
+        } else {
+          // Case study already exists; just ensure the project is marked COMPLETED
+          await execute(
+            `UPDATE projects SET status = 'COMPLETED', actual_end = COALESCE(actual_end, NOW()) WHERE id = $1`,
+            [id]
+          );
+        }
+      } catch (err: any) {
+        logger.warn(`Phase-completion trigger failed for project ${id}: ${err?.message}`);
+      }
     }
 
     const result = await query(`SELECT * FROM projects WHERE id = $1`, [id]);

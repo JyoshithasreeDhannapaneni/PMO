@@ -12,7 +12,4 @@ router.get('/project/:projectId', phaseController.getByProjectId);
 // PUT /api/phases/:id - Update a phase
 router.put('/:id', phaseController.update);
 
-// POST /api/phases/:projectId/complete/:phaseName - Complete a phase
-router.post('/:projectId/complete/:phaseName', phaseController.completePhase);
-
 export default router;

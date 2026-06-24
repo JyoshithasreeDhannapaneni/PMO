@@ -8,7 +8,14 @@ export type CfSignalLevel = 'none' | 'moderate' | 'strong' | 'active';
 
 // Project Types
 export type PlanType = 'BRONZE' | 'SILVER' | 'GOLD' | 'PLATINUM';
-export type ProjectPhase = 'KICKOFF' | 'MIGRATION' | 'VALIDATION' | 'CLOSURE' | 'COMPLETED';
+export type ProjectPhase =
+  | 'KICKOFF'
+  | 'CLOUD_ADDING'
+  | 'PILOT_MIGRATION'
+  | 'ONETIME_MIGRATION'
+  | 'DELTA'
+  | 'FINAL_VALIDATION'
+  | 'COMPLETED';
 export type ProjectStatus = 'ACTIVE' | 'INACTIVE' | 'ON_HOLD' | 'COMPLETED' | 'CANCELLED';
 export type DelayStatus = 'NOT_DELAYED' | 'AT_RISK' | 'DELAYED';
 export type PhaseStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'SKIPPED';
@@ -27,6 +34,7 @@ export interface Project {
   actualEnd: string | null;
   delayDays: number;
   delayStatus: DelayStatus;
+  expectedEnd?: string | null;
   phase: ProjectPhase;
   status: ProjectStatus;
   migrationTypes: string | null;
@@ -44,6 +52,7 @@ export interface Project {
   escalatedAt?: string | null;
   escalationNotes?: string | null;
   overageAmount?: number | null;
+  extendedEndDate?: string | null;
   cloudAddingStart?: string | null;
   cloudAddingEnd?: string | null;
   pilotMigrationStart?: string | null;

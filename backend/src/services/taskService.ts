@@ -1,27 +1,9 @@
-import { query, execute } from '../config/database';
+import { query, execute, transaction } from '../config/database';
 import { logger } from '../utils/logger';
-import { caseStudyService } from './caseStudyService';
 import { v4 as uuidv4 } from 'uuid';
 
 type TaskStatus = 'TODO' | 'IN_PROGRESS' | 'DONE' | 'BLOCKED' | 'SKIPPED';
 
-function calculateTaskStatusFromDates(plannedStart: Date, plannedEnd: Date, currentStatus: TaskStatus): { status: TaskStatus; progress: number } {
-  if (currentStatus === 'DONE' || currentStatus === 'BLOCKED' || currentStatus === 'SKIPPED') {
-    return { status: currentStatus, progress: currentStatus === 'DONE' ? 100 : 0 };
-  }
-
-  const now = new Date();
-  const start = new Date(plannedStart);
-  const end = new Date(plannedEnd);
-
-  if (now < start) return { status: 'TODO', progress: 0 };
-  if (now > end) return { status: 'DONE', progress: 100 };
-
-  const totalDuration = end.getTime() - start.getTime();
-  const elapsed = now.getTime() - start.getTime();
-  const progress = Math.min(99, Math.max(1, Math.round((elapsed / totalDuration) * 100)));
-  return { status: 'IN_PROGRESS', progress };
-}
 
 interface UpdateTaskInput {
   name?: string;
@@ -243,83 +225,40 @@ class TaskService {
     const allPhases = phasesResult.rows;
     const allPhasesCompleted = allPhases.length > 0 && allPhases.every((p) => p.status === 'COMPLETED');
 
-    if (allPhasesCompleted) {
-      const existingCaseStudy = await query(
-        `SELECT id FROM case_studies WHERE project_id = $1`,
-        [projectId]
-      );
+    if (!allPhasesCompleted) return;
 
-      if (existingCaseStudy.rows.length === 0) {
-        try {
-          const projectResult = await query(`SELECT * FROM projects WHERE id = $1`, [projectId]);
-          const project = projectResult.rows[0];
-          if (project) {
-            await caseStudyService.create({
-              projectId,
-              title: `${project.customer_name} - ${project.name} Case Study`,
-              status: 'PENDING',
-            });
-            logger.info(`Auto-created case study for project: ${projectId}`);
-            await execute(
-              `UPDATE projects SET status = 'COMPLETED', phase = 'COMPLETED', actual_end = NOW() WHERE id = $1`,
-              [projectId]
-            );
-            logger.info(`Project ${projectId} marked as COMPLETED`);
-          }
-        } catch (error) {
-          logger.warn(`Could not auto-create case study: ${error}`);
-        }
-      }
-    }
-  }
-
-  async autoUpdateTaskStatuses(projectId: string) {
-    const tasksResult = await query(
-      `SELECT t.*, ph.id as phase_id FROM project_tasks t
-       JOIN project_phases ph ON t.phase_record_id = ph.id
-       WHERE t.project_id = $1 AND t.status NOT IN ('DONE', 'BLOCKED', 'SKIPPED')`,
+    const existingCaseStudy = await query(
+      `SELECT id FROM case_studies WHERE project_id = $1`,
       [projectId]
     );
+    if (existingCaseStudy.rows.length > 0) return;
 
-    const updatedPhases = new Set<string>();
+    const projectResult = await query(`SELECT * FROM projects WHERE id = $1`, [projectId]);
+    const project = projectResult.rows[0];
+    if (!project) return;
 
-    for (const task of tasksResult.rows) {
-      const { status, progress } = calculateTaskStatusFromDates(
-        task.planned_start,
-        task.planned_end,
-        task.status
-      );
-
-      if (status !== task.status || progress !== task.progress) {
-        const actualStart = status === 'IN_PROGRESS' && !task.actual_start ? new Date() : null;
-        const actualEnd   = status === 'DONE' ? new Date() : null;
-
-        await execute(
-          `UPDATE project_tasks
-           SET status = $1, progress = $2,
-               actual_start = COALESCE($3, actual_start),
-               actual_end   = COALESCE($4, actual_end)
-           WHERE id = $5`,
-          [status, progress, actualStart, actualEnd, task.id]
+    try {
+      await transaction(async (client) => {
+        const caseStudyId = uuidv4();
+        await client.query(
+          `INSERT INTO case_studies (id, project_id, title, content, status)
+           VALUES ($1, $2, $3, NULL, 'PENDING')`,
+          [caseStudyId, projectId, `${project.customer_name} - ${project.name} Case Study`]
         );
-
-        updatedPhases.add(task.phase_id);
-        logger.debug(`Auto-updated task ${task.name}: ${task.status} -> ${status} (${progress}%)`);
-      }
+        await client.query(
+          `UPDATE projects SET status = 'COMPLETED', phase = 'COMPLETED', actual_end = NOW() WHERE id = $1`,
+          [projectId]
+        );
+      });
+      logger.info(`Project ${projectId} marked as COMPLETED with case study`);
+    } catch (error) {
+      logger.warn(`Could not complete project ${projectId}: ${error}`);
     }
-
-    for (const phaseId of updatedPhases) {
-      await this.updatePhaseProgress(phaseId);
-    }
-
-    return updatedPhases.size;
   }
 
   async getGanttData(projectId: string) {
     const projectResult = await query(`SELECT * FROM projects WHERE id = $1`, [projectId]);
     if (projectResult.rows.length === 0) return null;
-
-    await this.autoUpdateTaskStatuses(projectId);
 
     const project = projectResult.rows[0];
     const phasesResult = await query(

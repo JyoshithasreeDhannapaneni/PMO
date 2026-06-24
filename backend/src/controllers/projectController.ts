@@ -60,6 +60,10 @@ getAll: asyncHandler(async (req: Request, res: Response): Promise<void> => {
     if (token) {
       try {
         const user = await authService.getUserFromToken(token);
+        if (user && user.role !== 'ADMIN' && user.role !== 'PROJECT_MANAGER' && user.role !== 'PRE_SALES') {
+          res.status(403).json({ success: false, error: { message: 'Only Admins and Project Managers can create projects' } });
+          return;
+        }
         if (user && user.role === 'PROJECT_MANAGER') {
           req.body.projectManager = user.name;
         }
@@ -88,28 +92,16 @@ getAll: asyncHandler(async (req: Request, res: Response): Promise<void> => {
     if (token) {
       try {
         const user = await authService.getUserFromToken(token);
+        if (user && user.role !== 'ADMIN' && user.role !== 'PROJECT_MANAGER') {
+          res.status(403).json({ success: false, error: { message: 'Only Admins and Project Managers can edit projects' } });
+          return;
+        }
         if (user && user.role === 'PROJECT_MANAGER') {
           const existing = await projectService.getById(id);
           if (existing.projectManager !== user.name) {
             res.status(403).json({ success: false, error: { message: 'You can only edit projects assigned to you' } });
             return;
           }
-        }
-        if (user && user.role === 'PRE_SALES') {
-          // PRE_SALES can only update POC phase fields
-          const allowedPocFields = [
-            'pocQualificationStatus','pocEnvSetupStatus','pocTrialStatus',
-            'pocValidationStatus','pocOutcomeStatus',
-            'pocQualificationNotes','pocEnvSetupNotes','pocTrialNotes',
-            'pocValidationNotes','pocOutcomeNotes',
-            'pocDeadline','pocOutcome','pocHandoffTo','pocHandoffDate',
-            'pocMigrationSpeed','pocErrorRate','customerContact',
-          ];
-          const restricted: Record<string, any> = {};
-          for (const field of allowedPocFields) {
-            if (req.body[field] !== undefined) restricted[field] = req.body[field];
-          }
-          req.body = restricted;
         }
       } catch {}
     }
@@ -128,6 +120,23 @@ getAll: asyncHandler(async (req: Request, res: Response): Promise<void> => {
    */
   delete: asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const { id } = req.params;
+    const deleteToken = req.headers.authorization?.replace('Bearer ', '');
+    if (deleteToken) {
+      try {
+        const user = await authService.getUserFromToken(deleteToken);
+        if (user && user.role !== 'ADMIN' && user.role !== 'PROJECT_MANAGER') {
+          res.status(403).json({ success: false, error: { message: 'Only Admins and Project Managers can delete projects' } });
+          return;
+        }
+        if (user && user.role === 'PROJECT_MANAGER') {
+          const existing = await projectService.getById(id);
+          if (existing.projectManager !== user.name) {
+            res.status(403).json({ success: false, error: { message: 'You can only delete projects assigned to you' } });
+            return;
+          }
+        }
+      } catch {}
+    }
     await projectService.delete(id);
 
     res.json({
