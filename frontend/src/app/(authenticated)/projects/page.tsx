@@ -131,9 +131,11 @@ export default function ProjectsPage() {
       return (days / 30.44).toFixed(1);
     };
 
-    // Recalculate delay live: kickoff date + SOW duration = expected end
-    const calcDelay = (p: any): { delayStatus: string; delayDays: number } => {
-      if (!p.plannedStart || !p.plannedEnd) return { delayStatus: p.delayStatus ?? '', delayDays: p.delayDays ?? 0 };
+    // Recalculate delay live.
+    // Base expected end = kickoff (actualStart) + SOW duration.
+    // If project is overaged and has an extendedEndDate, that date overrides the base expected end.
+    const calcDelay = (p: any): { delayStatus: string; delayDays: number; expectedEnd: Date | null } => {
+      if (!p.plannedStart || !p.plannedEnd) return { delayStatus: p.delayStatus ?? '', delayDays: p.delayDays ?? 0, expectedEnd: null };
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       const plannedStart = new Date(p.plannedStart);
@@ -141,20 +143,27 @@ export default function ProjectsPage() {
       const actualStart = p.actualStart ? new Date(p.actualStart) : null;
       const actualEnd = p.actualEnd ? new Date(p.actualEnd) : null;
       const sowDurationMs = plannedEnd.getTime() - plannedStart.getTime();
-      const expectedEnd = actualStart ? new Date(actualStart.getTime() + sowDurationMs) : plannedEnd;
+
+      // Base expected end: kickoff + SOW duration (or plannedEnd if no kickoff yet)
+      let baseExpectedEnd = actualStart ? new Date(actualStart.getTime() + sowDurationMs) : plannedEnd;
+
+      // Overage extension: if project is overaged and has an extended end date, use that instead
+      const expectedEnd = (p.isOveraged && p.extendedEndDate)
+        ? new Date(p.extendedEndDate)
+        : baseExpectedEnd;
 
       if (actualEnd) {
         const delayDays = Math.max(0, Math.ceil((actualEnd.getTime() - expectedEnd.getTime()) / MS_PER_DAY));
-        return { delayStatus: delayDays > 0 ? 'DELAYED' : 'NOT_DELAYED', delayDays };
+        return { delayStatus: delayDays > 0 ? 'DELAYED' : 'NOT_DELAYED', delayDays, expectedEnd };
       }
       const rawDiffMs = expectedEnd.getTime() - today.getTime();
       if (rawDiffMs < 0) {
-        return { delayStatus: 'DELAYED', delayDays: Math.floor(-rawDiffMs / MS_PER_DAY) };
+        return { delayStatus: 'DELAYED', delayDays: Math.floor(-rawDiffMs / MS_PER_DAY), expectedEnd };
       }
       if (Math.ceil(rawDiffMs / MS_PER_DAY) <= 7) {
-        return { delayStatus: 'AT_RISK', delayDays: 0 };
+        return { delayStatus: 'AT_RISK', delayDays: 0, expectedEnd };
       }
-      return { delayStatus: 'NOT_DELAYED', delayDays: 0 };
+      return { delayStatus: 'NOT_DELAYED', delayDays: 0, expectedEnd };
     };
 
     const getSowDateEnded = (p: any): string => {
@@ -167,7 +176,8 @@ export default function ProjectsPage() {
     const headers = [
       'Project Name', 'Customer Name', 'Project Manager', 'Account Manager',
       'Migration Types', 'Plan Type', 'Status', 'Phase',
-      'Duration (Months)', 'Delay Status', 'Delay Days', 'SOW Date Ended',
+      'Duration (Months)', 'Expected Project End', 'Extended End Date (Overage)',
+      'Delay Status', 'Delay Days', 'SOW Date Ended',
       'Estimated Budget', 'Is Overaged', 'Overage Amount',
       'SOW Start', 'SOW End', 'Kickoff Start',
       'Cloud Adding Start', 'Cloud Adding End',
@@ -179,7 +189,7 @@ export default function ProjectsPage() {
     ];
 
     const rows = data.data.map((p: any) => {
-      const { delayStatus, delayDays } = calcDelay(p);
+      const { delayStatus, delayDays, expectedEnd } = calcDelay(p);
       return [
         p.name ?? '',
         p.customerName ?? '',
@@ -190,6 +200,8 @@ export default function ProjectsPage() {
         p.status ?? '',
         p.phase ?? '',
         getDurationMonths(p),
+        expectedEnd ? fmt(expectedEnd.toISOString()) : '',
+        p.isOveraged && p.extendedEndDate ? fmt(p.extendedEndDate) : '',
         delayStatus,
         delayDays > 0 ? String(delayDays) : '0',
         getSowDateEnded(p),
