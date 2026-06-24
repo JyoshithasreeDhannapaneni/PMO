@@ -265,7 +265,6 @@ export default function ProjectsPage() {
     { value: 'INACTIVE', label: 'Inactive', color: 'gray' },
     { value: 'ON_HOLD', label: 'On Hold', color: 'yellow' },
     { value: 'CANCELLED', label: 'Cancelled', color: 'red' },
-    { value: 'COMPLETED', label: 'Completed', color: 'blue' },
   ];
 
   const phaseOptions = useMemo(() => [

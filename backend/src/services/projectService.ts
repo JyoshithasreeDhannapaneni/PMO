@@ -229,10 +229,14 @@ class ProjectService {
   async getAll(filters: ProjectFilters = {}, pagination: PaginationOptions = {}) {
     const { page = 1, limit = 20, sortBy = 'created_at', sortOrder = 'desc' } = pagination;
 
-    // Exclude archived projects and projects that have been fully completed (moved to case-study stage).
-    // Use status='COMPLETED' rather than phase='COMPLETED' so user-configured custom phase names
-    // (e.g. a phase literally named "Delta") never accidentally trigger the completed-project filter.
-    const conditions: string[] = ["archived_at IS NULL", "status != 'COMPLETED'"];
+    // Exclude archived projects, completed projects, and any project that already has a case study
+    // (regardless of status). A project moves to the case-studies page the moment a case study
+    // exists for it — either auto-created by checkProjectCompletion or manually by staff.
+    const conditions: string[] = [
+      "archived_at IS NULL",
+      "status != 'COMPLETED'",
+      "NOT EXISTS (SELECT 1 FROM case_studies WHERE project_id = projects.id)",
+    ];
     const params: any[] = [];
 
     if (filters.status) {
@@ -715,6 +719,42 @@ class ProjectService {
           [id]
         );
       } catch (_) { /* non-critical */ }
+    }
+
+    // When phase is set to COMPLETED, auto-create case study and mark project COMPLETED.
+    // This is the canonical trigger: phase → COMPLETED means the project is done.
+    if (data.phase && data.phase.toUpperCase() === 'COMPLETED') {
+      try {
+        const existingCS = await query(
+          `SELECT id FROM case_studies WHERE project_id = $1 LIMIT 1`, [id]
+        );
+        if (existingCS.rows.length === 0) {
+          const proj = await query(`SELECT * FROM projects WHERE id = $1`, [id]);
+          if (proj.rows.length > 0) {
+            const p = proj.rows[0];
+            const caseStudyId = uuidv4();
+            await transaction(async (client) => {
+              await client.query(
+                `INSERT INTO case_studies (id, project_id, title, content, status) VALUES ($1, $2, $3, NULL, 'PENDING')`,
+                [caseStudyId, id, `${p.customer_name} - ${p.name} Case Study`]
+              );
+              await client.query(
+                `UPDATE projects SET status = 'COMPLETED', actual_end = COALESCE(actual_end, NOW()) WHERE id = $1`,
+                [id]
+              );
+            });
+            logger.info(`Project ${id} phase set to COMPLETED — case study auto-created`);
+          }
+        } else {
+          // Case study already exists; just ensure the project is marked COMPLETED
+          await execute(
+            `UPDATE projects SET status = 'COMPLETED', actual_end = COALESCE(actual_end, NOW()) WHERE id = $1`,
+            [id]
+          );
+        }
+      } catch (err: any) {
+        logger.warn(`Phase-completion trigger failed for project ${id}: ${err?.message}`);
+      }
     }
 
     const result = await query(`SELECT * FROM projects WHERE id = $1`, [id]);
