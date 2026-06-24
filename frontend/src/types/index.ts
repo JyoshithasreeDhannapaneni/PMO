@@ -51,6 +51,7 @@ export interface Project {
   escalatedAt?: string | null;
   escalationNotes?: string | null;
   overageAmount?: number | null;
+  extendedEndDate?: string | null;
   cloudAddingStart?: string | null;
   cloudAddingEnd?: string | null;
   pilotMigrationStart?: string | null;

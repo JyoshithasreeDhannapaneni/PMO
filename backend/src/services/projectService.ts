@@ -158,6 +158,7 @@ function mapProjectRow(row: any) {
     escalatedAt: row.escalated_at ?? null,
     escalationNotes: row.escalation_notes ?? null,
     overageAmount: row.overage_amount ?? null,
+    extendedEndDate: row.extended_end_date ?? null,
     cloudAddingStart: row.cloud_adding_start ?? null,
     cloudAddingEnd: row.cloud_adding_end ?? null,
     pilotMigrationStart: row.pilot_migration_start ?? null,
