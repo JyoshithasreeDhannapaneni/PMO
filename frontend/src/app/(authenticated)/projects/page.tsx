@@ -122,9 +122,52 @@ export default function ProjectsPage() {
     const fmt = (d: string | null | undefined) =>
       d ? new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' }) : '';
 
+    const MS_PER_DAY = 1000 * 60 * 60 * 24;
+
+    // Derive duration in months from SOW dates
+    const getDurationMonths = (p: any): string => {
+      if (!p.plannedStart || !p.plannedEnd) return '';
+      const days = (new Date(p.plannedEnd).getTime() - new Date(p.plannedStart).getTime()) / MS_PER_DAY;
+      return (days / 30.44).toFixed(1);
+    };
+
+    // Recalculate delay live: kickoff date + SOW duration = expected end
+    const calcDelay = (p: any): { delayStatus: string; delayDays: number } => {
+      if (!p.plannedStart || !p.plannedEnd) return { delayStatus: p.delayStatus ?? '', delayDays: p.delayDays ?? 0 };
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const plannedStart = new Date(p.plannedStart);
+      const plannedEnd = new Date(p.plannedEnd);
+      const actualStart = p.actualStart ? new Date(p.actualStart) : null;
+      const actualEnd = p.actualEnd ? new Date(p.actualEnd) : null;
+      const sowDurationMs = plannedEnd.getTime() - plannedStart.getTime();
+      const expectedEnd = actualStart ? new Date(actualStart.getTime() + sowDurationMs) : plannedEnd;
+
+      if (actualEnd) {
+        const delayDays = Math.max(0, Math.ceil((actualEnd.getTime() - expectedEnd.getTime()) / MS_PER_DAY));
+        return { delayStatus: delayDays > 0 ? 'DELAYED' : 'NOT_DELAYED', delayDays };
+      }
+      const rawDiffMs = expectedEnd.getTime() - today.getTime();
+      if (rawDiffMs < 0) {
+        return { delayStatus: 'DELAYED', delayDays: Math.floor(-rawDiffMs / MS_PER_DAY) };
+      }
+      if (Math.ceil(rawDiffMs / MS_PER_DAY) <= 7) {
+        return { delayStatus: 'AT_RISK', delayDays: 0 };
+      }
+      return { delayStatus: 'NOT_DELAYED', delayDays: 0 };
+    };
+
+    const getSowDateEnded = (p: any): string => {
+      if (!p.plannedEnd) return '';
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      return new Date(p.plannedEnd) < today ? 'Yes' : 'No';
+    };
+
     const headers = [
       'Project Name', 'Customer Name', 'Project Manager', 'Account Manager',
-      'Migration Types', 'Plan Type', 'Status', 'Phase', 'Delay Status',
+      'Migration Types', 'Plan Type', 'Status', 'Phase',
+      'Duration (Months)', 'Delay Status', 'Delay Days', 'SOW Date Ended',
       'Estimated Budget', 'Is Overaged', 'Overage Amount',
       'SOW Start', 'SOW End', 'Kickoff Start',
       'Cloud Adding Start', 'Cloud Adding End',
@@ -135,34 +178,40 @@ export default function ProjectsPage() {
       'Project End',
     ];
 
-    const rows = data.data.map(p => [
-      p.name ?? '',
-      p.customerName ?? '',
-      p.projectManager ?? '',
-      p.accountManager ?? '',
-      p.migrationTypes ?? '',
-      p.planType ?? '',
-      p.status ?? '',
-      p.phase ?? '',
-      p.delayStatus ?? '',
-      p.estimatedCost != null ? String(p.estimatedCost) : '',
-      p.isOveraged ? 'Yes' : 'No',
-      p.overageAmount != null ? String(p.overageAmount) : '',
-      fmt(p.plannedStart),
-      fmt(p.plannedEnd),
-      fmt(p.actualStart),
-      fmt(p.cloudAddingStart),
-      fmt(p.cloudAddingEnd),
-      fmt(p.pilotMigrationStart),
-      fmt(p.pilotMigrationEnd),
-      fmt(p.onetimeMigrationStart),
-      fmt(p.onetimeMigrationEnd),
-      fmt(p.deltaMigrationStart),
-      fmt(p.deltaMigrationEnd),
-      fmt(p.finalValidationStart),
-      fmt(p.finalValidationEnd),
-      fmt(p.actualEnd),
-    ]);
+    const rows = data.data.map((p: any) => {
+      const { delayStatus, delayDays } = calcDelay(p);
+      return [
+        p.name ?? '',
+        p.customerName ?? '',
+        p.projectManager ?? '',
+        p.accountManager ?? '',
+        p.migrationTypes ?? '',
+        p.planType ?? '',
+        p.status ?? '',
+        p.phase ?? '',
+        getDurationMonths(p),
+        delayStatus,
+        delayDays > 0 ? String(delayDays) : '0',
+        getSowDateEnded(p),
+        p.estimatedCost != null ? String(p.estimatedCost) : '',
+        p.isOveraged ? 'Yes' : 'No',
+        p.overageAmount != null ? String(p.overageAmount) : '',
+        fmt(p.plannedStart),
+        fmt(p.plannedEnd),
+        fmt(p.actualStart),
+        fmt(p.cloudAddingStart),
+        fmt(p.cloudAddingEnd),
+        fmt(p.pilotMigrationStart),
+        fmt(p.pilotMigrationEnd),
+        fmt(p.onetimeMigrationStart),
+        fmt(p.onetimeMigrationEnd),
+        fmt(p.deltaMigrationStart),
+        fmt(p.deltaMigrationEnd),
+        fmt(p.finalValidationStart),
+        fmt(p.finalValidationEnd),
+        fmt(p.actualEnd),
+      ];
+    });
 
     const csv = [headers, ...rows]
       .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
