@@ -474,7 +474,7 @@ class DashboardService {
       status: r.status,
       phase: r.phase,
       plannedEnd: r.planned_end,
-      daysOverdue: Math.max(0, Math.floor((now.getTime() - new Date(r.planned_end).getTime()) / 86400000)),
+      daysOverdue: Math.max(0, Math.floor((now.getTime() - new Date(r.extended_end_date || r.planned_end).getTime()) / 86400000)),
       delayDays: r.delay_days,
       migrationTypes: r.migration_types,
       isOveraged: !!r.is_overaged,

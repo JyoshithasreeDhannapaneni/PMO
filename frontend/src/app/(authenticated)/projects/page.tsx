@@ -139,20 +139,15 @@ export default function ProjectsPage() {
     };
 
     // Recalculate delay live.
-    // Effective end = extendedEndDate if the project has an approved overage extension,
-    // otherwise kickoff (actualStart) + SOW duration (or plannedEnd if no kickoff yet).
+    // Effective deadline = extendedEndDate (overage extension) if set, otherwise plannedEnd.
+    // No kickoff adjustment: delay is always measured against the contractual SOW end date.
     const calcDelay = (p: any): { delayStatus: string; delayDays: number; expectedEnd: Date | null } => {
-      if (!p.plannedStart || !p.plannedEnd) return { delayStatus: p.delayStatus ?? '', delayDays: p.delayDays ?? 0, expectedEnd: null };
+      if (!p.plannedEnd) return { delayStatus: p.delayStatus ?? '', delayDays: p.delayDays ?? 0, expectedEnd: null };
       const today = toDay(new Date());
-      const plannedStart = new Date(p.plannedStart);
-      const plannedEnd = new Date(p.plannedEnd);
-      const actualStart = p.actualStart ? new Date(p.actualStart) : null;
       const actualEnd = p.actualEnd ? new Date(p.actualEnd) : null;
-      const sowDurationMs = plannedEnd.getTime() - plannedStart.getTime();
 
-      const baseExpectedEnd = actualStart ? new Date(actualStart.getTime() + sowDurationMs) : plannedEnd;
-      // Overage: PM set a new contract end date — use that as the deadline
-      const expectedEnd = toDay((p.isOveraged && p.extendedEndDate) ? p.extendedEndDate : baseExpectedEnd);
+      // Use extendedEndDate for overaged projects, otherwise the original SOW end
+      const expectedEnd = toDay((p.isOveraged && p.extendedEndDate) ? p.extendedEndDate : p.plannedEnd);
 
       if (actualEnd) {
         const delayDays = Math.max(0, Math.ceil((toDay(actualEnd).getTime() - expectedEnd.getTime()) / MS_PER_DAY));
