@@ -36,6 +36,33 @@ interface CaseStudy {
     name: string;
     customerName: string;
     projectManager: string;
+    accountManager?: string;
+    planType?: string;
+    migrationTypes?: string | null;
+    plannedStart?: string | null;
+    plannedEnd?: string | null;
+    actualStart?: string | null;
+    actualEnd?: string | null;
+    expectedEnd?: string | null;
+    estimatedCost?: number | null;
+    actualCost?: number | null;
+    isOveraged?: boolean;
+    overageAmount?: number | null;
+    extendedEndDate?: string | null;
+    delayStatus?: string;
+    delayDays?: number;
+    cloudAddingStart?: string | null;
+    cloudAddingEnd?: string | null;
+    pilotMigrationStart?: string | null;
+    pilotMigrationEnd?: string | null;
+    onetimeMigrationStart?: string | null;
+    onetimeMigrationEnd?: string | null;
+    deltaMigrationStart?: string | null;
+    deltaMigrationEnd?: string | null;
+    finalValidationStart?: string | null;
+    finalValidationEnd?: string | null;
+    phase?: string;
+    status?: string;
   };
 }
 
@@ -102,17 +129,96 @@ function CaseStudiesContent() {
   };
 
   const exportCSV = () => {
-    const headers = ['Title', 'Project', 'Customer', 'Manager', 'Status', 'Created'];
-    const rows = filteredCaseStudies.map((cs) => [
-      cs.title || cs.project?.name || 'Untitled',
-      cs.project?.name || '',
-      cs.project?.customerName || '',
-      cs.project?.projectManager || '',
-      cs.status,
-      new Date(cs.createdAt).toLocaleDateString(),
-    ]);
-    const csv = [headers, ...rows].map((r) => r.map((v) => `"${v}"`).join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
+    const fmt = (d: string | null | undefined) =>
+      d ? new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' }) : '';
+
+    const MS_PER_DAY = 1000 * 60 * 60 * 24;
+
+    const getDurationMonths = (p: CaseStudy['project']): string => {
+      if (!p?.plannedStart || !p?.plannedEnd) return '';
+      const days = (new Date(p.plannedEnd).getTime() - new Date(p.plannedStart).getTime()) / MS_PER_DAY;
+      return (days / 30.44).toFixed(1);
+    };
+
+    const toDay = (d: Date | string): Date => {
+      const dt = typeof d === 'string' ? new Date(d) : d;
+      return new Date(dt.getFullYear(), dt.getMonth(), dt.getDate());
+    };
+
+    const getSowDateEnded = (p: CaseStudy['project']): string => {
+      const effectiveEnd = (p?.isOveraged && p?.extendedEndDate) ? p.extendedEndDate : p?.plannedEnd;
+      if (!effectiveEnd) return '';
+      return toDay(effectiveEnd) < toDay(new Date()) ? 'Yes' : 'No';
+    };
+
+    const headers = [
+      // Case study columns
+      'Case Study Title', 'Case Study Status', 'Published At', 'Created At',
+      // Project identification
+      'Project Name', 'Customer Name', 'Project Manager', 'Account Manager',
+      // Project classification
+      'Migration Types', 'Plan Type', 'Project Phase', 'Project Status',
+      // Duration & delay
+      'Duration (Months)', 'Expected Project End', 'Extended End Date (Overage)',
+      'Delay Status', 'Delay Days', 'SOW Date Ended',
+      // Budget
+      'Estimated Budget', 'Actual Cost', 'Is Overaged', 'Overage Amount',
+      // Dates
+      'SOW Start', 'SOW End', 'Kickoff Start',
+      'Cloud Adding Start', 'Cloud Adding End',
+      'Pilot Migration Start', 'Pilot Migration End',
+      'Onetime Migration Start', 'Onetime Migration End',
+      'Delta Migration Start', 'Delta Migration End',
+      'Final Validation Start', 'Final Validation End',
+      'Project End',
+    ];
+
+    const rows = filteredCaseStudies.map((cs) => {
+      const p = cs.project;
+      return [
+        cs.title || p?.name || 'Untitled',
+        cs.status,
+        fmt(cs.publishedAt),
+        fmt(cs.createdAt),
+        p?.name ?? '',
+        p?.customerName ?? '',
+        p?.projectManager ?? '',
+        p?.accountManager ?? '',
+        p?.migrationTypes ?? '',
+        p?.planType ?? '',
+        p?.phase ?? '',
+        p?.status ?? '',
+        getDurationMonths(p),
+        fmt(p?.expectedEnd ?? p?.plannedEnd),
+        p?.isOveraged && p?.extendedEndDate ? fmt(p.extendedEndDate) : '',
+        p?.delayStatus ?? '',
+        p?.delayDays != null ? String(p.delayDays) : '0',
+        getSowDateEnded(p),
+        p?.estimatedCost != null ? String(p.estimatedCost) : '',
+        p?.actualCost != null ? String(p.actualCost) : '',
+        p?.isOveraged ? 'Yes' : 'No',
+        p?.overageAmount != null ? String(p.overageAmount) : '',
+        fmt(p?.plannedStart),
+        fmt(p?.plannedEnd),
+        fmt(p?.actualStart),
+        fmt(p?.cloudAddingStart),
+        fmt(p?.cloudAddingEnd),
+        fmt(p?.pilotMigrationStart),
+        fmt(p?.pilotMigrationEnd),
+        fmt(p?.onetimeMigrationStart),
+        fmt(p?.onetimeMigrationEnd),
+        fmt(p?.deltaMigrationStart),
+        fmt(p?.deltaMigrationEnd),
+        fmt(p?.finalValidationStart),
+        fmt(p?.finalValidationEnd),
+        fmt(p?.actualEnd),
+      ];
+    });
+
+    const csv = [headers, ...rows]
+      .map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;

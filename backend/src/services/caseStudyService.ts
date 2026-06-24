@@ -2,6 +2,7 @@ import { query, execute, transaction } from '../config/database';
 import { AppError } from '../middleware/errorHandler';
 import { logger } from '../utils/logger';
 import { v4 as uuidv4 } from 'uuid';
+import { calculateDelay } from '../utils/delayCalculator';
 
 type CaseStudyStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'PUBLISHED';
 
@@ -34,7 +35,19 @@ function mapCaseStudyRow(row: any) {
 class CaseStudyService {
   async getAll(status?: CaseStudyStatus) {
     let queryStr = `
-      SELECT cs.*, p.id as p_id, p.name as p_name, p.customer_name, p.project_manager
+      SELECT cs.*,
+             p.id as p_id, p.name as p_name, p.customer_name, p.project_manager,
+             p.account_manager, p.plan_type, p.migration_types,
+             p.planned_start, p.planned_end, p.actual_start, p.actual_end,
+             p.estimated_cost, p.actual_cost,
+             p.is_overaged, p.overage_amount, p.extended_end_date,
+             p.delay_status, p.delay_days,
+             p.cloud_adding_start, p.cloud_adding_end,
+             p.pilot_migration_start, p.pilot_migration_end,
+             p.onetime_migration_start, p.onetime_migration_end,
+             p.delta_migration_start, p.delta_migration_end,
+             p.final_validation_start, p.final_validation_end,
+             p.phase, p.status as p_status
       FROM case_studies cs
       JOIN projects p ON cs.project_id = p.id
     `;
@@ -49,15 +62,63 @@ class CaseStudyService {
 
     const result = await query(queryStr, params);
 
-    return result.rows.map((row) => ({
-      ...mapCaseStudyRow(row),
-      project: {
-        id: row.p_id,
-        name: row.p_name,
-        customerName: row.customer_name,
-        projectManager: row.project_manager,
-      },
-    }));
+    return result.rows.map((row) => {
+      // Compute delay live (same logic as projectService.mapProjectRow)
+      let liveDelayStatus = row.delay_status;
+      let liveDelayDays   = Number(row.delay_days) || 0;
+      let expectedEnd: string | null = null;
+
+      if (row.planned_start && row.planned_end) {
+        const ps = new Date(row.planned_start);
+        const pe = new Date(row.planned_end);
+        const as = row.actual_start ? new Date(row.actual_start) : null;
+        const extEnd = row.extended_end_date ? new Date(row.extended_end_date) : null;
+        expectedEnd = (extEnd || pe).toISOString().split('T')[0];
+
+        const isFinished = row.p_status === 'COMPLETED' || row.p_status === 'CANCELLED';
+        const actualEndForDelay = isFinished && row.actual_end ? new Date(row.actual_end) : null;
+        const result2 = calculateDelay(ps, pe, as, actualEndForDelay, new Date(), extEnd);
+        liveDelayStatus = result2.delayStatus;
+        liveDelayDays   = result2.delayDays;
+      }
+
+      return {
+        ...mapCaseStudyRow(row),
+        project: {
+          id: row.p_id,
+          name: row.p_name,
+          customerName: row.customer_name,
+          projectManager: row.project_manager,
+          accountManager: row.account_manager,
+          planType: row.plan_type,
+          migrationTypes: row.migration_types,
+          plannedStart: row.planned_start,
+          plannedEnd: row.planned_end,
+          actualStart: row.actual_start,
+          actualEnd: row.actual_end,
+          expectedEnd,
+          estimatedCost: row.estimated_cost ?? null,
+          actualCost: row.actual_cost ?? null,
+          isOveraged: !!row.is_overaged,
+          overageAmount: row.overage_amount ?? null,
+          extendedEndDate: row.extended_end_date ?? null,
+          delayStatus: liveDelayStatus,
+          delayDays: liveDelayDays,
+          cloudAddingStart: row.cloud_adding_start ?? null,
+          cloudAddingEnd: row.cloud_adding_end ?? null,
+          pilotMigrationStart: row.pilot_migration_start ?? null,
+          pilotMigrationEnd: row.pilot_migration_end ?? null,
+          onetimeMigrationStart: row.onetime_migration_start ?? null,
+          onetimeMigrationEnd: row.onetime_migration_end ?? null,
+          deltaMigrationStart: row.delta_migration_start ?? null,
+          deltaMigrationEnd: row.delta_migration_end ?? null,
+          finalValidationStart: row.final_validation_start ?? null,
+          finalValidationEnd: row.final_validation_end ?? null,
+          phase: row.phase,
+          status: row.p_status,
+        },
+      };
+    });
   }
 
   async getById(id: string) {

@@ -124,53 +124,31 @@ export default function ProjectsPage() {
 
     const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
-    // Derive duration in months from SOW dates
+    // Duration in months derived from SOW dates
     const getDurationMonths = (p: any): string => {
       if (!p.plannedStart || !p.plannedEnd) return '';
       const days = (new Date(p.plannedEnd).getTime() - new Date(p.plannedStart).getTime()) / MS_PER_DAY;
       return (days / 30.44).toFixed(1);
     };
 
-    // Normalize a Date (or ISO string) to local midnight — avoids UTC/local timezone drift
-    // when comparing dates that come from the DB as UTC midnight strings.
+    // Timezone-safe day comparison: strip time component to avoid UTC vs local midnight drift
     const toDay = (d: Date | string): Date => {
       const dt = typeof d === 'string' ? new Date(d) : d;
       return new Date(dt.getFullYear(), dt.getMonth(), dt.getDate());
     };
 
-    // Recalculate delay live.
-    // Effective deadline = extendedEndDate (overage extension) if set, otherwise plannedEnd.
-    // No kickoff adjustment: delay is always measured against the contractual SOW end date.
-    const calcDelay = (p: any): { delayStatus: string; delayDays: number; expectedEnd: Date | null } => {
-      if (!p.plannedEnd) return { delayStatus: p.delayStatus ?? '', delayDays: p.delayDays ?? 0, expectedEnd: null };
-      const today = toDay(new Date());
-      const actualEnd = p.actualEnd ? new Date(p.actualEnd) : null;
-
-      // Use extendedEndDate for overaged projects, otherwise the original SOW end
-      const expectedEnd = toDay((p.isOveraged && p.extendedEndDate) ? p.extendedEndDate : p.plannedEnd);
-
-      if (actualEnd) {
-        const delayDays = Math.max(0, Math.ceil((toDay(actualEnd).getTime() - expectedEnd.getTime()) / MS_PER_DAY));
-        return { delayStatus: delayDays > 0 ? 'DELAYED' : 'NOT_DELAYED', delayDays, expectedEnd };
-      }
-      const rawDiffMs = expectedEnd.getTime() - today.getTime();
-      if (rawDiffMs < 0) {
-        return { delayStatus: 'DELAYED', delayDays: Math.floor(-rawDiffMs / MS_PER_DAY), expectedEnd };
-      }
-      if (Math.ceil(rawDiffMs / MS_PER_DAY) <= 7) {
-        return { delayStatus: 'AT_RISK', delayDays: 0, expectedEnd };
-      }
-      return { delayStatus: 'NOT_DELAYED', delayDays: 0, expectedEnd };
-    };
-
     // SOW Date Ended: has the effective contract end date already passed?
-    // Uses extendedEndDate for overaged projects — the original plannedEnd is superseded
-    // by the overage extension, so we compare against the new deadline.
+    // Uses extendedEndDate when overaged, otherwise original plannedEnd.
     const getSowDateEnded = (p: any): string => {
       const effectiveEnd = (p.isOveraged && p.extendedEndDate) ? p.extendedEndDate : p.plannedEnd;
       if (!effectiveEnd) return '';
       return toDay(effectiveEnd) < toDay(new Date()) ? 'Yes' : 'No';
     };
+
+    // Use the backend's already-computed values for delay status and delay days —
+    // they are the SAME values shown on the All Projects table, so the CSV
+    // will always be in sync with what the user sees on screen.
+    // p.expectedEnd is also computed by the backend (extendedEndDate || plannedEnd).
 
     const headers = [
       'Project Name', 'Customer Name', 'Project Manager', 'Account Manager',
@@ -187,42 +165,41 @@ export default function ProjectsPage() {
       'Project End',
     ];
 
-    const rows = data.data.map((p: any) => {
-      const { delayStatus, delayDays, expectedEnd } = calcDelay(p);
-      return [
-        p.name ?? '',
-        p.customerName ?? '',
-        p.projectManager ?? '',
-        p.accountManager ?? '',
-        p.migrationTypes ?? '',
-        p.planType ?? '',
-        p.status ?? '',
-        p.phase ?? '',
-        getDurationMonths(p),
-        expectedEnd ? fmt(expectedEnd.toISOString()) : '',
-        p.isOveraged && p.extendedEndDate ? fmt(p.extendedEndDate) : '',
-        delayStatus,
-        delayDays > 0 ? String(delayDays) : '0',
-        getSowDateEnded(p),
-        p.estimatedCost != null ? String(p.estimatedCost) : '',
-        p.isOveraged ? 'Yes' : 'No',
-        p.overageAmount != null ? String(p.overageAmount) : '',
-        fmt(p.plannedStart),
-        fmt(p.plannedEnd),
-        fmt(p.actualStart),
-        fmt(p.cloudAddingStart),
-        fmt(p.cloudAddingEnd),
-        fmt(p.pilotMigrationStart),
-        fmt(p.pilotMigrationEnd),
-        fmt(p.onetimeMigrationStart),
-        fmt(p.onetimeMigrationEnd),
-        fmt(p.deltaMigrationStart),
-        fmt(p.deltaMigrationEnd),
-        fmt(p.finalValidationStart),
-        fmt(p.finalValidationEnd),
-        fmt(p.actualEnd),
-      ];
-    });
+    const rows = data.data.map((p: any) => [
+      p.name ?? '',
+      p.customerName ?? '',
+      p.projectManager ?? '',
+      p.accountManager ?? '',
+      p.migrationTypes ?? '',
+      p.planType ?? '',
+      p.status ?? '',
+      p.phase ?? '',
+      getDurationMonths(p),
+      // expectedEnd is returned by the backend: extendedEndDate if overaged, else plannedEnd
+      fmt(p.expectedEnd ?? p.plannedEnd),
+      p.isOveraged && p.extendedEndDate ? fmt(p.extendedEndDate) : '',
+      // delayStatus / delayDays — identical to what the table displays
+      p.delayStatus ?? '',
+      p.delayDays != null ? String(p.delayDays) : '0',
+      getSowDateEnded(p),
+      p.estimatedCost != null ? String(p.estimatedCost) : '',
+      p.isOveraged ? 'Yes' : 'No',
+      p.overageAmount != null ? String(p.overageAmount) : '',
+      fmt(p.plannedStart),
+      fmt(p.plannedEnd),
+      fmt(p.actualStart),
+      fmt(p.cloudAddingStart),
+      fmt(p.cloudAddingEnd),
+      fmt(p.pilotMigrationStart),
+      fmt(p.pilotMigrationEnd),
+      fmt(p.onetimeMigrationStart),
+      fmt(p.onetimeMigrationEnd),
+      fmt(p.deltaMigrationStart),
+      fmt(p.deltaMigrationEnd),
+      fmt(p.finalValidationStart),
+      fmt(p.finalValidationEnd),
+      fmt(p.actualEnd),
+    ]);
 
     const csv = [headers, ...rows]
       .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
