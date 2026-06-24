@@ -116,9 +116,9 @@ function mapProjectRow(row: any) {
     const as = row.actual_start ? new Date(row.actual_start) : null;
     const extEnd = row.extended_end_date ? new Date(row.extended_end_date) : null;
 
-    // Expected end respects overage extension: if PM approved extra time, that becomes the deadline
-    const baseEnd = as ? new Date(as.getTime() + (pe.getTime() - ps.getTime())) : pe;
-    expectedEnd = (extEnd || baseEnd);
+    // Deadline = extended end date (overage) if set, otherwise original SOW end.
+    // No kickoff adjustment: delay is always relative to the contractual end date.
+    expectedEnd = extEnd || pe;
 
     // Only pass actualEnd for truly finished projects — ACTIVE/ON_HOLD projects
     // may have actualEnd filled as "expected end" by users, which would cause

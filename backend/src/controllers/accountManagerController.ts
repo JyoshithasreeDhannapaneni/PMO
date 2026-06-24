@@ -133,8 +133,7 @@ function mapProjectRow(row: any) {
     const pe = new Date(row.planned_end);
     const as = row.actual_start ? new Date(row.actual_start) : null;
     const extEnd = row.extended_end_date ? new Date(row.extended_end_date) : null;
-    const baseEnd = as ? new Date(as.getTime() + (pe.getTime() - ps.getTime())) : pe;
-    expectedEnd = (extEnd || baseEnd).toISOString().split('T')[0];
+    expectedEnd = (extEnd || pe).toISOString().split('T')[0];
 
     // Only pass actualEnd for truly finished projects — ACTIVE/ON_HOLD projects
     // may have actualEnd filled as "expected end" by users, which would cause
