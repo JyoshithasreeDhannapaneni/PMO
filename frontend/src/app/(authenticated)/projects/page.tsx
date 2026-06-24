@@ -131,29 +131,31 @@ export default function ProjectsPage() {
       return (days / 30.44).toFixed(1);
     };
 
+    // Normalize a Date (or ISO string) to local midnight — avoids UTC/local timezone drift
+    // when comparing dates that come from the DB as UTC midnight strings.
+    const toDay = (d: Date | string): Date => {
+      const dt = typeof d === 'string' ? new Date(d) : d;
+      return new Date(dt.getFullYear(), dt.getMonth(), dt.getDate());
+    };
+
     // Recalculate delay live.
-    // Base expected end = kickoff (actualStart) + SOW duration.
-    // If project is overaged and has an extendedEndDate, that date overrides the base expected end.
+    // Effective end = extendedEndDate if the project has an approved overage extension,
+    // otherwise kickoff (actualStart) + SOW duration (or plannedEnd if no kickoff yet).
     const calcDelay = (p: any): { delayStatus: string; delayDays: number; expectedEnd: Date | null } => {
       if (!p.plannedStart || !p.plannedEnd) return { delayStatus: p.delayStatus ?? '', delayDays: p.delayDays ?? 0, expectedEnd: null };
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
+      const today = toDay(new Date());
       const plannedStart = new Date(p.plannedStart);
       const plannedEnd = new Date(p.plannedEnd);
       const actualStart = p.actualStart ? new Date(p.actualStart) : null;
       const actualEnd = p.actualEnd ? new Date(p.actualEnd) : null;
       const sowDurationMs = plannedEnd.getTime() - plannedStart.getTime();
 
-      // Base expected end: kickoff + SOW duration (or plannedEnd if no kickoff yet)
-      let baseExpectedEnd = actualStart ? new Date(actualStart.getTime() + sowDurationMs) : plannedEnd;
-
-      // Overage extension: if project is overaged and has an extended end date, use that instead
-      const expectedEnd = (p.isOveraged && p.extendedEndDate)
-        ? new Date(p.extendedEndDate)
-        : baseExpectedEnd;
+      const baseExpectedEnd = actualStart ? new Date(actualStart.getTime() + sowDurationMs) : plannedEnd;
+      // Overage: PM set a new contract end date — use that as the deadline
+      const expectedEnd = toDay((p.isOveraged && p.extendedEndDate) ? p.extendedEndDate : baseExpectedEnd);
 
       if (actualEnd) {
-        const delayDays = Math.max(0, Math.ceil((actualEnd.getTime() - expectedEnd.getTime()) / MS_PER_DAY));
+        const delayDays = Math.max(0, Math.ceil((toDay(actualEnd).getTime() - expectedEnd.getTime()) / MS_PER_DAY));
         return { delayStatus: delayDays > 0 ? 'DELAYED' : 'NOT_DELAYED', delayDays, expectedEnd };
       }
       const rawDiffMs = expectedEnd.getTime() - today.getTime();
@@ -166,11 +168,13 @@ export default function ProjectsPage() {
       return { delayStatus: 'NOT_DELAYED', delayDays: 0, expectedEnd };
     };
 
+    // SOW Date Ended: has the effective contract end date already passed?
+    // Uses extendedEndDate for overaged projects — the original plannedEnd is superseded
+    // by the overage extension, so we compare against the new deadline.
     const getSowDateEnded = (p: any): string => {
-      if (!p.plannedEnd) return '';
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      return new Date(p.plannedEnd) < today ? 'Yes' : 'No';
+      const effectiveEnd = (p.isOveraged && p.extendedEndDate) ? p.extendedEndDate : p.plannedEnd;
+      if (!effectiveEnd) return '';
+      return toDay(effectiveEnd) < toDay(new Date()) ? 'Yes' : 'No';
     };
 
     const headers = [
