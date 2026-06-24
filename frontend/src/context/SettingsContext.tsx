@@ -190,11 +190,13 @@ const defaultSettings: PMOSettings = {
     { id: '4', name: 'Platinum', code: 'PLATINUM', color: '#E5E4E2', features: [] },
   ],
   phases: [
-    { id: '1', name: 'Kickoff', code: 'KICKOFF', color: '#8B5CF6', description: '', order: 1 },
-    { id: '2', name: 'Migration', code: 'MIGRATION', color: '#3B82F6', description: '', order: 2 },
-    { id: '3', name: 'Validation', code: 'VALIDATION', color: '#EAB308', description: '', order: 3 },
-    { id: '4', name: 'Closure', code: 'CLOSURE', color: '#10B981', description: '', order: 4 },
-    { id: '5', name: 'Completed', code: 'COMPLETED', color: '#6B7280', description: '', order: 5 },
+    { id: '1', name: 'Kickoff',           code: 'KICKOFF',           color: '#8B5CF6', description: '', order: 1 },
+    { id: '2', name: 'Cloud Adding',      code: 'CLOUD_ADDING',      color: '#3B82F6', description: '', order: 2 },
+    { id: '3', name: 'Pilot Migration',   code: 'PILOT_MIGRATION',   color: '#F59E0B', description: '', order: 3 },
+    { id: '4', name: 'Onetime Migration', code: 'ONETIME_MIGRATION', color: '#10B981', description: '', order: 4 },
+    { id: '5', name: 'Delta',             code: 'DELTA',             color: '#EF4444', description: '', order: 5 },
+    { id: '6', name: 'Final Validation',  code: 'FINAL_VALIDATION',  color: '#6366F1', description: '', order: 6 },
+    { id: '7', name: 'Completed',         code: 'COMPLETED',         color: '#6B7280', description: '', order: 7 },
   ],
   notificationSettings: {
     emailEnabled: false,

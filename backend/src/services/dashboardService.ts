@@ -35,13 +35,14 @@ class DashboardService {
     const [
       totalResult,
       activeResult,
-      inactiveResult,
+      onHoldResult,
       completedResult,
       delayedResult,
       atRiskResult,
       pendingCaseStudiesResult,
       avgDelayResult,
       overagedResult,
+      inactiveResult,
     ] = await Promise.all([
       query(`SELECT COUNT(*) as count FROM projects WHERE status != 'CANCELLED' ${aw}`, ap),
       query(`SELECT COUNT(*) as count FROM projects WHERE status = 'ACTIVE' ${aw}`, ap),
@@ -53,13 +54,14 @@ class DashboardService {
       query(`SELECT COUNT(*) as count FROM case_studies cs JOIN projects p ON cs.project_id = p.id WHERE cs.status = 'PENDING' ${aw.replace(/^AND /, 'AND p.')}`, ap),
       query(`SELECT AVG(delay_days) as avg FROM projects WHERE delay_days > 0 ${aw}`, ap),
       query(`SELECT COUNT(*) as count FROM projects WHERE is_overaged = true`, []),
+      query(`SELECT COUNT(*) as count FROM projects WHERE status = 'INACTIVE' ${aw}`, ap),
     ]);
 
     return {
       totalProjects:    parseInt(totalResult.rows[0].count || 0),
       activeProjects:   parseInt(activeResult.rows[0].count || 0),
       inactiveProjects: parseInt(inactiveResult.rows[0].count || 0),
-      onHoldProjects:   parseInt(inactiveResult.rows[0].count || 0),
+      onHoldProjects:   parseInt(onHoldResult.rows[0].count || 0),
       completedProjects: parseInt(completedResult.rows[0].count || 0),
       // delayedProjects and atRiskProjects are subsets of activeProjects (status=ACTIVE only)
       delayedProjects:  parseInt(delayedResult.rows[0].count || 0),
@@ -458,7 +460,7 @@ class DashboardService {
               planned_end, delay_days, delay_status, migration_types, is_overaged, overage_amount, overage_notes,
               extended_start_date, extended_end_date
        FROM projects
-       WHERE is_overaged = true AND status NOT IN ('COMPLETED','CANCELLED') ${aw}
+       WHERE is_overaged = true AND status NOT IN ('COMPLETED','CANCELLED') AND archived_at IS NULL ${aw}
        ORDER BY planned_end ASC`,
       ap
     );
@@ -472,7 +474,7 @@ class DashboardService {
       status: r.status,
       phase: r.phase,
       plannedEnd: r.planned_end,
-      daysOverdue: Math.max(0, Math.floor((now.getTime() - new Date(r.planned_end).getTime()) / 86400000)),
+      daysOverdue: Math.max(0, Math.floor((now.getTime() - new Date(r.extended_end_date || r.planned_end).getTime()) / 86400000)),
       delayDays: r.delay_days,
       migrationTypes: r.migration_types,
       isOveraged: !!r.is_overaged,
@@ -537,6 +539,7 @@ class DashboardService {
               is_escalated, escalation_priority, escalated_at, escalation_notes, resolved_date
        FROM projects
        WHERE status NOT IN ('COMPLETED','CANCELLED')
+             AND archived_at IS NULL
              AND (escalation_archived IS NULL OR escalation_archived = false)
              AND is_escalated = true ${aw}
        ORDER BY CASE WHEN escalation_priority='HIGH' THEN 1 WHEN escalation_priority='MEDIUM' THEN 2 ELSE 3 END, delay_days DESC`,

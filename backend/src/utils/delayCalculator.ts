@@ -20,17 +20,15 @@ export function calculateDelay(
   plannedEnd: Date,
   actualStart: Date | null,
   actualEnd: Date | null,
-  currentDate: Date = new Date()
+  currentDate: Date = new Date(),
+  extendedEndDate?: Date | null
 ): DelayCalculationResult {
   const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
-  // SOW duration in milliseconds
-  const sowDurationMs = plannedEnd.getTime() - plannedStart.getTime();
-
-  // Kickoff-adjusted expected end (or fall back to SOW end)
-  const expectedEnd = actualStart
-    ? new Date(actualStart.getTime() + sowDurationMs)
-    : plannedEnd;
+  // Effective deadline: the extended end date (if PM approved overage extension),
+  // otherwise the contractual SOW end date. Delay is always measured against the
+  // contractual deadline so results are consistent across all pages.
+  const expectedEnd = extendedEndDate || plannedEnd;
 
   // Project already completed
   if (actualEnd) {

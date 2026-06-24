@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useUpdateProject, useEscalationDailyNotes, useAddEscalationDailyNote, useDeleteEscalationDailyNote } from '@/hooks/useProjects';
 import { StatusBadge } from '@/components/ui/StatusBadge';
@@ -271,6 +271,7 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
   };
 
   const startEditing = (projectId: string, field: string, currentValue: string) => {
+    if (user?.role !== 'ADMIN' && user?.role !== 'PROJECT_MANAGER') return;
     setEditingCell({ projectId, field });
     setEditValue(currentValue || '');
   };
@@ -369,8 +370,12 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
       );
     }
 
+    if (user?.role !== 'ADMIN' && user?.role !== 'PROJECT_MANAGER') {
+      return <div className="text-sm text-gray-900 px-1">{value || <span className="text-gray-400 italic">Not set</span>}</div>;
+    }
+
     return (
-      <div 
+      <div
         className="cursor-pointer hover:bg-gray-100 rounded px-1 py-0.5 -mx-1 transition-colors text-sm text-gray-900"
         onClick={(e) => {
           e.stopPropagation();
@@ -493,10 +498,34 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
     { value: 'DELAYED', label: 'Delayed' },
   ];
 
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  const checkScrollRight = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
+  }, []);
+
+  // Re-check whenever data or page changes, and on resize
+  useEffect(() => {
+    checkScrollRight();
+    const el = scrollRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(checkScrollRight);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [checkScrollRight, paginatedProjects]);
+
   return (
-    <div>
-      {/* Table */}
-      <div className="overflow-auto max-h-[calc(100vh-14rem)]">
+    <div className="flex flex-col h-full">
+      {/* Table — fills remaining card height */}
+      <div className="relative flex-1 min-h-0 overflow-hidden">
+        <div
+          ref={scrollRef}
+          className="overflow-auto h-full"
+          onScroll={checkScrollRight}
+        >
         <table className="w-full">
           <thead className="bg-blue-50/60 border-b border-gray-200 sticky top-0 z-10">
             <tr>
@@ -874,16 +903,18 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
                     >
                       <Eye size={16} />
                     </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        router.push(`/projects/${project.id}/edit`);
-                      }}
-                      className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                      title="Full Edit"
-                    >
-                      <Edit size={16} />
-                    </button>
+                    {(user?.role === 'ADMIN' || user?.role === 'PROJECT_MANAGER') && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          router.push(`/projects/${project.id}/edit`);
+                        }}
+                        className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                        title="Full Edit"
+                      >
+                        <Edit size={16} />
+                      </button>
+                    )}
                     {onDelete && (
                       <button
                         onClick={(e) => {
@@ -904,6 +935,15 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
             ))}
           </tbody>
         </table>
+        </div>
+
+        {/* Right-edge fade: tells users there is more content to the right */}
+        {canScrollRight && (
+          <div className="absolute top-0 right-0 w-14 h-full pointer-events-none z-20 flex items-center justify-end">
+            <div className="absolute inset-0 bg-gradient-to-l from-white/95 via-white/60 to-transparent" />
+            <ChevronRight size={20} className="relative text-gray-400 mr-1 animate-pulse" />
+          </div>
+        )}
       </div>
 
       {/* Empty State */}

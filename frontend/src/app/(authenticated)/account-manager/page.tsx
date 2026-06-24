@@ -425,7 +425,7 @@ export default function AccountManagerPage() {
         {showFilters && (
           <div className="flex flex-wrap gap-2 p-3 bg-gray-50 rounded-lg border border-gray-100">
             <FilterDropdown value={statusFilter}    onChange={setStatusFilter}    placeholder="Status"          options={['ACTIVE','INACTIVE','ON_HOLD','CANCELLED','COMPLETED']} />
-            <FilterDropdown value={phaseFilter}     onChange={setPhaseFilter}     placeholder="Phase"           options={['KICKOFF','MIGRATION','VALIDATION','CLOSURE','COMPLETED']} />
+            <FilterDropdown value={phaseFilter}     onChange={setPhaseFilter}     placeholder="Phase"           options={['KICKOFF','CLOUD_ADDING','PILOT_MIGRATION','ONETIME_MIGRATION','DELTA','FINAL_VALIDATION','COMPLETED']} />
             <FilterDropdown value={delayFilter}     onChange={setDelayFilter}     placeholder="Delay Status"    options={['NOT_DELAYED','AT_RISK','DELAYED']} />
             <FilterDropdown value={planFilter}      onChange={setPlanFilter}      placeholder="Plan Type"       options={['BRONZE','SILVER','GOLD','PLATINUM']} />
             <FilterDropdown value={pmFilter}        onChange={setPmFilter}        placeholder="Project Manager" options={allPMs} />

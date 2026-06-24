@@ -31,6 +31,9 @@ export function useProject(id: string) {
     queryKey: ['project', id],
     queryFn: () => projectsApi.getById(id),
     enabled: !!id,
+    staleTime: 30_000,
+    refetchOnWindowFocus: true,
+    refetchInterval: 30_000,
   });
 }
 

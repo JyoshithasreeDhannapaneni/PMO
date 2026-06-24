@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { formatDate, formatCurrency } from '@/lib/utils';
 import type { Project, ProjectPhaseRecord } from '@/types';
 import { useSettings } from '@/context/SettingsContext';
+import { useAuth } from '@/context/AuthContext';
 import Link from 'next/link';
 import {
   Calendar, User, Building2, DollarSign, Settings,
@@ -1005,6 +1006,8 @@ interface ProjectDetailProps {
 export function ProjectDetail({ project }: ProjectDetailProps) {
   const [activeTab, setActiveTab] = useState<TabId>('overview');
   const { settings } = useSettings();
+  const { user } = useAuth();
+  const canEdit = user?.role === 'ADMIN' || user?.role === 'PROJECT_MANAGER';
 
   const migrationTypesList: { code: string; name: string; icon: string; color: string }[] = (() => {
     if (!project.migrationTypes) return [];
@@ -1066,11 +1069,13 @@ export function ProjectDetail({ project }: ProjectDetailProps) {
                 <Settings size={14} /> Manage
               </Button>
             </Link>
-            <Link href={`/projects/${project.id}/edit`}>
-              <Button variant="primary" className="text-sm flex items-center gap-1.5">
-                <Pencil size={14} /> Edit Project
-              </Button>
-            </Link>
+            {canEdit && (
+              <Link href={`/projects/${project.id}/edit`}>
+                <Button variant="primary" className="text-sm flex items-center gap-1.5">
+                  <Pencil size={14} /> Edit Project
+                </Button>
+              </Link>
+            )}
           </div>
         </div>
 

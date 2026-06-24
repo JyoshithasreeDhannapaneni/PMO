@@ -122,9 +122,39 @@ export default function ProjectsPage() {
     const fmt = (d: string | null | undefined) =>
       d ? new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' }) : '';
 
+    const MS_PER_DAY = 1000 * 60 * 60 * 24;
+
+    // Duration in months derived from SOW dates
+    const getDurationMonths = (p: any): string => {
+      if (!p.plannedStart || !p.plannedEnd) return '';
+      const days = (new Date(p.plannedEnd).getTime() - new Date(p.plannedStart).getTime()) / MS_PER_DAY;
+      return (days / 30.44).toFixed(1);
+    };
+
+    // Timezone-safe day comparison: strip time component to avoid UTC vs local midnight drift
+    const toDay = (d: Date | string): Date => {
+      const dt = typeof d === 'string' ? new Date(d) : d;
+      return new Date(dt.getFullYear(), dt.getMonth(), dt.getDate());
+    };
+
+    // SOW Date Ended: has the effective contract end date already passed?
+    // Uses extendedEndDate when overaged, otherwise original plannedEnd.
+    const getSowDateEnded = (p: any): string => {
+      const effectiveEnd = (p.isOveraged && p.extendedEndDate) ? p.extendedEndDate : p.plannedEnd;
+      if (!effectiveEnd) return '';
+      return toDay(effectiveEnd) < toDay(new Date()) ? 'Yes' : 'No';
+    };
+
+    // Use the backend's already-computed values for delay status and delay days —
+    // they are the SAME values shown on the All Projects table, so the CSV
+    // will always be in sync with what the user sees on screen.
+    // p.expectedEnd is also computed by the backend (extendedEndDate || plannedEnd).
+
     const headers = [
       'Project Name', 'Customer Name', 'Project Manager', 'Account Manager',
-      'Migration Types', 'Plan Type', 'Status', 'Phase', 'Delay Status',
+      'Migration Types', 'Plan Type', 'Status', 'Phase',
+      'Duration (Months)', 'Expected Project End', 'Extended End Date (Overage)',
+      'Delay Status', 'Delay Days', 'SOW Date Ended',
       'Estimated Budget', 'Is Overaged', 'Overage Amount',
       'SOW Start', 'SOW End', 'Kickoff Start',
       'Cloud Adding Start', 'Cloud Adding End',
@@ -135,7 +165,7 @@ export default function ProjectsPage() {
       'Project End',
     ];
 
-    const rows = data.data.map(p => [
+    const rows = data.data.map((p: any) => [
       p.name ?? '',
       p.customerName ?? '',
       p.projectManager ?? '',
@@ -144,7 +174,14 @@ export default function ProjectsPage() {
       p.planType ?? '',
       p.status ?? '',
       p.phase ?? '',
+      getDurationMonths(p),
+      // expectedEnd is returned by the backend: extendedEndDate if overaged, else plannedEnd
+      fmt(p.expectedEnd ?? p.plannedEnd),
+      p.isOveraged && p.extendedEndDate ? fmt(p.extendedEndDate) : '',
+      // delayStatus / delayDays — identical to what the table displays
       p.delayStatus ?? '',
+      p.delayDays != null ? String(p.delayDays) : '0',
+      getSowDateEnded(p),
       p.estimatedCost != null ? String(p.estimatedCost) : '',
       p.isOveraged ? 'Yes' : 'No',
       p.overageAmount != null ? String(p.overageAmount) : '',
@@ -204,7 +241,6 @@ export default function ProjectsPage() {
     { value: 'INACTIVE', label: 'Inactive', color: 'gray' },
     { value: 'ON_HOLD', label: 'On Hold', color: 'yellow' },
     { value: 'CANCELLED', label: 'Cancelled', color: 'red' },
-    { value: 'COMPLETED', label: 'Completed', color: 'blue' },
   ];
 
   const phaseOptions = useMemo(() => [
@@ -317,7 +353,10 @@ export default function ProjectsPage() {
   };
 
   return (
-    <div className="space-y-6 animate-fadeIn">
+    // h-full fills the <main> content area; flex-col stacks sections vertically.
+    // The table section gets flex-1 so it takes whatever space remains after
+    // the header and filters, keeping all scrollbars inside the viewport.
+    <div className="flex flex-col h-full gap-3 animate-fadeIn">
       {/* Refresh Toast */}
       {showRefreshToast && (
         <div className="fixed top-5 right-5 z-50 flex items-center gap-2 px-4 py-3 bg-green-600 text-white rounded-xl shadow-lg animate-fadeIn">
@@ -325,11 +364,12 @@ export default function ProjectsPage() {
           <span className="text-sm font-medium">Data refreshed successfully</span>
         </div>
       )}
+
       {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="flex-shrink-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Projects</h1>
-          <p className="text-gray-500 mt-1">
+          <p className="text-gray-500 mt-0.5 text-sm">
             {isManager ? `Your projects as ${user?.name}` : 'Manage and track all migration projects'}
             {data?.pagination?.total !== undefined && (
               <span className="ml-2 text-primary-600 font-medium">
@@ -369,7 +409,7 @@ export default function ProjectsPage() {
 
       {/* Manager View Banner */}
       {isManager && (
-        <div className="flex items-center gap-3 p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-700">
+        <div className="flex-shrink-0 flex items-center gap-3 p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-700">
           <User size={14} className="flex-shrink-0" />
           <span>
             <strong>Manager View</strong> — Showing only projects where you ({user?.name}) are the Project Manager.
@@ -379,7 +419,7 @@ export default function ProjectsPage() {
       )}
 
       {/* Filters Section */}
-      <Card padding="sm" className="bg-white">
+      <Card padding="sm" className="flex-shrink-0 bg-white">
         {/* Filter Header */}
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
@@ -540,16 +580,18 @@ export default function ProjectsPage() {
         )}
       </Card>
 
-      {/* Projects Table */}
+      {/* Projects Table — flex-1 min-h-0 so this section fills exactly the remaining
+          viewport height. The table's own overflow handles scrolling, keeping both
+          the vertical and horizontal scroll bars always visible inside the viewport. */}
       {isLoading ? (
-        <Card>
-          <div className="flex flex-col items-center justify-center h-64">
+        <Card className="flex-1 min-h-0">
+          <div className="flex flex-col items-center justify-center h-full">
             <Loader2 className="w-10 h-10 animate-spin text-primary-600" />
             <p className="mt-4 text-gray-500">Loading projects...</p>
           </div>
         </Card>
       ) : error ? (
-        <Card>
+        <Card className="flex-1 min-h-0">
           <div className="text-center py-12">
             <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-red-100 flex items-center justify-center">
               <X size={32} className="text-red-600" />
@@ -563,14 +605,14 @@ export default function ProjectsPage() {
           </div>
         </Card>
       ) : data?.data?.length === 0 ? (
-        <Card>
+        <Card className="flex-1 min-h-0">
           <div className="text-center py-12">
             <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-100 flex items-center justify-center">
               <Filter size={32} className="text-gray-400" />
             </div>
             <p className="text-gray-600 font-medium">No projects found</p>
             <p className="text-sm text-gray-500 mt-2">
-              {activeFilterCount > 0 
+              {activeFilterCount > 0
                 ? 'Try adjusting your filters or search criteria'
                 : 'Get started by creating your first project'
               }
@@ -595,9 +637,9 @@ export default function ProjectsPage() {
         const pocProjects = allProjects.filter((p: any) => p.projectType === 'POC');
         const tabProjects = activeTab === 'poc' ? pocProjects : migrationProjects;
         return (
-          <div className="space-y-0">
+          <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
             {/* Tabs */}
-            <div className="flex gap-1 border-b border-gray-200 bg-white rounded-t-xl px-2 pt-1">
+            <div className="flex-shrink-0 flex gap-1 border-b border-gray-200 bg-white rounded-t-xl px-2 pt-1">
               {([
                 { key: 'migration', label: 'Migration Projects', icon: <FolderKanban className="w-4 h-4" />, count: migrationProjects.length },
                 { key: 'poc',       label: 'POC Projects',       icon: <FlaskConical  className="w-4 h-4" />, count: pocProjects.length },
@@ -621,8 +663,9 @@ export default function ProjectsPage() {
                 </button>
               ))}
             </div>
-            {/* Table */}
-            <Card padding="none" className="rounded-t-none">
+            {/* Table — Card fills the remaining height so ProjectsTable's
+                internal overflow scroll keeps both scrollbars in-viewport */}
+            <Card padding="none" className="flex-1 min-h-0 overflow-hidden flex flex-col rounded-t-none">
               {tabProjects.length === 0 ? (
                 <div className="text-center py-12">
                   <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-100 flex items-center justify-center">
