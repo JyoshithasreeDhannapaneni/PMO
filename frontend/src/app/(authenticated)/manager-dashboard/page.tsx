@@ -44,8 +44,8 @@ interface JiraSlaData {
 // ─── Config ───────────────────────────────────────────────────────────────────
 
 const SEGMENT_CONFIG: { label: Segment; managers: string[] }[] = [
-  { label: 'ENT', managers: ['Abhishek', 'Lakshmi Prasanna'] },
-  { label: 'SMB', managers: ['Ajay', 'Abhishikth', 'Harika', 'Sravan', 'Raghu'] },
+  { label: 'ENT', managers: ['Abhishek Sakala', 'Lakshmi Prasanna'] },
+  { label: 'SMB', managers: ['Ajay Singh', 'Abhishikth', 'Harika', 'Sravan', 'Raghu Yellani'] },
 ];
 
 const NAMED_MANAGER_SET = new Set(SEGMENT_CONFIG.flatMap((s) => s.managers));
