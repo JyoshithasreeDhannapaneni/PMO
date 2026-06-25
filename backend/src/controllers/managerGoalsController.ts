@@ -67,4 +67,19 @@ export const managerGoalsController = {
     );
     res.json({ success: true, data });
   }),
+
+  deleteGartnerStats: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    let reqUser = null;
+    if (token) {
+      try { reqUser = await authService.getUserFromToken(token); } catch {}
+    }
+    if (!reqUser || reqUser.role !== 'ADMIN') {
+      res.status(403).json({ success: false, error: { message: 'Forbidden: Admin only' } });
+      return;
+    }
+    const { managerName } = req.params;
+    await gartnerStatsService.delete(decodeURIComponent(managerName));
+    res.json({ success: true, message: 'Gartner stats deleted' });
+  }),
 };

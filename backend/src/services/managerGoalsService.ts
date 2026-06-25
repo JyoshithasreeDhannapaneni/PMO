@@ -172,6 +172,11 @@ class GartnerStatsService {
     return result.rows.map((r: any) => this.mapRow(r));
   }
 
+  async delete(managerName: string): Promise<void> {
+    await this.ensureTable();
+    await execute(`DELETE FROM manager_gartner_stats WHERE manager_name = $1`, [managerName]);
+  }
+
   async update(managerName: string, projectsClosed: number, gartnerReviews: number, updatedBy: string): Promise<GartnerStat> {
     await this.ensureTable();
     await execute(

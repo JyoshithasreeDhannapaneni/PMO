@@ -114,6 +114,8 @@ export interface Project {
   pocPreSalesOwner?: string | null;
   pocCriticalNotes?: string | null;
   onetimeProgress?: number | null;
+  customerSuccess?: string | null;
+  csatScore?: number | null;
   createdAt: string;
   updatedAt: string;
   phases?: ProjectPhaseRecord[];
