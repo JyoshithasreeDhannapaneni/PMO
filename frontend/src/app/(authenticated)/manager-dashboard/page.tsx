@@ -468,6 +468,7 @@ function ManagerDetailView({
 }) {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [projectsOpen, setProjectsOpen] = useState(false);
 
   const { data: projectData, isLoading: projectsLoading } = useQuery({
     queryKey: isOthers ? ['managerDashboard', 'others', 'projects'] : ['managerDashboard', stat.manager, 'projects'],
@@ -576,44 +577,58 @@ function ManagerDetailView({
         </div>
       </div>
 
-      {/* Project list */}
+      {/* Project list — collapsible */}
       <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-        {/* Table header + filters */}
-        <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-3 bg-gray-50">
+        {/* Clickable header toggle */}
+        <button
+          onClick={() => setProjectsOpen((o) => !o)}
+          className="w-full px-5 py-3 flex items-center gap-3 bg-gray-50 hover:bg-gray-100 transition-colors text-left"
+        >
           <h3 className="text-sm font-semibold text-gray-700 flex-shrink-0">Active Projects</h3>
-          <div className="relative flex-1">
-            <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search projects..."
-              className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-primary-400"
-            />
-          </div>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-white text-gray-900 focus:outline-none"
-          >
-            <option value="">All Status</option>
-            {['ACTIVE', 'ON_HOLD', 'CANCELLED'].map((s) => (
-              <option key={s} value={s}>{s.replace('_', ' ')}</option>
-            ))}
-          </select>
-          <span className="text-xs text-gray-400 flex-shrink-0">{filtered.length} projects</span>
-        </div>
+          <span className="text-xs text-gray-400">{projects.length} projects</span>
+          <ChevronRight
+            size={15}
+            className={`ml-auto text-gray-400 transition-transform duration-200 ${projectsOpen ? 'rotate-90' : ''}`}
+          />
+        </button>
 
-        {projectsLoading ? (
-          <div className="flex justify-center py-16">
-            <Loader2 className="w-7 h-7 animate-spin text-primary-600" />
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="text-center py-16 text-gray-400 text-sm">
-            {projects.length === 0 ? 'No active projects found for this manager.' : 'No projects match the current filters.'}
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+        {projectsOpen && (
+          <>
+            {/* Filters — shown only when open */}
+            <div className="px-5 py-2.5 border-t border-b border-gray-100 flex items-center gap-3 bg-white">
+              <div className="relative flex-1">
+                <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search projects..."
+                  className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-primary-400"
+                />
+              </div>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-white text-gray-900 focus:outline-none"
+              >
+                <option value="">All Status</option>
+                {['ACTIVE', 'ON_HOLD', 'CANCELLED'].map((s) => (
+                  <option key={s} value={s}>{s.replace('_', ' ')}</option>
+                ))}
+              </select>
+              <span className="text-xs text-gray-400 flex-shrink-0">{filtered.length} results</span>
+            </div>
+
+            {projectsLoading ? (
+              <div className="flex justify-center py-16">
+                <Loader2 className="w-7 h-7 animate-spin text-primary-600" />
+              </div>
+            ) : filtered.length === 0 ? (
+              <div className="text-center py-16 text-gray-400 text-sm">
+                {projects.length === 0 ? 'No active projects found for this manager.' : 'No projects match the current filters.'}
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
                   {['Project Name', 'Customer', 'Phase', 'Status', 'Delay', 'Planned End', 'SOW End'].map((h) => (
@@ -671,11 +686,13 @@ function ManagerDetailView({
           </div>
         )}
 
-        {/* Jira SLA section */}
-        {!isOthers && (
-          <div className="p-4 border-t border-gray-100">
-            <JiraSlaSection managerName={stat.manager} />
-          </div>
+            {/* Jira SLA section */}
+            {!isOthers && (
+              <div className="p-4 border-t border-gray-100">
+                <JiraSlaSection managerName={stat.manager} />
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
