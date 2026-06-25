@@ -279,12 +279,38 @@ export function useJiraStatus() {
   });
 }
 
+export function useJiraOAuthStatus() {
+  return useQuery({
+    queryKey: ['jira-oauth-status'],
+    queryFn: () => authFetch(`${API_BASE}/api/jira/oauth/status`),
+    staleTime: 30_000,
+    refetchOnWindowFocus: true,
+  });
+}
+
 export function useJiraSla(managerName: string | null) {
   return useQuery({
     queryKey: ['jira-sla', managerName],
     queryFn: () => authFetch(`${API_BASE}/api/jira/sla?manager=${encodeURIComponent(managerName!)}`),
     enabled: !!managerName,
     staleTime: 5 * 60_000,
+  });
+}
+
+export function useJiraEngineers() {
+  return useQuery({
+    queryKey: ['jira-engineers'],
+    queryFn: () => authFetch(`${API_BASE}/api/jira/engineers`),
+    staleTime: 5 * 60_000,
+  });
+}
+
+export function useJiraExcelStatus() {
+  return useQuery({
+    queryKey: ['jira-excel-status'],
+    queryFn: () => authFetch(`${API_BASE}/api/jira/excel/status`),
+    staleTime: 30_000,
+    refetchOnWindowFocus: true,
   });
 }
 
