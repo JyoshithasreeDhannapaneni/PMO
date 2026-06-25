@@ -41,6 +41,7 @@ import customerSuccessRoutes from './routes/customerSuccessRoutes';
 import pocDocumentsRoutes from './routes/pocDocumentsRoutes';
 import migrationChecklistRoutes from './routes/migrationChecklistRoutes';
 import serverAlertRoutes from './routes/serverAlertRoutes';
+import templateCombinationRoutes from './routes/templateCombinationRoutes';
 import { logger } from './utils/logger';
 import { authService } from './services/authService';
 import { templateService } from './services/templateService';
@@ -97,6 +98,7 @@ app.use('/api/customer-success', customerSuccessRoutes);
 app.use('/api/poc-documents', pocDocumentsRoutes);
 app.use('/api/migration-checklists', migrationChecklistRoutes);
 app.use('/api/server-alerts', serverAlertRoutes);
+app.use('/api/template-combinations', templateCombinationRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
@@ -354,6 +356,14 @@ async function runMigrations() {
     try { await execute(`ALTER TABLE projects ADD COLUMN onetime_progress SMALLINT DEFAULT NULL`); } catch {}
   }
 
+  // Customer Success manager and CSAT score columns
+  if (!await columnExists('projects', 'customer_success')) {
+    try { await execute(`ALTER TABLE projects ADD COLUMN customer_success VARCHAR(255) DEFAULT NULL`); } catch {}
+  }
+  if (!await columnExists('projects', 'csat_score')) {
+    try { await execute(`ALTER TABLE projects ADD COLUMN csat_score DECIMAL(3,1) DEFAULT NULL`); } catch {}
+  }
+
   // Server alert logs
   await execute(`CREATE TABLE IF NOT EXISTS server_alert_logs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -381,6 +391,31 @@ async function runMigrations() {
         AND id NOT IN (SELECT project_id FROM case_studies)
     `);
   } catch {}
+
+  // Template combination documents (Templates tab)
+  await execute(`CREATE TABLE IF NOT EXISTS template_combinations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    migration_category VARCHAR(20) NOT NULL,
+    source_name VARCHAR(255) NOT NULL,
+    target_name VARCHAR(255) NOT NULL,
+    source_icon VARCHAR(10) DEFAULT '📂',
+    target_icon VARCHAR(10) DEFAULT '☁️',
+    is_custom BOOLEAN DEFAULT true,
+    created_at TIMESTAMP DEFAULT NOW()
+  )`);
+  await execute(`CREATE TABLE IF NOT EXISTS template_combination_documents (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    combination_id UUID NOT NULL REFERENCES template_combinations(id) ON DELETE CASCADE,
+    file_name VARCHAR(500) NOT NULL,
+    doc_type VARCHAR(100) NOT NULL DEFAULT 'other',
+    file_size BIGINT,
+    mime_type VARCHAR(200),
+    file_path TEXT NOT NULL,
+    uploaded_by VARCHAR(255),
+    created_at TIMESTAMP DEFAULT NOW()
+  )`);
+  try { await execute(`CREATE INDEX IF NOT EXISTS idx_tmpl_combo_cat ON template_combinations(migration_category)`); } catch {}
+  try { await execute(`CREATE INDEX IF NOT EXISTS idx_tmpl_combo_docs ON template_combination_documents(combination_id)`); } catch {}
 
 }
 
