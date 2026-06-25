@@ -1,20 +1,22 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
-import { useManagerGoalsWithStats, useJiraSla } from '@/hooks/useProjects';
+import { useManagerGoalsWithStats, useJiraSla, useJiraEngineers, useJiraExcelStatus, useJiraOAuthStatus } from '@/hooks/useProjects';
+import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import {
   Loader2, AlertCircle, X, PlayCircle, PauseCircle,
   CheckCircle, Clock, ChevronRight, Search, Link2Off,
-  ArrowLeft, ExternalLink,
+  ArrowLeft, ExternalLink, Upload, FileSpreadsheet, Trash2,
 } from 'lucide-react';
 import api from '@/services/api';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Segment = 'ENT' | 'SMB';
+type ActiveTab = 'ENT' | 'SMB' | 'ENGINEERS';
 
 interface ManagerStat {
   manager: string;
@@ -91,6 +93,223 @@ function sumStats(stats: ManagerStat[]) {
   return { total, onTime, delayed, atRisk, completed, active, inactive, pctOnTime, avgDelayDays };
 }
 
+// ─── Jira Excel upload banner ────────────────────────────────────────────────
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+
+function ExcelUploadBanner() {
+  const { data, isLoading, refetch } = useJiraExcelStatus();
+  const queryClient = useQueryClient();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
+  const invalidateAll = () => {
+    queryClient.invalidateQueries({ queryKey: ['jira-excel-status'] });
+    queryClient.invalidateQueries({ queryKey: ['jira-sla'] });
+    queryClient.invalidateQueries({ queryKey: ['jira-engineers'] });
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
+      const form = new FormData();
+      form.append('file', file);
+      const res = await fetch(`${API_BASE_URL}/api/jira/excel/upload`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: form,
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error || 'Upload failed');
+      invalidateAll();
+      refetch();
+    } catch (err: any) {
+      setUploadError(err.message);
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleClear = async () => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
+    await fetch(`${API_BASE_URL}/api/jira/excel/clear`, {
+      method: 'DELETE',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    invalidateAll();
+    refetch();
+  };
+
+  if (isLoading) return null;
+
+  const available = data?.available;
+
+  return (
+    <div className={`rounded-xl border p-4 ${available ? 'border-green-200 bg-green-50' : 'border-blue-200 bg-blue-50'}`}>
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-start gap-3">
+          <FileSpreadsheet size={18} className={`flex-shrink-0 mt-0.5 ${available ? 'text-green-600' : 'text-blue-500'}`} />
+          <div>
+            {available ? (
+              <>
+                <p className="text-sm font-semibold text-green-800">
+                  Jira data loaded from Excel
+                </p>
+                <p className="text-xs text-green-700 mt-0.5">
+                  <span className="font-medium">{data.filename}</span>
+                  {' · '}{data.ticketCount} tickets
+                  {' · '}Uploaded {new Date(data.uploadedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                </p>
+                {data.columnMap && (
+                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
+                    {[
+                      { key: 'pm',       label: 'Project Manager' },
+                      { key: 'customer', label: 'Customer Name'   },
+                      { key: 'assignee', label: 'Assignee'        },
+                      { key: 'frSla',    label: 'FR SLA Breach'   },
+                      { key: 'resSla',   label: 'Resolution SLA Breach' },
+                    ].map(({ key, label }) => {
+                      const val = data.columnMap[key];
+                      const found = val && val !== 'NOT FOUND';
+                      return (
+                        <span key={key} className={`text-xs ${found ? 'text-green-700' : 'text-gray-400'}`}>
+                          {label}: <span className="font-medium">{found ? '✓' : '—'}</span>
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                <p className="text-sm font-semibold text-blue-800">Upload Jira Export (Excel)</p>
+                <p className="text-xs text-blue-600 mt-0.5">
+                  Export tickets from Jira using the Excel add-in or native export, then upload here to display SLA data.
+                </p>
+                <p className="text-xs text-blue-500 mt-1">
+                  Required columns: <span className="font-medium">Assignee, Project Manager</span> · Optional: Customer/Organization, Time to first response, Time to resolution
+                </p>
+              </>
+            )}
+            {uploadError && (
+              <p className="text-xs text-red-600 mt-1 font-medium">{uploadError}</p>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {available && (
+            <button
+              onClick={handleClear}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-red-600 hover:text-red-700 border border-red-200 hover:border-red-300 rounded-lg transition"
+            >
+              <Trash2 size={13} />
+              Remove
+            </button>
+          )}
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className={`flex items-center gap-1.5 px-4 py-2 text-sm font-semibold rounded-lg transition whitespace-nowrap
+              ${available
+                ? 'bg-white border border-green-300 text-green-700 hover:bg-green-50'
+                : 'bg-blue-600 text-white hover:bg-blue-700'
+              } disabled:opacity-60`}
+          >
+            {uploading ? (
+              <><Loader2 size={14} className="animate-spin" /> Uploading…</>
+            ) : (
+              <><Upload size={14} /> {available ? 'Replace File' : 'Upload Excel'}</>
+            )}
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".xlsx,.xls,.csv"
+            className="hidden"
+            onChange={handleFileChange}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Jira OAuth connection button ────────────────────────────────────────────
+
+function JiraOAuthBanner() {
+  const { data, isLoading, refetch } = useJiraOAuthStatus();
+  const queryClient = useQueryClient();
+
+  if (isLoading) return null;
+
+  const handleDisconnect = async () => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
+    await fetch(`${API_BASE_URL}/api/jira/oauth/disconnect`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    queryClient.invalidateQueries({ queryKey: ['jira-oauth-status'] });
+    queryClient.invalidateQueries({ queryKey: ['jira-sla'] });
+    queryClient.invalidateQueries({ queryKey: ['jira-engineers'] });
+    refetch();
+  };
+
+  // Connected
+  if (data?.connected) {
+    return (
+      <div className="rounded-xl border border-green-200 bg-green-50 p-3 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-2">
+          <CheckCircle size={15} className="text-green-600 flex-shrink-0" />
+          <p className="text-sm text-green-800">
+            <span className="font-semibold">Jira connected via OAuth</span>
+            {data.connectedAs && <span className="text-green-600 ml-1">as {data.connectedAs}</span>}
+          </p>
+        </div>
+        <button onClick={handleDisconnect} className="text-xs text-red-500 hover:text-red-700 font-medium transition">
+          Disconnect
+        </button>
+      </div>
+    );
+  }
+
+  // Configured but not connected — show compact connect button
+  if (data?.configured) {
+    return (
+      <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-3 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-2">
+          <ExternalLink size={15} className="text-indigo-500 flex-shrink-0" />
+          <p className="text-sm text-indigo-800">
+            Connect Jira via OAuth to pull live ticket data automatically.
+          </p>
+        </div>
+        <a
+          href={`${API_BASE_URL}/api/jira/oauth/connect`}
+          className="flex-shrink-0 px-3 py-1.5 bg-indigo-600 text-white text-xs font-semibold rounded-lg hover:bg-indigo-700 transition whitespace-nowrap"
+        >
+          Connect to Jira
+        </a>
+      </div>
+    );
+  }
+
+  // Not configured — show minimal hint
+  return (
+    <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 flex items-center gap-2">
+      <AlertCircle size={14} className="text-gray-400 flex-shrink-0" />
+      <p className="text-xs text-gray-500">
+        To connect Jira via OAuth, add <code className="bg-gray-100 px-1 rounded">JIRA_OAUTH_CLIENT_ID</code> &amp; <code className="bg-gray-100 px-1 rounded">JIRA_OAUTH_CLIENT_SECRET</code> to <code className="bg-gray-100 px-1 rounded">backend/.env</code> then restart.
+      </p>
+    </div>
+  );
+}
+
 // ─── JiraSlaSection ──────────────────────────────────────────────────────────
 
 interface JiraProject {
@@ -111,11 +330,9 @@ function JiraSlaSection({ managerName }: { managerName: string }) {
       <div className="border border-dashed border-gray-200 rounded-xl p-4 bg-gray-50 flex items-start gap-3">
         <Link2Off size={18} className="text-gray-400 flex-shrink-0 mt-0.5" />
         <div>
-          <p className="text-sm font-medium text-gray-600">Jira SLA Tracking — Not Connected</p>
+          <p className="text-sm font-medium text-gray-600">Jira SLA Tracking — No Data</p>
           <p className="text-xs text-gray-400 mt-0.5">
-            Add <code className="bg-gray-100 px-1 rounded text-gray-500">JIRA_USER_EMAIL</code> and{' '}
-            <code className="bg-gray-100 px-1 rounded text-gray-500">JIRA_API_TOKEN</code> to the backend{' '}
-            <code className="bg-gray-100 px-1 rounded text-gray-500">.env</code> file to enable live SLA data.
+            Upload a Jira Excel export using the button above to view SLA data for this manager.
           </p>
         </div>
       </div>
@@ -131,11 +348,15 @@ function JiraSlaSection({ managerName }: { managerName: string }) {
     );
   }
 
-  if (isError) {
+  if (isError || (data && !data.success)) {
+    const msg = data?.error || 'Failed to load Jira SLA data.';
     return (
       <div className="border border-red-100 rounded-xl p-4 flex items-start gap-3 bg-red-50">
         <AlertCircle size={16} className="text-red-400 flex-shrink-0 mt-0.5" />
-        <p className="text-sm text-red-600">Failed to load Jira SLA data. Check the server logs.</p>
+        <div>
+          <p className="text-sm font-medium text-red-600">Jira API Error</p>
+          <p className="text-xs text-red-500 mt-0.5">{msg}</p>
+        </div>
       </div>
     );
   }
@@ -147,7 +368,11 @@ function JiraSlaSection({ managerName }: { managerName: string }) {
         <ExternalLink size={16} className="text-gray-400 flex-shrink-0 mt-0.5" />
         <div>
           <p className="text-sm font-medium text-gray-600">Jira SLA — {jira?.period?.startDate} to {jira?.period?.endDate}</p>
-          <p className="text-xs text-gray-400 mt-0.5">No tickets found for this manager in this period.</p>
+          <p className="text-xs text-gray-400 mt-0.5">
+            {jira?.hint
+              ? jira.hint
+              : 'No tickets found for this manager in this period.'}
+          </p>
         </div>
       </div>
     );
@@ -552,8 +777,24 @@ function ManagerRow({
 
 export default function ManagerDashboardPage() {
   const { user, isLoading: authLoading } = useAuth();
-  const [activeSegment, setActiveSegment] = useState<Segment>('ENT');
+  const [activeTab, setActiveTab] = useState<ActiveTab>('ENT');
   const [selectedManager, setSelectedManager] = useState<string | null>(null);
+  const activeSegment = activeTab as Segment;
+  const queryClient = useQueryClient();
+
+  // Handle OAuth callback redirect (?jira_oauth=success or error)
+  useState(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const oauthResult = params.get('jira_oauth');
+    if (oauthResult) {
+      queryClient.invalidateQueries({ queryKey: ['jira-oauth-status'] });
+      queryClient.invalidateQueries({ queryKey: ['jira-sla'] });
+      queryClient.invalidateQueries({ queryKey: ['jira-engineers'] });
+      // Clean up URL
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  });
 
   const { data: statsData, isLoading: statsLoading } = useManagerGoalsWithStats();
   const allStats: ManagerStat[] = useMemo(() => {
@@ -634,68 +875,206 @@ export default function ManagerDashboardPage() {
         <p className="text-sm text-gray-500 mt-0.5">Project health overview by business segment and manager</p>
       </div>
 
-      {/* Segment tabs */}
+      {/* Tabs */}
       <div className="flex gap-1 border-b border-gray-200">
-        {SEGMENT_CONFIG.map((seg) => (
+        {(['ENT', 'SMB', 'ENGINEERS'] as ActiveTab[]).map((tab) => (
           <button
-            key={seg.label}
-            onClick={() => {
-              setActiveSegment(seg.label);
-              setSelectedManager(null);
-            }}
+            key={tab}
+            onClick={() => { setActiveTab(tab); setSelectedManager(null); }}
             className={`px-5 py-2.5 text-sm font-medium border-b-2 transition -mb-px ${
-              activeSegment === seg.label
+              activeTab === tab
                 ? 'border-primary-600 text-primary-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
             }`}
           >
-            {seg.label}
+            {tab === 'ENGINEERS' ? 'Engineers' : tab}
           </button>
         ))}
       </div>
 
-      {/* Stats table */}
+      {/* Jira data banners — Excel upload + OAuth connect */}
+      <div className="space-y-2">
+        <ExcelUploadBanner />
+        <JiraOAuthBanner />
+      </div>
+
+      {/* Engineers tab */}
+      {activeTab === 'ENGINEERS' && <EngineersView />}
+
+      {/* Manager stats table (ENT / SMB) */}
+      {activeTab !== 'ENGINEERS' && (
+        <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+          {statsLoading ? (
+            <div className="flex justify-center py-16">
+              <Loader2 className="w-7 h-7 animate-spin text-primary-600" />
+            </div>
+          ) : (
+            <table className="w-full">
+              <thead>
+                <tr className="bg-[#1b4f72] text-white text-xs font-semibold">
+                  <th className="px-5 py-3 text-left">Project Manager</th>
+                  <th className="px-5 py-3 text-center">Total Projects</th>
+                  <th className="px-5 py-3 text-center">On Time</th>
+                  <th className="px-5 py-3 text-center">Delayed</th>
+                  <th className="px-5 py-3 text-center">At Risk</th>
+                  <th className="px-5 py-3 text-left min-w-[140px]">% On Time</th>
+                  <th className="px-5 py-3 text-center whitespace-nowrap">Avg Delay (Days, Late Only)</th>
+                  <th className="px-3 py-3 w-8" />
+                </tr>
+              </thead>
+              <tbody>
+                {currentSegment.managers.map((name) => (
+                  <ManagerRow
+                    key={name}
+                    name={name}
+                    stat={getStatForManager(name)}
+                    isOthers={false}
+                    onSelect={() => setSelectedManager(name)}
+                  />
+                ))}
+                {currentSegment.label === 'SMB' && (
+                  <ManagerRow
+                    key="others"
+                    name="Others"
+                    stat={othersStats}
+                    isOthers={true}
+                    onSelect={() => setSelectedManager('Others')}
+                  />
+                )}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Engineers tab view ───────────────────────────────────────────────────────
+
+function EngineersView() {
+  const { data, isLoading, isError } = useJiraEngineers();
+
+  if (!isLoading && (!data?.configured || data?.configured === false)) {
+    return (
+      <div className="border border-dashed border-gray-200 rounded-xl p-6 bg-gray-50 flex items-start gap-3">
+        <Link2Off size={18} className="text-gray-400 flex-shrink-0 mt-0.5" />
+        <div>
+          <p className="text-sm font-medium text-gray-600">Jira Not Connected</p>
+          <p className="text-xs text-gray-400 mt-0.5">
+            Add <code className="bg-gray-100 px-1 rounded">JIRA_USER_EMAIL</code> and{' '}
+            <code className="bg-gray-100 px-1 rounded">JIRA_API_TOKEN</code> to backend/.env to enable this view.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-16 gap-3">
+        <Loader2 size={20} className="animate-spin text-primary-500" />
+        <p className="text-sm text-gray-500">Loading engineer ticket stats for last month…</p>
+      </div>
+    );
+  }
+
+  if (isError || (data && !data.success)) {
+    return (
+      <div className="border border-red-100 rounded-xl p-4 bg-red-50 flex items-start gap-3">
+        <AlertCircle size={16} className="text-red-400 flex-shrink-0 mt-0.5" />
+        <div>
+          <p className="text-sm font-medium text-red-600">Jira API Error</p>
+          <p className="text-xs text-red-500 mt-0.5">{data?.error || 'Failed to load engineer stats.'}</p>
+        </div>
+      </div>
+    );
+  }
+
+  const result = data?.data;
+  if (!result) return null;
+
+  const { engineers, period, totalTickets, totalBreached } = result;
+  const overallRate = totalTickets > 0 ? ((totalBreached / totalTickets) * 100).toFixed(1) : '0.0';
+
+  // Filter out known project managers from the engineers list
+  const engineerRows = (engineers as any[]).filter(
+    (e) => !NAMED_MANAGER_SET.has(e.engineerName)
+  );
+
+  return (
+    <div className="space-y-4">
+      {/* Summary header */}
+      <div className="bg-white rounded-2xl border border-gray-200 p-4 flex items-center gap-6">
+        <div className="flex items-center gap-2">
+          <ExternalLink size={15} className="text-blue-500" />
+          <span className="text-sm font-semibold text-gray-700">
+            Jira — {period?.startDate} to {period?.endDate}
+          </span>
+        </div>
+        <div className="flex items-center gap-4 ml-auto text-xs text-gray-500">
+          <span><span className="font-semibold text-gray-800 text-sm">{totalTickets}</span> total tickets</span>
+          <span><span className={`font-semibold text-sm ${Number(totalBreached) > 0 ? 'text-red-600' : 'text-green-600'}`}>{totalBreached}</span> breached</span>
+          <span className={`font-semibold text-sm ${Number(overallRate) > 20 ? 'text-red-600' : Number(overallRate) > 10 ? 'text-yellow-600' : 'text-green-600'}`}>
+            {overallRate}% overall breach rate
+          </span>
+        </div>
+      </div>
+
+      {/* Engineers table */}
       <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-        {statsLoading ? (
-          <div className="flex justify-center py-16">
-            <Loader2 className="w-7 h-7 animate-spin text-primary-600" />
-          </div>
-        ) : (
-          <table className="w-full">
-            <thead>
-              <tr className="bg-[#1b4f72] text-white text-xs font-semibold">
-                <th className="px-5 py-3 text-left">Project Manager</th>
-                <th className="px-5 py-3 text-center">Total Projects</th>
-                <th className="px-5 py-3 text-center">On Time</th>
-                <th className="px-5 py-3 text-center">Delayed</th>
-                <th className="px-5 py-3 text-center">At Risk</th>
-                <th className="px-5 py-3 text-left min-w-[140px]">% On Time</th>
-                <th className="px-5 py-3 text-center whitespace-nowrap">Avg Delay (Days, Late Only)</th>
-                <th className="px-3 py-3 w-8" />
+        <table className="w-full">
+          <thead>
+            <tr className="bg-[#1b4f72] text-white text-xs font-semibold">
+              <th className="px-5 py-3 text-left">Engineer</th>
+              <th className="px-5 py-3 text-center">Total Tickets</th>
+              <th className="px-5 py-3 text-center">Breached Tickets</th>
+              <th className="px-5 py-3 text-left min-w-[160px]">Breach Rate</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {engineerRows.length === 0 && (
+              <tr>
+                <td colSpan={4} className="px-5 py-10 text-center text-sm text-gray-400">
+                  No engineer tickets found for this period.
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {currentSegment.managers.map((name) => (
-                <ManagerRow
-                  key={name}
-                  name={name}
-                  stat={getStatForManager(name)}
-                  isOthers={false}
-                  onSelect={() => setSelectedManager(name)}
-                />
-              ))}
-              {currentSegment.label === 'SMB' && (
-                <ManagerRow
-                  key="others"
-                  name="Others"
-                  stat={othersStats}
-                  isOthers={true}
-                  onSelect={() => setSelectedManager('Others')}
-                />
-              )}
-            </tbody>
-          </table>
-        )}
+            )}
+            {engineerRows.map((e: any) => {
+              const rate = e.breachRate as number;
+              const rateColor = rate > 20 ? 'text-red-600' : rate > 10 ? 'text-yellow-600' : 'text-green-600';
+              const barColor  = rate > 20 ? 'bg-red-400' : rate > 10 ? 'bg-yellow-400' : 'bg-green-400';
+              return (
+                <tr key={e.engineerName} className="hover:bg-gray-50 transition-colors">
+                  <td className="px-5 py-3.5">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-xs font-bold text-indigo-700 flex-shrink-0">
+                        {toInitials(e.engineerName)}
+                      </div>
+                      <span className="font-medium text-gray-900 text-sm">{e.engineerName}</span>
+                    </div>
+                  </td>
+                  <td className="px-5 py-3.5 text-center">
+                    <span className="font-semibold text-gray-800">{e.totalTickets}</span>
+                  </td>
+                  <td className="px-5 py-3.5 text-center">
+                    <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full text-sm font-bold ${e.breachedTickets > 0 ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
+                      {e.breachedTickets}
+                    </span>
+                  </td>
+                  <td className="px-5 py-3.5">
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 bg-gray-100 rounded-full h-2 min-w-[80px]">
+                        <div className={`h-2 rounded-full ${barColor}`} style={{ width: `${Math.min(rate, 100)}%` }} />
+                      </div>
+                      <span className={`text-sm font-semibold w-10 text-right ${rateColor}`}>{rate}%</span>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
     </div>
   );
