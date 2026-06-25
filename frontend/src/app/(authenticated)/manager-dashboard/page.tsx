@@ -3,12 +3,12 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
-import { useManagerGoalsWithStats } from '@/hooks/useProjects';
+import { useManagerGoalsWithStats, useJiraSla } from '@/hooks/useProjects';
 import Link from 'next/link';
 import {
   Loader2, AlertCircle, X, PlayCircle, PauseCircle,
   CheckCircle, Clock, ChevronRight, Search, Link2Off,
-  ArrowLeft,
+  ArrowLeft, ExternalLink,
 } from 'lucide-react';
 import api from '@/services/api';
 
@@ -93,16 +93,138 @@ function sumStats(stats: ManagerStat[]) {
 
 // ─── JiraSlaSection ──────────────────────────────────────────────────────────
 
-function JiraSlaSection() {
+interface JiraProject {
+  customerName: string;
+  totalTickets: number;
+  breachCount: number;
+  breachRate: number;
+  firstResponseBreaches: number;
+  resolutionBreaches: number;
+}
+
+function JiraSlaSection({ managerName }: { managerName: string }) {
+  const { data, isLoading, isError } = useJiraSla(managerName);
+
+  // Not configured yet
+  if (!isLoading && (!data?.configured || data?.configured === false)) {
+    return (
+      <div className="border border-dashed border-gray-200 rounded-xl p-4 bg-gray-50 flex items-start gap-3">
+        <Link2Off size={18} className="text-gray-400 flex-shrink-0 mt-0.5" />
+        <div>
+          <p className="text-sm font-medium text-gray-600">Jira SLA Tracking — Not Connected</p>
+          <p className="text-xs text-gray-400 mt-0.5">
+            Add <code className="bg-gray-100 px-1 rounded text-gray-500">JIRA_USER_EMAIL</code> and{' '}
+            <code className="bg-gray-100 px-1 rounded text-gray-500">JIRA_API_TOKEN</code> to the backend{' '}
+            <code className="bg-gray-100 px-1 rounded text-gray-500">.env</code> file to enable live SLA data.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="border border-gray-100 rounded-xl p-4 flex items-center gap-3">
+        <Loader2 size={16} className="animate-spin text-primary-500 flex-shrink-0" />
+        <p className="text-sm text-gray-500">Loading Jira SLA data for last month…</p>
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="border border-red-100 rounded-xl p-4 flex items-start gap-3 bg-red-50">
+        <AlertCircle size={16} className="text-red-400 flex-shrink-0 mt-0.5" />
+        <p className="text-sm text-red-600">Failed to load Jira SLA data. Check the server logs.</p>
+      </div>
+    );
+  }
+
+  const jira = data?.data;
+  if (!jira || jira.projects.length === 0) {
+    return (
+      <div className="border border-gray-100 rounded-xl p-4 bg-gray-50 flex items-start gap-3">
+        <ExternalLink size={16} className="text-gray-400 flex-shrink-0 mt-0.5" />
+        <div>
+          <p className="text-sm font-medium text-gray-600">Jira SLA — {jira?.period?.startDate} to {jira?.period?.endDate}</p>
+          <p className="text-xs text-gray-400 mt-0.5">No tickets found for this manager in this period.</p>
+        </div>
+      </div>
+    );
+  }
+
+  const projects: JiraProject[] = jira.projects;
+
   return (
-    <div className="border border-dashed border-gray-200 rounded-xl p-4 bg-gray-50 flex items-start gap-3">
-      <Link2Off size={18} className="text-gray-400 flex-shrink-0 mt-0.5" />
-      <div>
-        <p className="text-sm font-medium text-gray-600">Jira SLA Tracking</p>
-        <p className="text-xs text-gray-400 mt-0.5">
-          Connect Jira to enable SLA tracking. When configured, this section will show ticket count,
-          breach count, breach rate, first-response breaches, and resolution breaches per project.
-        </p>
+    <div className="space-y-3">
+      {/* Header + summary row */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <ExternalLink size={15} className="text-blue-500" />
+          <p className="text-sm font-semibold text-gray-700">
+            Jira SLA — {jira.period?.startDate} to {jira.period?.endDate}
+          </p>
+        </div>
+        <div className="flex items-center gap-4 text-xs text-gray-500">
+          <span><span className="font-semibold text-gray-700">{jira.totalTickets}</span> tickets</span>
+          <span><span className={`font-semibold ${jira.totalBreaches > 0 ? 'text-red-600' : 'text-green-600'}`}>{jira.totalBreaches}</span> breaches</span>
+          <span className={`font-semibold ${jira.overallBreachRate > 20 ? 'text-red-600' : jira.overallBreachRate > 10 ? 'text-yellow-600' : 'text-green-600'}`}>
+            {jira.overallBreachRate}% breach rate
+          </span>
+        </div>
+      </div>
+
+      {/* Per-project table */}
+      <div className="overflow-x-auto rounded-xl border border-gray-200">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 border-b border-gray-200">
+            <tr>
+              {['Customer / Project', 'Total Tickets', 'FR Breaches', 'Resolution Breaches', 'Total Breaches', 'Breach Rate'].map((h) => (
+                <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {projects.map((p) => {
+              const rate = p.breachRate;
+              const rateColor = rate > 20 ? 'text-red-600' : rate > 10 ? 'text-yellow-600' : 'text-green-600';
+              return (
+                <tr key={p.customerName} className="hover:bg-gray-50 transition-colors">
+                  <td className="px-4 py-2.5 font-medium text-gray-900">{p.customerName}</td>
+                  <td className="px-4 py-2.5 text-center font-semibold text-gray-700">{p.totalTickets}</td>
+                  <td className="px-4 py-2.5 text-center">
+                    <span className={`font-semibold ${p.firstResponseBreaches > 0 ? 'text-red-600' : 'text-gray-400'}`}>
+                      {p.firstResponseBreaches}
+                    </span>
+                  </td>
+                  <td className="px-4 py-2.5 text-center">
+                    <span className={`font-semibold ${p.resolutionBreaches > 0 ? 'text-red-600' : 'text-gray-400'}`}>
+                      {p.resolutionBreaches}
+                    </span>
+                  </td>
+                  <td className="px-4 py-2.5 text-center">
+                    <span className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold ${p.breachCount > 0 ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
+                      {p.breachCount}
+                    </span>
+                  </td>
+                  <td className="px-4 py-2.5">
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 bg-gray-100 rounded-full h-1.5 min-w-[50px]">
+                        <div
+                          className={`h-1.5 rounded-full ${rate > 20 ? 'bg-red-400' : rate > 10 ? 'bg-yellow-400' : 'bg-green-400'}`}
+                          style={{ width: `${Math.min(rate, 100)}%` }}
+                        />
+                      </div>
+                      <span className={`text-xs font-semibold w-9 text-right ${rateColor}`}>{rate}%</span>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
     </div>
   );
@@ -325,9 +447,11 @@ function ManagerDetailView({
         )}
 
         {/* Jira SLA section */}
-        <div className="p-4 border-t border-gray-100">
-          <JiraSlaSection />
-        </div>
+        {!isOthers && (
+          <div className="p-4 border-t border-gray-100">
+            <JiraSlaSection managerName={stat.manager} />
+          </div>
+        )}
       </div>
     </div>
   );

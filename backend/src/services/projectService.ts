@@ -378,7 +378,9 @@ class ProjectService {
     const plannedStart = new Date(data.plannedStart);
     const actualStart = data.actualStart ? new Date(data.actualStart) : null;
     const actualEnd = data.actualEnd ? new Date(data.actualEnd) : null;
-    const { delayDays, delayStatus } = calculateDelay(plannedStart, plannedEnd, actualStart, actualEnd);
+    const createStatus = (data.status || 'ACTIVE').toUpperCase();
+    const createIsFinished = createStatus === 'COMPLETED' || createStatus === 'CANCELLED';
+    const { delayDays, delayStatus } = calculateDelay(plannedStart, plannedEnd, actualStart, createIsFinished ? actualEnd : null);
 
     const migrationTypes = data.migrationTypes?.toUpperCase().split(',').map(t => t.trim()) || [];
     const primaryMigrationType = migrationTypes[0] || null;
@@ -584,8 +586,12 @@ class ProjectService {
     const actualEnd = data.actualEnd !== undefined
       ? (data.actualEnd ? new Date(data.actualEnd) : null)
       : existing.actual_end;
+    const extendedEndDate = existing.extended_end_date ? new Date(existing.extended_end_date) : null;
 
-    const calculated = calculateDelay(plannedStart, plannedEnd, actualStart, actualEnd);
+    const newStatus = (data.status || existing.status || 'ACTIVE').toUpperCase();
+    const isFinished = newStatus === 'COMPLETED' || newStatus === 'CANCELLED';
+    const actualEndForDelay = isFinished ? actualEnd : null;
+    const calculated = calculateDelay(plannedStart, plannedEnd, actualStart, actualEndForDelay, new Date(), extendedEndDate);
     const delayDays = Math.floor(Number(calculated.delayDays) || 0);
     const delayStatus = data.delayStatus || calculated.delayStatus;
 
@@ -795,10 +801,11 @@ class ProjectService {
 
     for (const row of result.rows) {
       // ACTIVE/ON_HOLD: ignore actualEnd (may be filled as "expected end" by users)
-      const { delayDays, delayStatus } = calculateDelay(
-        row.planned_start, row.planned_end,
-        row.actual_start, null
-      );
+      const ps = new Date(row.planned_start);
+      const pe = new Date(row.planned_end);
+      const as = row.actual_start ? new Date(row.actual_start) : null;
+      const extEnd = row.extended_end_date ? new Date(row.extended_end_date) : null;
+      const { delayDays, delayStatus } = calculateDelay(ps, pe, as, null, new Date(), extEnd);
 
       if (delayDays !== row.delay_days || delayStatus !== row.delay_status) {
         await query(
