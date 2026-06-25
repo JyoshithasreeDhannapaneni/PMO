@@ -10,6 +10,7 @@ import {
   Settings, Layers, Users, BarChart2, ChevronDown,
   ChevronRight, LogOut, DollarSign, Siren, Menu, X, Archive,
   FlaskConical, Building2, HeartHandshake, BookOpen, ClipboardList, Briefcase, Bell,
+  LayoutGrid,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
@@ -21,6 +22,7 @@ const allNavigation = [
   { name: 'Overage Projects',   href: '/overage-projects',       icon: DollarSign,      adminOnly: false },
   { name: 'Escalated Projects', href: '/escalation-projects',    icon: Siren,           adminOnly: false },
   { name: 'Managers & Goals',   href: '/managers',               icon: Users,   badge: 'goals', adminOnly: false },
+  { name: 'Manager Dashboard',  href: '/manager-dashboard',      icon: LayoutGrid,               adminOnly: true },
   { name: 'Pre-sales',          href: '/poc-projects',           icon: FlaskConical,    adminOnly: false },
   { name: 'Account Manager View', href: '/account-manager',     icon: Building2,       adminOnly: false },
   { name: 'Customer Success',   href: '/customer-success',       icon: HeartHandshake,  adminOnly: false },

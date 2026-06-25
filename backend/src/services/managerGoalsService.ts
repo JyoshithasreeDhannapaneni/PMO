@@ -64,7 +64,7 @@ class ManagerGoalsService {
     const params = managerName ? [managerName] : [];
 
     const [projectsResult, goalsResult] = await Promise.all([
-      query(`SELECT project_manager, status, delay_status FROM projects ${whereClause}`, params),
+      query(`SELECT project_manager, status, delay_status, delay_days FROM projects ${whereClause}`, params),
       query(`SELECT manager_name, goal_pct FROM manager_goals`),
     ]);
 
@@ -72,20 +72,32 @@ class ManagerGoalsService {
     const goalsMap: Record<string, number> = {};
     goalsResult.rows.forEach((g) => { goalsMap[g.manager_name] = g.goal_pct; });
 
-    const managerMap: Record<string, { total: number; completed: number; delayed: number; active: number; inactive: number }> = {};
+    const managerMap: Record<string, {
+      total: number; completed: number; delayed: number; active: number;
+      inactive: number; atRisk: number; onTime: number; delayedDaysList: number[];
+    }> = {};
+
     rows.forEach((r) => {
       const m = r.project_manager || 'Unassigned';
-      if (!managerMap[m]) managerMap[m] = { total: 0, completed: 0, delayed: 0, active: 0, inactive: 0 };
+      if (!managerMap[m]) {
+        managerMap[m] = { total: 0, completed: 0, delayed: 0, active: 0, inactive: 0, atRisk: 0, onTime: 0, delayedDaysList: [] };
+      }
       managerMap[m].total++;
       if (r.status === 'COMPLETED') managerMap[m].completed++;
-      if (r.status === 'ACTIVE') managerMap[m].active++;
+      if (r.status === 'ACTIVE')    managerMap[m].active++;
       if (r.status === 'ON_HOLD' || r.status === 'INACTIVE') managerMap[m].inactive++;
-      if (r.delay_status === 'DELAYED') managerMap[m].delayed++;
+      if (r.delay_status === 'DELAYED')     { managerMap[m].delayed++; managerMap[m].delayedDaysList.push(Number(r.delay_days) || 0); }
+      if (r.delay_status === 'AT_RISK')     managerMap[m].atRisk++;
+      if (r.delay_status === 'NOT_DELAYED') managerMap[m].onTime++;
     });
 
     return Object.entries(managerMap).map(([manager, s]) => {
       const achievedPct = s.total > 0 ? Math.round((s.completed / s.total) * 100) : 0;
       const goalPct = goalsMap[manager] ?? 80;
+      const avgDelayDays = s.delayedDaysList.length > 0
+        ? Math.round(s.delayedDaysList.reduce((a, b) => a + b, 0) / s.delayedDaysList.length)
+        : 0;
+      const pctOnTime = s.total > 0 ? Math.round((s.onTime / s.total) * 100) : 0;
       return {
         manager,
         total: s.total,
@@ -93,6 +105,10 @@ class ManagerGoalsService {
         inactive: s.inactive,
         completed: s.completed,
         delayed: s.delayed,
+        atRisk: s.atRisk,
+        onTime: s.onTime,
+        pctOnTime,
+        avgDelayDays,
         achievedPct,
         goalPct,
         variance: achievedPct - goalPct,
