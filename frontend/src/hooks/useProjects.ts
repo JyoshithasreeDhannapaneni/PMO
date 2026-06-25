@@ -271,6 +271,23 @@ export function useAllUsers() {
   });
 }
 
+export function useJiraStatus() {
+  return useQuery({
+    queryKey: ['jira-status'],
+    queryFn: () => authFetch(`${API_BASE}/api/jira/status`),
+    staleTime: 5 * 60_000,
+  });
+}
+
+export function useJiraSla(managerName: string | null) {
+  return useQuery({
+    queryKey: ['jira-sla', managerName],
+    queryFn: () => authFetch(`${API_BASE}/api/jira/sla?manager=${encodeURIComponent(managerName!)}`),
+    enabled: !!managerName,
+    staleTime: 5 * 60_000,
+  });
+}
+
 export function useOveragedProjects(manager?: string) {
   return useQuery({
     queryKey: ['overagedProjects', manager],
