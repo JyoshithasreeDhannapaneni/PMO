@@ -43,3 +43,11 @@ prisma/*.db-journal
 # Misc
 *.tsbuildinfo
 next-env.d.ts
+
+# Claude Code — personal overrides (never commit)
+CLAUDE.local.md
+.claude/settings.local.json
+.claude/.edit-log.txt
+
+# Jira OAuth tokens (contains live access tokens)
+backend/.jira-oauth-tokens.json

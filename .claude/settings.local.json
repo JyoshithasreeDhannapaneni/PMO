@@ -95,7 +95,8 @@
       "PowerShell(Get-Process -Name \"node\" -ErrorAction SilentlyContinue | Stop-Process -Force; Start-Process powershell -ArgumentList \"-NoExit\", \"-Command\", \"cd 'c:\\\\Users\\\\BharathTummaganti\\\\OneDrive - CloudFuze, Inc\\\\Documents\\\\PMO\\\\PMO\\\\backend'; npm run dev\"; Start-Process powershell -ArgumentList \"-NoExit\", \"-Command\", \"cd 'c:\\\\Users\\\\BharathTummaganti\\\\OneDrive - CloudFuze, Inc\\\\Documents\\\\PMO\\\\PMO\\\\frontend'; npm run dev\"; Write-Host \"Done\")",
       "PowerShell(Get-Process -Name \"node\" -ErrorAction SilentlyContinue | Select-Object Id, CPU, @{N='StartTime';E={$_.StartTime}} | Format-Table -AutoSize)",
       "PowerShell(Get-Process -Name \"node\" -ErrorAction SilentlyContinue | Select-Object Id, @{N='CPU';E={[math]::Round\\($_.CPU,1\\)}}, @{N='Started';E={$_.StartTime.ToString\\('HH:mm:ss'\\)}}, @{N='Title';E={$_.MainWindowTitle}} | Format-Table -AutoSize)",
-      "PowerShell(Stop-Process -Name \"node\" -Force -ErrorAction SilentlyContinue)"
+      "PowerShell(Stop-Process -Name \"node\" -Force -ErrorAction SilentlyContinue)",
+      "Bash(node -e \"const b=require\\('./backend/package.json'\\); const f=require\\('./frontend/package.json'\\); console.log\\('BACKEND:', Object.keys\\(b.dependencies||{}\\).join\\(', '\\)\\); console.log\\('FRONTEND:', Object.keys\\(f.dependencies||{}\\).join\\(', '\\)\\);\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\BharathTummaganti\\OneDrive - CloudFuze, Inc\\Documents\\PMO\\PMO"

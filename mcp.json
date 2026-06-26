@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "postgres": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-postgres", "postgresql://postgres:Bharath1708@localhost:5432/pmo_tracker"],
+      "description": "Direct PostgreSQL access to pmo_tracker database"
+    }
+  }
+}
