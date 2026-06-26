@@ -3,7 +3,7 @@
 import { useState, useMemo, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
-import { useManagerGoalsWithStats, useJiraSla, useJiraEngineers, useJiraExcelStatus, useJiraOAuthStatus } from '@/hooks/useProjects';
+import { useManagerGoalsWithStats, useJiraSla, useJiraEngineers, useJiraExcelStatus, useJiraOAuthStatus, useEscalatedProjects } from '@/hooks/useProjects';
 import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import {
@@ -379,77 +379,110 @@ function JiraSlaSection({ managerName }: { managerName: string }) {
   }
 
   const projects: JiraProject[] = jira.projects;
+  const brColor = jira.overallBreachRate > 20 ? 'text-red-700' : jira.overallBreachRate > 10 ? 'text-yellow-700' : 'text-green-700';
+  const brBg    = jira.overallBreachRate > 20 ? 'bg-red-50'    : jira.overallBreachRate > 10 ? 'bg-yellow-50'    : 'bg-green-50';
+
+  return (
+    <JiraSlaContent jira={jira} projects={projects} brColor={brColor} brBg={brBg} />
+  );
+}
+
+function JiraSlaContent({ jira, projects, brColor, brBg }: {
+  jira: any; projects: JiraProject[]; brColor: string; brBg: string;
+}) {
+  const [tableOpen, setTableOpen] = useState(false);
 
   return (
     <div className="space-y-3">
-      {/* Header + summary row */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <ExternalLink size={15} className="text-blue-500" />
-          <p className="text-sm font-semibold text-gray-700">
-            Jira SLA — {jira.period?.startDate} to {jira.period?.endDate}
-          </p>
+      {/* Section label */}
+      <div className="flex items-center gap-2">
+        <ExternalLink size={15} className="text-blue-500" />
+        <p className="text-sm font-semibold text-gray-700">
+          Jira SLA — {jira.period?.startDate} to {jira.period?.endDate}
+        </p>
+      </div>
+
+      {/* 3 summary KPI cards */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="bg-blue-50 rounded-xl p-4 flex items-center gap-3 border border-white">
+          <FileSpreadsheet size={20} className="text-blue-600" />
+          <div>
+            <p className="text-2xl font-bold text-blue-700">{jira.totalTickets}</p>
+            <p className="text-xs text-gray-500 mt-0.5">Total Tickets</p>
+          </div>
         </div>
-        <div className="flex items-center gap-4 text-xs text-gray-500">
-          <span><span className="font-semibold text-gray-700">{jira.totalTickets}</span> tickets</span>
-          <span><span className={`font-semibold ${jira.totalBreaches > 0 ? 'text-red-600' : 'text-green-600'}`}>{jira.totalBreaches}</span> breaches</span>
-          <span className={`font-semibold ${jira.overallBreachRate > 20 ? 'text-red-600' : jira.overallBreachRate > 10 ? 'text-yellow-600' : 'text-green-600'}`}>
-            {jira.overallBreachRate}% breach rate
-          </span>
+        <div className={`${jira.totalBreaches > 0 ? 'bg-red-50' : 'bg-green-50'} rounded-xl p-4 flex items-center gap-3 border border-white`}>
+          <AlertCircle size={20} className={jira.totalBreaches > 0 ? 'text-red-600' : 'text-green-600'} />
+          <div>
+            <p className={`text-2xl font-bold ${jira.totalBreaches > 0 ? 'text-red-700' : 'text-green-700'}`}>{jira.totalBreaches}</p>
+            <p className="text-xs text-gray-500 mt-0.5">Breaches</p>
+          </div>
+        </div>
+        <div className={`${brBg} rounded-xl p-4 flex items-center gap-3 border border-white`}>
+          <AlertCircle size={20} className={brColor} />
+          <div>
+            <p className={`text-2xl font-bold ${brColor}`}>{jira.overallBreachRate}%</p>
+            <p className="text-xs text-gray-500 mt-0.5">Breach Rate</p>
+          </div>
         </div>
       </div>
 
-      {/* Per-project table */}
-      <div className="overflow-x-auto rounded-xl border border-gray-200">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 border-b border-gray-200">
-            <tr>
-              {['Customer / Project', 'Total Tickets', 'FR Breaches', 'Resolution Breaches', 'Total Breaches', 'Breach Rate'].map((h) => (
-                <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {projects.map((p) => {
-              const rate = p.breachRate;
-              const rateColor = rate > 20 ? 'text-red-600' : rate > 10 ? 'text-yellow-600' : 'text-green-600';
-              return (
-                <tr key={p.customerName} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-4 py-2.5 font-medium text-gray-900">{p.customerName}</td>
-                  <td className="px-4 py-2.5 text-center font-semibold text-gray-700">{p.totalTickets}</td>
-                  <td className="px-4 py-2.5 text-center">
-                    <span className={`font-semibold ${p.firstResponseBreaches > 0 ? 'text-red-600' : 'text-gray-400'}`}>
-                      {p.firstResponseBreaches}
-                    </span>
-                  </td>
-                  <td className="px-4 py-2.5 text-center">
-                    <span className={`font-semibold ${p.resolutionBreaches > 0 ? 'text-red-600' : 'text-gray-400'}`}>
-                      {p.resolutionBreaches}
-                    </span>
-                  </td>
-                  <td className="px-4 py-2.5 text-center">
-                    <span className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold ${p.breachCount > 0 ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
-                      {p.breachCount}
-                    </span>
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <div className="flex items-center gap-2">
-                      <div className="flex-1 bg-gray-100 rounded-full h-1.5 min-w-[50px]">
-                        <div
-                          className={`h-1.5 rounded-full ${rate > 20 ? 'bg-red-400' : rate > 10 ? 'bg-yellow-400' : 'bg-green-400'}`}
-                          style={{ width: `${Math.min(rate, 100)}%` }}
-                        />
-                      </div>
-                      <span className={`text-xs font-semibold w-9 text-right ${rateColor}`}>{rate}%</span>
-                    </div>
-                  </td>
+      {/* Collapsible ticket breakdown */}
+      <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+        <button
+          onClick={() => setTableOpen((o) => !o)}
+          className="w-full px-5 py-3 flex items-center gap-3 bg-gray-50 hover:bg-gray-100 transition-colors text-left"
+        >
+          <h3 className="text-sm font-semibold text-gray-700 flex-shrink-0">Ticket Breakdown by Customer</h3>
+          <span className="text-xs text-gray-400">{projects.length} customers</span>
+          <ChevronRight
+            size={15}
+            className={`ml-auto text-gray-400 transition-transform duration-200 ${tableOpen ? 'rotate-90' : ''}`}
+          />
+        </button>
+
+        {tableOpen && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  {['Customer / Project', 'Total Tickets', 'FR Breaches', 'Resolution Breaches', 'Total Breaches', 'Breach Rate'].map((h) => (
+                    <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">{h}</th>
+                  ))}
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {projects.map((p) => {
+                  const rate = p.breachRate;
+                  const rateColor = rate > 20 ? 'text-red-600' : rate > 10 ? 'text-yellow-600' : 'text-green-600';
+                  return (
+                    <tr key={p.customerName} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-4 py-2.5 font-medium text-gray-900">{p.customerName}</td>
+                      <td className="px-4 py-2.5 text-center font-semibold text-gray-700">{p.totalTickets}</td>
+                      <td className="px-4 py-2.5 text-center">
+                        <span className={`font-semibold ${p.firstResponseBreaches > 0 ? 'text-red-600' : 'text-gray-400'}`}>{p.firstResponseBreaches}</span>
+                      </td>
+                      <td className="px-4 py-2.5 text-center">
+                        <span className={`font-semibold ${p.resolutionBreaches > 0 ? 'text-red-600' : 'text-gray-400'}`}>{p.resolutionBreaches}</span>
+                      </td>
+                      <td className="px-4 py-2.5 text-center">
+                        <span className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold ${p.breachCount > 0 ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>{p.breachCount}</span>
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 bg-gray-100 rounded-full h-1.5 min-w-[50px]">
+                            <div className={`h-1.5 rounded-full ${rate > 20 ? 'bg-red-400' : rate > 10 ? 'bg-yellow-400' : 'bg-green-400'}`} style={{ width: `${Math.min(rate, 100)}%` }} />
+                          </div>
+                          <span className={`text-xs font-semibold w-9 text-right ${rateColor}`}>{rate}%</span>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -469,6 +502,9 @@ function ManagerDetailView({
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [projectsOpen, setProjectsOpen] = useState(false);
+
+  const { data: escalatedData } = useEscalatedProjects(isOthers ? undefined : stat.manager);
+  const escalationCount: number = Array.isArray(escalatedData) ? escalatedData.length : (escalatedData as any)?.data?.length ?? 0;
 
   const { data: projectData, isLoading: projectsLoading } = useQuery({
     queryKey: isOthers ? ['managerDashboard', 'others', 'projects'] : ['managerDashboard', stat.manager, 'projects'],
@@ -548,8 +584,8 @@ function ManagerDetailView({
         ))}
       </div>
 
-      {/* On Time + Avg Delay summary strip */}
-      <div className="grid grid-cols-2 gap-3">
+      {/* On Time + Avg Delay + Escalations summary strip */}
+      <div className="grid grid-cols-3 gap-3">
         <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-4">
           <div>
             <p className="text-xs text-gray-500 mb-1">% On Time</p>
@@ -575,6 +611,15 @@ function ManagerDetailView({
             <p className="text-2xl font-bold text-green-600">0 <span className="text-base font-normal text-gray-400">days</span></p>
           )}
         </div>
+        <Link href={`/escalation-projects?projectManager=${encodeURIComponent(stat.manager)}`}>
+          <div className="bg-red-50 rounded-xl border border-red-100 p-4 flex items-center gap-3 cursor-pointer hover:bg-red-100 transition-colors h-full">
+            <AlertCircle size={20} className="text-red-600 flex-shrink-0" />
+            <div>
+              <p className="text-2xl font-bold text-red-600">{escalationCount}</p>
+              <p className="text-xs text-gray-500 mt-0.5">Escalations</p>
+            </div>
+          </div>
+        </Link>
       </div>
 
       {/* Project list — collapsible */}

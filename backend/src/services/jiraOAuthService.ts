@@ -24,7 +24,13 @@ export function getOAuthConfig() {
 
 export function isOAuthConfigured(): boolean {
   const { clientId, clientSecret } = getOAuthConfig();
-  return !!(clientId && clientSecret);
+  return !!(
+    clientId && clientSecret &&
+    !clientId.startsWith('PASTE_') &&
+    !clientSecret.startsWith('PASTE_') &&
+    clientId.length > 10 &&
+    clientSecret.length > 10
+  );
 }
 
 export function loadTokens(): OAuthTokens | null {
@@ -49,7 +55,7 @@ export function getAuthorizationUrl(): string {
   const params = new URLSearchParams({
     audience:      'api.atlassian.com',
     client_id:     clientId,
-    scope:         'read:jira-work read:jira-user manage:servicedesk-customer offline_access',
+    scope:         'read:jira-work read:jira-user offline_access',
     redirect_uri:  redirectUri,
     state:         'jira-oauth-connect',
     response_type: 'code',
