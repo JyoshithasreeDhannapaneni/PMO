@@ -225,6 +225,14 @@ function pmMatches(jiraValue: string, configuredName: string): boolean {
   return false;
 }
 
+// ── Customer name normalisation ───────────────────────────────────────────────
+
+// Strip spaces/underscores/hyphens and lowercase so "PDFSolution", "PDF Solution",
+// "pdf_solution", "PDF-Solution" all collapse to the same key.
+function normalizeCustomer(name: string): string {
+  return name.toLowerCase().replace(/[\s_\-]+/g, "");
+}
+
 // ── SLA computation ───────────────────────────────────────────────────────────
 
 export function getExcelSlaByManager(managerName: string, store: ExcelDataStore): ExcelSlaResult {
@@ -239,21 +247,23 @@ export function getExcelSlaByManager(managerName: string, store: ExcelDataStore)
   const managerTickets = store.tickets.filter((t) => pmMatches(t.projectManager, managerName));
   logger.info(`[Excel] ${managerTickets.length}/${store.tickets.length} tickets matched PM "${managerName}"`);
 
-  const grouped: Record<string, { total: number; frBreaches: number; resBreaches: number }> = {};
+  // Group by normalised key; remember the first display name seen for that key
+  const grouped: Record<string, { displayName: string; total: number; frBreaches: number; resBreaches: number }> = {};
   for (const t of managerTickets) {
-    const cust = t.customer || "Unknown";
-    if (!grouped[cust]) grouped[cust] = { total: 0, frBreaches: 0, resBreaches: 0 };
-    grouped[cust].total++;
-    if (t.frBreached)  grouped[cust].frBreaches++;
-    if (t.resBreached) grouped[cust].resBreaches++;
+    const raw  = t.customer || "Unknown";
+    const key  = normalizeCustomer(raw);
+    if (!grouped[key]) grouped[key] = { displayName: raw, total: 0, frBreaches: 0, resBreaches: 0 };
+    grouped[key].total++;
+    if (t.frBreached)  grouped[key].frBreaches++;
+    if (t.resBreached) grouped[key].resBreaches++;
   }
 
   const projects = Object.entries(grouped)
-    .map(([customerName, s]) => {
+    .map(([, s]) => {
       const breachCount  = s.frBreaches + s.resBreaches;
       const maxPossible  = s.total * 2;
       return {
-        customerName,
+        customerName:          s.displayName,
         totalTickets:          s.total,
         breachCount,
         breachRate:            maxPossible > 0 ? parseFloat(((breachCount / maxPossible) * 100).toFixed(1)) : 0,
