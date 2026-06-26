@@ -686,15 +686,12 @@ function ManagerDetailView({
           </div>
         )}
 
-            {/* Jira SLA section */}
-            {!isOthers && (
-              <div className="p-4 border-t border-gray-100">
-                <JiraSlaSection managerName={stat.manager} />
-              </div>
-            )}
           </>
         )}
       </div>
+
+      {/* Jira SLA section — outside and below Active Projects */}
+      {!isOthers && <JiraSlaSection managerName={stat.manager} />}
     </div>
   );
 }
