@@ -519,14 +519,6 @@ function JiraSlaContent({ jira, projects, brColor, brBg, jiraBaseUrl }: {
 
   return (
     <div className="space-y-3">
-      {/* Section label */}
-      <div className="flex items-center gap-2">
-        <ExternalLink size={15} className="text-blue-500" />
-        <p className="text-sm font-semibold text-gray-700">
-          Jira SLA — {jira.period?.startDate} to {jira.period?.endDate}
-        </p>
-      </div>
-
       {/* 3 summary KPI cards */}
       <div className="grid grid-cols-3 gap-3">
         <div className="bg-blue-50 rounded-xl p-4 flex items-center gap-3 border border-white">
@@ -1228,6 +1220,7 @@ export default function ManagerDashboardPage() {
 
 function EngineersView() {
   const { data, isLoading, isError } = useJiraEngineers();
+  const [ticketModal, setTicketModal] = useState<{ title: string; tickets: TicketRow[] } | null>(null);
 
   if (!isLoading && (!data?.configured || data?.configured === false)) {
     return (
@@ -1236,8 +1229,7 @@ function EngineersView() {
         <div>
           <p className="text-sm font-medium text-gray-600">Jira Not Connected</p>
           <p className="text-xs text-gray-400 mt-0.5">
-            Add <code className="bg-gray-100 px-1 rounded">JIRA_USER_EMAIL</code> and{' '}
-            <code className="bg-gray-100 px-1 rounded">JIRA_API_TOKEN</code> to backend/.env to enable this view.
+            Upload a Jira Excel export to enable this view.
           </p>
         </div>
       </div>
@@ -1248,7 +1240,7 @@ function EngineersView() {
     return (
       <div className="flex items-center justify-center py-16 gap-3">
         <Loader2 size={20} className="animate-spin text-primary-500" />
-        <p className="text-sm text-gray-500">Loading engineer ticket stats for last month…</p>
+        <p className="text-sm text-gray-500">Loading engineer ticket stats…</p>
       </div>
     );
   }
@@ -1268,31 +1260,49 @@ function EngineersView() {
   const result = data?.data;
   if (!result) return null;
 
-  const { engineers, period, totalTickets, totalBreached } = result;
+  const jiraBaseUrl: string = (data as any)?.jiraBaseUrl || 'https://cf2020.atlassian.net';
+  const { engineers, totalTickets, totalBreached } = result;
   const overallRate = totalTickets > 0 ? ((totalBreached / totalTickets) * 100).toFixed(1) : '0.0';
+  const rateNum = Number(overallRate);
 
-  // Filter out known project managers from the engineers list
-  const engineerRows = (engineers as any[]).filter(
-    (e) => !NAMED_MANAGER_SET.has(e.engineerName)
-  );
+  const engineerRows = (engineers as any[]).filter((e) => !NAMED_MANAGER_SET.has(e.engineerName));
+  const allTickets: TicketRow[] = engineerRows.flatMap((e: any) => e.tickets ?? []);
+  const allBreached: TicketRow[] = allTickets.filter((t) => t.frBreached || t.resBreached);
 
   return (
     <div className="space-y-4">
-      {/* Summary header */}
-      <div className="bg-white rounded-2xl border border-gray-200 p-4 flex items-center gap-6">
-        <div className="flex items-center gap-2">
-          <ExternalLink size={15} className="text-blue-500" />
-          <span className="text-sm font-semibold text-gray-700">
-            Jira — {period?.startDate} to {period?.endDate}
-          </span>
-        </div>
-        <div className="flex items-center gap-4 ml-auto text-xs text-gray-500">
-          <span><span className="font-semibold text-gray-800 text-sm">{totalTickets}</span> total tickets</span>
-          <span><span className={`font-semibold text-sm ${Number(totalBreached) > 0 ? 'text-red-600' : 'text-green-600'}`}>{totalBreached}</span> breached</span>
-          <span className={`font-semibold text-sm ${Number(overallRate) > 20 ? 'text-red-600' : Number(overallRate) > 10 ? 'text-yellow-600' : 'text-green-600'}`}>
-            {overallRate}% overall breach rate
-          </span>
-        </div>
+      {/* KPI cards */}
+      <div className="grid grid-cols-3 gap-3">
+        <button
+          className="bg-blue-50 rounded-xl p-4 flex items-center gap-3 border border-white hover:bg-blue-100 transition-colors text-left"
+          onClick={() => setTicketModal({ title: 'All Tickets — Engineers', tickets: allTickets })}
+        >
+          <FileSpreadsheet size={20} className="text-blue-600 flex-shrink-0" />
+          <div>
+            <p className="text-2xl font-bold text-blue-700">{totalTickets}</p>
+            <p className="text-xs text-gray-500 mt-0.5">Total Tickets</p>
+          </div>
+        </button>
+        <button
+          className={`${totalBreached > 0 ? 'bg-red-50 hover:bg-red-100' : 'bg-green-50 hover:bg-green-100'} rounded-xl p-4 flex items-center gap-3 border border-white transition-colors text-left`}
+          onClick={() => setTicketModal({ title: 'Breached Tickets — Engineers', tickets: allBreached })}
+        >
+          <AlertCircle size={20} className={totalBreached > 0 ? 'text-red-600' : 'text-green-600'} />
+          <div>
+            <p className={`text-2xl font-bold ${totalBreached > 0 ? 'text-red-700' : 'text-green-700'}`}>{totalBreached}</p>
+            <p className="text-xs text-gray-500 mt-0.5">Breached</p>
+          </div>
+        </button>
+        <button
+          className={`${rateNum > 20 ? 'bg-red-50 hover:bg-red-100' : rateNum > 10 ? 'bg-yellow-50 hover:bg-yellow-100' : 'bg-green-50 hover:bg-green-100'} rounded-xl p-4 flex items-center gap-3 border border-white transition-colors text-left`}
+          onClick={() => setTicketModal({ title: 'Breached Tickets — Overall', tickets: allBreached })}
+        >
+          <AlertCircle size={20} className={rateNum > 20 ? 'text-red-600' : rateNum > 10 ? 'text-yellow-600' : 'text-green-600'} />
+          <div>
+            <p className={`text-2xl font-bold ${rateNum > 20 ? 'text-red-700' : rateNum > 10 ? 'text-yellow-700' : 'text-green-700'}`}>{overallRate}%</p>
+            <p className="text-xs text-gray-500 mt-0.5">Overall Breach Rate</p>
+          </div>
+        </button>
       </div>
 
       {/* Engineers table */}
@@ -1318,6 +1328,8 @@ function EngineersView() {
               const rate = e.breachRate as number;
               const rateColor = rate > 20 ? 'text-red-600' : rate > 10 ? 'text-yellow-600' : 'text-green-600';
               const barColor  = rate > 20 ? 'bg-red-400' : rate > 10 ? 'bg-yellow-400' : 'bg-green-400';
+              const eTickets: TicketRow[] = e.tickets ?? [];
+              const eBreached: TicketRow[] = eTickets.filter((t: TicketRow) => t.frBreached || t.resBreached);
               return (
                 <tr key={e.engineerName} className="hover:bg-gray-50 transition-colors">
                   <td className="px-5 py-3.5">
@@ -1328,15 +1340,27 @@ function EngineersView() {
                       <span className="font-medium text-gray-900 text-sm">{e.engineerName}</span>
                     </div>
                   </td>
-                  <td className="px-5 py-3.5 text-center">
-                    <span className="font-semibold text-gray-800">{e.totalTickets}</span>
+                  <td
+                    className="px-5 py-3.5 text-center cursor-pointer hover:bg-blue-50 transition-colors"
+                    title="Click to view tickets"
+                    onClick={() => setTicketModal({ title: `All Tickets — ${e.engineerName}`, tickets: eTickets })}
+                  >
+                    <span className="font-semibold text-gray-800 hover:text-primary-600">{e.totalTickets}</span>
                   </td>
-                  <td className="px-5 py-3.5 text-center">
+                  <td
+                    className="px-5 py-3.5 text-center cursor-pointer hover:bg-red-50 transition-colors"
+                    title="Click to view breached tickets"
+                    onClick={() => setTicketModal({ title: `Breached Tickets — ${e.engineerName}`, tickets: eBreached })}
+                  >
                     <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full text-sm font-bold ${e.breachedTickets > 0 ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
                       {e.breachedTickets}
                     </span>
                   </td>
-                  <td className="px-5 py-3.5">
+                  <td
+                    className="px-5 py-3.5 cursor-pointer hover:bg-red-50 transition-colors"
+                    title="Click to view breached tickets"
+                    onClick={() => setTicketModal({ title: `Breached Tickets — ${e.engineerName} (${rate}%)`, tickets: eBreached })}
+                  >
                     <div className="flex items-center gap-2">
                       <div className="flex-1 bg-gray-100 rounded-full h-2 min-w-[80px]">
                         <div className={`h-2 rounded-full ${barColor}`} style={{ width: `${Math.min(rate, 100)}%` }} />
@@ -1350,6 +1374,15 @@ function EngineersView() {
           </tbody>
         </table>
       </div>
+
+      {ticketModal && (
+        <TicketModal
+          title={ticketModal.title}
+          tickets={ticketModal.tickets}
+          jiraBaseUrl={jiraBaseUrl}
+          onClose={() => setTicketModal(null)}
+        />
+      )}
     </div>
   );
 }
