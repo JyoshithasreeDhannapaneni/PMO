@@ -502,9 +502,11 @@ function ManagerDetailView({
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [projectsOpen, setProjectsOpen] = useState(false);
+  const [escalationsOpen, setEscalationsOpen] = useState(false);
 
   const { data: escalatedData } = useEscalatedProjects(isOthers ? undefined : stat.manager);
   const escalationCount: number = Array.isArray(escalatedData) ? escalatedData.length : (escalatedData as any)?.data?.length ?? 0;
+  const escalations: any[] = Array.isArray(escalatedData) ? escalatedData : (escalatedData as any)?.data ?? [];
 
   const { data: projectData, isLoading: projectsLoading } = useQuery({
     queryKey: isOthers ? ['managerDashboard', 'others', 'projects'] : ['managerDashboard', stat.manager, 'projects'],
@@ -611,16 +613,72 @@ function ManagerDetailView({
             <p className="text-2xl font-bold text-green-600">0 <span className="text-base font-normal text-gray-400">days</span></p>
           )}
         </div>
-        <Link href={`/escalation-projects?projectManager=${encodeURIComponent(stat.manager)}`}>
-          <div className="bg-red-50 rounded-xl border border-red-100 p-4 flex items-center gap-3 cursor-pointer hover:bg-red-100 transition-colors h-full">
-            <AlertCircle size={20} className="text-red-600 flex-shrink-0" />
-            <div>
-              <p className="text-2xl font-bold text-red-600">{escalationCount}</p>
-              <p className="text-xs text-gray-500 mt-0.5">Escalations</p>
-            </div>
+        <button
+          onClick={() => setEscalationsOpen((o) => !o)}
+          className="bg-red-50 rounded-xl border border-red-100 p-4 flex items-center gap-3 cursor-pointer hover:bg-red-100 transition-colors h-full w-full text-left"
+        >
+          <AlertCircle size={20} className="text-red-600 flex-shrink-0" />
+          <div className="flex-1">
+            <p className="text-2xl font-bold text-red-600">{escalationCount}</p>
+            <p className="text-xs text-gray-500 mt-0.5">Escalations</p>
           </div>
-        </Link>
+          <ChevronRight size={15} className={`text-red-400 transition-transform duration-200 ${escalationsOpen ? 'rotate-90' : ''}`} />
+        </button>
       </div>
+
+      {/* Inline escalations panel */}
+      {escalationsOpen && (
+        <div className="bg-white rounded-2xl border border-red-100 overflow-hidden">
+          <div className="px-5 py-3 bg-red-50 border-b border-red-100 flex items-center gap-2">
+            <AlertCircle size={15} className="text-red-600" />
+            <h3 className="text-sm font-semibold text-red-700">Escalated Projects</h3>
+            <span className="text-xs text-red-400 ml-1">{escalations.length} total</span>
+          </div>
+          {escalations.length === 0 ? (
+            <div className="text-center py-10 text-gray-400 text-sm">No escalated projects found.</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    {['Project Name', 'Customer', 'Priority', 'Status', 'Delay Days', 'Escalated At'].map((h) => (
+                      <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {escalations.map((p: any) => (
+                    <tr key={p.id} className="hover:bg-red-50/40">
+                      <td className="px-4 py-2.5">
+                        <Link href={`/projects/${p.id}`} className="font-medium text-primary-600 hover:underline">{p.name}</Link>
+                      </td>
+                      <td className="px-4 py-2.5 text-gray-600 text-xs">{p.customerName || '—'}</td>
+                      <td className="px-4 py-2.5">
+                        {p.escalationPriority ? (
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${p.escalationPriority === 'HIGH' ? 'bg-red-100 text-red-700' : p.escalationPriority === 'MEDIUM' ? 'bg-orange-100 text-orange-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                            {p.escalationPriority}
+                          </span>
+                        ) : <span className="text-gray-400 text-xs">—</span>}
+                      </td>
+                      <td className="px-4 py-2.5 text-gray-600 text-xs">{p.status?.replace('_', ' ') || '—'}</td>
+                      <td className="px-4 py-2.5">
+                        {p.delayDays > 0 ? (
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${p.delayDays > 14 ? 'bg-red-100 text-red-700' : p.delayDays > 7 ? 'bg-orange-100 text-orange-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                            {p.delayDays}d
+                          </span>
+                        ) : <span className="text-gray-400 text-xs">0d</span>}
+                      </td>
+                      <td className="px-4 py-2.5 text-gray-500 text-xs whitespace-nowrap">
+                        {p.escalatedAt ? new Date(p.escalatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Project list — collapsible */}
       <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">

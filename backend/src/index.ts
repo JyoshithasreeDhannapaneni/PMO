@@ -71,6 +71,8 @@ app.get('/health', (req, res) => {
   res.json({ status: 'healthy', timestamp: new Date().toISOString() });
 });
 
+app.get('/.well-known/appspecific/com.chrome.devtools.json', (req, res) => res.status(204).end());
+
 app.use('/api/auth', authRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api/phases', phaseRoutes);
