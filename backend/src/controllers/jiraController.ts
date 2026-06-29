@@ -76,12 +76,14 @@ export const jiraController = {
       return;
     }
 
+    const jiraBaseUrl = (process.env.JIRA_API_URL || 'https://cf2020.atlassian.net').replace(/\/+$/, '');
+
     // Excel upload takes priority over live Jira API
     if (isExcelDataAvailable()) {
       try {
         const store = loadExcelData()!;
         const data = getExcelSlaByManager(manager, store);
-        res.json({ success: true, configured: true, source: 'excel', data });
+        res.json({ success: true, configured: true, source: 'excel', jiraBaseUrl, data });
         return;
       } catch (err: any) {
         logger.error(`[Excel] getSlaForManager failed: ${err.message}`);
@@ -96,7 +98,7 @@ export const jiraController = {
       const { startDate, endDate, nextMonthStart } = getLastMonthRange();
       logger.info(`[Jira] SLA for manager="${manager}" ${startDate}→${endDate}`);
       const data = await getSlaByManager(manager, startDate, endDate, nextMonthStart);
-      res.json({ success: true, configured: true, data });
+      res.json({ success: true, configured: true, jiraBaseUrl, data });
     } catch (err: any) {
       logger.error(`[Jira] getSlaForManager failed: ${err.message}`);
       res.status(500).json({ success: false, configured: true, error: err.message, hint: err.response?.data ?? null });
