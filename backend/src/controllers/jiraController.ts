@@ -106,12 +106,14 @@ export const jiraController = {
   }),
 
   getEngineerStats: asyncHandler(async (_req: Request, res: Response): Promise<void> => {
+    const jiraBaseUrl = (process.env.JIRA_API_URL || 'https://cf2020.atlassian.net').replace(/\/+$/, '');
+
     // Excel upload takes priority over live Jira API
     if (isExcelDataAvailable()) {
       try {
         const store = loadExcelData()!;
         const data = getExcelEngineerStats(store);
-        res.json({ success: true, configured: true, source: 'excel', data });
+        res.json({ success: true, configured: true, source: 'excel', jiraBaseUrl, data });
         return;
       } catch (err: any) {
         logger.error(`[Excel] getEngineerStats failed: ${err.message}`);

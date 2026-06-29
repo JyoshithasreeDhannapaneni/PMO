@@ -54,6 +54,7 @@ export interface ExcelEngineerResult {
     totalTickets: number;
     breachedTickets: number;
     breachRate: number;
+    tickets: ParsedTicket[];
   }[];
   totalTickets: number;
   totalBreached: number;
@@ -299,11 +300,12 @@ export function getExcelEngineerStats(store: ExcelDataStore): ExcelEngineerResul
     endDate:   store.uploadedAt.slice(0, 10),
   };
 
-  const grouped: Record<string, { total: number; breached: number }> = {};
+  const grouped: Record<string, { total: number; breached: number; tickets: ParsedTicket[] }> = {};
   for (const t of store.tickets) {
     const name = t.assignee || "Unassigned";
-    if (!grouped[name]) grouped[name] = { total: 0, breached: 0 };
+    if (!grouped[name]) grouped[name] = { total: 0, breached: 0, tickets: [] };
     grouped[name].total++;
+    grouped[name].tickets.push(t);
     if (t.frBreached || t.resBreached) grouped[name].breached++;
   }
 
@@ -313,6 +315,7 @@ export function getExcelEngineerStats(store: ExcelDataStore): ExcelEngineerResul
       totalTickets:    s.total,
       breachedTickets: s.breached,
       breachRate:      s.total > 0 ? parseFloat(((s.breached / s.total) * 100).toFixed(1)) : 0,
+      tickets:         s.tickets,
     }))
     .sort((a, b) => b.totalTickets - a.totalTickets);
 
