@@ -293,7 +293,7 @@ export function useJiraSla(managerName: string | null) {
     queryKey: ['jira-sla', managerName],
     queryFn: () => authFetch(`${API_BASE}/api/jira/sla?manager=${encodeURIComponent(managerName!)}`),
     enabled: !!managerName,
-    staleTime: 5 * 60_000,
+    staleTime: 0,
   });
 }
 

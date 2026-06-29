@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
 import { useManagerGoalsWithStats, useJiraSla, useJiraEngineers, useJiraExcelStatus, useJiraOAuthStatus, useEscalatedProjects } from '@/hooks/useProjects';
@@ -312,6 +313,15 @@ function JiraOAuthBanner() {
 
 // ─── JiraSlaSection ──────────────────────────────────────────────────────────
 
+interface TicketRow {
+  key: string;
+  summary: string;
+  assignee: string;
+  status: string;
+  frBreached: boolean;
+  resBreached: boolean;
+}
+
 interface JiraProject {
   customerName: string;
   totalTickets: number;
@@ -319,6 +329,115 @@ interface JiraProject {
   breachRate: number;
   firstResponseBreaches: number;
   resolutionBreaches: number;
+  tickets: TicketRow[];
+}
+
+function TicketModal({ title, tickets, jiraBaseUrl, onClose }: {
+  title: string;
+  tickets: TicketRow[];
+  jiraBaseUrl: string;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  return createPortal(
+    <div
+      className="fixed inset-0 flex items-center justify-center bg-black/50 p-6"
+      style={{ zIndex: 9999 }}
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-2xl shadow-2xl flex flex-col"
+        style={{ width: '90vw', maxWidth: '1000px', height: '80vh' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 flex-shrink-0">
+          <div>
+            <h2 className="text-base font-bold text-gray-800">{title}</h2>
+            <p className="text-xs text-gray-400 mt-0.5">{tickets.length} ticket{tickets.length !== 1 ? 's' : ''} · click any key to open in Jira</p>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-xl hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors">
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Table */}
+        <div className="overflow-auto flex-1">
+          {tickets.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-2">
+              <AlertCircle size={28} />
+              <p className="text-sm">No tickets found.</p>
+            </div>
+          ) : (
+            <table className="w-full text-sm border-collapse">
+              <thead className="bg-gray-50 border-b border-gray-200" style={{ position: 'sticky', top: 0, zIndex: 1 }}>
+                <tr>
+                  <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 whitespace-nowrap w-32">Key</th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500">Summary</th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">Assignee</th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">Status</th>
+                  <th className="px-5 py-3 text-center text-xs font-semibold text-gray-500 whitespace-nowrap">FR SLA</th>
+                  <th className="px-5 py-3 text-center text-xs font-semibold text-gray-500 whitespace-nowrap">Resolution SLA</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {tickets.map((t, i) => (
+                  <tr key={t.key || `row-${i}`} className="hover:bg-blue-50/40 transition-colors">
+                    <td className="px-5 py-3 whitespace-nowrap">
+                      {t.key ? (
+                        <a
+                          href={`${jiraBaseUrl}/browse/${t.key}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-semibold text-primary-600 hover:text-primary-800 hover:underline inline-flex items-center gap-1.5"
+                        >
+                          {t.key}
+                          <ExternalLink size={12} className="text-primary-400 flex-shrink-0" />
+                        </a>
+                      ) : (
+                        <span className="text-gray-300 italic text-xs">—</span>
+                      )}
+                    </td>
+                    <td className="px-5 py-3 text-gray-700 max-w-sm" title={t.summary}>
+                      <span className="line-clamp-2">{t.summary || '—'}</span>
+                    </td>
+                    <td className="px-5 py-3 text-gray-600 whitespace-nowrap">{t.assignee || '—'}</td>
+                    <td className="px-5 py-3 whitespace-nowrap">
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                        t.status?.toLowerCase() === 'closed' || t.status?.toLowerCase() === 'done' || t.status?.toLowerCase() === 'resolved'
+                          ? 'bg-green-100 text-green-700'
+                          : t.status?.toLowerCase() === 'open' || t.status?.toLowerCase() === 'to do'
+                          ? 'bg-gray-100 text-gray-600'
+                          : 'bg-blue-100 text-blue-700'
+                      }`}>
+                        {t.status || '—'}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3 text-center">
+                      {t.frBreached
+                        ? <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">Breached</span>
+                        : <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-600">OK</span>}
+                    </td>
+                    <td className="px-5 py-3 text-center">
+                      {t.resBreached
+                        ? <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">Breached</span>
+                        : <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-600">OK</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
 }
 
 function JiraSlaSection({ managerName }: { managerName: string }) {
@@ -381,16 +500,22 @@ function JiraSlaSection({ managerName }: { managerName: string }) {
   const projects: JiraProject[] = jira.projects;
   const brColor = jira.overallBreachRate > 20 ? 'text-red-700' : jira.overallBreachRate > 10 ? 'text-yellow-700' : 'text-green-700';
   const brBg    = jira.overallBreachRate > 20 ? 'bg-red-50'    : jira.overallBreachRate > 10 ? 'bg-yellow-50'    : 'bg-green-50';
+  const jiraBaseUrl: string = (data as any)?.jiraBaseUrl || 'https://cf2020.atlassian.net';
 
   return (
-    <JiraSlaContent jira={jira} projects={projects} brColor={brColor} brBg={brBg} />
+    <JiraSlaContent jira={jira} projects={projects} brColor={brColor} brBg={brBg} jiraBaseUrl={jiraBaseUrl} />
   );
 }
 
-function JiraSlaContent({ jira, projects, brColor, brBg }: {
-  jira: any; projects: JiraProject[]; brColor: string; brBg: string;
+function JiraSlaContent({ jira, projects, brColor, brBg, jiraBaseUrl }: {
+  jira: any; projects: JiraProject[]; brColor: string; brBg: string; jiraBaseUrl: string;
 }) {
   const [tableOpen, setTableOpen] = useState(false);
+  const [ticketModal, setTicketModal] = useState<{ title: string; tickets: TicketRow[] } | null>(null);
+
+  function openModal(title: string, tickets: TicketRow[]) {
+    setTicketModal({ title, tickets });
+  }
 
   return (
     <div className="space-y-3">
@@ -455,20 +580,43 @@ function JiraSlaContent({ jira, projects, brColor, brBg }: {
                 {projects.map((p) => {
                   const rate = p.breachRate;
                   const rateColor = rate > 20 ? 'text-red-600' : rate > 10 ? 'text-yellow-600' : 'text-green-600';
+                  const tickets: TicketRow[] = p.tickets ?? [];
                   return (
                     <tr key={p.customerName} className="hover:bg-gray-50 transition-colors">
                       <td className="px-4 py-2.5 font-medium text-gray-900">{p.customerName}</td>
-                      <td className="px-4 py-2.5 text-center font-semibold text-gray-700">{p.totalTickets}</td>
-                      <td className="px-4 py-2.5 text-center">
+                      <td
+                        className="px-4 py-2.5 text-center font-semibold text-gray-700 cursor-pointer hover:text-primary-600 hover:bg-blue-50 transition-colors"
+                        title="Click to view tickets"
+                        onClick={() => openModal(`All Tickets — ${p.customerName}`, tickets)}
+                      >
+                        {p.totalTickets}
+                      </td>
+                      <td
+                        className="px-4 py-2.5 text-center cursor-pointer hover:bg-red-50 transition-colors"
+                        title="Click to view FR breached tickets"
+                        onClick={() => openModal(`FR Breaches — ${p.customerName}`, tickets.filter((t) => t.frBreached))}
+                      >
                         <span className={`font-semibold ${p.firstResponseBreaches > 0 ? 'text-red-600' : 'text-gray-400'}`}>{p.firstResponseBreaches}</span>
                       </td>
-                      <td className="px-4 py-2.5 text-center">
+                      <td
+                        className="px-4 py-2.5 text-center cursor-pointer hover:bg-red-50 transition-colors"
+                        title="Click to view resolution breached tickets"
+                        onClick={() => openModal(`Resolution Breaches — ${p.customerName}`, tickets.filter((t) => t.resBreached))}
+                      >
                         <span className={`font-semibold ${p.resolutionBreaches > 0 ? 'text-red-600' : 'text-gray-400'}`}>{p.resolutionBreaches}</span>
                       </td>
-                      <td className="px-4 py-2.5 text-center">
+                      <td
+                        className="px-4 py-2.5 text-center cursor-pointer hover:bg-red-50 transition-colors"
+                        title="Click to view all breached tickets"
+                        onClick={() => openModal(`Total Breaches — ${p.customerName}`, tickets.filter((t) => t.frBreached || t.resBreached))}
+                      >
                         <span className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold ${p.breachCount > 0 ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>{p.breachCount}</span>
                       </td>
-                      <td className="px-4 py-2.5">
+                      <td
+                        className="px-4 py-2.5 cursor-pointer hover:bg-red-50 transition-colors"
+                        title="Click to view all breached tickets"
+                        onClick={() => openModal(`Breached Tickets — ${p.customerName} (${rate}%)`, tickets.filter((t) => t.frBreached || t.resBreached))}
+                      >
                         <div className="flex items-center gap-2">
                           <div className="flex-1 bg-gray-100 rounded-full h-1.5 min-w-[50px]">
                             <div className={`h-1.5 rounded-full ${rate > 20 ? 'bg-red-400' : rate > 10 ? 'bg-yellow-400' : 'bg-green-400'}`} style={{ width: `${Math.min(rate, 100)}%` }} />
@@ -484,6 +632,15 @@ function JiraSlaContent({ jira, projects, brColor, brBg }: {
           </div>
         )}
       </div>
+
+      {ticketModal && (
+        <TicketModal
+          title={ticketModal.title}
+          tickets={ticketModal.tickets}
+          jiraBaseUrl={jiraBaseUrl}
+          onClose={() => setTicketModal(null)}
+        />
+      )}
     </div>
   );
 }

@@ -38,10 +38,12 @@ export interface ExcelSlaResult {
     breachRate: number;
     firstResponseBreaches: number;
     resolutionBreaches: number;
+    tickets: ParsedTicket[];
   }[];
   totalTickets: number;
   totalBreaches: number;
   overallBreachRate: number;
+  allTickets: ParsedTicket[];
   source: "excel";
 }
 
@@ -126,7 +128,7 @@ export function parseJiraExcel(buffer: Buffer, filename: string): ExcelDataStore
   logger.info(`[Excel] All headers (${rawHeaders.length}): ${rawHeaders.join(" | ")}`);
 
   // Exact Jira export column names only — no aliases
-  const idxKey      = findColIdx(rawHeaders, "Key");
+  const idxKey      = findColIdx(rawHeaders, "Key", "Issue Key", "Issue key", "issue key", "Ticket Key", "Issue id", "Issue ID");
   const idxSummary  = findColIdx(rawHeaders, "Summary");
   const idxAssignee = findColIdx(rawHeaders, "Assignee");
   const idxPm       = findColIdx(rawHeaders, "Project Manager");
@@ -248,12 +250,13 @@ export function getExcelSlaByManager(managerName: string, store: ExcelDataStore)
   logger.info(`[Excel] ${managerTickets.length}/${store.tickets.length} tickets matched PM "${managerName}"`);
 
   // Group by normalised key; remember the first display name seen for that key
-  const grouped: Record<string, { displayName: string; total: number; frBreaches: number; resBreaches: number }> = {};
+  const grouped: Record<string, { displayName: string; total: number; frBreaches: number; resBreaches: number; tickets: ParsedTicket[] }> = {};
   for (const t of managerTickets) {
     const raw  = t.customer || "Unknown";
     const key  = normalizeCustomer(raw);
-    if (!grouped[key]) grouped[key] = { displayName: raw, total: 0, frBreaches: 0, resBreaches: 0 };
+    if (!grouped[key]) grouped[key] = { displayName: raw, total: 0, frBreaches: 0, resBreaches: 0, tickets: [] };
     grouped[key].total++;
+    grouped[key].tickets.push(t);
     if (t.frBreached)  grouped[key].frBreaches++;
     if (t.resBreached) grouped[key].resBreaches++;
   }
@@ -269,6 +272,7 @@ export function getExcelSlaByManager(managerName: string, store: ExcelDataStore)
         breachRate:            maxPossible > 0 ? parseFloat(((breachCount / maxPossible) * 100).toFixed(1)) : 0,
         firstResponseBreaches: s.frBreaches,
         resolutionBreaches:    s.resBreaches,
+        tickets:               s.tickets,
       };
     })
     .sort((a, b) => b.totalTickets - a.totalTickets);
@@ -284,6 +288,7 @@ export function getExcelSlaByManager(managerName: string, store: ExcelDataStore)
     totalTickets,
     totalBreaches,
     overallBreachRate: maxTotal > 0 ? parseFloat(((totalBreaches / maxTotal) * 100).toFixed(1)) : 0,
+    allTickets: managerTickets,
     source: "excel",
   };
 }
