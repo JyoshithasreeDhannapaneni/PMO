@@ -17,7 +17,7 @@ import api from '@/services/api';
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Segment = 'ENT' | 'SMB';
-type ActiveTab = 'ENT' | 'SMB' | 'ENGINEERS';
+type ActiveTab = 'ENT' | 'SMB' | 'ENGINEERS' | 'ENGINEER_PATTERNS';
 
 interface ManagerStat {
   manager: string;
@@ -1298,7 +1298,7 @@ export default function ManagerDashboardPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-gray-200">
-        {(['ENT', 'SMB', 'ENGINEERS'] as ActiveTab[]).map((tab) => (
+        {(['ENT', 'SMB', 'ENGINEERS', 'ENGINEER_PATTERNS'] as ActiveTab[]).map((tab) => (
           <button
             key={tab}
             onClick={() => { setActiveTab(tab); setSelectedManager(null); }}
@@ -1308,7 +1308,7 @@ export default function ManagerDashboardPage() {
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
             }`}
           >
-            {tab === 'ENGINEERS' ? 'Engineers' : tab}
+            {tab === 'ENGINEERS' ? 'Engineers' : tab === 'ENGINEER_PATTERNS' ? 'Engineer Patterns' : tab}
           </button>
         ))}
       </div>
@@ -1322,8 +1322,11 @@ export default function ManagerDashboardPage() {
       {/* Engineers tab */}
       {activeTab === 'ENGINEERS' && <EngineersView />}
 
+      {/* Engineer Patterns tab */}
+      {activeTab === 'ENGINEER_PATTERNS' && <EngineerPatternsView />}
+
       {/* Manager stats table (ENT / SMB) */}
-      {activeTab !== 'ENGINEERS' && (
+      {activeTab !== 'ENGINEERS' && activeTab !== 'ENGINEER_PATTERNS' && (
         <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
           {statsLoading ? (
             <div className="flex justify-center py-16">
@@ -1538,6 +1541,244 @@ function EngineersView() {
           onClose={() => setTicketModal(null)}
         />
       )}
+    </div>
+  );
+}
+
+// ─── Engineer Patterns tab ────────────────────────────────────────────────────
+
+const TICKET_CATEGORIES = [
+  { id: 'retry',       label: 'Retry / Conflict',  keywords: ['retry', 'conflict', 'stuck'],                       bar: 'bg-orange-400', badge: 'bg-orange-100 text-orange-700' },
+  { id: 'onedrive',    label: 'OneDrive',           keywords: ['onedrive', 'one drive'],                            bar: 'bg-indigo-400', badge: 'bg-indigo-100 text-indigo-700' },
+  { id: 'sharepoint',  label: 'SharePoint',         keywords: ['sharepoint'],                                       bar: 'bg-teal-400',   badge: 'bg-teal-100 text-teal-700'     },
+  { id: 'teams',       label: 'Teams',              keywords: ['teams', ' team '],                                  bar: 'bg-purple-400', badge: 'bg-purple-100 text-purple-700' },
+  { id: 'googledrive', label: 'Google Drive',       keywords: ['google drive', 'gdrive', 'g-drive'],               bar: 'bg-yellow-400', badge: 'bg-yellow-100 text-yellow-700' },
+  { id: 'email',       label: 'Email / Outlook',    keywords: ['email', 'mail', 'outlook', 'gmail'],               bar: 'bg-sky-400',    badge: 'bg-sky-100 text-sky-700'       },
+  { id: 'files',       label: 'File Issues',        keywords: ['file', 'version', 'not_processed', 'version_not'], bar: 'bg-red-400',    badge: 'bg-red-100 text-red-700'       },
+  { id: 'permission',  label: 'Permissions',        keywords: ['permission', 'access', 'sharing', 'acl'],          bar: 'bg-green-400',  badge: 'bg-green-100 text-green-700'   },
+  { id: 'box',         label: 'Box / Dropbox',      keywords: ['box', 'dropbox'],                                  bar: 'bg-pink-400',   badge: 'bg-pink-100 text-pink-700'     },
+  { id: 'other',       label: 'Other',              keywords: [],                                                   bar: 'bg-gray-300',   badge: 'bg-gray-100 text-gray-600'     },
+] as const;
+
+type TicketCategory = typeof TICKET_CATEGORIES[number];
+
+function categorise(summary: string): TicketCategory {
+  const lower = (summary || '').toLowerCase();
+  for (const cat of TICKET_CATEGORIES) {
+    if (cat.keywords.some((kw) => lower.includes(kw))) return cat;
+  }
+  return TICKET_CATEGORIES[TICKET_CATEGORIES.length - 1];
+}
+
+function getImprovement(e: { totalTickets: number; breachRate: number; tickets: TicketRow[] }, avgBreachRate: number): { area: string; tip: string } {
+  const tickets: TicketRow[] = e.tickets ?? [];
+  const rate = e.breachRate;
+  const retryCount = tickets.filter((t) => isRetryTicket(t.summary)).length;
+  const retryPct = e.totalTickets > 0 ? (retryCount / e.totalTickets) * 100 : 0;
+  const frBreaches = tickets.filter((t) => t.frBreached).length;
+  const resBreaches = tickets.filter((t) => t.resBreached).length;
+
+  if (retryPct > 35) return { area: 'High retry volume', tip: 'Over a third of tickets are retries/conflicts — investigate root causes early and set clearer pre-migration checklists with customers.' };
+  if (rate > avgBreachRate + 15) return { area: 'Above-average breach rate', tip: 'Breach rate is significantly above the team average — consider triaging open tickets daily and flagging blockers sooner.' };
+  if (frBreaches > resBreaches * 1.5) return { area: 'First Response delays', tip: 'FR SLA breaches outpace Resolution breaches — set up quicker initial acknowledgment templates to buy time.' };
+  if (resBreaches > frBreaches * 1.5) return { area: 'Resolution delays', tip: 'Tickets are acknowledged on time but take long to close — escalate blockers earlier and reduce handoff wait time.' };
+  if (rate > 20) return { area: 'Breach rate needs attention', tip: 'More than 1 in 5 tickets breach SLA — review workload distribution and prioritise oldest open tickets.' };
+  return { area: 'Maintain performance', tip: 'Performance is solid. Continue monitoring ticket volume and keep response times consistent as workload grows.' };
+}
+
+function getStrength(tickets: TicketRow[]): string {
+  if (tickets.length === 0) return 'No data yet';
+  const total = tickets.length;
+  const frRate = (tickets.filter((t) => t.frBreached).length / total) * 100;
+  const resRate = (tickets.filter((t) => t.resBreached).length / total) * 100;
+  if (frRate < 10 && resRate < 10) return 'Strong SLA adherence across both metrics';
+  if (frRate < resRate) return 'Consistently fast first responses';
+  if (resRate < frRate) return 'Reliable ticket resolution';
+  return 'Balanced workload handling';
+}
+
+function EngineerPatternsView() {
+  const { data, isLoading, isError } = useJiraEngineers();
+
+  if (!isLoading && (!data?.configured || data?.configured === false)) {
+    return (
+      <div className="border border-dashed border-gray-200 rounded-xl p-6 bg-gray-50 flex items-start gap-3">
+        <Link2Off size={18} className="text-gray-400 flex-shrink-0 mt-0.5" />
+        <div>
+          <p className="text-sm font-medium text-gray-600">Jira Not Connected</p>
+          <p className="text-xs text-gray-400 mt-0.5">Upload a Jira Excel export to enable this view.</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-16 gap-3">
+        <Loader2 size={20} className="animate-spin text-primary-500" />
+        <p className="text-sm text-gray-500">Analysing engineer patterns…</p>
+      </div>
+    );
+  }
+
+  if (isError || (data && !data.success)) {
+    return (
+      <div className="border border-red-100 rounded-xl p-4 bg-red-50 flex items-start gap-3">
+        <AlertCircle size={16} className="text-red-400 flex-shrink-0 mt-0.5" />
+        <p className="text-sm text-red-600">{data?.error || 'Failed to load engineer data.'}</p>
+      </div>
+    );
+  }
+
+  const result = data?.data;
+  if (!result) return null;
+
+  const engineerRows = ((result.engineers as any[]) || []).filter((e: any) => !NAMED_MANAGER_SET.has(e.engineerName));
+  if (engineerRows.length === 0) {
+    return <div className="text-center py-16 text-sm text-gray-400">No engineer ticket data found.</div>;
+  }
+
+  const avgBreachRate = engineerRows.reduce((s: number, e: any) => s + (e.breachRate as number), 0) / engineerRows.length;
+
+  return (
+    <div className="space-y-5">
+      <p className="text-xs text-gray-400">
+        Patterns derived from ticket summaries and SLA data. Each card shows what an engineer works on most and where to improve.
+      </p>
+
+      {engineerRows.map((e: any) => {
+        const tickets: TicketRow[] = e.tickets ?? [];
+        const total: number = tickets.length;
+        const rate: number = e.breachRate;
+        const rateColor = rate > 20 ? 'text-red-600' : rate > 10 ? 'text-yellow-600' : 'text-green-600';
+        const rateBg = rate > 20 ? 'bg-red-50' : rate > 10 ? 'bg-yellow-50' : 'bg-green-50';
+
+        const catCounts: Record<string, number> = {};
+        for (const t of tickets) {
+          const cat = categorise(t.summary);
+          catCounts[cat.id] = (catCounts[cat.id] || 0) + 1;
+        }
+        const topCategories = ([...TICKET_CATEGORIES] as TicketCategory[])
+          .map((cat) => ({ ...cat, count: catCounts[cat.id] || 0 }))
+          .filter((c) => c.count > 0)
+          .sort((a, b) => b.count - a.count)
+          .slice(0, 5);
+
+        const topCat = topCategories[0];
+        const imp = getImprovement(e, avgBreachRate);
+        const str = getStrength(tickets);
+        const frBreaches = tickets.filter((t) => t.frBreached).length;
+        const resBreaches = tickets.filter((t) => t.resBreached).length;
+        const retryCount = tickets.filter((t) => isRetryTicket(t.summary)).length;
+        const retryPct = total > 0 ? Math.round((retryCount / total) * 100) : 0;
+
+        return (
+          <div key={e.engineerName} className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+            {/* Engineer header */}
+            <div className="flex items-center gap-4 px-5 py-4 border-b border-gray-100">
+              <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-sm font-bold text-indigo-700 flex-shrink-0">
+                {toInitials(e.engineerName)}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-gray-900 text-sm">{e.engineerName}</p>
+                <p className="text-xs text-gray-400">{total} ticket{total !== 1 ? 's' : ''} · {e.breachedTickets} breached</p>
+              </div>
+              <div className={`flex flex-col items-center px-4 py-2 rounded-xl ${rateBg}`}>
+                <span className={`text-xl font-bold ${rateColor}`}>{rate}%</span>
+                <span className="text-xs text-gray-500">Breach Rate</span>
+              </div>
+            </div>
+
+            {/* Three-column body */}
+            <div className="grid grid-cols-3 divide-x divide-gray-100">
+
+              {/* Col 1 — Ticket category breakdown */}
+              <div className="px-5 py-4">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Ticket Category Breakdown</p>
+                {topCategories.length === 0 ? (
+                  <p className="text-xs text-gray-400">No data</p>
+                ) : (
+                  <div className="space-y-2.5">
+                    {topCategories.map((cat) => {
+                      const pct = total > 0 ? Math.round((cat.count / total) * 100) : 0;
+                      return (
+                        <div key={cat.id}>
+                          <div className="flex items-center justify-between mb-0.5">
+                            <span className="text-xs text-gray-600 truncate max-w-[130px]">{cat.label}</span>
+                            <span className="text-xs font-semibold text-gray-700 ml-1">{cat.count} <span className="text-gray-400 font-normal">({pct}%)</span></span>
+                          </div>
+                          <div className="w-full bg-gray-100 rounded-full h-1.5">
+                            <div className={`h-1.5 rounded-full ${cat.bar}`} style={{ width: `${pct}%` }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                {topCat && (
+                  <div className="mt-3 pt-3 border-t border-gray-100">
+                    <p className="text-xs text-gray-400">Most common issue type</p>
+                    <span className={`inline-block mt-1 text-xs font-semibold px-2 py-0.5 rounded-full ${topCat.badge}`}>{topCat.label}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Col 2 — SLA breach pattern */}
+              <div className="px-5 py-4">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">SLA Breach Pattern</p>
+                <div className="space-y-3">
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs text-gray-600">First Response SLA</span>
+                      <span className="text-xs font-semibold text-red-600">{frBreaches} breached</span>
+                    </div>
+                    <div className="w-full bg-gray-100 rounded-full h-2">
+                      <div className="h-2 rounded-full bg-red-400" style={{ width: `${total > 0 ? Math.min((frBreaches / total) * 100, 100) : 0}%` }} />
+                    </div>
+                    <p className="text-xs text-gray-400 mt-0.5">{total > 0 ? ((frBreaches / total) * 100).toFixed(0) : 0}% of tickets</p>
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs text-gray-600">Resolution SLA</span>
+                      <span className="text-xs font-semibold text-orange-600">{resBreaches} breached</span>
+                    </div>
+                    <div className="w-full bg-gray-100 rounded-full h-2">
+                      <div className="h-2 rounded-full bg-orange-400" style={{ width: `${total > 0 ? Math.min((resBreaches / total) * 100, 100) : 0}%` }} />
+                    </div>
+                    <p className="text-xs text-gray-400 mt-0.5">{total > 0 ? ((resBreaches / total) * 100).toFixed(0) : 0}% of tickets</p>
+                  </div>
+                </div>
+                <div className="mt-3 pt-3 border-t border-gray-100">
+                  <p className="text-xs text-gray-400">Strength</p>
+                  <p className="text-xs font-medium text-green-700 mt-0.5">{str}</p>
+                </div>
+              </div>
+
+              {/* Col 3 — Improvement area */}
+              <div className="px-5 py-4">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Improvement Area</p>
+                <div className="flex items-start gap-2 p-3 rounded-xl bg-amber-50 border border-amber-100">
+                  <AlertCircle size={14} className="text-amber-500 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-xs font-semibold text-amber-800">{imp.area}</p>
+                    <p className="text-xs text-amber-700 mt-1 leading-relaxed">{imp.tip}</p>
+                  </div>
+                </div>
+                <div className="mt-3 pt-3 border-t border-gray-100">
+                  <p className="text-xs text-gray-400 mb-1.5">Retry ticket share</p>
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 bg-gray-100 rounded-full h-2">
+                      <div className="h-2 bg-orange-400 rounded-full" style={{ width: `${retryPct}%` }} />
+                    </div>
+                    <span className="text-xs font-semibold text-orange-600 w-9 text-right">{retryPct}%</span>
+                  </div>
+                  <p className="text-xs text-gray-400 mt-0.5">{retryCount} of {total} tickets are retry / conflict type</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
