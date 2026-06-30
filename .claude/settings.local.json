@@ -99,7 +99,10 @@
       "Bash(node -e \"const b=require\\('./backend/package.json'\\); const f=require\\('./frontend/package.json'\\); console.log\\('BACKEND:', Object.keys\\(b.dependencies||{}\\).join\\(', '\\)\\); console.log\\('FRONTEND:', Object.keys\\(f.dependencies||{}\\).join\\(', '\\)\\);\")",
       "Bash(taskkill //PID 10496 //F)",
       "Bash(node -e \"const d = require\\('./.jira-excel-data.json'\\); console.log\\('columnMap:', JSON.stringify\\(d.columnMap, null, 2\\)\\); console.log\\('sample key values:', d.tickets.slice\\(0,5\\).map\\(t => t.key\\)\\);\")",
-      "Bash(node -e \"const d = require\\('./.jira-excel-data.json'\\); const first = d.tickets[0]; console.log\\('First ticket fields:', Object.keys\\(first\\)\\); console.log\\('Total tickets stored:', d.tickets.length\\);\")"
+      "Bash(node -e \"const d = require\\('./.jira-excel-data.json'\\); const first = d.tickets[0]; console.log\\('First ticket fields:', Object.keys\\(first\\)\\); console.log\\('Total tickets stored:', d.tickets.length\\);\")",
+      "Bash(Get-Process -Name node)",
+      "Bash(Stop-Process -Force)",
+      "Bash(Write-Host \"Done\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\BharathTummaganti\\OneDrive - CloudFuze, Inc\\Documents\\PMO\\PMO"
