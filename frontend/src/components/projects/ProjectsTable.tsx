@@ -616,53 +616,48 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
                   />
                 </td>
 
-                {/* Customer Health (CSAT badge + editable score) */}
+                {/* C-SAT — compact inline pill */}
                 <td className="px-4 py-3">
                   {(() => {
                     const h = csatHealth(project.csatScore);
                     const isEditingScore = editingCell?.projectId === project.id && editingCell?.field === 'csatScore';
+                    if (isEditingScore) {
+                      return (
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="number"
+                            min="0" max="5" step="0.1"
+                            value={editValue}
+                            onChange={(e) => {
+                              const v = parseFloat(e.target.value);
+                              if (e.target.value === '' || e.target.value === '-') { setEditValue(e.target.value); return; }
+                              if (!isNaN(v)) setEditValue(String(Math.min(5, Math.max(0, Math.round(v * 10) / 10))));
+                            }}
+                            className="text-xs w-16 px-1.5 py-1 border border-primary-300 rounded focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
+                            autoFocus
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') saveEdit(project.id, 'csatScore');
+                              if (e.key === 'Escape') cancelEditing();
+                            }}
+                          />
+                          <button onClick={() => saveEdit(project.id, 'csatScore')} className="p-1 text-green-600 hover:bg-green-100 rounded" disabled={updateProject.isPending}>
+                            {updateProject.isPending ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+                          </button>
+                          <button onClick={cancelEditing} className="p-1 text-red-600 hover:bg-red-100 rounded"><X size={13} /></button>
+                        </div>
+                      );
+                    }
                     return (
-                      <div className="space-y-1 min-w-[110px]">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${h.bg} ${h.color}`}>
-                          {h.label}
-                        </span>
-                        {isEditingScore ? (
-                          <div className="flex items-center gap-1">
-                            <input
-                              type="number"
-                              min="0" max="5" step="0.1"
-                              value={editValue}
-                              onChange={(e) => {
-                                const v = parseFloat(e.target.value);
-                                if (e.target.value === '' || e.target.value === '-') { setEditValue(e.target.value); return; }
-                                if (!isNaN(v)) setEditValue(String(Math.min(5, Math.max(0, Math.round(v * 10) / 10))));
-                              }}
-                              className="text-xs w-16 px-1.5 py-1 border border-primary-300 rounded focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
-                              autoFocus
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') saveEdit(project.id, 'csatScore');
-                                if (e.key === 'Escape') cancelEditing();
-                              }}
-                            />
-                            <button onClick={() => saveEdit(project.id, 'csatScore')} className="p-1 text-green-600 hover:bg-green-100 rounded" disabled={updateProject.isPending}>
-                              {updateProject.isPending ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
-                            </button>
-                            <button onClick={cancelEditing} className="p-1 text-red-600 hover:bg-red-100 rounded"><X size={13} /></button>
-                          </div>
-                        ) : (
-                          <div
-                            className="cursor-pointer hover:bg-gray-100 rounded px-1 py-0.5 -mx-1 transition-colors text-xs text-gray-600 flex items-center gap-0.5"
-                            onClick={(e) => { e.stopPropagation(); startEditing(project.id, 'csatScore', project.csatScore != null ? String(project.csatScore) : ''); }}
-                            title="Click to edit CSAT score"
-                          >
-                            {project.csatScore != null ? (
-                              <><span className="font-medium">{project.csatScore.toFixed(1)}</span><span className="text-gray-400">/ 5 ★</span></>
-                            ) : (
-                              <span className="text-gray-400 italic">Set score</span>
-                            )}
-                          </div>
+                      <span
+                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold cursor-pointer hover:opacity-80 transition-opacity ${h.bg} ${h.color}`}
+                        onClick={(e) => { e.stopPropagation(); startEditing(project.id, 'csatScore', project.csatScore != null ? String(project.csatScore) : ''); }}
+                        title="Click to edit CSAT score"
+                      >
+                        {h.label}
+                        {project.csatScore != null && (
+                          <span className="opacity-75">· {project.csatScore.toFixed(1)}★</span>
                         )}
-                      </div>
+                      </span>
                     );
                   })()}
                 </td>

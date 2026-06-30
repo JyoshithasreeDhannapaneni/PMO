@@ -25,10 +25,15 @@ export function calculateDelay(
 ): DelayCalculationResult {
   const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
-  // Project End Date = actualEnd (auto-calculated as kickoff + SOW duration).
-  // Fall back to plannedEnd if not set.
-  // Extended end date (PM-approved overage) overrides everything.
-  const deadline = extendedEndDate || actualEnd || plannedEnd;
+  // Project End Date = kickoff date + SOW duration
+  // If no kickoff yet, fall back to plannedEnd.
+  const sowDurationMs = plannedEnd.getTime() - plannedStart.getTime();
+  const expectedEnd = actualStart
+    ? new Date(actualStart.getTime() + sowDurationMs)
+    : plannedEnd;
+
+  // Extended end date (PM-approved overage) overrides the calculated end.
+  const deadline = extendedEndDate || expectedEnd;
 
   // Delay Days = Today − Project End Date
   const diffMs = currentDate.getTime() - deadline.getTime();

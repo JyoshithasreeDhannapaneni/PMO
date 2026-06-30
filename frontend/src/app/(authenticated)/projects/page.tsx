@@ -121,43 +121,55 @@ export default function ProjectsPage() {
     }
   };
 
+  // Tab-filtered projects — computed here so exportToCSV can use them
+  const allProjects = data?.data || [];
+  const migrationProjects = allProjects.filter((p: any) => !p.projectType || p.projectType !== 'POC');
+  const pocProjects = allProjects.filter((p: any) => p.projectType === 'POC');
+  const tabProjects = activeTab === 'poc' ? pocProjects : migrationProjects;
+
   const exportToCSV = () => {
-    if (!data?.data?.length) return;
+    if (!tabProjects.length) return;
 
     const fmt = (d: string | null | undefined) =>
       d ? new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' }) : '';
 
     const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
-    // Duration in months derived from SOW dates
     const getDurationMonths = (p: any): string => {
       if (!p.plannedStart || !p.plannedEnd) return '';
       const days = (new Date(p.plannedEnd).getTime() - new Date(p.plannedStart).getTime()) / MS_PER_DAY;
       return (days / 30.44).toFixed(1);
     };
 
-    // Timezone-safe day comparison: strip time component to avoid UTC vs local midnight drift
     const toDay = (d: Date | string): Date => {
       const dt = typeof d === 'string' ? new Date(d) : d;
       return new Date(dt.getFullYear(), dt.getMonth(), dt.getDate());
     };
 
-    // SOW Date Ended: has the effective contract end date already passed?
-    // Uses extendedEndDate when overaged, otherwise original plannedEnd.
     const getSowDateEnded = (p: any): string => {
       const effectiveEnd = (p.isOveraged && p.extendedEndDate) ? p.extendedEndDate : p.plannedEnd;
       if (!effectiveEnd) return '';
       return toDay(effectiveEnd) < toDay(new Date()) ? 'Yes' : 'No';
     };
 
-    // Use the backend's already-computed values for delay status and delay days —
-    // they are the SAME values shown on the All Projects table, so the CSV
-    // will always be in sync with what the user sees on screen.
-    // p.expectedEnd is also computed by the backend (extendedEndDate || plannedEnd).
+    const csatLabel = (score: number | null | undefined): string => {
+      if (score == null) return 'Not set';
+      if (score >= 4.0) return 'Good';
+      if (score >= 2.5) return 'Average';
+      return 'Bad';
+    };
+
+    const delayHappenedLabel = (v: string | null | undefined): string => {
+      if (!v) return '';
+      if (v === 'CUSTOMER_DELAY') return 'Customer Delay';
+      if (v === 'INTERNAL_DELAY') return 'Internal Delay';
+      return v;
+    };
 
     const headers = [
       'Project Name', 'Customer Name', 'Project Manager', 'Account Manager',
       'Migration Types', 'Plan Type', 'Status', 'Phase',
+      'CSAT Score', 'CSAT Health', 'Delay Happened',
       'Duration (Months)', 'Expected Project End', 'Extended End Date (Overage)',
       'Delay Status', 'Delay Days', 'SOW Date Ended',
       'Estimated Budget', 'Is Overaged', 'Overage Amount',
@@ -170,7 +182,7 @@ export default function ProjectsPage() {
       'Project End',
     ];
 
-    const rows = data.data.map((p: any) => [
+    const rows = tabProjects.map((p: any) => [
       p.name ?? '',
       p.customerName ?? '',
       p.projectManager ?? '',
@@ -179,11 +191,12 @@ export default function ProjectsPage() {
       p.planType ?? '',
       p.status ?? '',
       p.phase ?? '',
+      p.csatScore != null ? p.csatScore.toFixed(1) : '',
+      csatLabel(p.csatScore),
+      delayHappenedLabel(p.delayHappened),
       getDurationMonths(p),
-      // expectedEnd is returned by the backend: extendedEndDate if overaged, else plannedEnd
       fmt(p.expectedEnd ?? p.plannedEnd),
       p.isOveraged && p.extendedEndDate ? fmt(p.extendedEndDate) : '',
-      // delayStatus / delayDays — identical to what the table displays
       p.delayStatus ?? '',
       p.delayDays != null ? String(p.delayDays) : '0',
       getSowDateEnded(p),
@@ -210,11 +223,12 @@ export default function ProjectsPage() {
       .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
       .join('\n');
 
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `projects-${new Date().toISOString().slice(0, 10)}.csv`;
+    const tabLabel = activeTab === 'poc' ? 'poc-projects' : 'migration-projects';
+    a.download = `${tabLabel}-${new Date().toISOString().slice(0, 10)}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -398,11 +412,11 @@ export default function ProjectsPage() {
             variant="outline"
             size="sm"
             onClick={exportToCSV}
-            disabled={!data?.data?.length}
+            disabled={!tabProjects.length}
             className="hidden sm:flex"
           >
             <Download size={16} className="mr-1" />
-            Export CSV
+            Export CSV ({tabProjects.length})
           </Button>
           <Link href="/projects/new">
             <Button>
@@ -646,10 +660,6 @@ export default function ProjectsPage() {
           </div>
         </Card>
       ) : (() => {
-        const allProjects = data?.data || [];
-        const migrationProjects = allProjects.filter((p: any) => !p.projectType || p.projectType !== 'POC');
-        const pocProjects = allProjects.filter((p: any) => p.projectType === 'POC');
-        const tabProjects = activeTab === 'poc' ? pocProjects : migrationProjects;
         return (
           <div className="flex-1 min-h-0 flex flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
             {/* Tabs */}
