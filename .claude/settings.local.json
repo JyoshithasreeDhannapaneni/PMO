@@ -102,10 +102,14 @@
       "Bash(node -e \"const d = require\\('./.jira-excel-data.json'\\); const first = d.tickets[0]; console.log\\('First ticket fields:', Object.keys\\(first\\)\\); console.log\\('Total tickets stored:', d.tickets.length\\);\")",
       "Bash(Get-Process -Name node)",
       "Bash(Stop-Process -Force)",
-      "Bash(Write-Host \"Done\")"
+      "Bash(Write-Host \"Done\")",
+      "Bash(head -n 1803 \"c:\\\\Users\\\\BharathTummaganti\\\\OneDrive - CloudFuze, Inc\\\\Documents\\\\PMO\\\\PMO\\\\frontend\\\\src\\\\app\\\\\\(authenticated\\)\\\\manager-dashboard\\\\page.tsx\")",
+      "Read(//tmp/**)",
+      "Bash(cp /tmp/mgr_trimmed.tsx \"c:\\\\Users\\\\BharathTummaganti\\\\OneDrive - CloudFuze, Inc\\\\Documents\\\\PMO\\\\PMO\\\\frontend\\\\src\\\\app\\\\\\(authenticated\\)\\\\manager-dashboard\\\\page.tsx\" && echo \"done\")"
     ],
     "additionalDirectories": [
-      "c:\\Users\\BharathTummaganti\\OneDrive - CloudFuze, Inc\\Documents\\PMO\\PMO"
+      "c:\\Users\\BharathTummaganti\\OneDrive - CloudFuze, Inc\\Documents\\PMO\\PMO",
+      "\\tmp"
     ]
   }
 }

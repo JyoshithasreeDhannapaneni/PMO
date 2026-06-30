@@ -17,7 +17,7 @@ import api from '@/services/api';
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Segment = 'ENT' | 'SMB';
-type ActiveTab = 'ENT' | 'SMB' | 'ENGINEERS' | 'ENGINEER_PATTERNS';
+type ActiveTab = 'ENT' | 'SMB' | 'ENGINEERS' | 'OBSERVATIONS';
 
 interface ManagerStat {
   manager: string;
@@ -1297,20 +1297,26 @@ export default function ManagerDashboardPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 border-b border-gray-200">
-        {(['ENT', 'SMB', 'ENGINEERS', 'ENGINEER_PATTERNS'] as ActiveTab[]).map((tab) => (
-          <button
-            key={tab}
-            onClick={() => { setActiveTab(tab); setSelectedManager(null); }}
-            className={`px-5 py-2.5 text-sm font-medium border-b-2 transition -mb-px ${
-              activeTab === tab
-                ? 'border-primary-600 text-primary-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            {tab === 'ENGINEERS' ? 'Engineers' : tab === 'ENGINEER_PATTERNS' ? 'Engineer Patterns' : tab}
-          </button>
-        ))}
+      <div className="flex gap-1 border-b border-gray-200 overflow-x-auto">
+        {(['ENT', 'SMB', 'ENGINEERS', 'OBSERVATIONS'] as ActiveTab[]).map((tab) => {
+          const labels: Record<ActiveTab, string> = {
+            ENT: 'ENT', SMB: 'SMB', ENGINEERS: 'Engineers',
+            OBSERVATIONS: 'Observations',
+          };
+          return (
+            <button
+              key={tab}
+              onClick={() => { setActiveTab(tab); setSelectedManager(null); }}
+              className={`px-5 py-2.5 text-sm font-medium border-b-2 transition -mb-px whitespace-nowrap ${
+                activeTab === tab
+                  ? 'border-primary-600 text-primary-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              {labels[tab]}
+            </button>
+          );
+        })}
       </div>
 
       {/* Jira data banners — Excel upload + OAuth connect */}
@@ -1322,11 +1328,11 @@ export default function ManagerDashboardPage() {
       {/* Engineers tab */}
       {activeTab === 'ENGINEERS' && <EngineersView />}
 
-      {/* Engineer Patterns tab */}
-      {activeTab === 'ENGINEER_PATTERNS' && <EngineerPatternsView />}
+      {/* Observations tab */}
+      {activeTab === 'OBSERVATIONS' && <ObservationsView />}
 
       {/* Manager stats table (ENT / SMB) */}
-      {activeTab !== 'ENGINEERS' && activeTab !== 'ENGINEER_PATTERNS' && (
+      {activeTab !== 'ENGINEERS' && activeTab !== 'OBSERVATIONS' && (
         <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
           {statsLoading ? (
             <div className="flex justify-center py-16">
@@ -1545,240 +1551,253 @@ function EngineersView() {
   );
 }
 
-// ─── Engineer Patterns tab ────────────────────────────────────────────────────
+// ─── Observations tab ─────────────────────────────────────────────────────────
 
-const TICKET_CATEGORIES = [
-  { id: 'retry',       label: 'Retry / Conflict',  keywords: ['retry', 'conflict', 'stuck'],                       bar: 'bg-orange-400', badge: 'bg-orange-100 text-orange-700' },
-  { id: 'onedrive',    label: 'OneDrive',           keywords: ['onedrive', 'one drive'],                            bar: 'bg-indigo-400', badge: 'bg-indigo-100 text-indigo-700' },
-  { id: 'sharepoint',  label: 'SharePoint',         keywords: ['sharepoint'],                                       bar: 'bg-teal-400',   badge: 'bg-teal-100 text-teal-700'     },
-  { id: 'teams',       label: 'Teams',              keywords: ['teams', ' team '],                                  bar: 'bg-purple-400', badge: 'bg-purple-100 text-purple-700' },
-  { id: 'googledrive', label: 'Google Drive',       keywords: ['google drive', 'gdrive', 'g-drive'],               bar: 'bg-yellow-400', badge: 'bg-yellow-100 text-yellow-700' },
-  { id: 'email',       label: 'Email / Outlook',    keywords: ['email', 'mail', 'outlook', 'gmail'],               bar: 'bg-sky-400',    badge: 'bg-sky-100 text-sky-700'       },
-  { id: 'files',       label: 'File Issues',        keywords: ['file', 'version', 'not_processed', 'version_not'], bar: 'bg-red-400',    badge: 'bg-red-100 text-red-700'       },
-  { id: 'permission',  label: 'Permissions',        keywords: ['permission', 'access', 'sharing', 'acl'],          bar: 'bg-green-400',  badge: 'bg-green-100 text-green-700'   },
-  { id: 'box',         label: 'Box / Dropbox',      keywords: ['box', 'dropbox'],                                  bar: 'bg-pink-400',   badge: 'bg-pink-100 text-pink-700'     },
-  { id: 'other',       label: 'Other',              keywords: [],                                                   bar: 'bg-gray-300',   badge: 'bg-gray-100 text-gray-600'     },
-] as const;
+const JIRA_BASE = 'https://cf2020.atlassian.net/browse';
 
-type TicketCategory = typeof TICKET_CATEGORIES[number];
-
-function categorise(summary: string): TicketCategory {
-  const lower = (summary || '').toLowerCase();
-  for (const cat of TICKET_CATEGORIES) {
-    if (cat.keywords.some((kw) => lower.includes(kw))) return cat;
-  }
-  return TICKET_CATEGORIES[TICKET_CATEGORIES.length - 1];
+interface ObservedPattern {
+  id: number;
+  ticket: string;
+  title: string;
+  type: string;
+  typeBg: string;
+  typeText: string;
+  engineer: string;
+  timeline: { date: string; event: string; highlight?: boolean }[];
+  gap: string;
+  observation: string;
+  impact: string;
 }
 
-function getImprovement(e: { totalTickets: number; breachRate: number; tickets: TicketRow[] }, avgBreachRate: number): { area: string; tip: string } {
-  const tickets: TicketRow[] = e.tickets ?? [];
-  const rate = e.breachRate;
-  const retryCount = tickets.filter((t) => isRetryTicket(t.summary)).length;
-  const retryPct = e.totalTickets > 0 ? (retryCount / e.totalTickets) * 100 : 0;
-  const frBreaches = tickets.filter((t) => t.frBreached).length;
-  const resBreaches = tickets.filter((t) => t.resBreached).length;
+const OBSERVED_PATTERNS: ObservedPattern[] = [
+  {
+    id: 1,
+    ticket: 'CFITS-5187',
+    title: 'MEDC — Need to Check user not present in clouds',
+    type: 'Delayed CFITS Closure',
+    typeBg: 'bg-orange-100', typeText: 'text-orange-700',
+    engineer: 'kondameedi ganesh',
+    timeline: [
+      { date: 'Apr 15, 2026', event: 'Developer closed the L2 ticket' },
+      { date: 'Apr 21, 2026', event: 'CFITS (customer) ticket finally closed', highlight: true },
+    ],
+    gap: '6-day gap',
+    observation: 'The engineer resolved the underlying L2 ticket on April 15th but the customer-facing CFITS ticket was left open for 6 days with no action. The CFITS ticket was only closed on April 21st.',
+    impact: 'Customer ticket stayed open 6 days after the issue was resolved — misleading SLA metrics and poor customer experience.',
+  },
+  {
+    id: 2,
+    ticket: 'CFITS-3819',
+    title: 'Tunnel to Towers — Need to retry the File Conflicts',
+    type: 'Extended Delay + Multiple Reminders',
+    typeBg: 'bg-red-100', typeText: 'text-red-700',
+    engineer: 'kondameedi ganesh',
+    timeline: [
+      { date: 'Mar 6, 2026',  event: 'Developer closed the L2 ticket' },
+      { date: 'Apr 21, 2026', event: 'CFITS ticket closed after multiple reminders', highlight: true },
+    ],
+    gap: '~46-day gap',
+    observation: 'The L2 ticket was marked resolved on March 6th. The corresponding CFITS ticket was not closed until April 21st and required repeated follow-ups from the manager.',
+    impact: 'Over 6 weeks of open customer ticket after resolution — significantly impacts SLA metrics and reporting accuracy.',
+  },
+  {
+    id: 3,
+    ticket: 'CFITS-5438',
+    title: 'Estee Lauder — File Conflicts',
+    type: 'Reminder Required',
+    typeBg: 'bg-yellow-100', typeText: 'text-yellow-700',
+    engineer: 'saikumar kustapuram',
+    timeline: [
+      { date: 'Apr 16, 2026', event: 'Developer closed their ticket (WAITING FOR L2 → RESOLVED)' },
+      { date: 'Apr 19, 2026', event: 'CFITS ticket closed — only after a reminder', highlight: true },
+    ],
+    gap: '3-day gap',
+    observation: 'The developer resolved their ticket on April 16th but the CFITS ticket was not updated. A reminder had to be sent before the customer ticket was closed on April 19th.',
+    impact: 'Process relies on reminders rather than proactive ticket hygiene — creates unnecessary overhead for managers.',
+  },
+  {
+    id: 4,
+    ticket: 'L2B-369',
+    title: 'CEG Solutions — Issues with the Hyperlinks',
+    type: 'Missing Notes After Closure',
+    typeBg: 'bg-purple-100', typeText: 'text-purple-700',
+    engineer: 'Rehan Khan',
+    timeline: [
+      { date: 'Feb 23, 2026', event: 'Developer closed the ticket' },
+      { date: 'Feb 27, 2026', event: 'Fix description & root cause added — only after being explicitly asked', highlight: true },
+    ],
+    gap: '4-day gap',
+    observation: 'Rehan Khan closed the L2 ticket on February 23rd without adding fix description, root cause, or resolution notes. These were only added on February 27th after being specifically asked to update the ticket.',
+    impact: 'Tickets closed without resolution notes make audits, retrospectives, and pattern analysis impossible.',
+  },
+  {
+    id: 5,
+    ticket: 'L2B-14721',
+    title: 'Legal Soft — Google Sheets migrated with XLXS extension',
+    type: 'PM Delayed Data Provision',
+    typeBg: 'bg-sky-100', typeText: 'text-sky-700',
+    engineer: 'Lakshmi Prasanna (PM)',
+    timeline: [
+      { date: 'Jun 23, 2026', event: 'Developer (Mayank) asked for the count of affected files' },
+      { date: 'Jun 29, 2026', event: 'PM finally provided the list of 1,578 affected files', highlight: true },
+    ],
+    gap: '6-day delay',
+    observation: 'PM Lakshmi Prasanna did not respond to the developer\'s request for data for 6 days. The developer was blocked waiting for information needed to proceed with the migration.',
+    impact: 'Engineers blocked for 6 days — migration work for 1,578 files stalled while waiting for PM to provide the data.',
+  },
+  {
+    id: 6,
+    ticket: 'L2B-14324',
+    title: 'Ticket Moved to Developer Board Without Intimation',
+    type: 'Improper Handoff',
+    typeBg: 'bg-rose-100', typeText: 'text-rose-700',
+    engineer: 'Manoj',
+    timeline: [
+      { date: 'Jun 16, 2026', event: 'Developers updated the ticket with latest progress' },
+      { date: 'Jun 17, 2026', event: 'Manoj moved the ticket to Developer board — no intimation, nothing pending from developers\' end', highlight: true },
+    ],
+    gap: '1-day turnaround, no context',
+    observation: 'Manoj directly moved the ticket to the Developer\'s board without any intimation, comment, or justification. There was nothing pending from the developers\' end, making the handoff invalid. No context was shared about why the ticket was escalated or what action was expected.',
+    impact: 'Developers received an unexpected ticket with no context and no pending action item — wasted investigation time and created confusion about ticket ownership.',
+  },
+  {
+    id: 7,
+    ticket: 'L2B-12946',
+    title: 'Premature Closure Request Before Resolution Confirmed',
+    type: 'Premature Closure Request',
+    typeBg: 'bg-fuchsia-100', typeText: 'text-fuchsia-700',
+    engineer: 'Harshith Kaduluri / Adari Venkata Jaswanth',
+    timeline: [
+      { date: 'May 8, 2026 – 08:34', event: 'Adari Venkata Jaswanth: "The files are moving — please monitor"' },
+      { date: 'May 8, 2026 – 18:16', event: 'Harshith Kaduluri asked team to close the ticket', highlight: true },
+    ],
+    gap: 'Same day — issue still open',
+    observation: 'At 08:34, Adari confirmed files were still moving and asked the team to monitor. At 18:16, Harshith asked @srinu gudimitla and @Adari Venkata Jaswanth to close the ticket — even though active monitoring was still in progress.',
+    impact: 'Premature closure hides unresolved issues from SLA tracking and gives a false sense of completion to customers and management.',
+  },
+];
 
-  if (retryPct > 35) return { area: 'High retry volume', tip: 'Over a third of tickets are retries/conflicts — investigate root causes early and set clearer pre-migration checklists with customers.' };
-  if (rate > avgBreachRate + 15) return { area: 'Above-average breach rate', tip: 'Breach rate is significantly above the team average — consider triaging open tickets daily and flagging blockers sooner.' };
-  if (frBreaches > resBreaches * 1.5) return { area: 'First Response delays', tip: 'FR SLA breaches outpace Resolution breaches — set up quicker initial acknowledgment templates to buy time.' };
-  if (resBreaches > frBreaches * 1.5) return { area: 'Resolution delays', tip: 'Tickets are acknowledged on time but take long to close — escalate blockers earlier and reduce handoff wait time.' };
-  if (rate > 20) return { area: 'Breach rate needs attention', tip: 'More than 1 in 5 tickets breach SLA — review workload distribution and prioritise oldest open tickets.' };
-  return { area: 'Maintain performance', tip: 'Performance is solid. Continue monitoring ticket volume and keep response times consistent as workload grows.' };
-}
+const OBS_ICONS: Record<string, string> = {
+  'Delayed CFITS Closure': '⏱',
+  'Extended Delay + Multiple Reminders': '🔁',
+  'Reminder Required': '📣',
+  'Missing Notes After Closure': '📝',
+  'PM Delayed Data Provision': '🚧',
+  'Improper Handoff': '🔀',
+  'Premature Closure Request': '⛔',
+};
 
-function getStrength(tickets: TicketRow[]): string {
-  if (tickets.length === 0) return 'No data yet';
-  const total = tickets.length;
-  const frRate = (tickets.filter((t) => t.frBreached).length / total) * 100;
-  const resRate = (tickets.filter((t) => t.resBreached).length / total) * 100;
-  if (frRate < 10 && resRate < 10) return 'Strong SLA adherence across both metrics';
-  if (frRate < resRate) return 'Consistently fast first responses';
-  if (resRate < frRate) return 'Reliable ticket resolution';
-  return 'Balanced workload handling';
-}
-
-function EngineerPatternsView() {
-  const { data, isLoading, isError } = useJiraEngineers();
-
-  if (!isLoading && (!data?.configured || data?.configured === false)) {
-    return (
-      <div className="border border-dashed border-gray-200 rounded-xl p-6 bg-gray-50 flex items-start gap-3">
-        <Link2Off size={18} className="text-gray-400 flex-shrink-0 mt-0.5" />
-        <div>
-          <p className="text-sm font-medium text-gray-600">Jira Not Connected</p>
-          <p className="text-xs text-gray-400 mt-0.5">Upload a Jira Excel export to enable this view.</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-16 gap-3">
-        <Loader2 size={20} className="animate-spin text-primary-500" />
-        <p className="text-sm text-gray-500">Analysing engineer patterns…</p>
-      </div>
-    );
-  }
-
-  if (isError || (data && !data.success)) {
-    return (
-      <div className="border border-red-100 rounded-xl p-4 bg-red-50 flex items-start gap-3">
-        <AlertCircle size={16} className="text-red-400 flex-shrink-0 mt-0.5" />
-        <p className="text-sm text-red-600">{data?.error || 'Failed to load engineer data.'}</p>
-      </div>
-    );
-  }
-
-  const result = data?.data;
-  if (!result) return null;
-
-  const engineerRows = ((result.engineers as any[]) || []).filter((e: any) => !NAMED_MANAGER_SET.has(e.engineerName));
-  if (engineerRows.length === 0) {
-    return <div className="text-center py-16 text-sm text-gray-400">No engineer ticket data found.</div>;
-  }
-
-  const avgBreachRate = engineerRows.reduce((s: number, e: any) => s + (e.breachRate as number), 0) / engineerRows.length;
+function ObservationsView() {
+  const [expanded, setExpanded] = useState<number | null>(null);
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
+      {/* Summary KPIs */}
+      <div className="grid grid-cols-4 gap-3">
+        {[
+          { label: 'Total Observations', value: 7, bg: 'bg-gray-50',   text: 'text-gray-700'   },
+          { label: 'Closure Delays',     value: 3, bg: 'bg-orange-50', text: 'text-orange-700' },
+          { label: 'Process Gaps',       value: 3, bg: 'bg-red-50',    text: 'text-red-700'    },
+          { label: 'PM / Handoff',       value: 2, bg: 'bg-sky-50',    text: 'text-sky-700'    },
+        ].map((c) => (
+          <div key={c.label} className={`${c.bg} rounded-xl px-4 py-3`}>
+            <p className={`text-2xl font-bold ${c.text}`}>{c.value}</p>
+            <p className="text-xs text-gray-500">{c.label}</p>
+          </div>
+        ))}
+      </div>
+
       <p className="text-xs text-gray-400">
-        Patterns derived from ticket summaries and SLA data. Each card shows what an engineer works on most and where to improve.
+        Documented observations from real Jira tickets. Click any row to expand full details.
       </p>
 
-      {engineerRows.map((e: any) => {
-        const tickets: TicketRow[] = e.tickets ?? [];
-        const total: number = tickets.length;
-        const rate: number = e.breachRate;
-        const rateColor = rate > 20 ? 'text-red-600' : rate > 10 ? 'text-yellow-600' : 'text-green-600';
-        const rateBg = rate > 20 ? 'bg-red-50' : rate > 10 ? 'bg-yellow-50' : 'bg-green-50';
-
-        const catCounts: Record<string, number> = {};
-        for (const t of tickets) {
-          const cat = categorise(t.summary);
-          catCounts[cat.id] = (catCounts[cat.id] || 0) + 1;
-        }
-        const topCategories = ([...TICKET_CATEGORIES] as TicketCategory[])
-          .map((cat) => ({ ...cat, count: catCounts[cat.id] || 0 }))
-          .filter((c) => c.count > 0)
-          .sort((a, b) => b.count - a.count)
-          .slice(0, 5);
-
-        const topCat = topCategories[0];
-        const imp = getImprovement(e, avgBreachRate);
-        const str = getStrength(tickets);
-        const frBreaches = tickets.filter((t) => t.frBreached).length;
-        const resBreaches = tickets.filter((t) => t.resBreached).length;
-        const retryCount = tickets.filter((t) => isRetryTicket(t.summary)).length;
-        const retryPct = total > 0 ? Math.round((retryCount / total) * 100) : 0;
-
+      {OBSERVED_PATTERNS.map((p) => {
+        const isOpen = expanded === p.id;
         return (
-          <div key={e.engineerName} className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-            {/* Engineer header */}
-            <div className="flex items-center gap-4 px-5 py-4 border-b border-gray-100">
-              <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-sm font-bold text-indigo-700 flex-shrink-0">
-                {toInitials(e.engineerName)}
+          <div key={p.id} className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+            <button
+              className="w-full flex items-start gap-4 px-5 py-4 text-left hover:bg-gray-50 transition-colors"
+              onClick={() => setExpanded(isOpen ? null : p.id)}
+            >
+              <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center text-sm font-bold text-primary-700 flex-shrink-0 mt-0.5">
+                {p.id}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="font-semibold text-gray-900 text-sm">{e.engineerName}</p>
-                <p className="text-xs text-gray-400">{total} ticket{total !== 1 ? 's' : ''} · {e.breachedTickets} breached</p>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${p.typeBg} ${p.typeText}`}>
+                    {OBS_ICONS[p.type]} {p.type}
+                  </span>
+                  <a
+                    href={`${JIRA_BASE}/${p.ticket}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="text-xs font-semibold text-primary-600 hover:underline inline-flex items-center gap-1"
+                  >
+                    {p.ticket} <ExternalLink size={10} />
+                  </a>
+                  <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{p.gap}</span>
+                </div>
+                <p className="text-sm font-medium text-gray-800 mt-1 truncate">{p.title}</p>
+                <p className="text-xs text-gray-500 mt-0.5">Engineer / PM: {p.engineer}</p>
               </div>
-              <div className={`flex flex-col items-center px-4 py-2 rounded-xl ${rateBg}`}>
-                <span className={`text-xl font-bold ${rateColor}`}>{rate}%</span>
-                <span className="text-xs text-gray-500">Breach Rate</span>
-              </div>
-            </div>
+              <ChevronRight size={16} className={`text-gray-400 flex-shrink-0 mt-1 transition-transform ${isOpen ? 'rotate-90' : ''}`} />
+            </button>
 
-            {/* Three-column body */}
-            <div className="grid grid-cols-3 divide-x divide-gray-100">
-
-              {/* Col 1 — Ticket category breakdown */}
-              <div className="px-5 py-4">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Ticket Category Breakdown</p>
-                {topCategories.length === 0 ? (
-                  <p className="text-xs text-gray-400">No data</p>
-                ) : (
-                  <div className="space-y-2.5">
-                    {topCategories.map((cat) => {
-                      const pct = total > 0 ? Math.round((cat.count / total) * 100) : 0;
-                      return (
-                        <div key={cat.id}>
-                          <div className="flex items-center justify-between mb-0.5">
-                            <span className="text-xs text-gray-600 truncate max-w-[130px]">{cat.label}</span>
-                            <span className="text-xs font-semibold text-gray-700 ml-1">{cat.count} <span className="text-gray-400 font-normal">({pct}%)</span></span>
-                          </div>
-                          <div className="w-full bg-gray-100 rounded-full h-1.5">
-                            <div className={`h-1.5 rounded-full ${cat.bar}`} style={{ width: `${pct}%` }} />
-                          </div>
+            {isOpen && (
+              <div className="border-t border-gray-100 grid grid-cols-3 divide-x divide-gray-100">
+                {/* Timeline */}
+                <div className="px-5 py-4">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Timeline</p>
+                  <div className="space-y-3">
+                    {p.timeline.map((ev, i) => (
+                      <div key={i} className="flex items-start gap-3">
+                        <div className="flex flex-col items-center flex-shrink-0">
+                          <div className={`w-2.5 h-2.5 rounded-full mt-0.5 ${ev.highlight ? 'bg-red-400' : 'bg-gray-300'}`} />
+                          {i < p.timeline.length - 1 && <div className="w-px bg-gray-200 mt-1" style={{ minHeight: '20px' }} />}
                         </div>
-                      );
-                    })}
+                        <div>
+                          <p className="text-xs font-semibold text-gray-600">{ev.date}</p>
+                          <p className={`text-xs mt-0.5 ${ev.highlight ? 'text-red-600 font-medium' : 'text-gray-500'}`}>{ev.event}</p>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                )}
-                {topCat && (
                   <div className="mt-3 pt-3 border-t border-gray-100">
-                    <p className="text-xs text-gray-400">Most common issue type</p>
-                    <span className={`inline-block mt-1 text-xs font-semibold px-2 py-0.5 rounded-full ${topCat.badge}`}>{topCat.label}</span>
+                    <span className={`text-xs font-bold px-2 py-1 rounded-lg ${p.typeBg} ${p.typeText}`}>Gap: {p.gap}</span>
                   </div>
-                )}
-              </div>
+                </div>
 
-              {/* Col 2 — SLA breach pattern */}
-              <div className="px-5 py-4">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">SLA Breach Pattern</p>
-                <div className="space-y-3">
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs text-gray-600">First Response SLA</span>
-                      <span className="text-xs font-semibold text-red-600">{frBreaches} breached</span>
-                    </div>
-                    <div className="w-full bg-gray-100 rounded-full h-2">
-                      <div className="h-2 rounded-full bg-red-400" style={{ width: `${total > 0 ? Math.min((frBreaches / total) * 100, 100) : 0}%` }} />
-                    </div>
-                    <p className="text-xs text-gray-400 mt-0.5">{total > 0 ? ((frBreaches / total) * 100).toFixed(0) : 0}% of tickets</p>
-                  </div>
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs text-gray-600">Resolution SLA</span>
-                      <span className="text-xs font-semibold text-orange-600">{resBreaches} breached</span>
-                    </div>
-                    <div className="w-full bg-gray-100 rounded-full h-2">
-                      <div className="h-2 rounded-full bg-orange-400" style={{ width: `${total > 0 ? Math.min((resBreaches / total) * 100, 100) : 0}%` }} />
-                    </div>
-                    <p className="text-xs text-gray-400 mt-0.5">{total > 0 ? ((resBreaches / total) * 100).toFixed(0) : 0}% of tickets</p>
-                  </div>
+                {/* What happened */}
+                <div className="px-5 py-4">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">What Happened</p>
+                  <p className="text-sm text-gray-700 leading-relaxed">{p.observation}</p>
                 </div>
-                <div className="mt-3 pt-3 border-t border-gray-100">
-                  <p className="text-xs text-gray-400">Strength</p>
-                  <p className="text-xs font-medium text-green-700 mt-0.5">{str}</p>
-                </div>
-              </div>
 
-              {/* Col 3 — Improvement area */}
-              <div className="px-5 py-4">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Improvement Area</p>
-                <div className="flex items-start gap-2 p-3 rounded-xl bg-amber-50 border border-amber-100">
-                  <AlertCircle size={14} className="text-amber-500 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-xs font-semibold text-amber-800">{imp.area}</p>
-                    <p className="text-xs text-amber-700 mt-1 leading-relaxed">{imp.tip}</p>
+                {/* Impact */}
+                <div className="px-5 py-4">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Impact</p>
+                  <div className="flex items-start gap-2 p-3 rounded-xl bg-red-50 border border-red-100">
+                    <AlertCircle size={14} className="text-red-400 flex-shrink-0 mt-0.5" />
+                    <p className="text-xs text-red-700 leading-relaxed">{p.impact}</p>
                   </div>
-                </div>
-                <div className="mt-3 pt-3 border-t border-gray-100">
-                  <p className="text-xs text-gray-400 mb-1.5">Retry ticket share</p>
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1 bg-gray-100 rounded-full h-2">
-                      <div className="h-2 bg-orange-400 rounded-full" style={{ width: `${retryPct}%` }} />
-                    </div>
-                    <span className="text-xs font-semibold text-orange-600 w-9 text-right">{retryPct}%</span>
+                  <div className="mt-3">
+                    <a
+                      href={`${JIRA_BASE}/${p.ticket}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-xs text-primary-600 hover:text-primary-700 font-medium hover:underline"
+                    >
+                      <ExternalLink size={12} /> Open {p.ticket} in Jira
+                    </a>
                   </div>
-                  <p className="text-xs text-gray-400 mt-0.5">{retryCount} of {total} tickets are retry / conflict type</p>
                 </div>
               </div>
-            </div>
+            )}
           </div>
         );
       })}
     </div>
   );
 }
+
