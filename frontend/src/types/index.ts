@@ -116,6 +116,7 @@ export interface Project {
   onetimeProgress?: number | null;
   customerSuccess?: string | null;
   csatScore?: number | null;
+  delayHappened?: 'CUSTOMER_DELAY' | 'INTERNAL_DELAY' | null;
   createdAt: string;
   updatedAt: string;
   phases?: ProjectPhaseRecord[];

@@ -224,7 +224,7 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
   const [sortField, setSortField] = useState<SortField>('name');
   const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
+  const itemsPerPage = 7;
 
   // Reset to page 1 only when the SET of project IDs changes (filter/search applied, project added/removed).
   // Watching the full `projects` array would also fire on data-only updates (e.g. a date edit refetch),
@@ -429,9 +429,9 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
 
   function csatHealth(score: number | null | undefined): { label: string; color: string; bg: string } {
     if (score == null) return { label: 'Not set', color: 'text-gray-400', bg: 'bg-gray-100' };
-    if (score >= 4.0) return { label: 'Healthy', color: 'text-green-700', bg: 'bg-green-100' };
-    if (score >= 2.5) return { label: 'At Risk', color: 'text-yellow-700', bg: 'bg-yellow-100' };
-    return { label: 'Critical', color: 'text-red-700', bg: 'bg-red-100' };
+    if (score >= 4.0) return { label: 'Good', color: 'text-green-700', bg: 'bg-green-100' };
+    if (score >= 2.5) return { label: 'Average', color: 'text-yellow-700', bg: 'bg-yellow-100' };
+    return { label: 'Bad', color: 'text-red-700', bg: 'bg-red-100' };
   }
 
   const planOptions = [
@@ -533,6 +533,7 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
               <SortHeader field="projectManager" label="Project Manager" />
               <SortHeader field="accountManager" label="Account Manager" />
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap">C-SAT</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap">Delay Happened</th>
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Migration Types</th>
               <SortHeader field="estimatedCost" label="Budget" />
               <SortHeader field="overageAmount" label="Overage" />
@@ -664,6 +665,34 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
                       </div>
                     );
                   })()}
+                </td>
+
+                {/* Delay Happened */}
+                <td className="px-4 py-3">
+                  <EditableSelect
+                    projectId={project.id}
+                    field="delayHappened"
+                    value={project.delayHappened || ''}
+                    options={[
+                      { value: '', label: '— None —' },
+                      { value: 'CUSTOMER_DELAY', label: 'Customer Delay' },
+                      { value: 'INTERNAL_DELAY', label: 'Internal Delay' },
+                    ]}
+                    displayComponent={
+                      project.delayHappened ? (
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${
+                          project.delayHappened === 'CUSTOMER_DELAY'
+                            ? 'bg-orange-100 text-orange-700'
+                            : 'bg-blue-100 text-blue-700'
+                        }`}>
+                          {project.delayHappened === 'CUSTOMER_DELAY' ? 'Customer Delay' : 'Internal Delay'}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-gray-400 italic">Not set</span>
+                      )
+                    }
+                    {...selectEditProps}
+                  />
                 </td>
 
                 {/* Migration Types */}
