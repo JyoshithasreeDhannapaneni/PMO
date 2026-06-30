@@ -116,7 +116,7 @@ export function ProjectForm({ project, onSubmit, isLoading, defaultManagerName }
   const defaultPlanType = planTypes[0]?.code || 'SILVER';
   const defaultPhase = [...phases].sort((a, b) => a.order - b.order)[0]?.code || 'KICKOFF';
 
-  const { register, handleSubmit, formState: { errors }, setValue, getValues, trigger } = useForm<ProjectFormData>({
+  const { register, handleSubmit, formState: { errors }, setValue, getValues, trigger, watch } = useForm<ProjectFormData>({
     resolver: zodResolver(baseSchema),
     defaultValues: project ? {
       name: project.name,
@@ -158,6 +158,28 @@ export function ProjectForm({ project, onSubmit, isLoading, defaultManagerName }
     if (ch && !validPhaseCodes.includes(ch)) setValue('phase', validPhaseCodes[0] || 'KICKOFF');
     else if (!ch && validPhaseCodes.length) setValue('phase', validPhaseCodes[0]);
   }, [planTypes, phases]); // eslint-disable-line
+
+  // Auto-calculate Project End Date = Kickoff Date + SOW duration (in days)
+  // Parse YYYY-MM-DD as local time to avoid UTC off-by-one issues
+  const parseLocal = (s: string) => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
+  const toInputDate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+  const watchedActualStart = watch('actualStart');
+  const watchedPlannedStart = watch('plannedStart');
+  const watchedPlannedEnd = watch('plannedEnd');
+  useEffect(() => {
+    const kickoff = watchedActualStart;
+    const sowStart = watchedPlannedStart;
+    const sowEnd = watchedPlannedEnd;
+    if (!kickoff || !sowStart || !sowEnd) return;
+    const kickoffDate = parseLocal(kickoff);
+    const sowStartDate = parseLocal(sowStart);
+    const sowEndDate = parseLocal(sowEnd);
+    if (isNaN(kickoffDate.getTime()) || isNaN(sowStartDate.getTime()) || isNaN(sowEndDate.getTime())) return;
+    const sowDurationMs = sowEndDate.getTime() - sowStartDate.getTime();
+    const projectEndDate = new Date(kickoffDate.getTime() + sowDurationMs);
+    setValue('actualEnd', toInputDate(projectEndDate), { shouldValidate: false, shouldDirty: true, shouldTouch: false });
+  }, [watchedActualStart, watchedPlannedStart, watchedPlannedEnd]); // eslint-disable-line
 
   const toggleMigrationType = (id: string) => { setSelectedMigrationTypes((p) => p.includes(id) ? p.filter((t) => t !== id) : [...p, id]); setMigrationTypeError(''); };
 
@@ -422,7 +444,7 @@ export function ProjectForm({ project, onSubmit, isLoading, defaultManagerName }
               <Input label="SOW Start Date *" type="date" {...register('plannedStart')} error={errors.plannedStart?.message} />
               <Input label="SOW End Date *" type="date" {...register('plannedEnd')} error={errors.plannedEnd?.message} />
               <Input label="Kick-off Start Date" type="date" {...register('actualStart')} error={errors.actualStart?.message} />
-              <Input label="Project End Date" type="date" {...register('actualEnd')} error={errors.actualEnd?.message} />
+              <Input label="Project End Date (auto from kickoff)" type="date" {...register('actualEnd')} error={errors.actualEnd?.message} className="bg-blue-50" helperText="Auto-filled based on kickoff date + SOW duration" />
             </div>
             <Input
               label="Customer Email (for server alerts)"

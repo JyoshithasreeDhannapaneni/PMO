@@ -459,8 +459,9 @@ export default function DashboardPage() {
   const allProjectsList: any[] = (allProjectsData?.data || []).filter(
     (p: any) => viewMode === 'overall' || !managerFilter || p.projectManager === managerFilter
   );
-  const migrationProjectsCount = allProjectsList.filter((p: any) => !p.projectType || p.projectType !== 'POC').length;
-  const pocProjectsCount = allProjectsList.filter((p: any) => p.projectType === 'POC').length;
+  const activeProjectsList = allProjectsList.filter((p: any) => p.status !== 'COMPLETED' && p.status !== 'CANCELLED');
+  const migrationProjectsCount = activeProjectsList.filter((p: any) => !p.projectType || p.projectType !== 'POC').length;
+  const pocProjectsCount = activeProjectsList.filter((p: any) => p.projectType === 'POC').length;
 
   // Build category stats from settings + project data (reliable, no server-side grouping needed)
   const categoryStats = useMemo(() => {
@@ -615,7 +616,7 @@ export default function DashboardPage() {
 
       {/* ── KPI Row ────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-        <Link href={`/projects${pmFilter ? `?${pmFilter.slice(1)}` : ''}`} className="col-span-2 lg:col-span-1 block group">
+        <Link href={`/projects?hideCompleted=true${pmFilter}`} className="col-span-2 lg:col-span-1 block group">
           <Card className="h-full transition-transform group-hover:scale-[1.02] group-hover:shadow-lg">
             <div className="flex items-center justify-between">
               <div>

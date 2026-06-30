@@ -19,6 +19,7 @@ getAll: asyncHandler(async (req: Request, res: Response): Promise<void> => {
       accountManager: req.query.accountManager as string,
       migrationType: req.query.migrationType as string,
       projectType: req.query.projectType as string,
+      excludeStatus: req.query.excludeStatus as string,
     };
     const pagination: PaginationOptions = {
       page: parseInt(req.query.page as string) || 1,

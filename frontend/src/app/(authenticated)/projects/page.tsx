@@ -55,14 +55,18 @@ export default function ProjectsPage() {
     search: searchParams.get('search') || '',
   });
 
+  // When hideCompleted=true is in URL, exclude COMPLETED and CANCELLED from results
+  const [hideCompleted, setHideCompleted] = useState(searchParams.get('hideCompleted') === 'true');
+
   const [searchInput, setSearchInput] = useState(filters.search);
   const [showFilters, setShowFilters] = useState(true);
   const [showRefreshToast, setShowRefreshToast] = useState(false);
   const [activeTab, setActiveTab] = useState<'migration' | 'poc'>('migration');
 
-  // Update URL when filters change
+  // Update URL when filters change (preserve hideCompleted)
   useEffect(() => {
     const params = new URLSearchParams();
+    if (hideCompleted) params.set('hideCompleted', 'true');
     if (filters.status) params.set('status', filters.status);
     if (filters.phase) params.set('phase', filters.phase);
     if (filters.delayStatus) params.set('delayStatus', filters.delayStatus);
@@ -70,10 +74,10 @@ export default function ProjectsPage() {
     if (filters.projectManager) params.set('projectManager', filters.projectManager);
     if (filters.accountManager) params.set('accountManager', filters.accountManager);
     if (filters.search) params.set('search', filters.search);
-    
+
     const queryString = params.toString();
     router.replace(`/projects${queryString ? `?${queryString}` : ''}`, { scroll: false });
-  }, [filters, router]);
+  }, [filters, hideCompleted, router]);
 
   // Debounced search
   useEffect(() => {
@@ -93,6 +97,7 @@ export default function ProjectsPage() {
     // for ADMIN/VIEWER we pass the dropdown selection.
     projectManager: isManager ? (user?.name ?? undefined) : (filters.projectManager || undefined),
     accountManager: filters.accountManager || undefined,
+    excludeStatus: hideCompleted && !filters.status ? 'COMPLETED,CANCELLED' : undefined,
     limit: 10000,
   });
 
@@ -231,9 +236,10 @@ export default function ProjectsPage() {
       search: '',
     });
     setSearchInput('');
+    setHideCompleted(false);
   };
 
-  const activeFilterCount = Object.values(filters).filter(v => v !== '').length;
+  const activeFilterCount = Object.values(filters).filter(v => v !== '').length + (hideCompleted ? 1 : 0);
 
   const statusOptions = [
     { value: '', label: 'All Statuses', color: 'gray' },
@@ -518,6 +524,14 @@ export default function ProjectsPage() {
             {activeFilterCount > 0 && (
               <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-gray-200">
                 <span className="text-xs text-gray-500">Active filters:</span>
+                {hideCompleted && (
+                  <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-blue-100 text-blue-700 rounded-full">
+                    Excl. Completed &amp; Cancelled
+                    <button onClick={() => setHideCompleted(false)} className="hover:text-blue-900">
+                      <X size={12} />
+                    </button>
+                  </span>
+                )}
                 {filters.status && (
                   <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-green-100 text-green-700 rounded-full">
                     Status: {statusOptions.find(o => o.value === filters.status)?.label}

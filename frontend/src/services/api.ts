@@ -57,6 +57,7 @@ export const projectsApi = {
     sortOrder?: 'asc' | 'desc';
     projectManager?: string;
     accountManager?: string;
+    excludeStatus?: string;
   }): Promise<PaginatedResponse<Project>> => {
     const { data } = await api.get('/projects', { params });
     return data;
