@@ -159,7 +159,7 @@ function CaseStudiesContent() {
       // Project classification
       'Migration Types', 'Plan Type', 'Project Phase', 'Project Status',
       // Duration & delay
-      'Duration (Months)', 'Expected Project End', 'Extended End Date (Overage)',
+      'Duration ', 'Expected Project End', 'Extended End Date (Overage)',
       'Delay Status', 'Delay Days', 'SOW Date Ended',
       // Budget
       'Estimated Budget', 'Actual Cost', 'Is Overaged', 'Overage Amount',

@@ -86,6 +86,7 @@ export const updateProjectSchema = z.object({
     phase: z.string().max(50).optional().nullable(),
     status: z.enum(['ACTIVE', 'INACTIVE', 'ON_HOLD', 'COMPLETED', 'CANCELLED']).optional(),
     delayStatus: z.enum(['NOT_DELAYED', 'AT_RISK', 'DELAYED']).optional(),
+    delayHappened: z.enum(['CUSTOMER_DELAY', 'INTERNAL_DELAY']).optional().nullable(),
     isOveraged: z.boolean().optional().nullable(),
     isEscalated: z.boolean().optional().nullable(),
     escalationPriority: z.enum(['LOW', 'MEDIUM', 'HIGH']).optional().nullable(),

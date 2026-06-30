@@ -362,7 +362,7 @@ export default function ProjectsPage() {
     // h-full fills the <main> content area; flex-col stacks sections vertically.
     // The table section gets flex-1 so it takes whatever space remains after
     // the header and filters, keeping all scrollbars inside the viewport.
-    <div className="flex flex-col h-full gap-3 animate-fadeIn">
+    <div className="flex flex-col h-full gap-3 animate-fadeIn overflow-hidden">
       {/* Refresh Toast */}
       {showRefreshToast && (
         <div className="fixed top-5 right-5 z-50 flex items-center gap-2 px-4 py-3 bg-green-600 text-white rounded-xl shadow-lg animate-fadeIn">
@@ -425,7 +425,7 @@ export default function ProjectsPage() {
       )}
 
       {/* Filters Section */}
-      <Card padding="sm" className="flex-shrink-0 bg-white">
+      <Card padding="sm" className="flex-shrink-0 bg-white border border-gray-200">
         {/* Filter Header */}
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
@@ -651,9 +651,9 @@ export default function ProjectsPage() {
         const pocProjects = allProjects.filter((p: any) => p.projectType === 'POC');
         const tabProjects = activeTab === 'poc' ? pocProjects : migrationProjects;
         return (
-          <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+          <div className="flex-1 min-h-0 flex flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
             {/* Tabs */}
-            <div className="flex-shrink-0 flex gap-1 border-b border-gray-200 bg-white rounded-t-xl px-2 pt-1">
+            <div className="flex-shrink-0 flex items-end border-b border-gray-200 bg-gray-50 px-4 pt-3">
               {([
                 { key: 'migration', label: 'Migration Projects', icon: <FolderKanban className="w-4 h-4" />, count: migrationProjects.length },
                 { key: 'poc',       label: 'POC Projects',       icon: <FlaskConical  className="w-4 h-4" />, count: pocProjects.length },
@@ -661,28 +661,28 @@ export default function ProjectsPage() {
                 <button
                   key={tab.key}
                   onClick={() => setActiveTab(tab.key)}
-                  className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition -mb-px ${
+                  className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
                     activeTab === tab.key
-                      ? 'border-indigo-600 text-indigo-600'
+                      ? 'border-indigo-600 text-indigo-700 bg-white rounded-t-lg'
                       : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                   }`}
                 >
                   {tab.icon}
                   {tab.label}
                   <span className={`text-xs px-1.5 py-0.5 rounded-full font-semibold ${
-                    activeTab === tab.key ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-500'
+                    activeTab === tab.key ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-200 text-gray-500'
                   }`}>
                     {tab.count}
                   </span>
                 </button>
               ))}
             </div>
-            {/* Table — Card fills the remaining height so ProjectsTable's
-                internal overflow scroll keeps both scrollbars in-viewport */}
-            <Card padding="none" className="flex-1 min-h-0 overflow-hidden flex flex-col rounded-t-none">
+
+            {/* Table content */}
+            <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
               {tabProjects.length === 0 ? (
-                <div className="text-center py-12">
-                  <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-100 flex items-center justify-center">
+                <div className="flex flex-col items-center justify-center h-full py-16">
+                  <div className="w-16 h-16 mb-4 rounded-full bg-gray-100 flex items-center justify-center">
                     {activeTab === 'poc'
                       ? <FlaskConical size={32} className="text-gray-400" />
                       : <FolderKanban size={32} className="text-gray-400" />}
@@ -694,7 +694,7 @@ export default function ProjectsPage() {
               ) : (
                 <ProjectsTable projects={tabProjects} onDelete={handleDelete} />
               )}
-            </Card>
+            </div>
           </div>
         );
       })()}

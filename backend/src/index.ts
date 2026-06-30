@@ -367,6 +367,9 @@ async function runMigrations() {
   if (!await columnExists('projects', 'csat_score')) {
     try { await execute(`ALTER TABLE projects ADD COLUMN csat_score DECIMAL(3,1) DEFAULT NULL`); } catch {}
   }
+  if (!await columnExists('projects', 'delay_happened')) {
+    try { await execute(`ALTER TABLE projects ADD COLUMN delay_happened VARCHAR(50) DEFAULT NULL`); } catch {}
+  }
 
   // Server alert logs
   await execute(`CREATE TABLE IF NOT EXISTS server_alert_logs (
