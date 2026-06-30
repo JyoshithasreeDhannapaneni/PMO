@@ -440,6 +440,161 @@ function TicketModal({ title, tickets, jiraBaseUrl, onClose }: {
   );
 }
 
+// ─── Retry-ticket detection ───────────────────────────────────────────────────
+
+function isRetryTicket(summary: string): boolean {
+  const lower = (summary || '').toLowerCase();
+  return lower.includes('retry') || lower.includes('conflict') || lower.includes('stuck');
+}
+
+// ─── Engineer ticket modal (two-panel: retry vs other) ────────────────────────
+
+function EngineerTicketModal({ title, tickets, jiraBaseUrl, onClose }: {
+  title: string;
+  tickets: TicketRow[];
+  jiraBaseUrl: string;
+  onClose: () => void;
+}) {
+  const [activeTab, setActiveTab] = useState<'retry' | 'other'>('retry');
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const retryTickets = tickets.filter((t) => isRetryTicket(t.summary));
+  const otherTickets = tickets.filter((t) => !isRetryTicket(t.summary));
+  const visibleTickets = activeTab === 'retry' ? retryTickets : otherTickets;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 flex items-center justify-center bg-black/50 p-6"
+      style={{ zIndex: 9999 }}
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-2xl shadow-2xl flex flex-col"
+        style={{ width: '72vw', maxWidth: '1000px', height: '82vh' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 flex-shrink-0">
+          <div>
+            <h2 className="text-base font-bold text-gray-800">{title}</h2>
+            <p className="text-xs text-gray-400 mt-0.5">{tickets.length} ticket{tickets.length !== 1 ? 's' : ''} total</p>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-xl hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors">
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex items-center gap-3 px-6 py-3 border-b border-gray-100 flex-shrink-0">
+          <button
+            onClick={() => setActiveTab('retry')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
+              activeTab === 'retry'
+                ? 'bg-orange-500 text-white shadow-sm'
+                : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            <FileSpreadsheet size={15} />
+            Retry Tickets
+            <span className={`px-1.5 py-0.5 rounded-full text-xs font-bold ${activeTab === 'retry' ? 'bg-white/25 text-white' : 'bg-gray-100 text-gray-600'}`}>
+              {retryTickets.length}
+            </span>
+          </button>
+          <button
+            onClick={() => setActiveTab('other')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
+              activeTab === 'other'
+                ? 'bg-blue-600 text-white shadow-sm'
+                : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            <FileSpreadsheet size={15} />
+            Other Tickets
+            <span className={`px-1.5 py-0.5 rounded-full text-xs font-bold ${activeTab === 'other' ? 'bg-white/25 text-white' : 'bg-gray-100 text-gray-600'}`}>
+              {otherTickets.length}
+            </span>
+          </button>
+        </div>
+
+        {/* Table */}
+        <div className="overflow-auto flex-1">
+          {visibleTickets.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-2">
+              <AlertCircle size={28} />
+              <p className="text-sm">No tickets in this section.</p>
+            </div>
+          ) : (
+            <table className="w-full text-sm border-collapse">
+              <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
+                <tr>
+                  <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 whitespace-nowrap w-32">Key</th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500">Summary</th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">Assignee</th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">Status</th>
+                  <th className="px-5 py-3 text-center text-xs font-semibold text-gray-500 whitespace-nowrap">FR SLA</th>
+                  <th className="px-5 py-3 text-center text-xs font-semibold text-gray-500 whitespace-nowrap">Resolution SLA</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {visibleTickets.map((t, i) => (
+                  <tr key={t.key || `row-${i}`} className="hover:bg-blue-50/40 transition-colors">
+                    <td className="px-5 py-3 whitespace-nowrap">
+                      {t.key ? (
+                        <a
+                          href={`${jiraBaseUrl}/browse/${t.key}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-semibold text-primary-600 hover:text-primary-800 hover:underline inline-flex items-center gap-1.5"
+                        >
+                          {t.key}
+                          <ExternalLink size={12} className="text-primary-400 flex-shrink-0" />
+                        </a>
+                      ) : (
+                        <span className="text-gray-300 italic text-xs">—</span>
+                      )}
+                    </td>
+                    <td className="px-5 py-3 text-gray-700 max-w-sm" title={t.summary}>
+                      <span className="line-clamp-2">{t.summary || '—'}</span>
+                    </td>
+                    <td className="px-5 py-3 text-gray-600 whitespace-nowrap">{t.assignee || '—'}</td>
+                    <td className="px-5 py-3 whitespace-nowrap">
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                        t.status?.toLowerCase() === 'closed' || t.status?.toLowerCase() === 'done' || t.status?.toLowerCase() === 'resolved'
+                          ? 'bg-green-100 text-green-700'
+                          : t.status?.toLowerCase() === 'open' || t.status?.toLowerCase() === 'to do'
+                          ? 'bg-gray-100 text-gray-600'
+                          : 'bg-blue-100 text-blue-700'
+                      }`}>
+                        {t.status || '—'}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3 text-center">
+                      {t.frBreached
+                        ? <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">Breached</span>
+                        : <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-600">OK</span>}
+                    </td>
+                    <td className="px-5 py-3 text-center">
+                      {t.resBreached
+                        ? <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">Breached</span>
+                        : <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-600">OK</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 function JiraSlaSection({ managerName }: { managerName: string }) {
   const { data, isLoading, isError } = useJiraSla(managerName);
 
@@ -1376,7 +1531,7 @@ function EngineersView() {
       </div>
 
       {ticketModal && (
-        <TicketModal
+        <EngineerTicketModal
           title={ticketModal.title}
           tickets={ticketModal.tickets}
           jiraBaseUrl={jiraBaseUrl}
