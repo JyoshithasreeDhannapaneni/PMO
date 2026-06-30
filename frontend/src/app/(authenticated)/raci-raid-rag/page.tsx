@@ -216,6 +216,12 @@ const INITIAL_RAG_TEAM = [
   { team: 'Dev Team', lead: 'Dev Lead', active: '2 bugs active', escalations: 2, overall: 'A', blockers: 'A', deliveryThisWeek: 'A', onTimeDelivery: 'G', trainingSkillGap: 'A', crossTeamDependency: 'G', winHighlight: 'G', processCompliance: 'G', concern: 'Permission replication bug and calendar sync fix both due 30 May. On track but watch closely.', updated: '27-May-26' },
 ];
 
+const INITIAL_RAG_SALES = [
+  { salesManager: 'TBD', salesRep: 'Dana M.', pipelineHealth: 'A', quotaAttainment: 'A', salesMarketingAlignment: 'G', overall: 'A', avgDealCycle: '45 days', escalations: 1, concern: 'Alpine Systems POC stale. Follow-up required before 30 May deadline.', winHighlight: 'Relecloud Corp demo completed — strong buying signal.', updated: '27-May-26' },
+  { salesManager: 'TBD', salesRep: 'Pre-sales Owner', pipelineHealth: 'G', quotaAttainment: 'A', salesMarketingAlignment: 'G', overall: 'A', avgDealCycle: '38 days', escalations: 1, concern: 'Contoso Ltd sign-off delayed 2 days. Stakeholder unresponsive.', winHighlight: 'Two new POCs initiated this week.', updated: '28-May-26' },
+  { salesManager: 'TBD', salesRep: 'TBD', pipelineHealth: 'G', quotaAttainment: 'G', salesMarketingAlignment: 'G', overall: 'G', avgDealCycle: '30 days', escalations: 0, concern: 'No blockers. On track for Q2 target.', winHighlight: 'Q2 pipeline 15% above target. Three proposals in final review.', updated: '27-May-26' },
+];
+
 const INITIAL_RAG_POC = [
   { account: 'Alpine Systems', workload: 'Messaging', preSales: 'Dana M.', am: 'TBD', overall: 'A', phase: 'A', scope: 'G', environment: 'G', customer: 'A', outcome: 'G', comment: 'POC stale — no pre-sales update in 5 days. POC ends 30 May. AM to contact customer if unresolved today.', updated: '22-May-26' },
   { account: 'Contoso Ltd', workload: 'Content + Email', preSales: 'Pre-sales Owner', am: 'TBD', overall: 'A', phase: 'A', scope: 'G', environment: 'G', customer: 'A', outcome: 'G', comment: 'POC validation phase delayed, customer sign-off 2 days overdue.', updated: '28-May-26' },
@@ -894,15 +900,16 @@ function RaidTab({ data, setData, projectManagers, accountManagers }: { data: ty
 // ── RAG Tab ──────────────────────────────────────────────────────────────────
 
 function RagTab({
-  active, setActive, cs, setCs, team, setTeam, poc, setPoc, managers,
+  active, setActive, cs, setCs, team, setTeam, poc, setPoc, sales, setSales, managers,
 }: {
   active: typeof INITIAL_RAG_ACTIVE; setActive: (d: typeof INITIAL_RAG_ACTIVE) => void;
   cs: typeof INITIAL_RAG_CS; setCs: (d: typeof INITIAL_RAG_CS) => void;
   team: typeof INITIAL_RAG_TEAM; setTeam: (d: typeof INITIAL_RAG_TEAM) => void;
   poc: typeof INITIAL_RAG_POC; setPoc: (d: typeof INITIAL_RAG_POC) => void;
+  sales: typeof INITIAL_RAG_SALES; setSales: (d: typeof INITIAL_RAG_SALES) => void;
   managers: string[];
 }) {
-  const [activeSection, setActiveSection] = useState<'active' | 'cs' | 'team' | 'poc'>('active');
+  const [activeSection, setActiveSection] = useState<'active' | 'cs' | 'team' | 'poc' | 'sales'>('active');
   const [csSortField, setCsSortField] = useState<string | null>(null);
   const [csSortDir, setCsSortDir] = useState<'asc' | 'desc'>('asc');
   const RAG_FIELDS_ACTIVE: (keyof (typeof INITIAL_RAG_ACTIVE)[0])[] = ['overall', 'schedule', 'scope', 'customer', 'budget'];
@@ -931,10 +938,13 @@ function RagTab({
     ? <span className="ml-1 text-indigo-500">{csSortDir === 'asc' ? '↑' : '↓'}</span>
     : <span className="ml-1 text-slate-300">↕</span>;
 
+  const RAG_FIELDS_SALES: (keyof (typeof INITIAL_RAG_SALES)[0])[] = ['pipelineHealth', 'quotaAttainment', 'salesMarketingAlignment', 'overall'];
+
   const sections = [
     { key: 'active' as const, label: 'Migration Projects', count: active.length },
     { key: 'poc'    as const, label: 'POC Projects', count: poc.length },
     { key: 'cs'     as const, label: 'Customer Success', count: cs.length },
+    { key: 'sales'  as const, label: 'Sales', count: sales.length },
     { key: 'team'   as const, label: 'Team Health', count: team.length },
   ];
 
@@ -1098,6 +1108,56 @@ function RagTab({
         </div>
       )}
 
+      {/* Sales */}
+      {activeSection === 'sales' && (
+        <div className="overflow-x-auto rounded-lg border border-slate-200">
+          <table className="w-full text-xs border-collapse">
+            <thead>
+              <tr className="bg-slate-50">
+                {[
+                  { label: 'Sales Manager', tooltip: '' },
+                  { label: 'Sales Representative', tooltip: '' },
+                  { label: 'Pipeline Health', tooltip: '' },
+                  { label: 'Quota Attainment', tooltip: '' },
+                  { label: 'Sales-Marketing Alignment', tooltip: '' },
+                  { label: 'Overall', tooltip: '' },
+                  { label: 'Avg Deal Cycle', tooltip: 'Average days from qualified lead to closed-won. Elongating cycle = deals getting stuck.' },
+                  { label: 'Escalations', tooltip: '' },
+                  { label: 'Key Concern This Week', tooltip: '' },
+                  { label: 'Win / Highlight This Week', tooltip: '' },
+                  { label: 'Updated', tooltip: '' },
+                ].map(({ label, tooltip }) => (
+                  <th key={label} className="py-2.5 px-2 font-semibold text-slate-600 border-b border-slate-200 text-left whitespace-nowrap">
+                    <span className="inline-flex items-center gap-0.5">
+                      {label}
+                      {tooltip && <TooltipBox text={tooltip} title={label} />}
+                    </span>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {sales.map((row, ri) => (
+                <tr key={ri} className="hover:bg-slate-50 border-b border-slate-100 last:border-0">
+                  <td className="py-2 px-2 text-slate-500 whitespace-nowrap"><EditableText value={row.salesManager} onChange={v => setSales(sales.map((r, i) => i === ri ? { ...r, salesManager: v } : r))} /></td>
+                  <td className="py-2 px-2 text-slate-500 whitespace-nowrap"><EditableText value={row.salesRep} onChange={v => setSales(sales.map((r, i) => i === ri ? { ...r, salesRep: v } : r))} /></td>
+                  {RAG_FIELDS_SALES.map(f => (
+                    <td key={f} className="py-1.5 px-1 text-center">
+                      <RagCell value={row[f] as string} onChange={v => setSales(sales.map((r, i) => i === ri ? { ...r, [f]: v } : r))} />
+                    </td>
+                  ))}
+                  <td className="py-2 px-2 text-slate-500 whitespace-nowrap"><EditableText value={row.avgDealCycle} onChange={v => setSales(sales.map((r, i) => i === ri ? { ...r, avgDealCycle: v } : r))} /></td>
+                  <td className="py-2 px-2 text-center text-slate-600 font-medium">{row.escalations}</td>
+                  <td className="py-1.5 px-2 max-w-xs"><EditableArea value={row.concern} onChange={v => setSales(sales.map((r, i) => i === ri ? { ...r, concern: v } : r))} /></td>
+                  <td className="py-1.5 px-2 max-w-xs"><EditableArea value={row.winHighlight} onChange={v => setSales(sales.map((r, i) => i === ri ? { ...r, winHighlight: v } : r))} /></td>
+                  <td className="py-2 px-2 text-slate-400 whitespace-nowrap"><EditableText value={row.updated} onChange={v => setSales(sales.map((r, i) => i === ri ? { ...r, updated: v } : r))} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       {/* Team Health */}
       {activeSection === 'team' && (
         <div className="overflow-x-auto rounded-lg border border-slate-200">
@@ -1155,7 +1215,7 @@ function RagTab({
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 
-const LS_KEYS = { raci: 'pmo_raci_v1', raid: 'pmo_raid_v1', rag_active: 'pmo_rag_active_v1', rag_cs: 'pmo_rag_cs_v1', rag_team: 'pmo_rag_team_v1', rag_poc: 'pmo_rag_poc_v1' };
+const LS_KEYS = { raci: 'pmo_raci_v1', raid: 'pmo_raid_v1', rag_active: 'pmo_rag_active_v1', rag_cs: 'pmo_rag_cs_v1', rag_team: 'pmo_rag_team_v1', rag_poc: 'pmo_rag_poc_v1', rag_sales: 'pmo_rag_sales_v1' };
 
 function load<T>(key: string, fallback: T): T {
   try {
@@ -1190,6 +1250,7 @@ export default function RaciRaidRagPage() {
   const [ragCs, setRagCs] = useState(() => load(LS_KEYS.rag_cs, INITIAL_RAG_CS));
   const [ragTeam, setRagTeam] = useState(() => load(LS_KEYS.rag_team, INITIAL_RAG_TEAM));
   const [ragPoc, setRagPoc] = useState(() => load(LS_KEYS.rag_poc, INITIAL_RAG_POC));
+  const [ragSales, setRagSales] = useState(() => load(LS_KEYS.rag_sales, INITIAL_RAG_SALES));
 
   const handleSave = () => {
     localStorage.setItem(LS_KEYS.raci, JSON.stringify(raciData));
@@ -1198,6 +1259,7 @@ export default function RaciRaidRagPage() {
     localStorage.setItem(LS_KEYS.rag_cs, JSON.stringify(ragCs));
     localStorage.setItem(LS_KEYS.rag_team, JSON.stringify(ragTeam));
     localStorage.setItem(LS_KEYS.rag_poc, JSON.stringify(ragPoc));
+    localStorage.setItem(LS_KEYS.rag_sales, JSON.stringify(ragSales));
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -1211,6 +1273,7 @@ export default function RaciRaidRagPage() {
     setRagCs(INITIAL_RAG_CS);
     setRagTeam(INITIAL_RAG_TEAM);
     setRagPoc(INITIAL_RAG_POC);
+    setRagSales(INITIAL_RAG_SALES);
   };
 
   const tabs = [
@@ -1285,6 +1348,7 @@ export default function RaciRaidRagPage() {
               cs={ragCs} setCs={setRagCs}
               team={ragTeam} setTeam={setRagTeam}
               poc={ragPoc} setPoc={setRagPoc}
+              sales={ragSales} setSales={setRagSales}
               managers={projectManagers}
             />
           )}
