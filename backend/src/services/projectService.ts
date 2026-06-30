@@ -87,6 +87,7 @@ export interface UpdateProjectDTO extends Partial<CreateProjectDTO> {}
 
 export interface ProjectFilters {
   status?: string;
+  excludeStatus?: string; // comma-separated statuses to exclude, e.g. 'COMPLETED,CANCELLED'
   phase?: string;
   planType?: string;
   delayStatus?: string;
@@ -116,16 +117,13 @@ function mapProjectRow(row: any) {
     const as = row.actual_start ? new Date(row.actual_start) : null;
     const extEnd = row.extended_end_date ? new Date(row.extended_end_date) : null;
 
-    // Deadline = extended end date (overage) if set, otherwise original SOW end.
-    // No kickoff adjustment: delay is always relative to the contractual end date.
-    expectedEnd = extEnd || pe;
+    // Project End Date = actualEnd (auto-set as kickoff + SOW duration), fall back to plannedEnd.
+    // expectedEnd is used for display in the table.
+    const ae = row.actual_end ? new Date(row.actual_end) : null;
+    expectedEnd = extEnd || ae || pe;
 
-    // Only pass actualEnd for truly finished projects — ACTIVE/ON_HOLD projects
-    // may have actualEnd filled as "expected end" by users, which would cause
-    // calculateDelay to treat them as completed (always NOT_DELAYED).
-    const isFinished = row.status === 'COMPLETED' || row.status === 'CANCELLED';
-    const actualEndForDelay = isFinished && row.actual_end ? new Date(row.actual_end) : null;
-    const result = calculateDelay(ps, pe, as, actualEndForDelay, new Date(), extEnd);
+    // Delay = Today − Project End Date (actualEnd if set, else plannedEnd)
+    const result = calculateDelay(ps, pe, as, ae, new Date(), extEnd);
     liveDelayStatus = result.delayStatus;
     liveDelayDays   = result.delayDays;
   }
@@ -241,6 +239,14 @@ class ProjectService {
     if (filters.status) {
       conditions.push(`status = $${params.length + 1}`);
       params.push(filters.status);
+    }
+    if (filters.excludeStatus) {
+      const excluded = filters.excludeStatus.split(',').map((s: string) => s.trim()).filter(Boolean);
+      if (excluded.length > 0) {
+        const placeholders = excluded.map((_: string, i: number) => `$${params.length + 1 + i}`).join(', ');
+        conditions.push(`status NOT IN (${placeholders})`);
+        params.push(...excluded);
+      }
     }
     if (filters.phase) {
       conditions.push(`phase = $${params.length + 1}`);

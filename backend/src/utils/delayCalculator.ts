@@ -25,32 +25,25 @@ export function calculateDelay(
 ): DelayCalculationResult {
   const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
-  // Effective deadline: the extended end date (if PM approved overage extension),
-  // otherwise the contractual SOW end date. Delay is always measured against the
-  // contractual deadline so results are consistent across all pages.
-  const expectedEnd = extendedEndDate || plannedEnd;
+  // Project End Date = actualEnd (auto-calculated as kickoff + SOW duration).
+  // Fall back to plannedEnd if not set.
+  // Extended end date (PM-approved overage) overrides everything.
+  const deadline = extendedEndDate || actualEnd || plannedEnd;
 
-  // Project already completed
-  if (actualEnd) {
-    const delayDays = Math.ceil((actualEnd.getTime() - expectedEnd.getTime()) / MS_PER_DAY);
-    return {
-      delayDays: Math.max(0, delayDays),
-      delayStatus: delayDays > 0 ? 'DELAYED' : 'NOT_DELAYED',
-    };
-  }
+  // Delay Days = Today − Project End Date
+  const diffMs = currentDate.getTime() - deadline.getTime();
+  const delayDays = Math.floor(diffMs / MS_PER_DAY);
 
-  // Ongoing project — compare today against expected end
-  const rawDiffMs = expectedEnd.getTime() - currentDate.getTime();
-  const remainingDays = Math.ceil(rawDiffMs / MS_PER_DAY);
-
-  if (rawDiffMs < 0) {
-    // Past the expected end — use floor so we show complete days of delay
-    const delayDays = Math.floor(-rawDiffMs / MS_PER_DAY);
+  if (delayDays > 0) {
     return { delayDays, delayStatus: 'DELAYED' };
   }
+
+  // AT_RISK: deadline is within the next 7 days
+  const remainingDays = Math.ceil(-diffMs / MS_PER_DAY);
   if (remainingDays <= 7) {
     return { delayDays: 0, delayStatus: 'AT_RISK' };
   }
+
   return { delayDays: 0, delayStatus: 'NOT_DELAYED' };
 }
 
