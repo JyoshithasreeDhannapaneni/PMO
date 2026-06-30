@@ -117,12 +117,12 @@ function mapProjectRow(row: any) {
     const as = row.actual_start ? new Date(row.actual_start) : null;
     const extEnd = row.extended_end_date ? new Date(row.extended_end_date) : null;
 
-    // Project End Date = actualEnd (auto-set as kickoff + SOW duration), fall back to plannedEnd.
-    // expectedEnd is used for display in the table.
+    // Project End Date = kickoff + SOW duration (used for display and delay calc)
     const ae = row.actual_end ? new Date(row.actual_end) : null;
-    expectedEnd = extEnd || ae || pe;
+    const sowMs = pe.getTime() - ps.getTime();
+    const kickoffEnd = as ? new Date(as.getTime() + sowMs) : pe;
+    expectedEnd = extEnd || kickoffEnd;
 
-    // Delay = Today − Project End Date (actualEnd if set, else plannedEnd)
     const result = calculateDelay(ps, pe, as, ae, new Date(), extEnd);
     liveDelayStatus = result.delayStatus;
     liveDelayDays   = result.delayDays;
@@ -590,9 +590,12 @@ class ProjectService {
     const actualStart = data.actualStart !== undefined
       ? (data.actualStart ? new Date(data.actualStart) : null)
       : existing.actual_start;
+    // Auto-calculate actual_end from kickoff + SOW duration whenever actualStart is set
+    const sowMs = plannedEnd.getTime() - plannedStart.getTime();
+    const autoActualEnd = actualStart ? new Date(actualStart.getTime() + sowMs) : null;
     const actualEnd = data.actualEnd !== undefined
       ? (data.actualEnd ? new Date(data.actualEnd) : null)
-      : existing.actual_end;
+      : (data.actualStart !== undefined && actualStart ? autoActualEnd : (existing.actual_end ? new Date(existing.actual_end) : null));
     const extendedEndDate = existing.extended_end_date ? new Date(existing.extended_end_date) : null;
 
     const newStatus = (data.status || existing.status || 'ACTIVE').toUpperCase();
@@ -631,8 +634,13 @@ class ProjectService {
     if (data.status !== undefined) { updates.push(`status = $${params.length + 1}`); params.push(data.status); }
     if (data.plannedStart !== undefined) { updates.push(`planned_start = $${params.length + 1}`); params.push(new Date(data.plannedStart)); }
     if (data.plannedEnd !== undefined) { updates.push(`planned_end = $${params.length + 1}`); params.push(new Date(data.plannedEnd)); }
-    if (data.actualStart !== undefined) { updates.push(`actual_start = $${params.length + 1}`); params.push(data.actualStart ? new Date(data.actualStart) : null); }
-    if (data.actualEnd !== undefined) { updates.push(`actual_end = $${params.length + 1}`); params.push(actualEnd); }
+    if (data.actualStart !== undefined) {
+      updates.push(`actual_start = $${params.length + 1}`); params.push(data.actualStart ? new Date(data.actualStart) : null);
+      // Auto-save project end date whenever kickoff date changes
+      updates.push(`actual_end = $${params.length + 1}`); params.push(actualEnd);
+    } else if (data.actualEnd !== undefined) {
+      updates.push(`actual_end = $${params.length + 1}`); params.push(actualEnd);
+    }
     if (data.isOveraged !== undefined) { updates.push(`is_overaged = $${params.length + 1}`); params.push(!!data.isOveraged); }
     if (data.isEscalated !== undefined) {
       updates.push(`is_escalated = $${params.length + 1}`); params.push(!!data.isEscalated);
