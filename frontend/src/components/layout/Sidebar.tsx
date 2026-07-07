@@ -30,7 +30,6 @@ const allNavigation = [
   { name: 'Server Notifications', href: '/server-alerts',         icon: Bell,            adminOnly: false },
   { name: 'Templates',          href: '/templates',              icon: Layers,          adminOnly: false },
   { name: 'Case Studies',       href: '/case-studies',           icon: FileText,        adminOnly: false },
-  { name: 'CS Template',        href: '/case-studies/template',  icon: Layers, badge: 'cstemplate', adminOnly: false },
   {
     name: 'Reports', href: '#', icon: BarChart2, adminOnly: false,
     children: [
@@ -44,7 +43,6 @@ const allNavigation = [
 const badgeColors: Record<string, string> = {
   goals:      'bg-orange-100 text-orange-600 border border-orange-200',
   chat:       'bg-emerald-100 text-emerald-600 border border-emerald-200',
-  cstemplate: 'bg-blue-100 text-blue-600 border border-blue-200',
 };
 
 export function Sidebar() {

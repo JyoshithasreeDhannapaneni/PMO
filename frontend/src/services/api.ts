@@ -432,6 +432,18 @@ export const customerSuccessApi = {
   },
 };
 
+// HubSpot API — upsell / cross-sell deal signals
+export const hubspotApi = {
+  getSignals: async (refresh?: boolean) => {
+    const { data } = await api.get('/hubspot/signals', { params: refresh ? { refresh: 'true' } : undefined });
+    return data;
+  },
+  getStatus: async () => {
+    const { data } = await api.get('/hubspot/status');
+    return data;
+  },
+};
+
 // Projects by migration type
 export const migrationTypeApi = {
   getProjectsByType: async (type: string) => {

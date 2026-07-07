@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { projectsApi, dashboardApi, statusReportsApi, managerGoalsApi, migrationTypeApi, pocProjectsApi, accountManagerApi, customerSuccessApi } from '@/services/api';
+import { projectsApi, dashboardApi, statusReportsApi, managerGoalsApi, migrationTypeApi, pocProjectsApi, accountManagerApi, customerSuccessApi, hubspotApi } from '@/services/api';
 import type { CreateProjectInput, UpdateProjectInput } from '@/types';
 
 export function useProjects(params?: {
@@ -238,6 +238,16 @@ export function useCustomerSuccess() {
     queryFn: () => customerSuccessApi.getView(),
     staleTime: 60_000,
     refetchOnWindowFocus: true,
+  });
+}
+
+export function useHubspotSignals() {
+  return useQuery({
+    queryKey: ['hubspot-signals'],
+    queryFn: () => hubspotApi.getSignals(),
+    staleTime: 5 * 60_000,
+    retry: 1,
+    refetchOnWindowFocus: false,
   });
 }
 
