@@ -79,6 +79,7 @@ interface PlanType {
 
 interface ProjectPhase {
   id: string;
+  code?: string;
   name: string;
   order: number;
   color: string;
@@ -154,44 +155,18 @@ interface TargetPlatform {
 }
 
 // Default values - Migration Case Study Template
+// Customer, PM/AM, platforms and dates auto-fill from the linked project —
+// sections only capture what the tracker doesn't already know.
 const defaultTemplate: CaseStudyTemplate = {
   name: 'Closed Project — Migration Case Study',
   sections: [
-    // Section 1: Project Identification
-    { id: '1', title: '1. Project Identification', description: 'Basic project information and stakeholders', placeholder: 'Project Name:\nCustomer Name:\nProject Manager:\nAccount Manager:\nProject Start Date:\nProject End Date:\nMigration Type:\nProject Status:', required: true },
-    
-    // Section 2: Migration Overview & Scope
-    { id: '2', title: '2. Migration Overview & Scope', description: 'Source and target environment details', placeholder: 'Source Environment:\n- Platform/System:\n- Data Volume:\n- User Count:\n- Mailbox Count:\n\nTarget Environment:\n- Platform/System:\n- Region/Tenant:\n\nScope Summary:\n- In Scope Items:\n- Out of Scope Items:', required: true },
-    
-    // Section 3: Pre-Migration Assessment
-    { id: '3', title: '3. Pre-Migration Assessment', description: 'Infrastructure and data inventory assessment', placeholder: 'Infrastructure Assessment:\n- Source system health check results\n- Network bandwidth assessment\n- Security compliance review\n\nData Inventory:\n- Total data size (GB/TB)\n- Number of users/mailboxes\n- Special data types identified\n- Data cleanup requirements:', required: true },
-    
-    // Section 4: Migration Strategy & Execution
-    { id: '4', title: '4. Migration Strategy & Execution', description: 'Methodology, phases, and tools used', placeholder: 'Migration Methodology:\n- Approach (Big Bang/Phased/Hybrid)\n- Cutover strategy\n\nPhase Breakdown:\n- Phase 1: Planning & Assessment\n- Phase 2: Pilot Migration\n- Phase 3: Production Migration\n- Phase 4: Validation & Closure\n\nTools & Technologies Used:\n- Migration tool(s)\n- Monitoring tools\n- Communication tools:', required: true },
-    
-    // Section 5: Success Metrics & KPIs
-    { id: '5', title: '5. Success Metrics & KPIs', description: 'Performance metrics with targets and actuals', placeholder: 'Key Performance Indicators:\n\n| Metric | Target | Actual | Status |\n|--------|--------|--------|--------|\n| Data Migration Success Rate | 99.5% | | |\n| User Migration Success Rate | 100% | | |\n| Downtime (hours) | <4 | | |\n| Post-Migration Issues | <5 | | |\n| Customer Satisfaction | >4.5/5 | | |\n| On-Time Delivery | Yes | | |', required: true },
-    
-    // Section 6: Risks, Challenges & Mitigations
-    { id: '6', title: '6. Risks, Challenges & Mitigations', description: 'Risk tracking with status and mitigation steps', placeholder: 'Risk Register:\n\n| Risk ID | Risk Description | Impact | Probability | Mitigation Strategy | Status |\n|---------|------------------|--------|-------------|---------------------|--------|\n| R001 | | High/Med/Low | High/Med/Low | | Open/Closed |\n| R002 | | | | | |\n\nChallenges Encountered:\n1. Challenge:\n   - Impact:\n   - Resolution:', required: true },
-    
-    // Section 7: Key Issues & Resolution Log
-    { id: '7', title: '7. Key Issues & Resolution Log', description: 'Issue tracking and resolution details', placeholder: 'Issue Log:\n\n| Issue ID | Date Reported | Description | Root Cause | Resolution | Date Resolved | Owner |\n|----------|---------------|-------------|------------|------------|---------------|-------|\n| ISS001 | | | | | | |\n| ISS002 | | | | | | |\n\nEscalations:\n- Any escalations to management\n- Resolution timeline', required: false },
-    
-    // Section 8: Validation, UAT & Communication
-    { id: '8', title: '8. Validation, UAT & Communication', description: 'Testing results and stakeholder communication', placeholder: 'Validation Results:\n- Pre-migration validation: Pass/Fail\n- Post-migration validation: Pass/Fail\n- Data integrity check: Pass/Fail\n\nUAT Summary:\n- UAT Start Date:\n- UAT End Date:\n- Test Cases Executed:\n- Pass Rate:\n- Sign-off obtained: Yes/No\n\nStakeholder Communication:\n- Kick-off meeting date:\n- Status update frequency:\n- Final closure meeting date:', required: true },
-    
-    // Section 9: Knowledge Transfer & Documentation
-    { id: '9', title: '9. Knowledge Transfer & Documentation', description: 'Training and handover details', placeholder: 'Knowledge Transfer:\n- Training sessions conducted:\n- Training materials provided:\n- Admin handover completed: Yes/No\n\nDocumentation Delivered:\n- [ ] Migration runbook\n- [ ] Configuration documentation\n- [ ] User guides\n- [ ] Admin guides\n- [ ] Troubleshooting guide\n- [ ] Rollback procedures', required: false },
-    
-    // Section 10: Valuable Insights & Final Deliverables
-    { id: '10', title: '10. Valuable Insights & Final Deliverables', description: 'Lessons learned and recommendations', placeholder: 'Lessons Learned:\n1. What went well:\n   - \n2. What could be improved:\n   - \n3. Recommendations for future projects:\n   - \n\nFinal Deliverables:\n- [ ] Migration completion report\n- [ ] Data validation report\n- [ ] UAT sign-off document\n- [ ] Knowledge transfer completion\n- [ ] Project closure document', required: true },
-    
-    // Section 11: Final Assessment & Project Sign-off
-    { id: '11', title: '11. Final Assessment & Project Sign-off', description: 'Project closure and approval details', placeholder: 'Overall Project Assessment:\n- Project delivered on time: Yes/No\n- Project delivered within budget: Yes/No\n- All success criteria met: Yes/No\n- Customer satisfaction rating: /5\n\nSign-off Details:\n- Customer Sign-off Date:\n- Customer Representative:\n- Internal Sign-off Date:\n- Project Manager:\n\nAdditional Comments:\n\nProject Closure Status: CLOSED', required: true },
-    
-    // Section 12: Client Testimonial
-    { id: '12', title: '12. Client Testimonial', description: 'Quote or feedback from the client', placeholder: 'Client Feedback:\n"[Insert client testimonial or feedback quote here]"\n\n- Client Name:\n- Title:\n- Company:\n- Date:', required: false },
+    { id: '1', title: '1. Project Snapshot', description: 'One line per field — the quick facts of the migration', placeholder: 'Industry:\nMigration (Source → Target):\nData Volume / Users:\nOutcome in one line:', required: true },
+    { id: '2', title: '2. Challenge', description: 'Why the customer migrated — 2-3 bullets', placeholder: '- Business pain (why migrate):\n- Technical blockers / constraints:\n- Success criteria:', required: true },
+    { id: '3', title: '3. Solution & Approach', description: 'What CloudFuze did — 4-5 bullets max', placeholder: '- Approach (Big Bang / Phased / Hybrid):\n- Workloads migrated:\n- Special handling (permissions, metadata, delta):', required: true },
+    { id: '4', title: '4. Issues & Resolutions', description: 'One block per issue — each block is a ready-made KB article', placeholder: 'Issue 1:\n- Issue / error message:\n- Root cause:\n- Fix / workaround (steps):\n- How to prevent or detect early:', required: true },
+    { id: '5', title: '5. Results & Metrics', description: 'Numbers only — no narrative', placeholder: '- Data migrated & success rate:\n- Downtime:\n- Delivered on time? (delay + reason if not):\n- CSAT score:', required: true },
+    { id: '6', title: '6. Lessons & KB Takeaways', description: 'Reusable knowledge for the next similar migration', placeholder: '- Do again / avoid next time:\n- Pre-migration checks for similar projects:\n- Reusable steps, settings or scripts:', required: true },
+    { id: '7', title: '7. Client Testimonial', description: 'Optional quote or feedback from the client', placeholder: '"[Client quote]"\n\n— Client Name, Title, Company', required: false },
   ],
 };
 
