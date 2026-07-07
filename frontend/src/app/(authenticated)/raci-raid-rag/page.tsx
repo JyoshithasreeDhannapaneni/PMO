@@ -117,7 +117,20 @@ const INITIAL_RACI = [
 
 // ── Initial RAID data ─────────────────────────────────────────────────────────
 
-const INITIAL_RAID = [
+interface RaidRow {
+  id: string;
+  type: string;
+  pocProject?: string;
+  description: string;
+  probability: string;
+  severity: string;
+  owner: string;
+  mitigation: string;
+  dueDate: string;
+  status: string;
+}
+
+const INITIAL_RAID: { team: string; rows: RaidRow[] }[] = [
   {
     team: 'Pre-sales Team',
     rows: [

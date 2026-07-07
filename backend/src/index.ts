@@ -43,6 +43,7 @@ import migrationChecklistRoutes from './routes/migrationChecklistRoutes';
 import serverAlertRoutes from './routes/serverAlertRoutes';
 import templateCombinationRoutes from './routes/templateCombinationRoutes';
 import jiraRoutes from './routes/jiraRoutes';
+import hubspotRoutes from './routes/hubspotRoutes';
 import { logger } from './utils/logger';
 import { authService } from './services/authService';
 import { templateService } from './services/templateService';
@@ -103,6 +104,7 @@ app.use('/api/migration-checklists', migrationChecklistRoutes);
 app.use('/api/server-alerts', serverAlertRoutes);
 app.use('/api/template-combinations', templateCombinationRoutes);
 app.use('/api/jira', jiraRoutes);
+app.use('/api/hubspot', hubspotRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
