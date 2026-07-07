@@ -105,7 +105,19 @@
       "Bash(Write-Host \"Done\")",
       "Bash(head -n 1803 \"c:\\\\Users\\\\BharathTummaganti\\\\OneDrive - CloudFuze, Inc\\\\Documents\\\\PMO\\\\PMO\\\\frontend\\\\src\\\\app\\\\\\(authenticated\\)\\\\manager-dashboard\\\\page.tsx\")",
       "Read(//tmp/**)",
-      "Bash(cp /tmp/mgr_trimmed.tsx \"c:\\\\Users\\\\BharathTummaganti\\\\OneDrive - CloudFuze, Inc\\\\Documents\\\\PMO\\\\PMO\\\\frontend\\\\src\\\\app\\\\\\(authenticated\\)\\\\manager-dashboard\\\\page.tsx\" && echo \"done\")"
+      "Bash(cp /tmp/mgr_trimmed.tsx \"c:\\\\Users\\\\BharathTummaganti\\\\OneDrive - CloudFuze, Inc\\\\Documents\\\\PMO\\\\PMO\\\\frontend\\\\src\\\\app\\\\\\(authenticated\\)\\\\manager-dashboard\\\\page.tsx\" && echo \"done\")",
+      "Bash(sed -n '75,90p' /root/PMO/backend/src/index.ts)",
+      "Read(//root/PMO/backend/src/**)",
+      "Bash(find /root/PMO/backend/src -name \"index.ts\" 2>/dev/null | head -5)",
+      "Read(//root/PMO/backend/**)",
+      "Read(//root/**)",
+      "Bash(npm --version)",
+      "Bash(curl -s -o /dev/null -w \"backend /api/health: %{http_code}\\\\n\" http://localhost:3001/api/health)",
+      "Bash(curl -s -o /dev/null -w \"backend root: %{http_code}\\\\n\" http://localhost:3001/)",
+      "Bash(curl -s -o /dev/null -w \"frontend: %{http_code}\\\\n\" http://localhost:3000/)",
+      "Bash(curl -s -X POST http://localhost:3001/api/auth/login -H \"Content-Type: application/json\" -d '{\"email\":\"x@x.com\",\"password\":\"x\"}')",
+      "Bash(echo \"BACKEND_TSC_EXIT=$?\")",
+      "Bash(echo \"FRONTEND_TSC_EXIT=$?\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\BharathTummaganti\\OneDrive - CloudFuze, Inc\\Documents\\PMO\\PMO",

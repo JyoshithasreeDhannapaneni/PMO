@@ -9,7 +9,7 @@ import {
   LayoutDashboard, FolderKanban, AlertTriangle, FileText,
   Settings, Layers, Users, BarChart2, ChevronDown,
   ChevronRight, LogOut, DollarSign, Siren, Menu, X, Archive,
-  FlaskConical, Building2, HeartHandshake, BookOpen, ClipboardList, Briefcase, Bell,
+  FlaskConical, Building2, HeartHandshake, BookOpen, Briefcase, Bell,
   LayoutGrid,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
@@ -26,7 +26,6 @@ const allNavigation = [
   { name: 'Pre-sales',          href: '/poc-projects',           icon: FlaskConical,    adminOnly: false },
   { name: 'Account Manager View', href: '/account-manager',     icon: Building2,       adminOnly: false },
   { name: 'Customer Success',   href: '/customer-success',       icon: HeartHandshake,  adminOnly: false },
-  { name: 'RACI / RAID / RAG',  href: '/raci-raid-rag',          icon: ClipboardList,   adminOnly: false },
   { name: 'History Archive',    href: '/archive',                icon: Archive,         adminOnly: false },
   { name: 'Server Notifications', href: '/server-alerts',         icon: Bell,            adminOnly: false },
   { name: 'Templates',          href: '/templates',              icon: Layers,          adminOnly: false },
