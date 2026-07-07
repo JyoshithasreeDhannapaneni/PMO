@@ -281,6 +281,7 @@ export interface CreateProjectInput {
   actualCost?: number;
   numberOfServers?: number;
   projectMemory?: string;
+  customerContact?: string | null;
   description?: string;
   notes?: string;
   phase?: ProjectPhase;
@@ -412,3 +413,34 @@ export interface CustomerSuccessPageData {
 
 // Keep for backwards compatibility in customer-success page import
 export type CustomerSuccessView = CustomerSuccessEntry;
+
+export type HubspotDealCategory = 'upsell' | 'cross_sell' | 'renewal' | 'new_business' | 'other';
+
+export interface HubspotDeal {
+  id: string;
+  name: string;
+  amount: number | null;
+  stage: string;
+  pipeline: string;
+  dealType: string | null;
+  closeDate: string | null;
+  isClosedWon: boolean;
+  isOpen: boolean;
+  category: HubspotDealCategory;
+  companyName: string;
+}
+
+export interface HubspotCustomerDeals {
+  companyName: string;
+  deals: HubspotDeal[];
+  upsellCount: number;
+  crossSellCount: number;
+  openValue: number;
+  wonValue: number;
+}
+
+export interface HubspotSignalsData {
+  configured: boolean;
+  fetchedAt: string | null;
+  customers: Record<string, HubspotCustomerDeals>;
+}
