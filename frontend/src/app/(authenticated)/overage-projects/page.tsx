@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo, Fragment } from 'react';
-import { useOveragedProjects, useMarkOverageProject, useUnmarkOverageProject, useProjects } from '@/hooks/useProjects';
+import { useOveragedProjects, useMarkOverageProject, useUpdateOverageProject, useUnmarkOverageProject, useProjects } from '@/hooks/useProjects';
 import { useAuth } from '@/context/AuthContext';
 import { Card } from '@/components/ui/Card';
 import Link from 'next/link';
@@ -37,6 +37,7 @@ export default function OverageProjectsPage() {
   const allProjects: any[] = allProjectsData?.data || [];
 
   const markOverage = useMarkOverageProject();
+  const updateOverage = useUpdateOverageProject();
   const unmarkOverage = useUnmarkOverageProject();
 
   const [search, setSearch] = useState('');
@@ -73,7 +74,7 @@ export default function OverageProjectsPage() {
     setEditSaving(true);
     setEditError('');
     try {
-      await markOverage.mutateAsync({
+      await updateOverage.mutateAsync({
         id: editProject.id,
         overageAmount: editForm.overageAmount ? parseFloat(editForm.overageAmount) : undefined,
         notes: editForm.notes || undefined,
@@ -164,8 +165,14 @@ export default function OverageProjectsPage() {
   const totalPages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
   const paged = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
 
+  // Per-project cumulative overage = sum of all history entries for that project
+  function projectCumulativeAmount(p: any): number {
+    const hist: any[] = p.overageHistory || [];
+    return hist.reduce((s, h) => s + (parseFloat(h.overageAmount) || 0), 0);
+  }
+
   // Stats
-  const totalOverageAmount = projects.reduce((sum, p) => sum + (parseFloat(p.overageAmount) || 0), 0);
+  const totalOverageAmount = projects.reduce((sum, p) => sum + projectCumulativeAmount(p), 0);
   const newThisWeek = projects.filter((p) => p.plannedEnd && isThisWeek(new Date(p.plannedEnd))).length;
 
   function downloadCSV() {
@@ -349,8 +356,13 @@ export default function OverageProjectsPage() {
                           ))}
                           {!p.migrationTypes && <span className="text-gray-400">—</span>}
                         </td>
-                        <td className="py-3 px-4 text-center font-semibold text-green-700">
-                          {formatCurrency(p.overageAmount)}
+                        <td className="py-3 px-4 text-center">
+                          <span className="font-semibold text-green-700">{formatCurrency(projectCumulativeAmount(p)) || '—'}</span>
+                          {(p.overageHistory?.length || 0) > 1 && (
+                            <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-700 font-medium">
+                              {p.overageHistory.length} events
+                            </span>
+                          )}
                         </td>
                         <td className="py-3 px-4 text-center">
                           <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${p.daysOverdue > 14 ? 'bg-red-100 text-red-700' : p.daysOverdue > 7 ? 'bg-orange-100 text-orange-700' : 'bg-yellow-100 text-yellow-700'}`}>
