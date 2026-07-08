@@ -1,10 +1,13 @@
-import { Request, Response } from 'express';
+import { Request, Response, NextFunction, RequestHandler } from 'express';
 import { execute, query } from '../config/db';
 import { logger } from '../utils/logger';
 
-const asyncHandler = (fn: Function) => (req: Request, res: Response, next: Function) => {
-  Promise.resolve(fn(req, res, next)).catch(next);
-};
+const asyncHandler = (
+  fn: (req: Request, res: Response, next: NextFunction) => Promise<void>
+): RequestHandler =>
+  (req, res, next) => {
+    Promise.resolve(fn(req, res, next)).catch(next);
+  };
 
 export const psEngagementsController = {
   getAll: asyncHandler(async (_req: Request, res: Response): Promise<void> => {
