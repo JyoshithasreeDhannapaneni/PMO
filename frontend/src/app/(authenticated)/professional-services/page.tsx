@@ -873,6 +873,29 @@ export default function ProfessionalServicesPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
   const [showFilters, setShowFilters] = useState(true);
+  const [migrating, setMigrating] = useState(false);
+
+  const localStorageCount = (() => {
+    try {
+      const raw = typeof window !== 'undefined' ? localStorage.getItem('pmo_ps_v1') : null;
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed.length : 0;
+    } catch { return 0; }
+  })();
+
+  const migrateFromLocalStorage = async () => {
+    setMigrating(true);
+    try {
+      const raw = localStorage.getItem('pmo_ps_v1');
+      const items: PSEngagement[] = raw ? JSON.parse(raw) : [];
+      for (const eng of items) {
+        await createMutation.mutateAsync(eng);
+      }
+      localStorage.removeItem('pmo_ps_v1');
+    } finally {
+      setMigrating(false);
+    }
+  };
 
   const openEngagement = (id: string) => {
     const eng = engagements.find(e => e.id === id);
@@ -946,6 +969,22 @@ export default function ProfessionalServicesPage() {
           </button>
         )}
       </div>
+
+      {localStorageCount > 0 && (
+        <div className="flex items-center justify-between gap-4 bg-amber-50 border border-amber-200 rounded-xl px-5 py-3">
+          <p className="text-sm text-amber-800">
+            <span className="font-semibold">{localStorageCount} engagement{localStorageCount !== 1 ? 's' : ''} found in local browser storage</span> from before the database migration.
+            Click to import them so all users can see them.
+          </p>
+          <button
+            onClick={migrateFromLocalStorage}
+            disabled={migrating}
+            className="flex-shrink-0 px-4 py-1.5 rounded-lg bg-amber-600 text-white text-xs font-medium hover:bg-amber-700 disabled:opacity-50 transition-colors"
+          >
+            {migrating ? 'Importing…' : 'Import to database'}
+          </button>
+        </div>
+      )}
 
       {isLoading ? (
         <div className="flex items-center justify-center py-24 text-slate-400 text-sm">Loading engagements…</div>
