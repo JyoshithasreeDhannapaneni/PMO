@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { projectsApi, dashboardApi, statusReportsApi, managerGoalsApi, migrationTypeApi, pocProjectsApi, accountManagerApi, customerSuccessApi, hubspotApi } from '@/services/api';
+import { projectsApi, dashboardApi, statusReportsApi, managerGoalsApi, migrationTypeApi, pocProjectsApi, accountManagerApi, customerSuccessApi, hubspotApi, psEngagementsApi } from '@/services/api';
 import type { CreateProjectInput, UpdateProjectInput } from '@/types';
 
 export function useProjects(params?: {
@@ -257,6 +257,39 @@ export function useUpdateCustomerSuccess() {
     mutationFn: ({ customerName, data }: { customerName: string; data: Record<string, any> }) =>
       customerSuccessApi.updateEntry(customerName, data),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['customer-success'] }),
+  });
+}
+
+export function usePsEngagements() {
+  return useQuery({
+    queryKey: ['ps-engagements'],
+    queryFn: () => psEngagementsApi.getAll(),
+    staleTime: 30_000,
+    refetchOnWindowFocus: true,
+  });
+}
+
+export function useCreatePsEngagement() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (engagement: any) => psEngagementsApi.create(engagement),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['ps-engagements'] }),
+  });
+}
+
+export function useUpdatePsEngagement() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: any }) => psEngagementsApi.update(id, data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['ps-engagements'] }),
+  });
+}
+
+export function useDeletePsEngagement() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => psEngagementsApi.remove(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['ps-engagements'] }),
   });
 }
 

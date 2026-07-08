@@ -117,7 +117,15 @@
       "Bash(curl -s -o /dev/null -w \"frontend: %{http_code}\\\\n\" http://localhost:3000/)",
       "Bash(curl -s -X POST http://localhost:3001/api/auth/login -H \"Content-Type: application/json\" -d '{\"email\":\"x@x.com\",\"password\":\"x\"}')",
       "Bash(echo \"BACKEND_TSC_EXIT=$?\")",
-      "Bash(echo \"FRONTEND_TSC_EXIT=$?\")"
+      "Bash(echo \"FRONTEND_TSC_EXIT=$?\")",
+      "Bash(findstr \":3000 \\\\|:3001 \")",
+      "Bash(Get-Process -Id 19292)",
+      "Bash(Select-Object Id, ProcessName, MainWindowTitle)",
+      "Bash(tasklist /FI \"PID eq 19292\" /FO LIST)",
+      "Bash(tasklist //FI \"PID eq 19292\")",
+      "Bash(taskkill //F //PID 19292)",
+      "Bash(findstr \":3001 \")",
+      "Bash(taskkill //F //PID 47972)"
     ],
     "additionalDirectories": [
       "c:\\Users\\BharathTummaganti\\OneDrive - CloudFuze, Inc\\Documents\\PMO\\PMO",

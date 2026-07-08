@@ -26,8 +26,9 @@ export default function EscalationProjectsPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'ADMIN';
   const isManager = user?.role === 'PROJECT_MANAGER';
+  const isViewer = user?.role === 'VIEWER';
   // Everyone sees all escalations; edit rights scoped per-project below
-  const canEditProject = (p: any) => isAdmin || (isManager && p.projectManager === user?.name);
+  const canEditProject = (p: any) => !isViewer && (isAdmin || (isManager && p.projectManager === user?.name));
 
   const { data, isLoading, refetch } = useEscalatedProjects(undefined);
   const escalated: any[] = data?.data || [];
@@ -270,9 +271,11 @@ export default function EscalationProjectsPage() {
           <button onClick={downloadCSV} className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
             <Download size={14} /> Export
           </button>
-          <button onClick={() => setShowModal(true)} className="flex items-center gap-1.5 px-3 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">
-            <Plus size={14} /> Add Escalation
-          </button>
+          {!isViewer && (
+            <button onClick={() => setShowModal(true)} className="flex items-center gap-1.5 px-3 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">
+              <Plus size={14} /> Add Escalation
+            </button>
+          )}
         </div>
       </div>
 
@@ -471,9 +474,11 @@ export default function EscalationProjectsPage() {
           <div className="flex flex-col items-center py-12 text-gray-400 gap-2">
             <Siren size={32} />
             <p>No escalation projects found</p>
-            <button onClick={() => setShowModal(true)} className="mt-2 flex items-center gap-1.5 px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700">
-              <Plus size={14} /> Add First Escalation
-            </button>
+            {!isViewer && (
+              <button onClick={() => setShowModal(true)} className="mt-2 flex items-center gap-1.5 px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700">
+                <Plus size={14} /> Add First Escalation
+              </button>
+            )}
           </div>
         ) : (
           <>
