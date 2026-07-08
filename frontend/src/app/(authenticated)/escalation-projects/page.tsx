@@ -191,12 +191,6 @@ export default function EscalationProjectsPage() {
     }
   }
 
-  async function handleDeescalate(id: string) {
-    if (!confirm('Remove escalation from this project?')) return;
-    await deescalateProject.mutateAsync(id);
-    refetch();
-  }
-
   async function handleArchive(id: string) {
     if (!confirm('Archive this escalation? It will move to the Archive tab.')) return;
     await archiveEscalation.mutateAsync(id);
@@ -598,15 +592,6 @@ export default function EscalationProjectsPage() {
                                   className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 text-amber-500 hover:bg-amber-100 transition-colors"
                                 >
                                   <Archive size={14} />
-                                </button>
-                              )}
-                              {canEditProject(p) && p.isEscalated && (
-                                <button
-                                  onClick={() => handleDeescalate(p.id)}
-                                  title="Remove escalation"
-                                  className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 text-red-500 hover:bg-red-100 transition-colors"
-                                >
-                                  <X size={14} />
                                 </button>
                               )}
                               {canEditProject(p) && (
