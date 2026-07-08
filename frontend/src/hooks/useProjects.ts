@@ -395,6 +395,25 @@ export function useMarkOverageProject() {
   });
 }
 
+export function useUpdateOverageProject() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, overageAmount, notes, extendedStartDate, extendedEndDate }: { id: string; overageAmount?: number; notes?: string; extendedStartDate?: string; extendedEndDate?: string }) => {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
+      return fetch(`${API_BASE}/api/dashboard/update-overage/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ overageAmount, notes, extendedStartDate, extendedEndDate }),
+      }).then(r => r.json());
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['overagedProjects'] });
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+  });
+}
+
 export function useUnmarkOverageProject() {
   const queryClient = useQueryClient();
   return useMutation({
