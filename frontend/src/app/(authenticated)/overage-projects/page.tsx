@@ -26,8 +26,9 @@ export default function OverageProjectsPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'ADMIN';
   const isManager = user?.role === 'PROJECT_MANAGER';
+  const isViewer = user?.role === 'VIEWER';
   // Everyone sees all overage projects; edit rights are per-project
-  const canEditProject = (p: any) => isAdmin || (isManager && p.projectManager === user?.name);
+  const canEditProject = (p: any) => !isViewer && (isAdmin || (isManager && p.projectManager === user?.name));
 
   const { data, isLoading, refetch } = useOveragedProjects(undefined);
   const projects: any[] = data?.data || [];
@@ -207,9 +208,11 @@ export default function OverageProjectsPage() {
           >
             <Download size={14} /> Export
           </button>
-          <button onClick={() => setShowModal(true)} className="flex items-center gap-1.5 px-3 py-2 text-sm bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors">
-            <Plus size={14} /> Add Overage
-          </button>
+          {!isViewer && (
+            <button onClick={() => setShowModal(true)} className="flex items-center gap-1.5 px-3 py-2 text-sm bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors">
+              <Plus size={14} /> Add Overage
+            </button>
+          )}
         </div>
       </div>
 

@@ -350,6 +350,8 @@ const tabs = [
 
 export default function SettingsPage() {
   const { settings: ctxSettings, updateSettings } = useSettings();
+  const { user: settingsUser } = useAuth();
+  const isViewer = settingsUser?.role === 'VIEWER';
   const [activeTab, setActiveTab] = useState('templates');
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
@@ -1763,7 +1765,7 @@ export default function SettingsPage() {
                       className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:ring-2 focus:ring-primary-500 outline-none"
                     >
                       <option value="VIEWER">Viewer</option>
-                      <option value="MANAGER">Project Manager</option>
+                      <option value="PROJECT_MANAGER">Project Manager</option>
                       <option value="PRE_SALES">Pre-Sales</option>
                       <option value="ACCOUNT_MANAGER">Account Manager</option>
                       <option value="ADMIN">Admin</option>
@@ -3623,10 +3625,12 @@ export default function SettingsPage() {
             <p className="text-gray-500">Configure system preferences and templates</p>
           </div>
         </div>
-        <Button onClick={handleSaveAll} isLoading={isSaving}>
-          <Save size={16} className="mr-2" />
-          Save All Settings
-        </Button>
+        {!isViewer && (
+          <Button onClick={handleSaveAll} isLoading={isSaving}>
+            <Save size={16} className="mr-2" />
+            Save All Settings
+          </Button>
+        )}
       </div>
 
       {/* Save Message */}

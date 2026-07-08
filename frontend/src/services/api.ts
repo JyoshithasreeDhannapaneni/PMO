@@ -511,4 +511,24 @@ export const templateCombinationsApi = {
   getDownloadUrl: (docId: string) => `/api/template-combinations/documents/${docId}/download`,
 };
 
+// Professional Services Engagements API
+export const psEngagementsApi = {
+  getAll: async () => {
+    const { data } = await api.get('/ps-engagements');
+    return data.data as any[];
+  },
+  create: async (engagement: any) => {
+    const { data } = await api.post('/ps-engagements', engagement);
+    return data;
+  },
+  update: async (id: string, engagement: any) => {
+    const { data } = await api.put(`/ps-engagements/${id}`, engagement);
+    return data;
+  },
+  remove: async (id: string) => {
+    const { data } = await api.delete(`/ps-engagements/${id}`);
+    return data;
+  },
+};
+
 export default api;

@@ -44,6 +44,7 @@ import serverAlertRoutes from './routes/serverAlertRoutes';
 import templateCombinationRoutes from './routes/templateCombinationRoutes';
 import jiraRoutes from './routes/jiraRoutes';
 import hubspotRoutes from './routes/hubspotRoutes';
+import psEngagementsRoutes from './routes/psEngagementsRoutes';
 import { logger } from './utils/logger';
 import { authService } from './services/authService';
 import { templateService } from './services/templateService';
@@ -105,6 +106,7 @@ app.use('/api/server-alerts', serverAlertRoutes);
 app.use('/api/template-combinations', templateCombinationRoutes);
 app.use('/api/jira', jiraRoutes);
 app.use('/api/hubspot', hubspotRoutes);
+app.use('/api/ps-engagements', psEngagementsRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
@@ -425,6 +427,34 @@ async function runMigrations() {
   )`);
   try { await execute(`CREATE INDEX IF NOT EXISTS idx_tmpl_combo_cat ON template_combinations(migration_category)`); } catch {}
   try { await execute(`CREATE INDEX IF NOT EXISTS idx_tmpl_combo_docs ON template_combination_documents(combination_id)`); } catch {}
+
+  // Professional Services engagements
+  await execute(`CREATE TABLE IF NOT EXISTS ps_engagements (
+    id VARCHAR(64) PRIMARY KEY,
+    client_name VARCHAR(255) NOT NULL,
+    sow_ref_id VARCHAR(100),
+    client_contact VARCHAR(255),
+    client_contact_email VARCHAR(255),
+    cf_ps_lead VARCHAR(255),
+    account_manager VARCHAR(255),
+    start_date VARCHAR(20),
+    end_date VARCHAR(20),
+    engagement_type VARCHAR(100),
+    workloads JSONB DEFAULT '[]',
+    delivery_model VARCHAR(100),
+    priority VARCHAR(50),
+    sow_status VARCHAR(100) DEFAULT 'Draft',
+    engagement_description TEXT,
+    client_objectives TEXT,
+    success_criteria TEXT,
+    assumptions TEXT,
+    out_of_scope TEXT,
+    phases JSONB DEFAULT '[]',
+    signoffs JSONB DEFAULT '[]',
+    created_by VARCHAR(255),
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+  )`);
 
 }
 
