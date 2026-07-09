@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { projectsApi, dashboardApi, statusReportsApi, managerGoalsApi, migrationTypeApi, pocProjectsApi, accountManagerApi, customerSuccessApi } from '@/services/api';
+import { projectsApi, dashboardApi, statusReportsApi, managerGoalsApi, migrationTypeApi, pocProjectsApi, accountManagerApi, customerSuccessApi, hubspotApi, psEngagementsApi } from '@/services/api';
 import type { CreateProjectInput, UpdateProjectInput } from '@/types';
 
 export function useProjects(params?: {
@@ -241,12 +241,55 @@ export function useCustomerSuccess() {
   });
 }
 
+export function useHubspotSignals() {
+  return useQuery({
+    queryKey: ['hubspot-signals'],
+    queryFn: () => hubspotApi.getSignals(),
+    staleTime: 5 * 60_000,
+    retry: 1,
+    refetchOnWindowFocus: false,
+  });
+}
+
 export function useUpdateCustomerSuccess() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ customerName, data }: { customerName: string; data: Record<string, any> }) =>
       customerSuccessApi.updateEntry(customerName, data),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['customer-success'] }),
+  });
+}
+
+export function usePsEngagements() {
+  return useQuery({
+    queryKey: ['ps-engagements'],
+    queryFn: () => psEngagementsApi.getAll(),
+    staleTime: 30_000,
+    refetchOnWindowFocus: true,
+  });
+}
+
+export function useCreatePsEngagement() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (engagement: any) => psEngagementsApi.create(engagement),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['ps-engagements'] }),
+  });
+}
+
+export function useUpdatePsEngagement() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: any }) => psEngagementsApi.update(id, data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['ps-engagements'] }),
+  });
+}
+
+export function useDeletePsEngagement() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => psEngagementsApi.remove(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['ps-engagements'] }),
   });
 }
 
@@ -340,6 +383,25 @@ export function useMarkOverageProject() {
       const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
       return fetch(`${API_BASE}/api/dashboard/mark-overage/${id}`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ overageAmount, notes, extendedStartDate, extendedEndDate }),
+      }).then(r => r.json());
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['overagedProjects'] });
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+  });
+}
+
+export function useUpdateOverageProject() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, overageAmount, notes, extendedStartDate, extendedEndDate }: { id: string; overageAmount?: number; notes?: string; extendedStartDate?: string; extendedEndDate?: string }) => {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
+      return fetch(`${API_BASE}/api/dashboard/update-overage/${id}`, {
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({ overageAmount, notes, extendedStartDate, extendedEndDate }),
       }).then(r => r.json());

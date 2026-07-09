@@ -43,6 +43,7 @@ export default function ProjectsPage() {
   const { user } = useAuth();
   const { settings } = useSettings();
   const isManager = false; // PROJECT_MANAGERs see all projects — no self-filter
+  const isViewer = user?.role === 'VIEWER';
   
   // Initialize filters from URL params
   const [filters, setFilters] = useState<FilterState>({
@@ -418,12 +419,14 @@ export default function ProjectsPage() {
             <Download size={16} className="mr-1" />
             Export CSV ({tabProjects.length})
           </Button>
-          <Link href="/projects/new">
-            <Button>
-              <Plus size={20} className="mr-2" />
-              New Project
-            </Button>
-          </Link>
+          {!isViewer && (
+            <Link href="/projects/new">
+              <Button>
+                <Plus size={20} className="mr-2" />
+                New Project
+              </Button>
+            </Link>
+          )}
         </div>
       </div>
 

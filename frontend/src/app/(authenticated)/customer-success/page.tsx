@@ -6,10 +6,11 @@ import type { ReactNode } from 'react';
 import { Card } from '@/components/ui/Card';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
-import { useCustomerSuccess, useUpdateCustomerSuccess } from '@/hooks/useProjects';
+import { useCustomerSuccess, useUpdateCustomerSuccess, useHubspotSignals } from '@/hooks/useProjects';
 import type {
   CustomerSuccessEntry, CfProductSignal, CfSignalLevel,
   SignalItem, RenewalDueItem, CustomerSuccessPageData,
+  HubspotCustomerDeals, HubspotDealCategory, HubspotSignalsData,
 } from '@/types';
 import {
   HeartHandshake, Loader2, AlertTriangle, User, X, Search,
@@ -61,6 +62,54 @@ function SignalCell({ label, signal }: { label: string; signal: CfProductSignal 
         </span>
       </div>
       <p className="text-[11px] opacity-75 leading-snug">{signal.reason}</p>
+    </div>
+  );
+}
+
+// ── HubSpot deal helpers ───────────────────────────────────────────────────
+const DEAL_CATEGORY_CFG: Record<HubspotDealCategory, { badge: string; label: string }> = {
+  upsell:       { badge: 'bg-blue-100 text-blue-700 border-blue-200',       label: 'Upsell'     },
+  cross_sell:   { badge: 'bg-purple-100 text-purple-700 border-purple-200', label: 'Cross-sell' },
+  renewal:      { badge: 'bg-amber-100 text-amber-700 border-amber-200',    label: 'Renewal'    },
+  new_business: { badge: 'bg-green-100 text-green-700 border-green-200',    label: 'New'        },
+  other:        { badge: 'bg-gray-100 text-gray-600 border-gray-200',       label: 'Deal'       },
+};
+
+const currencyFmt = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+
+function normalizeCustomerKey(name: string): string {
+  return (name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function HubspotDealsPanel({ hubspot }: { hubspot: HubspotCustomerDeals }) {
+  return (
+    <div>
+      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+        HubSpot Pipeline — {hubspot.upsellCount} upsell · {hubspot.crossSellCount} cross-sell
+        {hubspot.openValue > 0 && <span className="ml-1 text-gray-500 normal-case">· {currencyFmt.format(hubspot.openValue)} open</span>}
+      </p>
+      <div className="space-y-1.5">
+        {hubspot.deals.map(d => {
+          const cfg = DEAL_CATEGORY_CFG[d.category];
+          return (
+            <div key={d.id} className="flex items-start justify-between gap-2 bg-white border border-gray-200 rounded-lg px-3 py-2">
+              <div className="min-w-0">
+                <p className="text-xs font-medium text-gray-800 truncate">{d.name}</p>
+                <p className="text-[11px] text-gray-500">
+                  {d.isClosedWon ? 'Closed won' : d.stage}
+                  {d.closeDate ? ` · closes ${new Date(d.closeDate).toLocaleDateString()}` : ''}
+                </p>
+              </div>
+              <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-full border ${cfg.badge}`}>
+                  {cfg.label}
+                </span>
+                {d.amount !== null && <span className="text-xs font-semibold text-gray-700">{currencyFmt.format(d.amount)}</span>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -127,11 +176,13 @@ function AccountCard({
   projectNames,
   canEdit,
   onEdit,
+  hubspot,
 }: {
   account: CustomerSuccessEntry;
   projectNames: string[];
   canEdit: boolean;
   onEdit: () => void;
+  hubspot?: HubspotCustomerDeals | null;
 }) {
   const [expanded, setExpanded] = useState(false);
   const mood = csatMood(account.csat.score);
@@ -271,6 +322,8 @@ function AccountCard({
               <SignalCell label="Managed Services"      signal={account.managedServices} />
             </div>
           </div>
+
+          {hubspot && hubspot.deals.length > 0 && <HubspotDealsPanel hubspot={hubspot} />}
         </div>
       )}
     </Card>
@@ -666,6 +719,14 @@ export default function CustomerSuccessPage() {
   const { data, isLoading, error } = useCustomerSuccess();
   const updateCS = useUpdateCustomerSuccess();
 
+  const { data: hubspotResponse } = useHubspotSignals();
+  const hubspotData = (hubspotResponse?.data ?? null) as HubspotSignalsData | null;
+
+  function hubspotFor(customerName: string): HubspotCustomerDeals | null {
+    if (!hubspotData?.configured) return null;
+    return hubspotData.customers[normalizeCustomerKey(customerName)] ?? null;
+  }
+
   function getProjectNames(account: CustomerSuccessEntry): string[] {
     if (activeTab === 'poc') return account.pocProjectNames ?? [];
     return account.migrationProjectNames ?? account.projectNames ?? [];
@@ -834,6 +895,24 @@ export default function CustomerSuccessPage() {
         </div>
       </div>
 
+      {hubspotData && !hubspotData.configured && (
+        <div className="flex items-center gap-3 p-3 bg-orange-50 border border-orange-200 rounded-xl text-xs text-orange-700">
+          <Zap className="w-3.5 h-3.5 flex-shrink-0" />
+          <span>
+            <strong>HubSpot not connected</strong> — add <code className="font-mono">HUBSPOT_ACCESS_TOKEN</code> to
+            backend/.env, then restart the backend server to show live upsell &amp; cross-sell deals.
+          </span>
+        </div>
+      )}
+      {hubspotData && hubspotData.configured && hubspotData.error && (
+        <div className="flex items-center gap-3 p-3 bg-yellow-50 border border-yellow-200 rounded-xl text-xs text-yellow-800">
+          <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+          <span>
+            <strong>HubSpot connected but data fetch failed</strong> — {hubspotData.error}
+          </span>
+        </div>
+      )}
+
       {/* Summary strip */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         {([
@@ -989,6 +1068,7 @@ export default function CustomerSuccessPage() {
               projectNames={getProjectNames(account)}
               canEdit={canEdit}
               onEdit={() => setEditingAccount(account)}
+              hubspot={hubspotFor(account.customerName)}
             />
           ))}
         </div>

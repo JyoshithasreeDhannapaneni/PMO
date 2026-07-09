@@ -202,6 +202,13 @@ export const dashboardController = {
     res.json({ success: true, message: 'Project marked as overaged' });
   }),
 
+  updateOverageProject: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const { id } = req.params;
+    const { overageAmount, notes, extendedStartDate, extendedEndDate } = req.body;
+    await dashboardService.updateOverageProject(id, overageAmount, notes, extendedStartDate, extendedEndDate);
+    res.json({ success: true, message: 'Overage updated' });
+  }),
+
   unmarkOverageProject: asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const { id } = req.params;
     await dashboardService.unmarkOverageProject(id);

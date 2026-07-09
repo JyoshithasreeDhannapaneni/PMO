@@ -33,6 +33,7 @@ export default function ServerNotificationsPage() {
   const { user } = useAuth();
   const { showToast } = useToast();
   const isAdmin = user?.role === 'ADMIN';
+  const isViewer = user?.role === 'VIEWER';
   const qc = useQueryClient();
   const [showLogs, setShowLogs] = useState(false);
   const [sending, setSending] = useState<string | null>(null);
@@ -296,7 +297,7 @@ export default function ServerNotificationsPage() {
                         ) : '—'}
                       </td>
                       <td className="py-3 px-3 text-center">
-                        {p.hasEmail ? (
+                        {p.hasEmail && !isViewer ? (
                           <button
                             onClick={() => handleSend(p.id)}
                             disabled={sending === p.id}

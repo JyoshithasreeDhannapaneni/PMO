@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useSettings } from '@/context/SettingsContext';
+import { useAuth } from '@/context/AuthContext';
 import {
   FolderOpen, Mail, MessageSquare, Upload, Download,
   Trash2, FileText, ChevronRight, ArrowRight, Plus, X, Check, Pencil, Loader2,
@@ -59,6 +60,8 @@ const DOC_TYPES_KEY = 'templateDocTypes';
 
 export default function TemplatesPage() {
   const { settings } = useSettings();
+  const { user } = useAuth();
+  const isViewer = user?.role === 'VIEWER';
 
   // Tab
   const [activeTab, setActiveTab] = useState<SubTab>('content');
@@ -344,11 +347,13 @@ export default function TemplatesPage() {
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
               Combinations <span className="text-gray-300 font-normal">({currentCombos.length})</span>
             </p>
-            <button onClick={() => { setShowAddForm((v) => !v); setConfirmDelete(null); }}
-              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors ${showAddForm ? 'bg-gray-200 text-gray-600 hover:bg-gray-300' : `text-white ${tab.activeBtn}`}`}
-            >
-              {showAddForm ? <><X size={13} /> Cancel</> : <><Plus size={13} /> Add</>}
-            </button>
+            {!isViewer && (
+              <button onClick={() => { setShowAddForm((v) => !v); setConfirmDelete(null); }}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors ${showAddForm ? 'bg-gray-200 text-gray-600 hover:bg-gray-300' : `text-white ${tab.activeBtn}`}`}
+              >
+                {showAddForm ? <><X size={13} /> Cancel</> : <><Plus size={13} /> Add</>}
+              </button>
+            )}
           </div>
 
           {/* Add form */}
@@ -407,7 +412,7 @@ export default function TemplatesPage() {
                     <ChevronRight size={13} className={isSelected ? tab.color : 'text-gray-300'} />
                   </div>
                 </button>
-                {!isSettingsCombo(c.id) && (
+                {!isSettingsCombo(c.id) && !isViewer && (
                   !isConfirming ? (
                     <button onClick={(e) => { e.stopPropagation(); setConfirmDelete(c.id); }} title="Delete"
                       className="absolute top-2 right-2 p-1 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100">
@@ -441,7 +446,7 @@ export default function TemplatesPage() {
               </div>
               <p className="text-gray-500 font-medium">Select a combination</p>
               <p className="text-gray-400 text-sm mt-1">Choose a source → destination pair from the left to manage its documents.</p>
-              {!showAddForm && (
+              {!showAddForm && !isViewer && (
                 <button onClick={() => setShowAddForm(true)} className={`mt-5 flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white ${tab.activeBtn}`}>
                   <Plus size={15} /> Add New Combination
                 </button>
@@ -467,7 +472,7 @@ export default function TemplatesPage() {
                     <p className="text-2xl font-bold text-gray-800">{docs.length}</p>
                     <p className="text-xs text-gray-500">Documents</p>
                   </div>
-                  {!isSettingsCombo(selectedCombo.id) && (
+                  {!isSettingsCombo(selectedCombo.id) && !isViewer && (
                     <button onClick={() => setConfirmDelete(selectedCombo.id)} title="Delete this combination"
                       className="p-2 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors">
                       <Trash2 size={16} />
@@ -506,10 +511,12 @@ export default function TemplatesPage() {
                   {/* Doc type header */}
                   <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100 bg-gray-50">
                     <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Document Type</span>
-                    <button onClick={() => { setShowAddDocType((v) => !v); setDocTypeError(''); }}
-                      className="ml-auto flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-lg text-white bg-primary-600 hover:bg-primary-700">
-                      {showAddDocType ? <><X size={11} /> Cancel</> : <><Plus size={11} /> Add Type</>}
-                    </button>
+                    {!isViewer && (
+                      <button onClick={() => { setShowAddDocType((v) => !v); setDocTypeError(''); }}
+                        className="ml-auto flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-lg text-white bg-primary-600 hover:bg-primary-700">
+                        {showAddDocType ? <><X size={11} /> Cancel</> : <><Plus size={11} /> Add Type</>}
+                      </button>
+                    )}
                   </div>
 
                   {showAddDocType && (
@@ -543,9 +550,9 @@ export default function TemplatesPage() {
                             <button onClick={() => setSelectedDocType(dt.id)} className="flex items-center gap-1 pl-2.5 py-1.5">
                               <span>{dt.icon}</span><span>{dt.label}</span>
                             </button>
-                            <button onClick={() => { setRenamingTypeId(dt.id); setRenameTypeValue(dt.label); }}
-                              className="p-0.5 text-gray-300 hover:text-blue-500" title="Rename type"><Pencil size={10} /></button>
-                            {dt.custom && (
+                            {!isViewer && <button onClick={() => { setRenamingTypeId(dt.id); setRenameTypeValue(dt.label); }}
+                              className="p-0.5 text-gray-300 hover:text-blue-500" title="Rename type"><Pencil size={10} /></button>}
+                            {dt.custom && !isViewer && (
                               <button onClick={() => handleDeleteDocType(dt.id)} className="p-0.5 text-gray-300 hover:text-red-500 pr-1.5" title="Delete type"><X size={10} /></button>
                             )}
                             {!dt.custom && <span className="pr-2" />}
@@ -556,16 +563,18 @@ export default function TemplatesPage() {
                   </div>
 
                   {/* Upload button */}
-                  <div className="flex items-center gap-3 px-3 py-2">
-                    <label className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer text-white ${tab.activeBtn} ${uploadingFile ? 'opacity-60 cursor-not-allowed' : ''}`}>
-                      {uploadingFile ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
-                      {uploadingFile ? 'Uploading…' : 'Upload Document'}
-                      <input ref={fileInputRef} type="file" multiple disabled={uploadingFile} className="hidden"
-                        accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.png,.jpg,.jpeg"
-                        onChange={(e) => { handleFiles(e.target.files); e.target.value = ''; }} />
-                    </label>
-                    <p className="text-xs text-gray-400 ml-auto hidden sm:block">PDF, Word, Excel, PPT, images</p>
-                  </div>
+                  {!isViewer && (
+                    <div className="flex items-center gap-3 px-3 py-2">
+                      <label className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer text-white ${tab.activeBtn} ${uploadingFile ? 'opacity-60 cursor-not-allowed' : ''}`}>
+                        {uploadingFile ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
+                        {uploadingFile ? 'Uploading…' : 'Upload Document'}
+                        <input ref={fileInputRef} type="file" multiple disabled={uploadingFile} className="hidden"
+                          accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.png,.jpg,.jpeg"
+                          onChange={(e) => { handleFiles(e.target.files); e.target.value = ''; }} />
+                      </label>
+                      <p className="text-xs text-gray-400 ml-auto hidden sm:block">PDF, Word, Excel, PPT, images</p>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -613,12 +622,12 @@ export default function TemplatesPage() {
                                 </p>
                               </div>
                               <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button onClick={() => startRename(doc)} title="Rename"
-                                  className="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg"><Pencil size={14} /></button>
+                                {!isViewer && <button onClick={() => startRename(doc)} title="Rename"
+                                  className="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg"><Pencil size={14} /></button>}
                                 <button onClick={() => downloadDoc(doc.id, doc.fileName)} title="Download"
                                   className="p-1.5 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg"><Download size={15} /></button>
-                                <button onClick={() => removeDoc(doc.id)} title="Delete"
-                                  className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg"><Trash2 size={15} /></button>
+                                {!isViewer && <button onClick={() => removeDoc(doc.id)} title="Delete"
+                                  className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg"><Trash2 size={15} /></button>}
                               </div>
                             </div>
                           ))}
@@ -650,7 +659,7 @@ export default function TemplatesPage() {
                               </div>
                               <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                 <button onClick={() => downloadDoc(doc.id, doc.fileName)} className="p-1.5 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg"><Download size={15} /></button>
-                                <button onClick={() => removeDoc(doc.id)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg"><Trash2 size={15} /></button>
+                                {!isViewer && <button onClick={() => removeDoc(doc.id)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg"><Trash2 size={15} /></button>}
                               </div>
                             </div>
                           ))}
