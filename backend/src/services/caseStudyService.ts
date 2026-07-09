@@ -75,11 +75,15 @@ class CaseStudyService {
         const extEnd = row.extended_end_date ? new Date(row.extended_end_date) : null;
         expectedEnd = (extEnd || pe).toISOString().split('T')[0];
 
-        const isFinished = row.p_status === 'COMPLETED' || row.p_status === 'CANCELLED';
-        const actualEndForDelay = isFinished && row.actual_end ? new Date(row.actual_end) : null;
-        const result2 = calculateDelay(ps, pe, as, actualEndForDelay, new Date(), extEnd);
-        liveDelayStatus = result2.delayStatus;
-        liveDelayDays   = result2.delayDays;
+        const isFinished = row.p_status === 'COMPLETED' || row.p_status === 'CANCELLED' || row.p_status === 'INACTIVE';
+        if (isFinished) {
+          liveDelayStatus = row.delay_status;
+          liveDelayDays   = Number(row.delay_days) || 0;
+        } else {
+          const result2 = calculateDelay(ps, pe, as, null, new Date(), extEnd);
+          liveDelayStatus = result2.delayStatus;
+          liveDelayDays   = result2.delayDays;
+        }
       }
 
       return {

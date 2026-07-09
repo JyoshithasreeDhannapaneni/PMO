@@ -45,6 +45,10 @@ import templateCombinationRoutes from './routes/templateCombinationRoutes';
 import jiraRoutes from './routes/jiraRoutes';
 import hubspotRoutes from './routes/hubspotRoutes';
 import psEngagementsRoutes from './routes/psEngagementsRoutes';
+import externalRoutes from './routes/externalRoutes';
+import apiKeyRoutes from './routes/apiKeyRoutes';
+import clientReviewRoutes from './routes/clientReviewRoutes';
+import platformReviewRoutes from './routes/platformReviewRoutes';
 import { logger } from './utils/logger';
 import { authService } from './services/authService';
 import { templateService } from './services/templateService';
@@ -94,6 +98,10 @@ app.use('/api/comments', commentRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api/export', exportRoutes);
 app.use('/api/manager-goals', managerGoalsRoutes);
+app.use('/api/external', externalRoutes);
+app.use('/api/api-key', apiKeyRoutes);
+app.use('/api/reviews', clientReviewRoutes);
+app.use('/api/platform-reviews', platformReviewRoutes);
 app.use('/api/smtp', smtpRoutes);
 app.use('/api/pmo-settings', pmoSettingsRoutes);
 app.use('/api/archive', archiveRoutes);
@@ -455,6 +463,54 @@ async function runMigrations() {
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
   )`);
+
+  // Client reviews (Reviews tab) — structured customer feedback scorecard per project
+  await execute(`CREATE TABLE IF NOT EXISTS client_reviews (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    reviewer_name VARCHAR(255) NOT NULL,
+    review_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    communication_score SMALLINT NOT NULL CHECK (communication_score BETWEEN 1 AND 5),
+    delivery_score SMALLINT NOT NULL CHECK (delivery_score BETWEEN 1 AND 5),
+    quality_score SMALLINT NOT NULL CHECK (quality_score BETWEEN 1 AND 5),
+    support_score SMALLINT NOT NULL CHECK (support_score BETWEEN 1 AND 5),
+    comments TEXT,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+  )`);
+  try { await execute(`CREATE INDEX IF NOT EXISTS idx_client_reviews_project ON client_reviews(project_id)`); } catch {}
+
+  // Platform reviews (Reviews tab) — reviews pulled in from external sites
+  // (Gartner, G2, Trustpilot, TrustRadius, or any custom platform an admin adds),
+  // matched to a project by name. project_id is nullable since a platform review
+  // may reference a customer/project that doesn't have a matching internal record.
+  await execute(`CREATE TABLE IF NOT EXISTS platform_reviews (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    platform VARCHAR(100) NOT NULL,
+    project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
+    project_name VARCHAR(255) NOT NULL,
+    project_manager VARCHAR(255),
+    account_manager VARCHAR(255),
+    reviewer_name VARCHAR(255),
+    rating DECIMAL(3,1) NOT NULL CHECK (rating BETWEEN 0 AND 5),
+    review_text TEXT,
+    review_url TEXT,
+    review_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    segment VARCHAR(10),
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+  )`);
+  if (!await columnExists('platform_reviews', 'project_manager')) {
+    try { await execute(`ALTER TABLE platform_reviews ADD COLUMN project_manager VARCHAR(255)`); } catch {}
+  }
+  if (!await columnExists('platform_reviews', 'account_manager')) {
+    try { await execute(`ALTER TABLE platform_reviews ADD COLUMN account_manager VARCHAR(255)`); } catch {}
+  }
+  if (!await columnExists('platform_reviews', 'segment')) {
+    try { await execute(`ALTER TABLE platform_reviews ADD COLUMN segment VARCHAR(10)`); } catch {}
+  }
+  try { await execute(`CREATE INDEX IF NOT EXISTS idx_platform_reviews_platform ON platform_reviews(platform)`); } catch {}
+  try { await execute(`CREATE INDEX IF NOT EXISTS idx_platform_reviews_project ON platform_reviews(project_id)`); } catch {}
 
 }
 
