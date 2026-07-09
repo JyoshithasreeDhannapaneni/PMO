@@ -12,6 +12,7 @@ import {
   ChevronDown, ChevronUp, FolderKanban, CheckCircle,
   AlertTriangle, TrendingUp, Plus, Camera,
   Layers, FolderOpen, MessageSquare, Mail, Flag,
+  UserX,
 } from 'lucide-react';
 import { format, subDays, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { toPng } from 'html-to-image';
@@ -93,6 +94,32 @@ export default function AuditDashboardPage() {
   });
 
   const summary = data?.data;
+
+  // Inactive Users — checked over a fixed 60-day lookback, independent of the date filter above
+  const INACTIVITY_DAYS = 60;
+  const inactivityStart = format(subDays(new Date(), INACTIVITY_DAYS), 'yyyy-MM-dd');
+  const inactivityEnd = todayStr();
+  const { data: activityData, isLoading: isActivityLoading, refetch: refetchActivity } = useQuery({
+    queryKey: ['auditActivitySummary', inactivityStart, inactivityEnd],
+    queryFn: () =>
+      authFetch(`${API_BASE}/api/audit/activity-summary?startDate=${inactivityStart}&endDate=${inactivityEnd}`),
+  });
+
+  const inactiveUsers = useMemo(() => {
+    const users = activityData?.data?.users ?? [];
+    return users
+      .filter((u: any) => u.totalActions === 0)
+      .sort((a: any, b: any) => a.name.localeCompare(b.name));
+  }, [activityData]);
+
+  function handleExportInactive() {
+    if (!inactiveUsers.length) return;
+    const rows = [
+      ['Name', 'Email', 'Role', 'Last Active'],
+      ...inactiveUsers.map((u: any) => [u.name, u.email, u.role, u.lastActive ? format(new Date(u.lastActive), 'yyyy-MM-dd') : 'Never']),
+    ];
+    downloadCSV(rows, `inactive-users-${inactivityStart}-to-${inactivityEnd}.csv`);
+  }
 
   // Project Snapshot — live data from all projects (same source as /projects page)
   const { settings } = useSettings();
@@ -539,6 +566,83 @@ export default function AuditDashboardPage() {
           </p>
         </>
       )}
+
+      {/* ── Inactive Users ───────────────────────────────────────────── */}
+      <Card className="overflow-hidden p-0">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg bg-red-50 flex items-center justify-center">
+              <UserX size={17} className="text-red-500" />
+            </div>
+            <div>
+              <span className="font-semibold text-gray-800 text-sm">Inactive Users</span>
+              <span className="ml-2 text-xs px-2 py-0.5 rounded-full font-medium bg-red-50 text-red-600">
+                {inactiveUsers.length} {inactiveUsers.length === 1 ? 'user' : 'users'}
+              </span>
+              <p className="text-xs text-gray-500 mt-0.5">
+                No logins and no updates in the last {INACTIVITY_DAYS} days
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => refetchActivity()}
+              disabled={isActivityLoading}
+              className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+            >
+              <RefreshCw size={14} className={isActivityLoading ? 'animate-spin' : ''} /> Refresh
+            </button>
+            <button
+              onClick={handleExportInactive}
+              disabled={!inactiveUsers.length}
+              className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-40"
+            >
+              <Download size={14} /> Export CSV
+            </button>
+          </div>
+        </div>
+
+        {isActivityLoading ? (
+          <div className="flex items-center justify-center py-10">
+            <Loader2 className="w-6 h-6 animate-spin text-primary-600" />
+          </div>
+        ) : inactiveUsers.length === 0 ? (
+          <p className="text-sm text-gray-400 text-center py-10">All users have been active in the last {INACTIVITY_DAYS} days.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50">
+                  <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Active</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {inactiveUsers.map((u: any) => (
+                  <tr key={u.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-full bg-red-50 flex items-center justify-center text-xs font-bold text-red-500 flex-shrink-0">
+                          {u.name?.charAt(0)?.toUpperCase() || '?'}
+                        </div>
+                        <div>
+                          <p className="font-medium text-gray-900 text-sm leading-tight">{u.name}</p>
+                          <p className="text-xs text-gray-400 leading-tight">{u.email}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-gray-600">{u.role}</td>
+                    <td className="px-4 py-3 text-gray-600">
+                      {u.lastActive ? format(new Date(u.lastActive), 'MMM d, yyyy') : <span className="text-red-500 font-medium">Never</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
 
       {/* ── Project Snapshot ─────────────────────────────────────────── */}
       <div className="border-t border-gray-200 pt-5">

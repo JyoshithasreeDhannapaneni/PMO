@@ -50,7 +50,7 @@ import {
   Shuffle
 } from 'lucide-react';
 import { exportToPDF, exportToWord } from '@/utils/exportCaseStudy';
-import { authApi, templatesApi, projectsApi } from '@/services/api';
+import { authApi, templatesApi, projectsApi, apiKeyApi } from '@/services/api';
 import { useAuth } from '@/context/AuthContext';
 import { useSettings } from '@/context/SettingsContext';
 import { formatDistanceToNow } from 'date-fns';
@@ -355,6 +355,50 @@ export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState('templates');
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const API_KEY_SCOPES = [
+    { scope: 'all', label: 'All Data', description: 'Full data export — use this key to access /api/external/all-data' },
+    { scope: 'migrationManager', label: 'Migration Manager', description: 'Migration Manager report data — use this key to access /api/external/migration-manager' },
+    { scope: 'mbr', label: 'MBR (Monthly Business Review)', description: 'MBR analytics data — use this key to access /api/external/mbr' },
+  ] as const;
+
+  const [apiKeys, setApiKeys] = useState<Record<string, string>>({});
+  const [apiKeyVisible, setApiKeyVisible] = useState<Record<string, boolean>>({});
+  const [regeneratingScope, setRegeneratingScope] = useState<string | null>(null);
+
+  useEffect(() => {
+    API_KEY_SCOPES.forEach(({ scope }) => {
+      apiKeyApi.get(scope).then((res) => {
+        if (res.success) setApiKeys((prev) => ({ ...prev, [scope]: res.data.apiKey }));
+      }).catch(() => {});
+    });
+  }, []);
+
+  const handleRegenerateApiKey = async (scope: string) => {
+    if (!window.confirm('Generate a new API key? The old key will stop working immediately for any application using it.')) return;
+    setRegeneratingScope(scope);
+    try {
+      const res = await apiKeyApi.regenerate(scope);
+      if (res.success) {
+        setApiKeys((prev) => ({ ...prev, [scope]: res.data.apiKey }));
+        setApiKeyVisible((prev) => ({ ...prev, [scope]: true }));
+        setSaveMessage('New API key generated');
+        setTimeout(() => setSaveMessage(null), 3000);
+      }
+    } catch {
+      setSaveMessage('Failed to generate new API key');
+      setTimeout(() => setSaveMessage(null), 3000);
+    } finally {
+      setRegeneratingScope(null);
+    }
+  };
+
+  const handleCopyApiKey = async (scope: string) => {
+    const key = apiKeys[scope];
+    if (!key) return;
+    await navigator.clipboard.writeText(key);
+    setSaveMessage('API key copied to clipboard');
+    setTimeout(() => setSaveMessage(null), 3000);
+  };
 
   // State for all settings — initialised from context (which already read localStorage)
   const [template, setTemplate] = useState<CaseStudyTemplate>(defaultTemplate);
@@ -2107,18 +2151,41 @@ export default function SettingsPage() {
       {/* API Settings */}
       <div className="mt-8">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">API Configuration</h3>
-        <div className="p-4 border border-gray-200 rounded-lg bg-gray-50">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <p className="font-medium text-gray-900">API Key</p>
-              <p className="text-sm text-gray-500">Use this key to access the PMO Tracker API</p>
-            </div>
-            <Button variant="outline" size="sm">Generate New Key</Button>
-          </div>
-          <div className="flex items-center gap-2">
-            <code className="flex-1 p-2 bg-white border border-gray-200 rounded text-sm font-mono">pk_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</code>
-            <Button variant="outline" size="sm">Copy</Button>
-          </div>
+        <div className="space-y-4">
+          {API_KEY_SCOPES.map(({ scope, label, description }) => {
+            const key = apiKeys[scope];
+            const visible = !!apiKeyVisible[scope];
+            const regenerating = regeneratingScope === scope;
+            return (
+              <div key={scope} className="p-4 border border-gray-200 rounded-lg bg-gray-50">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <p className="font-medium text-gray-900">{label} API Key</p>
+                    <p className="text-sm text-gray-500">{description} (send it as the x-api-key header)</p>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={() => handleRegenerateApiKey(scope)} disabled={regenerating}>
+                    {regenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Generate New Key'}
+                  </Button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 p-2 bg-white border border-gray-200 rounded text-sm font-mono truncate">
+                    {key ? (visible ? key : '•'.repeat(40)) : 'Loading...'}
+                  </code>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setApiKeyVisible((prev) => ({ ...prev, [scope]: !prev[scope] }))}
+                    disabled={!key}
+                  >
+                    {visible ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => handleCopyApiKey(scope)} disabled={!key}>
+                    <Copy className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>

@@ -7,12 +7,22 @@ import {
   ArrowLeft, Save, Loader2, CheckCircle, AlertCircle, Eye,
   FileDown, Download, ChevronDown, ChevronUp, Bold, Italic, Underline,
   List, ListOrdered, AlignLeft, AlignCenter, AlignRight, Link2, Image,
-  Table, Undo, Redo, Edit, MoreVertical,
+  Table, Undo, Redo,
 } from 'lucide-react';
 import { exportToPDF, exportToWord } from '@/utils/exportCaseStudy';
 import { useCaseStudyTemplate } from '@/hooks/useCaseStudyTemplate';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+
+function formatRelativeTime(from: Date, now: Date): string {
+  const seconds = Math.max(0, Math.round((now.getTime() - from.getTime()) / 1000));
+  if (seconds < 5) return 'just now';
+  if (seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  return `${hours}h ago`;
+}
 
 // ── Legacy fallback sections (used only if hook returns nothing) ─────────────
 const FALLBACK_SECTIONS = [
@@ -288,6 +298,13 @@ export default function CaseStudyEditorPage() {
   const [isExporting, setIsExporting] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [saveError, setSaveError] = useState(false);
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    if (!lastSaved) return;
+    const interval = setInterval(() => setNow(new Date()), 5000);
+    return () => clearInterval(interval);
+  }, [lastSaved]);
 
   useEffect(() => {
     fetchCaseStudy();
@@ -361,7 +378,9 @@ export default function CaseStudyEditorPage() {
       const data = await response.json();
       if (data.success) {
         setCaseStudy(data.data);
-        setLastSaved(new Date());
+        const savedAt = new Date();
+        setLastSaved(savedAt);
+        setNow(savedAt);
       } else {
         setSaveError(true);
       }
@@ -464,7 +483,7 @@ export default function CaseStudyEditorPage() {
               ) : lastSaved ? (
                 <span className="text-xs text-green-600 flex items-center gap-1">
                   <span className="w-2 h-2 rounded-full bg-green-500 inline-block" />
-                  Last saved: a few seconds ago
+                  Last saved {formatRelativeTime(lastSaved, now)}
                 </span>
               ) : null}
             </div>
@@ -531,13 +550,7 @@ export default function CaseStudyEditorPage() {
 
           {/* Case Study Details */}
           <div className="bg-white rounded-xl border border-gray-200 p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-gray-900">Case Study Details</h3>
-              <button className="text-xs text-primary-600 hover:text-primary-700 flex items-center gap-1">
-                <Edit size={12} />
-                Edit
-              </button>
-            </div>
+            <h3 className="text-sm font-semibold text-gray-900 mb-3">Case Study Details</h3>
             <div className="space-y-2.5 text-sm">
               <div>
                 <span className="text-xs text-gray-500 block">Customer</span>
