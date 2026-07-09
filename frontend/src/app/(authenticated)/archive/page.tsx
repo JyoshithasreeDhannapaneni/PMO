@@ -46,12 +46,12 @@ export default function ArchivePage() {
   const isAdmin = user?.role === 'ADMIN';
   const queryClient = useQueryClient();
 
-  const [tab, setTab]                     = useState<'completed' | 'cancelled'>('completed');
-  const [search, setSearch]               = useState('');
-  const [managerFilter, setManagerFilter] = useState('');
-  const [yearFrom, setYearFrom]           = useState('');
-  const [yearTo, setYearTo]               = useState('');
-  const [sortBy, setSortBy]               = useState('archived_at');
+  const [tab, setTab]                       = useState<'completed' | 'cancelled'>('completed');
+  const [search, setSearch]                 = useState('');
+  const [managerFilter, setManagerFilter]   = useState('');
+  const [monthFrom, setMonthFrom]           = useState('');
+  const [monthTo, setMonthTo]               = useState('');
+  const [sortBy, setSortBy]                 = useState('archived_at');
   const [sortOrder, setSortOrder]         = useState<'asc'|'desc'>('desc');
   const [page, setPage]                   = useState(1);
   const [expandedId, setExpandedId]       = useState<string | null>(null);
@@ -63,14 +63,14 @@ export default function ArchivePage() {
     p.set('tab', tab);
     if (search)        p.set('search', search);
     if (managerFilter) p.set('projectManager', managerFilter);
-    if (yearFrom)     p.set('yearFrom', yearFrom);
-    if (yearTo)       p.set('yearTo', yearTo);
+    if (monthFrom)     p.set('monthFrom', monthFrom);
+    if (monthTo)       p.set('monthTo', monthTo);
     p.set('sortBy', sortBy);
     p.set('sortOrder', sortOrder);
     p.set('page', String(page));
     p.set('limit', String(PER_PAGE));
     return p.toString();
-  }, [tab, search, managerFilter, yearFrom, yearTo, sortBy, sortOrder, page]);
+  }, [tab, search, managerFilter, monthFrom, monthTo, sortBy, sortOrder, page]);
 
   const { data: archiveData, isLoading, refetch } = useQuery({
     queryKey: ['archive', queryParams],
@@ -102,7 +102,7 @@ export default function ArchivePage() {
 
   const resetFilters = () => {
     setSearch('');
-    setManagerFilter(''); setYearFrom(''); setYearTo('');
+    setManagerFilter(''); setMonthFrom(''); setMonthTo('');
     setSortBy('archived_at'); setSortOrder('desc'); setPage(1);
   };
 
@@ -158,8 +158,16 @@ export default function ArchivePage() {
     }
   }
 
-  const currentYear = new Date().getFullYear();
-  const years = Array.from({ length: 10 }, (_, i) => currentYear - i);
+  const months = useMemo(() => {
+    const list: { value: string; label: string }[] = [];
+    const now = new Date();
+    for (let i = 0; i < 48; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      list.push({ value, label: format(d, 'MMM yyyy') });
+    }
+    return list;
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -272,7 +280,7 @@ export default function ArchivePage() {
               const max = Math.max(...stats.byYear.map((b: any) => b.count));
               const pct = max > 0 ? Math.round((y.count / max) * 100) : 0;
               return (
-                <button key={y.year} onClick={() => { setYearFrom(String(y.year)); setYearTo(String(y.year)); setPage(1); }}
+                <button key={y.year} onClick={() => { setMonthFrom(`${y.year}-01`); setMonthTo(`${y.year}-12`); setPage(1); }}
                   className="flex flex-col items-center gap-1 group cursor-pointer">
                   <span className="text-xs font-semibold text-gray-600 dark:text-gray-400 group-hover:text-primary-600">{y.count}</span>
                   <div className="w-10 rounded-t-md bg-primary-200 dark:bg-primary-800/50 group-hover:bg-primary-400 transition-colors" style={{ height: `${Math.max(8, pct * 0.6)}px` }} />
@@ -319,17 +327,17 @@ export default function ArchivePage() {
             </select>
           )}
           <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-500 dark:text-gray-400">Year:</span>
-            <select value={yearFrom} onChange={(e) => { setYearFrom(e.target.value); setPage(1); }}
+            <span className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1"><Calendar size={12} /> Month:</span>
+            <select value={monthFrom} onChange={(e) => { setMonthFrom(e.target.value); setPage(1); }}
               className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
               <option value="">From</option>
-              {years.map(y => <option key={y} value={y}>{y}</option>)}
+              {months.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
             </select>
             <span className="text-gray-400">—</span>
-            <select value={yearTo} onChange={(e) => { setYearTo(e.target.value); setPage(1); }}
+            <select value={monthTo} onChange={(e) => { setMonthTo(e.target.value); setPage(1); }}
               className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
               <option value="">To</option>
-              {years.map(y => <option key={y} value={y}>{y}</option>)}
+              {months.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
             </select>
           </div>
           <div className="flex items-center gap-2">
