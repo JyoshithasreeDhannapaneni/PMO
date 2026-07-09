@@ -443,4 +443,5 @@ export interface HubspotSignalsData {
   configured: boolean;
   fetchedAt: string | null;
   customers: Record<string, HubspotCustomerDeals>;
+  error?: string;
 }

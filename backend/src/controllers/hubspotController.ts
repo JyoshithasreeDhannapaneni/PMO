@@ -21,7 +21,15 @@ export const hubspotController = {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
       logger.error(`[HubSpot] Failed to fetch deals: ${message}`);
-      res.status(500).json({ success: false, error: 'Failed to fetch HubSpot deals — verify the access token and its scopes (crm.objects.deals.read, crm.objects.companies.read)' });
+      res.json({
+        success: true,
+        data: {
+          configured: true,
+          fetchedAt: null,
+          customers: {},
+          error: 'HubSpot API request failed — verify the token has crm.objects.deals.read and crm.objects.companies.read scopes',
+        },
+      });
     }
   }),
 };

@@ -7,6 +7,7 @@ export const archiveController = {
     const result = await archiveService.getArchivedProjects({
       search: req.query.search as string,
       status: req.query.status as string,
+      tab: req.query.tab as string,
       migrationType: req.query.migrationType as string,
       projectManager: req.query.projectManager as string,
       yearFrom: req.query.yearFrom as string,

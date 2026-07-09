@@ -41,6 +41,7 @@ class ArchiveService {
   async getArchivedProjects(filters: {
     search?: string;
     status?: string;
+    tab?: string;
     migrationType?: string;
     projectManager?: string;
     yearFrom?: string;
@@ -58,7 +59,6 @@ class ArchiveService {
     const sortOrder = filters.sortOrder || 'desc';
 
     const conditions: string[] = [
-      `archived_at IS NOT NULL`,
       `status IN ('COMPLETED','CANCELLED','CLOSED','DECOMMISSIONED')`,
     ];
     const params: any[] = [];
@@ -68,7 +68,11 @@ class ArchiveService {
       const q = `%${filters.search}%`;
       params.push(q, q, q);
     }
-    if (filters.status) {
+    if (filters.tab === 'completed') {
+      conditions.push(`status = 'COMPLETED'`);
+    } else if (filters.tab === 'cancelled') {
+      conditions.push(`status IN ('CANCELLED','CLOSED','DECOMMISSIONED')`);
+    } else if (filters.status) {
       conditions.push(`status = ?`);
       params.push(filters.status.toUpperCase());
     }
