@@ -58,15 +58,17 @@ interface PhaseActivity {
 interface Phase { name: string; activities: PhaseActivity[]; }
 interface SignoffRow { item: string; role: string; confirmation: string; date: string; }
 interface SignoffSection { section: string; rows: SignoffRow[]; }
+interface LineItem { id: string; description: string; startDate: string; endDate: string; }
 
 interface PSEngagement {
   id: string; clientName: string; sowRefId: string; clientContact: string;
   clientContactEmail: string; cfPsLead: string; accountManager: string;
   startDate: string; endDate: string;
-  engagementType: string; workloads: string[]; deliveryModel: string;
+  engagementType?: string; workloads?: string[]; deliveryModel?: string;
   priority: string; sowStatus: string; engagementDescription: string;
   clientObjectives: string; successCriteria: string; assumptions: string;
-  outOfScope: string; phases: Phase[]; signoffs: SignoffSection[]; createdAt: string;
+  outOfScope: string; lineItems?: LineItem[];
+  phases: Phase[]; signoffs: SignoffSection[]; createdAt: string;
   createdBy?: string;
 }
 
@@ -169,11 +171,10 @@ function EngagementCard({ eng, onClick }: { eng: PSEngagement; onClick: () => vo
       </div>
 
       <div className="flex flex-wrap gap-1.5">
-        {eng.workloads.map(w => (
-          <span key={w} className="text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 font-medium">{w}</span>
-        ))}
-        {eng.deliveryModel && (
-          <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">{eng.deliveryModel}</span>
+        {(eng.lineItems || []).length > 0 && (
+          <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 font-medium">
+            {(eng.lineItems || []).length} line {(eng.lineItems || []).length === 1 ? 'item' : 'items'}
+          </span>
         )}
         {eng.priority && (
           <span className={cn('text-xs px-2 py-0.5 rounded-full font-medium', PRIORITY_STYLE[eng.priority] || 'bg-gray-100 text-gray-500')}>{eng.priority}</span>
@@ -182,7 +183,6 @@ function EngagementCard({ eng, onClick }: { eng: PSEngagement; onClick: () => vo
 
       <div className="text-xs text-slate-500 space-y-0.5">
         {eng.cfPsLead && <p><span className="text-slate-400">PS Lead:</span> {eng.cfPsLead}</p>}
-        {eng.engagementType && <p><span className="text-slate-400">Type:</span> {eng.engagementType}</p>}
         {(eng.startDate || eng.endDate) && (
           <p><span className="text-slate-400">Dates:</span> {eng.startDate || '—'} → {eng.endDate || '—'}</p>
         )}
@@ -218,22 +218,25 @@ function NewEngagementModal({ existingCount, onAdd, onClose, createdBy }: {
   const [form, setForm] = useState({
     clientName: '', clientContact: '', clientContactEmail: '', cfPsLead: '',
     accountManager: '', startDate: '', endDate: '',
-    engagementType: '', workloads: [] as string[],
-    deliveryModel: '', priority: '', sowStatus: 'Draft',
+    sowStatus: 'Draft', priority: '',
     engagementDescription: '', clientObjectives: '', successCriteria: '',
     assumptions: '', outOfScope: '',
+    lineItems: [] as LineItem[],
   });
 
   const set = (field: string, value: any) => setForm(f => ({ ...f, [field]: value }));
-  const toggleWorkload = (w: string) =>
-    set('workloads', form.workloads.includes(w) ? form.workloads.filter(x => x !== w) : [...form.workloads, w]);
+
+  const addLineItem = () => set('lineItems', [
+    ...form.lineItems,
+    { id: `li-${Date.now()}-${form.lineItems.length}`, description: '', startDate: '', endDate: '' },
+  ]);
+  const removeLineItem = (idx: number) => set('lineItems', form.lineItems.filter((_, i) => i !== idx));
+  const updateLineItem = (idx: number, field: 'description' | 'startDate' | 'endDate', value: string) =>
+    set('lineItems', form.lineItems.map((item, i) => i === idx ? { ...item, [field]: value } : item));
 
   const isValid =
-    form.clientName.trim() && form.clientContact.trim() && form.cfPsLead.trim() &&
-    form.accountManager.trim() && form.startDate && form.endDate &&
-    form.engagementType && form.deliveryModel && form.priority && form.workloads.length > 0 &&
-    form.engagementDescription.trim() && form.clientObjectives.trim() &&
-    form.successCriteria.trim() && form.assumptions.trim() && form.outOfScope.trim();
+    form.clientName.trim() && form.cfPsLead.trim() &&
+    form.accountManager.trim() && form.startDate && form.endDate;
 
   const submit = async () => {
     const eng: PSEngagement = {
@@ -248,6 +251,7 @@ function NewEngagementModal({ existingCount, onAdd, onClose, createdBy }: {
     await onAdd(eng);
     onClose();
   };
+
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
@@ -274,11 +278,7 @@ function NewEngagementModal({ existingCount, onAdd, onClose, createdBy }: {
                 <input value={form.clientName} onChange={e => set('clientName', e.target.value)} placeholder="Legal entity name as on contract" className={INPUT_CLS} />
               </div>
               <div>
-                <label className={LABEL_CLS}>Client Primary Contact *</label>
-                <input value={form.clientContact} onChange={e => set('clientContact', e.target.value)} placeholder="Full name and title" className={INPUT_CLS} />
-              </div>
-              <div>
-                <label className={LABEL_CLS}>Client Contact Email *</label>
+                <label className={LABEL_CLS}>Client Contact Email</label>
                 <input value={form.clientContactEmail} onChange={e => set('clientContactEmail', e.target.value)} placeholder="email@client.com" type="email" className={INPUT_CLS} />
               </div>
               <div>
@@ -300,55 +300,55 @@ function NewEngagementModal({ existingCount, onAdd, onClose, createdBy }: {
             </div>
           </div>
 
-          {/* Section 2 */}
+          {/* Section 2 — Line Items */}
           <div>
             <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-4 pb-2 border-b border-gray-100">
-              2 — Engagement type &amp; workload classification
+              2 — Line items
             </h3>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className={LABEL_CLS}>Engagement Type *</label>
-                <select value={form.engagementType} onChange={e => set('engagementType', e.target.value)} className={SELECT_CLS}>
-                  <option value="">Select type…</option>
-                  {ENGAGEMENT_TYPES.map(t => <option key={t}>{t}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className={LABEL_CLS}>Delivery Model *</label>
-                <select value={form.deliveryModel} onChange={e => set('deliveryModel', e.target.value)} className={SELECT_CLS}>
-                  <option value="">Select model…</option>
-                  {DELIVERY_MODELS.map(m => <option key={m}>{m}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className={LABEL_CLS}>Priority *</label>
-                <select value={form.priority} onChange={e => set('priority', e.target.value)} className={SELECT_CLS}>
-                  <option value="">Select priority…</option>
-                  {PRIORITIES.map(p => <option key={p}>{p}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className={LABEL_CLS}>SOW Status</label>
-                <select value={form.sowStatus} onChange={e => set('sowStatus', e.target.value)} className={SELECT_CLS}>
-                  {SOW_STATUSES.map(s => <option key={s}>{s}</option>)}
-                </select>
-              </div>
-              <div className="col-span-2">
-                <label className={LABEL_CLS}>Workloads in Scope *</label>
-                <div className="flex gap-5">
-                  {WORKLOADS.map(w => (
-                    <label key={w} className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={form.workloads.includes(w)}
-                        onChange={() => toggleWorkload(w)}
-                        className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                      />
-                      <span className="text-sm text-slate-700">{w}</span>
-                    </label>
-                  ))}
+            <div className="space-y-2">
+              {form.lineItems.length > 0 && (
+                <div className="flex gap-2 mb-1 pr-7">
+                  <span className="flex-1 text-xs font-semibold text-slate-400 uppercase tracking-wide">Description</span>
+                  <span className="w-32 shrink-0 text-xs font-semibold text-slate-400 uppercase tracking-wide">Start date</span>
+                  <span className="w-32 shrink-0 text-xs font-semibold text-slate-400 uppercase tracking-wide">End date</span>
                 </div>
-              </div>
+              )}
+              {form.lineItems.map((item, idx) => (
+                <div key={item.id} className="flex gap-2 items-center">
+                  <input
+                    value={item.description}
+                    onChange={e => updateLineItem(idx, 'description', e.target.value)}
+                    placeholder="Item description…"
+                    className={cn(INPUT_CLS, 'flex-1')}
+                  />
+                  <input
+                    type="date"
+                    value={item.startDate}
+                    onChange={e => updateLineItem(idx, 'startDate', e.target.value)}
+                    className={cn(INPUT_CLS, 'w-32 shrink-0')}
+                  />
+                  <input
+                    type="date"
+                    value={item.endDate}
+                    onChange={e => updateLineItem(idx, 'endDate', e.target.value)}
+                    className={cn(INPUT_CLS, 'w-32 shrink-0')}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeLineItem(idx)}
+                    className="w-5 shrink-0 text-gray-300 hover:text-red-500 transition-colors flex items-center justify-center"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={addLineItem}
+                className="flex items-center gap-1.5 text-xs text-indigo-600 hover:text-indigo-800 font-medium transition-colors mt-2"
+              >
+                <Plus className="w-3.5 h-3.5" /> Add line item
+              </button>
             </div>
           </div>
 
@@ -359,19 +359,19 @@ function NewEngagementModal({ existingCount, onAdd, onClose, createdBy }: {
             </h3>
             <div className="space-y-4">
               <div>
-                <label className={LABEL_CLS}>Engagement Description *</label>
+                <label className={LABEL_CLS}>Engagement Description</label>
                 <textarea rows={3} value={form.engagementDescription} onChange={e => set('engagementDescription', e.target.value)} placeholder="Describe what CloudFuze Professional Services will deliver…" className={TEXTAREA_CLS} />
               </div>
               <div>
-                <label className={LABEL_CLS}>Client Objectives *</label>
+                <label className={LABEL_CLS}>Client Objectives</label>
                 <textarea rows={2} value={form.clientObjectives} onChange={e => set('clientObjectives', e.target.value)} placeholder="What does the client want to achieve? Define measurable outcomes…" className={TEXTAREA_CLS} />
               </div>
               <div>
-                <label className={LABEL_CLS}>Success Criteria *</label>
+                <label className={LABEL_CLS}>Success Criteria</label>
                 <textarea rows={2} value={form.successCriteria} onChange={e => set('successCriteria', e.target.value)} placeholder="How will success be measured? List specific, verifiable criteria…" className={TEXTAREA_CLS} />
               </div>
               <div>
-                <label className={LABEL_CLS}>Assumptions *</label>
+                <label className={LABEL_CLS}>Assumptions</label>
                 <textarea rows={2} value={form.assumptions} onChange={e => set('assumptions', e.target.value)} placeholder="What is assumed to be true? Platform readiness, access, client resources…" className={TEXTAREA_CLS} />
               </div>
             </div>
@@ -383,7 +383,7 @@ function NewEngagementModal({ existingCount, onAdd, onClose, createdBy }: {
               4 — Exclusions &amp; out of scope
             </h3>
             <div>
-              <label className={LABEL_CLS}>Out of Scope Items *</label>
+              <label className={LABEL_CLS}>Out of Scope Items</label>
               <textarea rows={3} value={form.outOfScope} onChange={e => set('outOfScope', e.target.value)} placeholder="List items, activities, or deliverables explicitly NOT included in this engagement…" className={TEXTAREA_CLS} />
             </div>
           </div>
@@ -443,61 +443,63 @@ function SowTab({ eng, onChange }: { eng: PSEngagement; onChange: (field: string
               />
             </div>
           ))}
+          <div>
+            <label className={LABEL_CLS}>SOW Status</label>
+            <select value={eng.sowStatus || 'Draft'} onChange={e => onChange('sowStatus', e.target.value)} className={SELECT_CLS}>
+              {SOW_STATUSES.map(s => <option key={s}>{s}</option>)}
+            </select>
+          </div>
         </div>
       </section>
 
       <section>
         <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-4 pb-2 border-b border-gray-100">
-          2 — Engagement type &amp; workload classification
+          2 — Line items
         </h3>
-        <div className="grid grid-cols-2 gap-x-8 gap-y-4">
-          <div>
-            <label className={LABEL_CLS}>Engagement Type *</label>
-            <select value={eng.engagementType} onChange={e => onChange('engagementType', e.target.value)} className={SELECT_CLS}>
-              <option value="">Select type…</option>
-              {ENGAGEMENT_TYPES.map(t => <option key={t}>{t}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className={LABEL_CLS}>Delivery Model *</label>
-            <select value={eng.deliveryModel} onChange={e => onChange('deliveryModel', e.target.value)} className={SELECT_CLS}>
-              <option value="">Select model…</option>
-              {DELIVERY_MODELS.map(m => <option key={m}>{m}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className={LABEL_CLS}>Priority *</label>
-            <select value={eng.priority} onChange={e => onChange('priority', e.target.value)} className={SELECT_CLS}>
-              <option value="">Select priority…</option>
-              {PRIORITIES.map(p => <option key={p}>{p}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className={LABEL_CLS}>SOW Status</label>
-            <select value={eng.sowStatus} onChange={e => onChange('sowStatus', e.target.value)} className={SELECT_CLS}>
-              {SOW_STATUSES.map(s => <option key={s}>{s}</option>)}
-            </select>
-          </div>
-          <div className="col-span-2">
-            <label className={LABEL_CLS}>Workloads in Scope *</label>
-            <div className="flex gap-5">
-              {WORKLOADS.map(w => (
-                <label key={w} className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={eng.workloads.includes(w)}
-                    onChange={() =>
-                      onChange('workloads', eng.workloads.includes(w)
-                        ? eng.workloads.filter(x => x !== w)
-                        : [...eng.workloads, w])
-                    }
-                    className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                  />
-                  <span className="text-sm text-slate-700">{w}</span>
-                </label>
-              ))}
+        <div className="space-y-2">
+          {(eng.lineItems || []).length > 0 && (
+            <div className="flex gap-2 mb-1 pr-7">
+              <span className="flex-1 text-xs font-semibold text-slate-400 uppercase tracking-wide">Description</span>
+              <span className="w-32 shrink-0 text-xs font-semibold text-slate-400 uppercase tracking-wide">Start date</span>
+              <span className="w-32 shrink-0 text-xs font-semibold text-slate-400 uppercase tracking-wide">End date</span>
             </div>
-          </div>
+          )}
+          {(eng.lineItems || []).map((item: LineItem, idx: number) => (
+            <div key={item.id} className="flex gap-2 items-center">
+              <input
+                value={item.description}
+                onChange={e => onChange('lineItems', (eng.lineItems || []).map((li: LineItem, i: number) => i === idx ? { ...li, description: e.target.value } : li))}
+                placeholder="Item description…"
+                className={cn(INPUT_CLS, 'flex-1')}
+              />
+              <input
+                type="date"
+                value={item.startDate}
+                onChange={e => onChange('lineItems', (eng.lineItems || []).map((li: LineItem, i: number) => i === idx ? { ...li, startDate: e.target.value } : li))}
+                className={cn(INPUT_CLS, 'w-32 shrink-0')}
+              />
+              <input
+                type="date"
+                value={item.endDate}
+                onChange={e => onChange('lineItems', (eng.lineItems || []).map((li: LineItem, i: number) => i === idx ? { ...li, endDate: e.target.value } : li))}
+                className={cn(INPUT_CLS, 'w-32 shrink-0')}
+              />
+              <button
+                type="button"
+                onClick={() => onChange('lineItems', (eng.lineItems || []).filter((_: LineItem, i: number) => i !== idx))}
+                className="w-5 shrink-0 text-gray-300 hover:text-red-500 transition-colors flex items-center justify-center"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ))}
+          <button
+            type="button"
+            onClick={() => onChange('lineItems', [...(eng.lineItems || []), { id: `li-${Date.now()}`, description: '', startDate: '', endDate: '' }])}
+            className="flex items-center gap-1.5 text-xs text-indigo-600 hover:text-indigo-800 font-medium transition-colors mt-2"
+          >
+            <Plus className="w-3.5 h-3.5" /> Add line item
+          </button>
         </div>
       </section>
 
@@ -531,7 +533,7 @@ function SowTab({ eng, onChange }: { eng: PSEngagement; onChange: (field: string
           4 — Exclusions &amp; out of scope
         </h3>
         <div>
-          <label className={LABEL_CLS}>Out of Scope Items *</label>
+          <label className={LABEL_CLS}>Out of Scope Items</label>
           <textarea
             rows={4}
             value={eng.outOfScope}
@@ -781,7 +783,7 @@ function PSDetailView({ eng, onUpdate, onBack, onSave, saved, canEdit, onDelete 
           <span className="text-slate-300">|</span>
           <div>
             <h1 className="text-xl font-bold text-slate-800">{eng.clientName}</h1>
-            <p className="text-xs text-slate-400 font-mono mt-0.5">{eng.sowRefId} · {eng.engagementType || 'Professional Services'}</p>
+            <p className="text-xs text-slate-400 font-mono mt-0.5">{eng.sowRefId} · Professional Services</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -1150,7 +1152,7 @@ export default function ProfessionalServicesPage() {
                   <thead>
                     <tr className="border-b border-slate-200 bg-slate-50">
                       <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500">Client / SOW Ref</th>
-                      <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500">Engagement Type</th>
+                      <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500">Line Items</th>
                       <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500">PS Lead / AM</th>
                       <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500">Dates</th>
                       <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500">Priority</th>
@@ -1175,12 +1177,13 @@ export default function ProfessionalServicesPage() {
                             <p className="text-xs text-slate-400 font-mono mt-0.5">{eng.sowRefId}</p>
                           </td>
                           <td className="py-3 px-4">
-                            <p className="text-sm text-slate-600">{eng.engagementType || '—'}</p>
-                            <div className="flex flex-wrap gap-1 mt-1">
-                              {eng.workloads.map(w => (
-                                <span key={w} className="text-xs px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600 font-medium">{w}</span>
-                              ))}
-                            </div>
+                            {(eng.lineItems || []).length > 0 ? (
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 font-medium">
+                                {(eng.lineItems || []).length} {(eng.lineItems || []).length === 1 ? 'item' : 'items'}
+                              </span>
+                            ) : (
+                              <span className="text-xs text-slate-400">—</span>
+                            )}
                           </td>
                           <td className="py-3 px-4">
                             {eng.cfPsLead && <p className="text-sm text-slate-600">{eng.cfPsLead}</p>}
