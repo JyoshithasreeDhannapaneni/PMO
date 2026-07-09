@@ -44,8 +44,8 @@ class ArchiveService {
     tab?: string;
     migrationType?: string;
     projectManager?: string;
-    yearFrom?: string;
-    yearTo?: string;
+    monthFrom?: string;
+    monthTo?: string;
     page?: number;
     limit?: number;
     sortBy?: string;
@@ -84,13 +84,13 @@ class ArchiveService {
       conditions.push(`project_manager = ?`);
       params.push(filters.projectManager);
     }
-    if (filters.yearFrom) {
-      conditions.push(`EXTRACT(YEAR FROM COALESCE(archived_at, planned_end)) >= ?`);
-      params.push(parseInt(filters.yearFrom));
+    if (filters.monthFrom) {
+      conditions.push(`TO_CHAR(COALESCE(archived_at, planned_end), 'YYYY-MM') >= ?`);
+      params.push(filters.monthFrom);
     }
-    if (filters.yearTo) {
-      conditions.push(`EXTRACT(YEAR FROM COALESCE(archived_at, planned_end)) <= ?`);
-      params.push(parseInt(filters.yearTo));
+    if (filters.monthTo) {
+      conditions.push(`TO_CHAR(COALESCE(archived_at, planned_end), 'YYYY-MM') <= ?`);
+      params.push(filters.monthTo);
     }
 
     const where = `WHERE ${conditions.join(' AND ')}`;
@@ -128,7 +128,7 @@ class ArchiveService {
 
   async getArchiveStats() {
     await this.ensureColumns();
-    const ARCH_WHERE = `archived_at IS NOT NULL AND status IN ('COMPLETED','CANCELLED','CLOSED','DECOMMISSIONED')`;
+    const ARCH_WHERE = `status IN ('COMPLETED','CANCELLED','CLOSED','DECOMMISSIONED')`;
     const [byStatus, byMigration, byYear, totals] = await Promise.all([
       query(
         `SELECT status, COUNT(*) as count FROM projects

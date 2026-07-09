@@ -305,21 +305,21 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
     }
   };
 
-  const SortHeader = ({ field, label }: { field: SortField; label: string }) => (
-    <th 
-      className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+  const SortHeader = ({ field, label, className: extraCls }: { field: SortField; label: string; className?: string }) => (
+    <th
+      className={`px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none${extraCls ? ` ${extraCls}` : ''}`}
       onClick={() => handleSort(field)}
     >
       <div className="flex items-center gap-1">
         {label}
         <div className="flex flex-col">
-          <ChevronUp 
-            size={12} 
-            className={sortField === field && sortOrder === 'asc' ? 'text-primary-600' : 'text-gray-300'} 
+          <ChevronUp
+            size={12}
+            className={sortField === field && sortOrder === 'asc' ? 'text-primary-600' : 'text-gray-300'}
           />
-          <ChevronDown 
-            size={12} 
-            className={sortField === field && sortOrder === 'desc' ? 'text-primary-600' : 'text-gray-300'} 
+          <ChevronDown
+            size={12}
+            className={sortField === field && sortOrder === 'desc' ? 'text-primary-600' : 'text-gray-300'}
             style={{ marginTop: -4 }}
           />
         </div>
@@ -529,7 +529,7 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
         <table className="w-full">
           <thead className="bg-blue-50/60 border-b border-gray-200 sticky top-0 z-10">
             <tr>
-              <SortHeader field="name" label="Project Name" />
+              <SortHeader field="name" label="Project Name" className="sticky left-0 z-30 bg-blue-50/60 border-r border-gray-200 shadow-[2px_0_4px_-1px_rgba(0,0,0,0.08)]" />
               <SortHeader field="projectManager" label="Project Manager" />
               <SortHeader field="accountManager" label="Account Manager" />
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap">C-SAT</th>
@@ -574,13 +574,13 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
           </thead>
           <tbody className="divide-y divide-gray-200">
             {paginatedProjects.map((project) => (
-              <tr 
-                key={project.id} 
-                className="hover:bg-gray-50 transition-colors"
+              <tr
+                key={project.id}
+                className="hover:bg-gray-50 transition-colors group"
               >
-                {/* Project Name */}
-                <td className="px-4 py-3">
-                  <div 
+                {/* Project Name — frozen column */}
+                <td className="px-4 py-3 sticky left-0 z-10 bg-white group-hover:bg-gray-50 transition-colors border-r border-gray-200 shadow-[2px_0_4px_-1px_rgba(0,0,0,0.06)]">
+                  <div
                     className="cursor-pointer"
                     onClick={() => router.push(`/projects/${project.id}`)}
                   >
