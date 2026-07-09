@@ -21,8 +21,6 @@ const allNavigation = [
   { name: 'Migration Validation', href: '/migration-runbooks',     icon: BookOpen,        adminOnly: false },
   { name: 'Overage Projects',   href: '/overage-projects',       icon: DollarSign,      adminOnly: false },
   { name: 'Escalated Projects', href: '/escalation-projects',    icon: Siren,           adminOnly: false },
-  { name: 'Managers & Goals',   href: '/managers',               icon: Users,   badge: 'goals', adminOnly: false },
-  { name: 'Manager Dashboard',  href: '/manager-dashboard',      icon: LayoutGrid,               adminOnly: true },
   { name: 'Pre-sales',          href: '/poc-projects',           icon: FlaskConical,    adminOnly: false },
   { name: 'Account Manager View', href: '/account-manager',     icon: Building2,       adminOnly: false },
   { name: 'Customer Success',   href: '/customer-success',       icon: HeartHandshake,  adminOnly: false },
@@ -30,6 +28,8 @@ const allNavigation = [
   { name: 'Server Notifications', href: '/server-alerts',         icon: Bell,            adminOnly: false },
   { name: 'Templates',          href: '/templates',              icon: Layers,          adminOnly: false },
   { name: 'Case Studies',       href: '/case-studies',           icon: FileText,        adminOnly: false },
+  { name: 'Reviews',            href: '/managers',               icon: Users,   badge: 'goals', adminOnly: false },
+  { name: 'Manager Dashboard',  href: '/manager-dashboard',      icon: LayoutGrid,               adminOnly: true },
   {
     name: 'Reports', href: '#', icon: BarChart2, adminOnly: false,
     children: [

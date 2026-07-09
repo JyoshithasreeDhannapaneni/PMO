@@ -46,9 +46,8 @@ export default function ArchivePage() {
   const isAdmin = user?.role === 'ADMIN';
   const queryClient = useQueryClient();
 
-  // Filters — non-admins are auto-scoped to their own name
+  const [tab, setTab]                     = useState<'completed' | 'cancelled'>('completed');
   const [search, setSearch]               = useState('');
-  const [statusFilter, setStatusFilter]   = useState('');
   const [managerFilter, setManagerFilter] = useState('');
   const [yearFrom, setYearFrom]           = useState('');
   const [yearTo, setYearTo]               = useState('');
@@ -61,8 +60,8 @@ export default function ArchivePage() {
 
   const queryParams = useMemo(() => {
     const p = new URLSearchParams();
+    p.set('tab', tab);
     if (search)        p.set('search', search);
-    if (statusFilter)  p.set('status', statusFilter);
     if (managerFilter) p.set('projectManager', managerFilter);
     if (yearFrom)     p.set('yearFrom', yearFrom);
     if (yearTo)       p.set('yearTo', yearTo);
@@ -71,7 +70,7 @@ export default function ArchivePage() {
     p.set('page', String(page));
     p.set('limit', String(PER_PAGE));
     return p.toString();
-  }, [search, statusFilter, managerFilter, yearFrom, yearTo, sortBy, sortOrder, page]);
+  }, [tab, search, managerFilter, yearFrom, yearTo, sortBy, sortOrder, page]);
 
   const { data: archiveData, isLoading, refetch } = useQuery({
     queryKey: ['archive', queryParams],
@@ -102,7 +101,7 @@ export default function ArchivePage() {
   const managers = useMemo(() => [...new Set(projects.map((p) => p.projectManager).filter(Boolean))], [projects]);
 
   const resetFilters = () => {
-    setSearch(''); setStatusFilter('');
+    setSearch('');
     setManagerFilter(''); setYearFrom(''); setYearTo('');
     setSortBy('archived_at'); setSortOrder('desc'); setPage(1);
   };
@@ -285,6 +284,24 @@ export default function ArchivePage() {
         </Card>
       )}
 
+      {/* Tab Toggle */}
+      <div className="flex gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-xl w-fit">
+        <button
+          onClick={() => { setTab('completed'); setPage(1); }}
+          className={`flex items-center gap-2 px-5 py-2 text-sm font-medium rounded-lg transition-colors ${tab === 'completed' ? 'bg-white dark:bg-gray-700 text-green-600 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+        >
+          <CheckCircle size={14} /> Completed
+          {stats && <span className={`ml-1 px-1.5 py-0.5 rounded-full text-xs font-bold ${tab === 'completed' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'}`}>{stats.totals.completed || 0}</span>}
+        </button>
+        <button
+          onClick={() => { setTab('cancelled'); setPage(1); }}
+          className={`flex items-center gap-2 px-5 py-2 text-sm font-medium rounded-lg transition-colors ${tab === 'cancelled' ? 'bg-white dark:bg-gray-700 text-red-600 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+        >
+          <XCircle size={14} /> Cancelled
+          {stats && <span className={`ml-1 px-1.5 py-0.5 rounded-full text-xs font-bold ${tab === 'cancelled' ? 'bg-red-100 text-red-700' : 'bg-gray-200 text-gray-600'}`}>{(stats.totals.cancelled || 0) + (stats.totals.closed || 0) + (stats.totals.decommissioned || 0)}</span>}
+        </button>
+      </div>
+
       {/* Filters */}
       <Card>
         <div className="flex flex-wrap gap-3 items-center">
@@ -337,7 +354,7 @@ export default function ArchivePage() {
       <Card>
         <div className="flex items-center justify-between mb-3">
           <p className="text-sm text-gray-600 dark:text-gray-400">
-            {total} archived project{total !== 1 ? 's' : ''} found
+            {total} {tab === 'completed' ? 'completed' : 'cancelled'} project{total !== 1 ? 's' : ''} found
           </p>
         </div>
         {isLoading ? (
@@ -346,9 +363,13 @@ export default function ArchivePage() {
           </div>
         ) : projects.length === 0 ? (
           <div className="flex flex-col items-center py-16 text-gray-400 gap-3">
-            <Archive size={40} className="opacity-30" />
-            <p className="text-sm">No archived projects found</p>
-            <p className="text-xs text-gray-400">Projects are automatically archived when their status changes to Completed, Cancelled, Closed, or Decommissioned</p>
+            {tab === 'completed' ? <CheckCircle size={40} className="opacity-30 text-green-500" /> : <XCircle size={40} className="opacity-30 text-red-500" />}
+            <p className="text-sm">No {tab === 'completed' ? 'completed' : 'cancelled'} projects found</p>
+            <p className="text-xs text-gray-400">
+              {tab === 'completed'
+                ? 'Projects move here automatically when their phase is set to Completed'
+                : 'Projects move here when their status is set to Cancelled, Closed, or Decommissioned'}
+            </p>
           </div>
         ) : (
           <>

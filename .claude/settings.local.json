@@ -125,7 +125,8 @@
       "Bash(tasklist //FI \"PID eq 19292\")",
       "Bash(taskkill //F //PID 19292)",
       "Bash(findstr \":3001 \")",
-      "Bash(taskkill //F //PID 47972)"
+      "Bash(taskkill //F //PID 47972)",
+      "Bash(grep -v \"//\\\\|logger\\\\|console\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\BharathTummaganti\\OneDrive - CloudFuze, Inc\\Documents\\PMO\\PMO",

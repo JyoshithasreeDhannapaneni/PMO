@@ -900,7 +900,15 @@ export default function CustomerSuccessPage() {
           <Zap className="w-3.5 h-3.5 flex-shrink-0" />
           <span>
             <strong>HubSpot not connected</strong> — add <code className="font-mono">HUBSPOT_ACCESS_TOKEN</code> to
-            backend/.env to show live upsell &amp; cross-sell deals on each account.
+            backend/.env, then restart the backend server to show live upsell &amp; cross-sell deals.
+          </span>
+        </div>
+      )}
+      {hubspotData && hubspotData.configured && hubspotData.error && (
+        <div className="flex items-center gap-3 p-3 bg-yellow-50 border border-yellow-200 rounded-xl text-xs text-yellow-800">
+          <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+          <span>
+            <strong>HubSpot connected but data fetch failed</strong> — {hubspotData.error}
           </span>
         </div>
       )}
