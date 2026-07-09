@@ -432,6 +432,18 @@ export const customerSuccessApi = {
   },
 };
 
+// HubSpot API — upsell / cross-sell deal signals
+export const hubspotApi = {
+  getSignals: async (refresh?: boolean) => {
+    const { data } = await api.get('/hubspot/signals', { params: refresh ? { refresh: 'true' } : undefined });
+    return data;
+  },
+  getStatus: async () => {
+    const { data } = await api.get('/hubspot/status');
+    return data;
+  },
+};
+
 // Projects by migration type
 export const migrationTypeApi = {
   getProjectsByType: async (type: string) => {
@@ -497,6 +509,26 @@ export const templateCombinationsApi = {
     await api.delete(`/template-combinations/documents/${docId}`);
   },
   getDownloadUrl: (docId: string) => `/api/template-combinations/documents/${docId}/download`,
+};
+
+// Professional Services Engagements API
+export const psEngagementsApi = {
+  getAll: async () => {
+    const { data } = await api.get('/ps-engagements');
+    return data.data as any[];
+  },
+  create: async (engagement: any) => {
+    const { data } = await api.post('/ps-engagements', engagement);
+    return data;
+  },
+  update: async (id: string, engagement: any) => {
+    const { data } = await api.put(`/ps-engagements/${id}`, engagement);
+    return data;
+  },
+  remove: async (id: string) => {
+    const { data } = await api.delete(`/ps-engagements/${id}`);
+    return data;
+  },
 };
 
 export default api;

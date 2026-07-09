@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
+import { usePsEngagements, useCreatePsEngagement, useUpdatePsEngagement, useDeletePsEngagement } from '@/hooks/useProjects';
 import {
   Briefcase, Plus, ChevronLeft, ChevronDown, ChevronRight,
   FileText, Layers, ClipboardCheck, X, Search, SlidersHorizontal, Trash2,
@@ -207,7 +208,7 @@ function EngagementCard({ eng, onClick }: { eng: PSEngagement; onClick: () => vo
 
 function NewEngagementModal({ existingCount, onAdd, onClose, createdBy }: {
   existingCount: number;
-  onAdd: (eng: PSEngagement) => void;
+  onAdd: (eng: PSEngagement) => Promise<void>;
   onClose: () => void;
   createdBy: string;
 }) {
@@ -234,7 +235,7 @@ function NewEngagementModal({ existingCount, onAdd, onClose, createdBy }: {
     form.engagementDescription.trim() && form.clientObjectives.trim() &&
     form.successCriteria.trim() && form.assumptions.trim() && form.outOfScope.trim();
 
-  const submit = () => {
+  const submit = async () => {
     const eng: PSEngagement = {
       id: `ps-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
       sowRefId,
@@ -244,7 +245,7 @@ function NewEngagementModal({ existingCount, onAdd, onClose, createdBy }: {
       signoffs: defaultSignoffs(),
       createdAt: new Date().toISOString(),
     };
-    onAdd(eng);
+    await onAdd(eng);
     onClose();
   };
 
@@ -851,23 +852,20 @@ function PSDetailView({ eng, onUpdate, onBack, onSave, saved, canEdit, onDelete 
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 
-const LS_KEY = 'pmo_ps_v1';
-
-function loadEngagements(): PSEngagement[] {
-  try {
-    const raw = typeof window !== 'undefined' ? localStorage.getItem(LS_KEY) : null;
-    return raw ? JSON.parse(raw) : [];
-  } catch { return []; }
-}
-
 export default function ProfessionalServicesPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'ADMIN';
+  const isViewer = user?.role === 'VIEWER';
   const canEditEngagement = (eng: PSEngagement) =>
-    isAdmin || (!!eng.createdBy && eng.createdBy === user?.name);
+    !isViewer && (isAdmin || (!!eng.createdBy && eng.createdBy === user?.name));
 
-  const [engagements, setEngagements] = useState<PSEngagement[]>(() => loadEngagements());
+  const { data: engagements = [], isLoading } = usePsEngagements();
+  const createMutation = useCreatePsEngagement();
+  const updateMutation = useUpdatePsEngagement();
+  const deleteMutation = useDeletePsEngagement();
+
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [localEdit, setLocalEdit] = useState<PSEngagement | null>(null);
   const [showNewModal, setShowNewModal] = useState(false);
   const [saved, setSaved] = useState(false);
   const [searchFilter, setSearchFilter] = useState('');
@@ -875,8 +873,35 @@ export default function ProfessionalServicesPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
   const [showFilters, setShowFilters] = useState(true);
+  const [migrating, setMigrating] = useState(false);
 
-  const selected = engagements.find(e => e.id === selectedId) ?? null;
+  const localStorageCount = (() => {
+    try {
+      const raw = typeof window !== 'undefined' ? localStorage.getItem('pmo_ps_v1') : null;
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed.length : 0;
+    } catch { return 0; }
+  })();
+
+  const migrateFromLocalStorage = async () => {
+    setMigrating(true);
+    try {
+      const raw = localStorage.getItem('pmo_ps_v1');
+      const items: PSEngagement[] = raw ? JSON.parse(raw) : [];
+      for (const eng of items) {
+        await createMutation.mutateAsync(eng);
+      }
+      localStorage.removeItem('pmo_ps_v1');
+    } finally {
+      setMigrating(false);
+    }
+  };
+
+  const openEngagement = (id: string) => {
+    const eng = engagements.find(e => e.id === id);
+    setSelectedId(id);
+    setLocalEdit(eng ? { ...eng } : null);
+  };
 
   const filteredEngagements = engagements.filter(eng => {
     const s = searchFilter.toLowerCase();
@@ -890,41 +915,39 @@ export default function ProfessionalServicesPage() {
   const activeFilterCount = [searchFilter, engTypeFilter, statusFilter, priorityFilter].filter(Boolean).length;
   const clearFilters = () => { setSearchFilter(''); setEngTypeFilter(''); setStatusFilter(''); setPriorityFilter(''); };
 
-  const addEngagement = (eng: PSEngagement) => {
-    const updated = [...engagements, eng];
-    setEngagements(updated);
-    localStorage.setItem(LS_KEY, JSON.stringify(updated));
+  const addEngagement = async (eng: PSEngagement) => {
+    await createMutation.mutateAsync(eng);
+    setLocalEdit({ ...eng });
     setSelectedId(eng.id);
   };
 
   const updateEngagement = (field: string, value: any) => {
-    if (!selectedId) return;
-    setEngagements(prev => prev.map(e => e.id === selectedId ? { ...e, [field]: value } : e));
+    setLocalEdit(prev => prev ? { ...prev, [field]: value } : null);
   };
 
-  const handleSave = () => {
-    localStorage.setItem(LS_KEY, JSON.stringify(engagements));
+  const handleSave = async () => {
+    if (!localEdit) return;
+    await updateMutation.mutateAsync({ id: localEdit.id, data: localEdit });
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
 
-  const deleteEngagement = (id: string) => {
-    const updated = engagements.filter(e => e.id !== id);
-    setEngagements(updated);
-    localStorage.setItem(LS_KEY, JSON.stringify(updated));
+  const deleteEngagement = async (id: string) => {
+    await deleteMutation.mutateAsync(id);
     setSelectedId(null);
+    setLocalEdit(null);
   };
 
-  if (selected) {
+  if (selectedId && localEdit) {
     return (
       <PSDetailView
-        eng={selected}
+        eng={localEdit}
         onUpdate={updateEngagement}
-        onBack={() => setSelectedId(null)}
+        onBack={() => { setSelectedId(null); setLocalEdit(null); }}
         onSave={handleSave}
         saved={saved}
-        canEdit={canEditEngagement(selected)}
-        onDelete={() => deleteEngagement(selected.id)}
+        canEdit={canEditEngagement(localEdit)}
+        onDelete={() => deleteEngagement(localEdit.id)}
       />
     );
   }
@@ -936,16 +959,36 @@ export default function ProfessionalServicesPage() {
           <h1 className="text-xl font-bold text-slate-800">Professional Services</h1>
           <p className="text-sm text-slate-500 mt-0.5">SOW management, scope tracking, and sign-off register</p>
         </div>
-        <button
-          onClick={() => setShowNewModal(true)}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          New Engagement
-        </button>
+        {!isViewer && (
+          <button
+            onClick={() => setShowNewModal(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            New Engagement
+          </button>
+        )}
       </div>
 
-      {engagements.length === 0 ? (
+      {localStorageCount > 0 && (
+        <div className="flex items-center justify-between gap-4 bg-amber-50 border border-amber-200 rounded-xl px-5 py-3">
+          <p className="text-sm text-amber-800">
+            <span className="font-semibold">{localStorageCount} engagement{localStorageCount !== 1 ? 's' : ''} found in local browser storage</span> from before the database migration.
+            Click to import them so all users can see them.
+          </p>
+          <button
+            onClick={migrateFromLocalStorage}
+            disabled={migrating}
+            className="flex-shrink-0 px-4 py-1.5 rounded-lg bg-amber-600 text-white text-xs font-medium hover:bg-amber-700 disabled:opacity-50 transition-colors"
+          >
+            {migrating ? 'Importing…' : 'Import to database'}
+          </button>
+        </div>
+      )}
+
+      {isLoading ? (
+        <div className="flex items-center justify-center py-24 text-slate-400 text-sm">Loading engagements…</div>
+      ) : engagements.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-24 text-center">
           <div className="w-16 h-16 rounded-2xl bg-indigo-50 flex items-center justify-center mb-4">
             <Briefcase className="w-8 h-8 text-indigo-300" />
@@ -1124,7 +1167,7 @@ export default function ProfessionalServicesPage() {
                       return (
                         <tr
                           key={eng.id}
-                          onClick={() => setSelectedId(eng.id)}
+                          onClick={() => openEngagement(eng.id)}
                           className="border-b border-slate-100 last:border-0 hover:bg-indigo-50/30 cursor-pointer transition-colors"
                         >
                           <td className="py-3 px-4">

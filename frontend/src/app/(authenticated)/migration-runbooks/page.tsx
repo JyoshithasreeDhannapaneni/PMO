@@ -11,6 +11,7 @@ import {
   ArrowLeft, FolderOpen, User, Calendar, Layers, Search, SlidersHorizontal, X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { StatusBadge } from '@/components/ui/StatusBadge';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -860,14 +861,7 @@ export default function MigrationValidationPage() {
             )}
           </div>
           <div className="flex flex-col items-end gap-1 flex-shrink-0">
-            <span className={cn(
-              'text-[10px] px-2 py-0.5 rounded-full font-medium',
-              project.phase === 'COMPLETED' ? 'bg-green-100 text-green-700' :
-              project.phase === 'MIGRATION' ? 'bg-blue-100 text-blue-700' :
-              'bg-slate-100 text-slate-600'
-            )}>
-              {project.phase}
-            </span>
+            {project.phase && <StatusBadge status={project.phase} variant="phase" />}
           </div>
         </div>
 
@@ -1004,7 +998,11 @@ export default function MigrationValidationPage() {
                         className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-400 bg-white appearance-none pr-8"
                       >
                         <option value="">All Phases</option>
-                        {['ONBOARDING', 'MIGRATION', 'COMPLETED', 'PAUSED'].map(ph => <option key={ph}>{ph}</option>)}
+                        {[...settings.phases].sort((a, b) => a.order - b.order).map(ph => (
+                          <option key={ph.code || ph.name} value={(ph.code || ph.name).toUpperCase()}>
+                            {ph.name}
+                          </option>
+                        ))}
                       </select>
                       <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                       {phaseFilter && (
@@ -1090,14 +1088,7 @@ export default function MigrationValidationPage() {
                           <td className="py-3 px-4 text-sm text-slate-600">{p.customerName || '—'}</td>
                           <td className="py-3 px-4 text-sm text-slate-600">{p.projectManager || '—'}</td>
                           <td className="py-3 px-4">
-                            <span className={cn(
-                              'text-xs px-2 py-0.5 rounded-full font-medium',
-                              p.phase === 'COMPLETED' ? 'bg-green-100 text-green-700' :
-                              p.phase === 'MIGRATION' ? 'bg-blue-100 text-blue-700' :
-                              'bg-slate-100 text-slate-600'
-                            )}>
-                              {p.phase || '—'}
-                            </span>
+                            {p.phase ? <StatusBadge status={p.phase} variant="phase" /> : <span className="text-slate-400">—</span>}
                           </td>
                           <td className="py-3 px-4">
                             <div className="flex flex-wrap gap-1">

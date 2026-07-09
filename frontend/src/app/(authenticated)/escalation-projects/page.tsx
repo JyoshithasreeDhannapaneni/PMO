@@ -1,15 +1,15 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { useEscalatedProjects, useEscalateProject, useDeescalateProject, useProjects, useArchivedEscalations, useArchiveEscalation, useUnarchiveEscalation, useEscalationDailyNotes, useAddEscalationDailyNote, useDeleteEscalationDailyNote } from '@/hooks/useProjects';
+import { useEscalatedProjects, useEscalateProject, useDeescalateProject, useProjects, useEscalationDailyNotes, useAddEscalationDailyNote, useDeleteEscalationDailyNote } from '@/hooks/useProjects';
 import { useAuth } from '@/context/AuthContext';
 import { Card } from '@/components/ui/Card';
 import Link from 'next/link';
 import {
   Siren, AlertTriangle, Search,
-  RotateCcw, Eye, Download, ChevronLeft, ChevronRight,
+  RotateCcw, Download, ChevronLeft, ChevronRight,
   Plus, X, AlertCircle, TrendingUp, ChevronDown, History, Calendar, Trash2, CheckCircle2,
-  Archive, ArchiveRestore, BookOpen, Send, Loader2,
+  BookOpen, Send, Loader2,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { StatusBadge } from '@/components/ui/StatusBadge';
@@ -26,8 +26,9 @@ export default function EscalationProjectsPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'ADMIN';
   const isManager = user?.role === 'PROJECT_MANAGER';
+  const isViewer = user?.role === 'VIEWER';
   // Everyone sees all escalations; edit rights scoped per-project below
-  const canEditProject = (p: any) => isAdmin || (isManager && p.projectManager === user?.name);
+  const canEditProject = (p: any) => !isViewer && (isAdmin || (isManager && p.projectManager === user?.name));
 
   const { data, isLoading, refetch } = useEscalatedProjects(undefined);
   const escalated: any[] = data?.data || [];
@@ -37,13 +38,8 @@ export default function EscalationProjectsPage() {
 
   const escalateProject = useEscalateProject();
   const deescalateProject = useDeescalateProject();
-  const archiveEscalation = useArchiveEscalation();
-  const unarchiveEscalation = useUnarchiveEscalation();
 
-  const [activeTab, setActiveTab] = useState<'active' | 'archive'>('active');
   const [kpiFilter, setKpiFilter] = useState<'' | 'active' | 'critical'>('');
-  const { data: archiveData, refetch: refetchArchive } = useArchivedEscalations(undefined);
-  const archived: any[] = archiveData?.data || [];
 
   const [search, setSearch] = useState('');
   const [prioritySel, setPrioritySel] = useState('');
@@ -109,8 +105,7 @@ export default function EscalationProjectsPage() {
     } catch { /* silent */ }
   }
 
-  // Calendar timeline popup
-  const [calendarProject, setCalendarProject] = useState<any | null>(null);
+  const [historyTab, setHistoryTab] = useState<'activity' | 'timeline'>('activity');
 
   // Expanded history rows
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
@@ -190,25 +185,6 @@ export default function EscalationProjectsPage() {
     }
   }
 
-  async function handleDeescalate(id: string) {
-    if (!confirm('Remove escalation from this project?')) return;
-    await deescalateProject.mutateAsync(id);
-    refetch();
-  }
-
-  async function handleArchive(id: string) {
-    if (!confirm('Archive this escalation? It will move to the Archive tab.')) return;
-    await archiveEscalation.mutateAsync(id);
-    refetch();
-    refetchArchive();
-  }
-
-  async function handleUnarchive(id: string) {
-    await unarchiveEscalation.mutateAsync(id);
-    refetchArchive();
-    refetch();
-  }
-
   async function handleDeleteProject(id: string) {
     if (!confirm('Remove escalation from this project?')) return;
     await deescalateProject.mutateAsync(id);
@@ -270,9 +246,11 @@ export default function EscalationProjectsPage() {
           <button onClick={downloadCSV} className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
             <Download size={14} /> Export
           </button>
-          <button onClick={() => setShowModal(true)} className="flex items-center gap-1.5 px-3 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">
-            <Plus size={14} /> Add Escalation
-          </button>
+          {!isViewer && (
+            <button onClick={() => setShowModal(true)} className="flex items-center gap-1.5 px-3 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">
+              <Plus size={14} /> Add Escalation
+            </button>
+          )}
         </div>
       </div>
 
@@ -325,26 +303,8 @@ export default function EscalationProjectsPage() {
         </button>
       </div>
 
-      {/* Tab Toggle */}
-      <div className="flex gap-1 p-1 bg-gray-100 rounded-xl w-fit">
-        <button
-          onClick={() => setActiveTab('active')}
-          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors ${activeTab === 'active' ? 'bg-white text-red-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-        >
-          <Siren size={14} /> Active Escalations
-          <span className={`ml-1 px-1.5 py-0.5 rounded-full text-xs font-bold ${activeTab === 'active' ? 'bg-red-100 text-red-700' : 'bg-gray-200 text-gray-600'}`}>{deduped.length}</span>
-        </button>
-        <button
-          onClick={() => setActiveTab('archive')}
-          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors ${activeTab === 'archive' ? 'bg-white text-amber-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-        >
-          <Archive size={14} /> Archive
-          <span className={`ml-1 px-1.5 py-0.5 rounded-full text-xs font-bold ${activeTab === 'archive' ? 'bg-amber-100 text-amber-700' : 'bg-gray-200 text-gray-600'}`}>{archived.length}</span>
-        </button>
-      </div>
-
-      {/* Filters — only for active tab */}
-      {activeTab === 'active' && <Card>
+      {/* Filters */}
+      <Card>
         <div className="flex flex-wrap gap-3 items-center">
           <div className="relative flex-1 min-w-[200px]">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -380,100 +340,21 @@ export default function EscalationProjectsPage() {
             <RotateCcw size={13} /> Reset
           </button>
         </div>
-      </Card>}
+      </Card>
 
-      {/* Archive View */}
-      {activeTab === 'archive' && (
-        <Card>
-          {archived.length === 0 ? (
-            <div className="flex flex-col items-center py-12 text-gray-400 gap-2">
-              <Archive size={32} />
-              <p>No archived escalations yet</p>
-              <p className="text-xs text-gray-400">Completed or archived escalated projects will appear here</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-blue-50/60">
-                  <tr>
-                    {['Project Name', 'Project Manager', 'Escalation Type', 'Priority', 'Status', 'Phase', 'Escalated At', 'Resolved Date', 'Action'].map((h) => (
-                      <th key={h} className={`py-3 px-4 text-xs font-semibold text-gray-500 ${h === 'Project Name' ? 'text-left' : 'text-center'}`}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {archived.map((p) => {
-                    const notes = p.escalationNotes || '';
-                    const escType = ESCALATION_TYPES.find((t) => notes.startsWith(t)) || (notes ? notes.split(' — ')[0] : 'Others');
-                    return (
-                      <tr key={p.id} className="hover:bg-gray-50">
-                        <td className="py-3 px-4">
-                          <Link href={`/projects/${p.id}`} className="font-medium text-primary-600 hover:underline">{p.name}</Link>
-                          <div className="text-xs text-gray-400">{p.customerName}</div>
-                        </td>
-                        <td className="py-3 px-4 text-center text-gray-700">{p.projectManager || '—'}</td>
-                        <td className="py-3 px-4 text-center">
-                          <span className="px-2 py-0.5 rounded-full text-xs bg-purple-100 text-purple-700">{escType}</span>
-                        </td>
-                        <td className="py-3 px-4 text-center">
-                          {p.escalationPriority ? (
-                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${PRIORITY_COLORS[p.escalationPriority] || 'bg-gray-100 text-gray-600'}`}>{p.escalationPriority}</span>
-                          ) : <span className="text-gray-400">—</span>}
-                        </td>
-                        <td className="py-3 px-4 text-center"><StatusBadge status={p.status} variant="status" /></td>
-                        <td className="py-3 px-4 text-center"><StatusBadge status={p.phase} variant="phase" /></td>
-                        <td className="py-3 px-4 text-center text-gray-500 whitespace-nowrap">
-                          {p.escalatedAt ? format(new Date(p.escalatedAt), 'MMM d, yyyy') : '—'}
-                        </td>
-                        <td className="py-3 px-4 text-center whitespace-nowrap">
-                          {p.resolvedDate ? (
-                            <span className="text-green-600 text-xs font-medium">{format(new Date(p.resolvedDate), 'MMM d, yyyy')}</span>
-                          ) : <span className="text-gray-400 text-xs">—</span>}
-                        </td>
-                        <td className="py-3 px-4 text-center">
-                          <div className="flex items-center justify-center gap-1">
-                            <Link href={`/projects/${p.id}`} className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 text-gray-600 hover:bg-primary-100 hover:text-primary-700 transition-colors">
-                              <Eye size={14} />
-                            </Link>
-                            <button
-                              onClick={() => { setHistoryProject(p); setNewNoteText(''); setNewNoteType('Client Issues'); setNewNotePriority('MEDIUM'); }}
-                              title="View escalation history"
-                              className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 text-purple-500 hover:bg-purple-100 transition-colors"
-                            >
-                              <History size={14} />
-                            </button>
-                            {(isAdmin || (isManager && p.projectManager === user?.name)) && p.escalationArchived && (
-                              <button
-                                onClick={() => handleUnarchive(p.id)}
-                                title="Restore to active escalations"
-                                className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 text-green-500 hover:bg-green-100 transition-colors"
-                              >
-                                <ArchiveRestore size={14} />
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </Card>
-      )}
-
-      {/* Active Table */}
-      {activeTab === 'active' && <Card>
+      {/* Escalations Table */}
+      <Card>
         {isLoading ? (
           <div className="flex justify-center py-12 text-gray-400">Loading…</div>
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center py-12 text-gray-400 gap-2">
             <Siren size={32} />
             <p>No escalation projects found</p>
-            <button onClick={() => setShowModal(true)} className="mt-2 flex items-center gap-1.5 px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700">
-              <Plus size={14} /> Add First Escalation
-            </button>
+            {!isViewer && (
+              <button onClick={() => setShowModal(true)} className="mt-2 flex items-center gap-1.5 px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700">
+                <Plus size={14} /> Add First Escalation
+              </button>
+            )}
           </div>
         ) : (
           <>
@@ -562,12 +443,9 @@ export default function EscalationProjectsPage() {
                           </td>
                           <td className="py-3 px-4 text-center" onClick={(e) => e.stopPropagation()}>
                             <div className="flex items-center justify-center gap-1">
-                              <Link href={`/projects/${p.id}`} className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 text-gray-600 hover:bg-primary-100 hover:text-primary-700 transition-colors">
-                                <Eye size={14} />
-                              </Link>
                               <button
-                                onClick={() => { setHistoryProject(p); setNewNoteText(''); setNewNoteType('Client Issues'); setNewNotePriority('MEDIUM'); }}
-                                title="View escalation history"
+                                onClick={() => { setHistoryProject(p); setNewNoteText(''); setNewNoteType('Client Issues'); setNewNotePriority('MEDIUM'); setHistoryTab('activity'); }}
+                                title="View escalation history & timeline"
                                 className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 text-purple-500 hover:bg-purple-100 transition-colors"
                               >
                                 <History size={14} />
@@ -579,31 +457,6 @@ export default function EscalationProjectsPage() {
                               >
                                 <BookOpen size={14} />
                               </button>
-                              <button
-                                onClick={() => setCalendarProject(p)}
-                                title="View escalation timeline"
-                                className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 text-blue-500 hover:bg-blue-100 transition-colors"
-                              >
-                                <Calendar size={14} />
-                              </button>
-                              {canEditProject(p) && (
-                                <button
-                                  onClick={() => handleArchive(p.id)}
-                                  title="Archive this escalation"
-                                  className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 text-amber-500 hover:bg-amber-100 transition-colors"
-                                >
-                                  <Archive size={14} />
-                                </button>
-                              )}
-                              {canEditProject(p) && p.isEscalated && (
-                                <button
-                                  onClick={() => handleDeescalate(p.id)}
-                                  title="Remove escalation"
-                                  className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 text-red-500 hover:bg-red-100 transition-colors"
-                                >
-                                  <X size={14} />
-                                </button>
-                              )}
                               {canEditProject(p) && (
                                 <button
                                   onClick={() => handleDeleteProject(p.id)}
@@ -719,15 +572,13 @@ export default function EscalationProjectsPage() {
             </div>
           </>
         )}
-      </Card>}
+      </Card>
 
       {/* Footer note */}
-      {activeTab === 'active' && (
-        <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-          <AlertCircle size={15} />
-          Escalation projects are those that have been delayed, breached SLA, or escalated by customers.
-        </div>
-      )}
+      <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+        <AlertCircle size={15} />
+        Escalation projects are those that have been delayed, breached SLA, or escalated by customers.
+      </div>
 
       {/* Add Escalation Modal */}
       {showModal && (
@@ -871,7 +722,7 @@ export default function EscalationProjectsPage() {
                 </div>
                 <div>
                   <h2 className="text-lg font-bold">{historyProject.name}</h2>
-                  <p className="text-xs opacity-80">{historyProject.customerName} · Activity History</p>
+                  <p className="text-xs opacity-80">{historyProject.customerName}</p>
                 </div>
               </div>
               <button onClick={() => setHistoryProject(null)} className="p-2 rounded-lg hover:bg-white/20 transition-colors">
@@ -879,8 +730,24 @@ export default function EscalationProjectsPage() {
               </button>
             </div>
 
-            {/* Unified activity timeline: escalation events + daily tracking notes */}
-            <div className="flex-1 overflow-y-auto p-5 space-y-3">
+            {/* Tab switcher */}
+            <div className="flex border-b border-gray-200 bg-white px-5 pt-3 gap-4">
+              <button
+                onClick={() => setHistoryTab('activity')}
+                className={`pb-2 text-sm font-medium border-b-2 transition-colors ${historyTab === 'activity' ? 'border-red-500 text-red-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+              >
+                Activity History
+              </button>
+              <button
+                onClick={() => setHistoryTab('timeline')}
+                className={`pb-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5 ${historyTab === 'timeline' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+              >
+                <Calendar size={13} /> Timeline
+              </button>
+            </div>
+
+            {/* Activity tab: unified timeline + daily notes */}
+            {historyTab === 'activity' && <div className="flex-1 overflow-y-auto p-5 space-y-3">
               {(() => {
                 const escalationItems: any[] = (historyProject.escalationHistory || []).map((h: any) => ({
                   type: 'escalation',
@@ -955,10 +822,10 @@ export default function EscalationProjectsPage() {
                   }
                 });
               })()}
-            </div>
+            </div>}
 
             {/* Add new note — only for admin or the project's PM */}
-            {canEditProject(historyProject) && <div className="border-t border-gray-200 p-5 space-y-3 bg-gray-50">
+            {historyTab === 'activity' && canEditProject(historyProject) && <div className="border-t border-gray-200 p-5 space-y-3 bg-gray-50">
               <p className="text-sm font-semibold text-gray-700">Add New Note</p>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -1009,112 +876,89 @@ export default function EscalationProjectsPage() {
                 </button>
               </div>
             </div>}
-            {!canEditProject(historyProject) && (
+            {historyTab === 'activity' && !canEditProject(historyProject) && (
               <div className="border-t border-gray-200 p-4 bg-gray-50 flex justify-end">
                 <button onClick={() => setHistoryProject(null)} className="px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">
                   Close
                 </button>
               </div>
             )}
-          </div>
-        </div>
-      )}
 
-      {/* Calendar Timeline Popup */}
-      {calendarProject && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => setCalendarProject(null)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-5 py-4 bg-blue-600 text-white">
-              <div className="flex items-center gap-2">
-                <Calendar size={18} />
-                <div>
-                  <p className="font-bold text-sm">{calendarProject.name}</p>
-                  <p className="text-xs opacity-80">{calendarProject.customerName}</p>
-                </div>
-              </div>
-              <button onClick={() => setCalendarProject(null)} className="p-1.5 rounded hover:bg-white/20 transition-colors">
-                <X size={16} />
-              </button>
-            </div>
-            <div className="p-5 space-y-4">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Escalation Timeline</p>
-              {/* Timeline */}
-              <div className="relative">
-                {/* Vertical line */}
-                <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-gray-200" />
-                <div className="space-y-4">
-                  {/* SOW End Date */}
-                  {calendarProject.plannedEnd && (
-                    <div className="flex items-start gap-4">
-                      <div className="w-8 h-8 rounded-full bg-gray-100 border-2 border-gray-300 flex items-center justify-center flex-shrink-0 z-10">
-                        <Calendar size={13} className="text-gray-500" />
-                      </div>
-                      <div className="pt-1">
-                        <p className="text-xs font-semibold text-gray-700">SOW End Date</p>
-                        <p className="text-sm font-bold text-gray-900">{format(new Date(calendarProject.plannedEnd), 'MMM d, yyyy')}</p>
-                      </div>
-                    </div>
-                  )}
-                  {/* Full escalation history events */}
-                  {calendarProject.escalationHistory && calendarProject.escalationHistory.length > 0 ? (
-                    [...calendarProject.escalationHistory].reverse().map((h: any, idx: number) => (
-                      <div key={h.id || idx} className="flex items-start gap-4">
-                        <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center flex-shrink-0 z-10 ${h.resolvedDate ? 'bg-green-100 border-green-400' : 'bg-red-100 border-red-400'}`}>
-                          {h.resolvedDate ? <CheckCircle2 size={13} className="text-green-600" /> : <AlertTriangle size={13} className="text-red-600" />}
-                        </div>
-                        <div className="pt-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <p className="text-xs font-semibold text-gray-700">
-                              {h.resolvedDate ? 'Resolved' : 'Escalated'}
-                            </p>
-                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${h.priority === 'HIGH' ? 'bg-red-100 text-red-700' : h.priority === 'MEDIUM' ? 'bg-orange-100 text-orange-700' : 'bg-yellow-100 text-yellow-700'}`}>
-                              {h.priority}
-                            </span>
-                            {h.escalationType && (
-                              <span className="px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 text-[10px]">{h.escalationType}</span>
-                            )}
+            {/* Timeline tab */}
+            {historyTab === 'timeline' && (
+              <>
+                <div className="flex-1 overflow-y-auto p-5 space-y-4">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Escalation Timeline</p>
+                  <div className="relative">
+                    <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-gray-200" />
+                    <div className="space-y-4">
+                      {historyProject.plannedEnd && (
+                        <div className="flex items-start gap-4">
+                          <div className="w-8 h-8 rounded-full bg-gray-100 border-2 border-gray-300 flex items-center justify-center flex-shrink-0 z-10">
+                            <Calendar size={13} className="text-gray-500" />
                           </div>
-                          <p className="text-sm font-bold text-gray-900">
-                            {format(new Date(h.resolvedDate || h.escalatedAt), 'MMM d, yyyy')}
-                          </p>
-                          {h.notes && <p className="text-xs text-gray-500 mt-0.5">{h.notes}</p>}
+                          <div className="pt-1">
+                            <p className="text-xs font-semibold text-gray-700">SOW End Date</p>
+                            <p className="text-sm font-bold text-gray-900">{format(new Date(historyProject.plannedEnd), 'MMM d, yyyy')}</p>
+                          </div>
                         </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="flex items-start gap-4">
-                      <div className="w-8 h-8 rounded-full bg-red-100 border-2 border-red-400 flex items-center justify-center flex-shrink-0 z-10">
-                        <AlertTriangle size={13} className="text-red-600" />
-                      </div>
-                      <div className="pt-1">
-                        <p className="text-xs font-semibold text-gray-700">Escalated</p>
-                        <p className="text-sm font-bold text-gray-900">
-                          {calendarProject.escalatedAt ? format(new Date(calendarProject.escalatedAt), 'MMM d, yyyy') : '—'}
-                        </p>
-                        {calendarProject.escalationNotes && <p className="text-xs text-gray-500 mt-0.5">{calendarProject.escalationNotes}</p>}
-                      </div>
+                      )}
+                      {historyProject.escalationHistory && historyProject.escalationHistory.length > 0 ? (
+                        [...historyProject.escalationHistory].reverse().map((h: any, idx: number) => (
+                          <div key={h.id || idx} className="flex items-start gap-4">
+                            <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center flex-shrink-0 z-10 ${h.resolvedDate ? 'bg-green-100 border-green-400' : 'bg-red-100 border-red-400'}`}>
+                              {h.resolvedDate ? <CheckCircle2 size={13} className="text-green-600" /> : <AlertTriangle size={13} className="text-red-600" />}
+                            </div>
+                            <div className="pt-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <p className="text-xs font-semibold text-gray-700">{h.resolvedDate ? 'Resolved' : 'Escalated'}</p>
+                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${h.priority === 'HIGH' ? 'bg-red-100 text-red-700' : h.priority === 'MEDIUM' ? 'bg-orange-100 text-orange-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                                  {h.priority}
+                                </span>
+                                {h.escalationType && (
+                                  <span className="px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 text-[10px]">{h.escalationType}</span>
+                                )}
+                              </div>
+                              <p className="text-sm font-bold text-gray-900">{format(new Date(h.resolvedDate || h.escalatedAt), 'MMM d, yyyy')}</p>
+                              {h.notes && <p className="text-xs text-gray-500 mt-0.5">{h.notes}</p>}
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="flex items-start gap-4">
+                          <div className="w-8 h-8 rounded-full bg-red-100 border-2 border-red-400 flex items-center justify-center flex-shrink-0 z-10">
+                            <AlertTriangle size={13} className="text-red-600" />
+                          </div>
+                          <div className="pt-1">
+                            <p className="text-xs font-semibold text-gray-700">Escalated</p>
+                            <p className="text-sm font-bold text-gray-900">
+                              {historyProject.escalatedAt ? format(new Date(historyProject.escalatedAt), 'MMM d, yyyy') : '—'}
+                            </p>
+                            {historyProject.escalationNotes && <p className="text-xs text-gray-500 mt-0.5">{historyProject.escalationNotes}</p>}
+                          </div>
+                        </div>
+                      )}
+                      {historyProject.resolvedDate && (
+                        <div className="flex items-start gap-4">
+                          <div className="w-8 h-8 rounded-full bg-green-100 border-2 border-green-500 flex items-center justify-center flex-shrink-0 z-10">
+                            <CheckCircle2 size={13} className="text-green-600" />
+                          </div>
+                          <div className="pt-1">
+                            <p className="text-xs font-semibold text-gray-700">Resolved</p>
+                            <p className="text-sm font-bold text-green-700">{format(new Date(historyProject.resolvedDate), 'MMM d, yyyy')}</p>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  )}
-                  {/* Resolved date (from project) */}
-                  {calendarProject.resolvedDate && (
-                    <div className="flex items-start gap-4">
-                      <div className="w-8 h-8 rounded-full bg-green-100 border-2 border-green-500 flex items-center justify-center flex-shrink-0 z-10">
-                        <CheckCircle2 size={13} className="text-green-600" />
-                      </div>
-                      <div className="pt-1">
-                        <p className="text-xs font-semibold text-gray-700">Resolved</p>
-                        <p className="text-sm font-bold text-green-700">{format(new Date(calendarProject.resolvedDate), 'MMM d, yyyy')}</p>
-                      </div>
-                    </div>
-                  )}
+                  </div>
                 </div>
-              </div>
-            </div>
-            <div className="px-5 pb-5">
-              <button onClick={() => setCalendarProject(null)} className="w-full px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">
-                Close
-              </button>
-            </div>
+                <div className="border-t border-gray-200 px-5 py-4 bg-gray-50 flex justify-end">
+                  <button onClick={() => setHistoryProject(null)} className="px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors">
+                    Close
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

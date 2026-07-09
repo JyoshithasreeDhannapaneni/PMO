@@ -9,7 +9,7 @@ import {
   LayoutDashboard, FolderKanban, AlertTriangle, FileText,
   Settings, Layers, Users, BarChart2, ChevronDown,
   ChevronRight, LogOut, DollarSign, Siren, Menu, X, Archive,
-  FlaskConical, Building2, HeartHandshake, BookOpen, ClipboardList, Briefcase, Bell,
+  FlaskConical, Building2, HeartHandshake, BookOpen, Briefcase, Bell,
   LayoutGrid,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
@@ -21,17 +21,15 @@ const allNavigation = [
   { name: 'Migration Validation', href: '/migration-runbooks',     icon: BookOpen,        adminOnly: false },
   { name: 'Overage Projects',   href: '/overage-projects',       icon: DollarSign,      adminOnly: false },
   { name: 'Escalated Projects', href: '/escalation-projects',    icon: Siren,           adminOnly: false },
-  { name: 'Managers & Goals',   href: '/managers',               icon: Users,   badge: 'goals', adminOnly: false },
-  { name: 'Manager Dashboard',  href: '/manager-dashboard',      icon: LayoutGrid,               adminOnly: true },
   { name: 'Pre-sales',          href: '/poc-projects',           icon: FlaskConical,    adminOnly: false },
   { name: 'Account Manager View', href: '/account-manager',     icon: Building2,       adminOnly: false },
   { name: 'Customer Success',   href: '/customer-success',       icon: HeartHandshake,  adminOnly: false },
-  { name: 'RACI / RAID / RAG',  href: '/raci-raid-rag',          icon: ClipboardList,   adminOnly: false },
   { name: 'History Archive',    href: '/archive',                icon: Archive,         adminOnly: false },
   { name: 'Server Notifications', href: '/server-alerts',         icon: Bell,            adminOnly: false },
   { name: 'Templates',          href: '/templates',              icon: Layers,          adminOnly: false },
   { name: 'Case Studies',       href: '/case-studies',           icon: FileText,        adminOnly: false },
-  { name: 'CS Template',        href: '/case-studies/template',  icon: Layers, badge: 'cstemplate', adminOnly: false },
+  { name: 'Reviews',            href: '/managers',               icon: Users,   badge: 'goals', adminOnly: false },
+  { name: 'Manager Dashboard',  href: '/manager-dashboard',      icon: LayoutGrid,               adminOnly: true },
   {
     name: 'Reports', href: '#', icon: BarChart2, adminOnly: false,
     children: [
@@ -45,7 +43,6 @@ const allNavigation = [
 const badgeColors: Record<string, string> = {
   goals:      'bg-orange-100 text-orange-600 border border-orange-200',
   chat:       'bg-emerald-100 text-emerald-600 border border-emerald-200',
-  cstemplate: 'bg-blue-100 text-blue-600 border border-blue-200',
 };
 
 export function Sidebar() {
