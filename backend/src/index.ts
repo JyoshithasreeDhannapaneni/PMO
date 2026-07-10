@@ -461,10 +461,12 @@ async function runMigrations() {
     out_of_scope TEXT,
     phases JSONB DEFAULT '[]',
     signoffs JSONB DEFAULT '[]',
+    line_items JSONB DEFAULT '[]',
     created_by VARCHAR(255),
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
   )`);
+  await execute(`ALTER TABLE ps_engagements ADD COLUMN IF NOT EXISTS line_items JSONB DEFAULT '[]'`);
 
   // Client reviews (Reviews tab) — structured customer feedback scorecard per project
   await execute(`CREATE TABLE IF NOT EXISTS client_reviews (
