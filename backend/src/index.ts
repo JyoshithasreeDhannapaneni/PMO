@@ -46,6 +46,7 @@ import jiraRoutes from './routes/jiraRoutes';
 import hubspotRoutes from './routes/hubspotRoutes';
 import psEngagementsRoutes from './routes/psEngagementsRoutes';
 import externalRoutes from './routes/externalRoutes';
+import aiRoutes from './routes/aiRoutes';
 import apiKeyRoutes from './routes/apiKeyRoutes';
 import clientReviewRoutes from './routes/clientReviewRoutes';
 import platformReviewRoutes from './routes/platformReviewRoutes';
@@ -115,6 +116,7 @@ app.use('/api/template-combinations', templateCombinationRoutes);
 app.use('/api/jira', jiraRoutes);
 app.use('/api/hubspot', hubspotRoutes);
 app.use('/api/ps-engagements', psEngagementsRoutes);
+app.use('/api/ai', aiRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
