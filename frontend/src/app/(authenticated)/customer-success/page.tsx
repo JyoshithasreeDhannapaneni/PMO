@@ -794,7 +794,34 @@ export default function CustomerSuccessPage() {
 
   function hubspotFor(customerName: string): HubspotCustomerDeals | null {
     if (!hubspotData?.configured) return null;
-    return hubspotData.customers[normalizeCustomerKey(customerName)] ?? null;
+    const customers = hubspotData.customers;
+    const pmoKey = normalizeCustomerKey(customerName);
+    if (!pmoKey) return null;
+
+    // Tier 1: exact normalized match
+    if (customers[pmoKey]) return customers[pmoKey];
+
+    // Tier 2: substring — PMO key inside HubSpot key, or HubSpot key inside PMO key (min 4 chars)
+    if (pmoKey.length >= 4) {
+      for (const [hsKey, data] of Object.entries(customers)) {
+        if (hsKey.includes(pmoKey) || (hsKey.length >= 4 && pmoKey.includes(hsKey))) {
+          return data;
+        }
+      }
+    }
+
+    // Tier 3: word-level — split on whitespace/punctuation, match significant words (≥4 chars)
+    const pmoWords = customerName.toLowerCase().split(/[\s\-_.,&/()]+/).filter(w => w.length >= 4);
+    if (pmoWords.length > 0) {
+      for (const data of Object.values(customers)) {
+        const hsWords = data.companyName.toLowerCase().split(/[\s\-_.,&/()]+/).filter((w: string) => w.length >= 4);
+        if (pmoWords.some(pw => hsWords.some((hw: string) => hw === pw))) {
+          return data;
+        }
+      }
+    }
+
+    return null;
   }
 
   function getProjectNames(account: CustomerSuccessEntry): string[] {
