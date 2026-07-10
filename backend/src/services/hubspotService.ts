@@ -2,6 +2,7 @@ import axios, { AxiosInstance } from 'axios';
 import { logger } from '../utils/logger';
 
 export type HubspotDealCategory = 'upsell' | 'cross_sell' | 'renewal' | 'new_business' | 'other';
+export type CfProductTag = 'cf_migrate' | 'cf_manage' | 'professional_services' | 'managed_services' | 'other';
 
 export interface HubspotDeal {
   id: string;
@@ -14,6 +15,7 @@ export interface HubspotDeal {
   isClosedWon: boolean;
   isOpen: boolean;
   category: HubspotDealCategory;
+  cfProduct: CfProductTag;
   companyName: string;
 }
 
@@ -24,6 +26,7 @@ export interface HubspotCustomerDeals {
   crossSellCount: number;
   openValue: number;
   wonValue: number;
+  productBreakdown: Partial<Record<CfProductTag, { openValue: number; wonValue: number; openCount: number }>>;
 }
 
 export interface HubspotSignalsData {
@@ -56,6 +59,15 @@ function makeClient(): AxiosInstance {
 
 export function normalizeCustomer(name: string): string {
   return (name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function identifyCfProduct(dealName: string, pipelineLabel: string): CfProductTag {
+  const text = `${(dealName || '').toLowerCase()} ${(pipelineLabel || '').toLowerCase()}`;
+  if (text.includes('migrate') || text.includes('migration')) return 'cf_migrate';
+  if (text.includes('professional service') || text.includes('ps pack') || text.includes('prof serv')) return 'professional_services';
+  if (text.includes('managed service') || text.includes('msp')) return 'managed_services';
+  if (text.includes('manage') || text.includes('management')) return 'cf_manage';
+  return 'other';
 }
 
 function classifyDeal(name: string, dealType: string | null): HubspotDealCategory {
@@ -147,24 +159,26 @@ export async function getDealsByCustomer(forceRefresh = false): Promise<HubspotS
     const isClosedWon = p.hs_is_closed_won === 'true';
     if (isClosed && !isClosedWon) continue; // skip closed-lost — no signal value
 
+    const pipelineLabel = labels.pipelines[p.pipeline] || p.pipeline || '';
     const deal: HubspotDeal = {
       id: String(raw.id),
       name: p.dealname || '(unnamed deal)',
       amount: p.amount != null && p.amount !== '' ? Number(p.amount) : null,
       stage: labels.stages[p.dealstage] || p.dealstage || '',
-      pipeline: labels.pipelines[p.pipeline] || p.pipeline || '',
+      pipeline: pipelineLabel,
       dealType: p.dealtype || null,
       closeDate: p.closedate || null,
       isClosedWon,
       isOpen: !isClosed,
       category: classifyDeal(p.dealname, p.dealtype),
+      cfProduct: identifyCfProduct(p.dealname, pipelineLabel),
       companyName,
     };
 
     const key = normalizeCustomer(companyName);
     if (!key) continue;
     if (!customers[key]) {
-      customers[key] = { companyName, deals: [], upsellCount: 0, crossSellCount: 0, openValue: 0, wonValue: 0 };
+      customers[key] = { companyName, deals: [], upsellCount: 0, crossSellCount: 0, openValue: 0, wonValue: 0, productBreakdown: {} };
     }
     const entry = customers[key];
     entry.deals.push(deal);
@@ -173,6 +187,15 @@ export async function getDealsByCustomer(forceRefresh = false): Promise<HubspotS
     if (deal.amount !== null) {
       if (deal.isOpen) entry.openValue += deal.amount;
       if (deal.isClosedWon) entry.wonValue += deal.amount;
+    }
+    const prod = deal.cfProduct;
+    if (!entry.productBreakdown[prod]) entry.productBreakdown[prod] = { openValue: 0, wonValue: 0, openCount: 0 };
+    if (deal.isOpen) {
+      entry.productBreakdown[prod]!.openCount++;
+      if (deal.amount) entry.productBreakdown[prod]!.openValue += deal.amount;
+    }
+    if (deal.isClosedWon && deal.amount) {
+      entry.productBreakdown[prod]!.wonValue += deal.amount;
     }
   }
 

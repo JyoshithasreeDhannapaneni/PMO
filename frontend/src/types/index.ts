@@ -415,6 +415,7 @@ export interface CustomerSuccessPageData {
 export type CustomerSuccessView = CustomerSuccessEntry;
 
 export type HubspotDealCategory = 'upsell' | 'cross_sell' | 'renewal' | 'new_business' | 'other';
+export type CfProductTag = 'cf_migrate' | 'cf_manage' | 'professional_services' | 'managed_services' | 'other';
 
 export interface HubspotDeal {
   id: string;
@@ -427,6 +428,7 @@ export interface HubspotDeal {
   isClosedWon: boolean;
   isOpen: boolean;
   category: HubspotDealCategory;
+  cfProduct: CfProductTag;
   companyName: string;
 }
 
@@ -437,6 +439,7 @@ export interface HubspotCustomerDeals {
   crossSellCount: number;
   openValue: number;
   wonValue: number;
+  productBreakdown: Partial<Record<CfProductTag, { openValue: number; wonValue: number; openCount: number }>>;
 }
 
 export interface HubspotSignalsData {

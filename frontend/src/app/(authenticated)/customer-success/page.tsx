@@ -10,7 +10,7 @@ import { useCustomerSuccess, useUpdateCustomerSuccess, useHubspotSignals } from 
 import type {
   CustomerSuccessEntry, CfProductSignal, CfSignalLevel,
   SignalItem, RenewalDueItem, CustomerSuccessPageData,
-  HubspotCustomerDeals, HubspotDealCategory, HubspotSignalsData,
+  HubspotCustomerDeals, HubspotDeal, HubspotDealCategory, HubspotSignalsData,
 } from '@/types';
 import {
   HeartHandshake, Loader2, AlertTriangle, User, X, Search,
@@ -81,6 +81,15 @@ function ProductInterestRow({ label, signal }: { label: string; signal: CfProduc
   );
 }
 
+const CATEGORY_ORDER: HubspotDealCategory[] = ['upsell', 'cross_sell', 'renewal', 'new_business', 'other'];
+const CATEGORY_LABELS: Record<HubspotDealCategory, string> = {
+  upsell:       'Upsell',
+  cross_sell:   'Cross-sell',
+  renewal:      'Renewal',
+  new_business: 'New Business',
+  other:        'Other',
+};
+
 function GrowthCard({
   account, hubspot, canEdit, onEdit,
 }: {
@@ -89,19 +98,31 @@ function GrowthCard({
   canEdit: boolean;
   onEdit: () => void;
 }) {
-  const products = [
+  const openDeals = hubspot?.deals.filter((d: HubspotDeal) => d.isOpen) ?? [];
+  const wonDeals  = hubspot?.deals.filter((d: HubspotDeal) => d.isClosedWon) ?? [];
+  const hasHubspot = openDeals.length > 0 || wonDeals.length > 0;
+
+  // Group open deals by category
+  const grouped: Partial<Record<HubspotDealCategory, HubspotDeal[]>> = {};
+  for (const d of openDeals) {
+    if (!grouped[d.category]) grouped[d.category] = [];
+    grouped[d.category]!.push(d);
+  }
+
+  // PMO signals (non-none, sorted by strength)
+  const pmoSignals = [
     { label: 'CF Migrate',            signal: account.cfMigrate            },
     { label: 'Professional Services', signal: account.professionalServices  },
     { label: 'CF Manage',             signal: account.cfManage              },
     { label: 'Managed Services',      signal: account.managedServices       },
-  ].sort((a, b) => SIGNAL_SORT_ORDER[a.signal.level] - SIGNAL_SORT_ORDER[b.signal.level]);
-
-  const topProduct  = products.find(p => p.signal.level !== 'none');
-  const openDeals   = hubspot?.deals.filter(d => d.isOpen) ?? [];
+  ]
+    .filter(p => p.signal.level !== 'none')
+    .sort((a, b) => SIGNAL_SORT_ORDER[a.signal.level] - SIGNAL_SORT_ORDER[b.signal.level]);
 
   return (
     <Card className="overflow-hidden">
       <div className="p-4 space-y-3">
+
         {/* Header */}
         <div className="flex items-start justify-between gap-2">
           <div>
@@ -112,11 +133,20 @@ function GrowthCard({
               </p>
             )}
           </div>
-          <div className="flex items-center gap-1.5 shrink-0">
-            {topProduct && (
-              <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${SIGNAL_CFG[topProduct.signal.level].badge}`}>
-                {topProduct.label}
-              </span>
+          <div className="flex items-center gap-2 shrink-0">
+            {hasHubspot ? (
+              <div className="text-right">
+                {(hubspot?.openValue ?? 0) > 0 && (
+                  <p className="text-sm font-bold text-blue-600">{currencyFmt.format(hubspot!.openValue)}</p>
+                )}
+                <p className="text-[10px] text-gray-400">{openDeals.length} open deal{openDeals.length !== 1 ? 's' : ''}</p>
+              </div>
+            ) : (
+              pmoSignals.length > 0 && (
+                <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${SIGNAL_CFG[pmoSignals[0].signal.level].badge}`}>
+                  {pmoSignals[0].label}
+                </span>
+              )
             )}
             {canEdit && (
               <button
@@ -130,44 +160,86 @@ function GrowthCard({
           </div>
         </div>
 
-        {/* Product interest bars */}
-        <div className="space-y-2">
-          <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Product Interest</p>
-          {products.map(p => (
-            <ProductInterestRow key={p.label} label={p.label} signal={p.signal} />
-          ))}
-        </div>
-
-        {/* HubSpot open deals */}
-        {openDeals.length > 0 && (
-          <div className="pt-2 border-t border-gray-100 space-y-1.5">
+        {/* PRIMARY: HubSpot live pipeline (if data exists) */}
+        {hasHubspot ? (
+          <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">HubSpot Pipeline</p>
-              <div className="flex gap-3 text-[11px] font-medium">
-                {(hubspot?.openValue ?? 0) > 0 && <span className="text-blue-600">{currencyFmt.format(hubspot!.openValue)}</span>}
+              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Live Pipeline</p>
+              <div className="flex gap-2 text-[11px] font-medium">
+                {(hubspot?.openValue ?? 0) > 0 && <span className="text-blue-600">{currencyFmt.format(hubspot!.openValue)} open</span>}
                 {(hubspot?.wonValue  ?? 0) > 0 && <span className="text-emerald-600">{currencyFmt.format(hubspot!.wonValue)} won</span>}
               </div>
             </div>
-            {openDeals.slice(0, 3).map(d => {
-              const cfg = DEAL_CATEGORY_CFG[d.category];
+
+            {CATEGORY_ORDER.map(cat => {
+              const deals = grouped[cat];
+              if (!deals?.length) return null;
+              const catValue = deals.reduce((s, d) => s + (d.amount ?? 0), 0);
+              const cfg = DEAL_CATEGORY_CFG[cat];
               return (
-                <div key={d.id} className="flex items-center justify-between gap-2 bg-gray-50 rounded-lg px-2.5 py-1.5">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs text-gray-700 truncate">{d.name}</p>
-                    <p className="text-[11px] text-gray-400">{d.stage}</p>
+                <div key={cat}>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${cfg.badge}`}>
+                      {CATEGORY_LABELS[cat]} · {deals.length}
+                    </span>
+                    {catValue > 0 && <span className="text-[11px] font-semibold text-gray-600">{currencyFmt.format(catValue)}</span>}
                   </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-full border ${cfg.badge}`}>{cfg.label}</span>
-                    {d.amount !== null && <span className="text-xs font-semibold text-gray-600">{currencyFmt.format(d.amount)}</span>}
+                  <div className="space-y-1">
+                    {deals.map(d => (
+                      <div key={d.id} className="flex items-center justify-between gap-2 bg-gray-50 rounded-lg px-2.5 py-1.5">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs text-gray-800 truncate">{d.name}</p>
+                          <p className="text-[11px] text-gray-400">
+                            {d.stage}
+                            {d.closeDate ? ` · ${new Date(d.closeDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : ''}
+                          </p>
+                        </div>
+                        {d.amount !== null && (
+                          <span className="text-xs font-semibold text-gray-700 shrink-0">{currencyFmt.format(d.amount)}</span>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 </div>
               );
             })}
-            {openDeals.length > 3 && (
-              <p className="text-[11px] text-gray-400 text-center">+{openDeals.length - 3} more deals</p>
+
+            {wonDeals.length > 0 && (
+              <div className="bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2">
+                <p className="text-[10px] font-bold text-emerald-700 uppercase mb-1">
+                  Closed Won{(hubspot?.wonValue ?? 0) > 0 ? ` · ${currencyFmt.format(hubspot!.wonValue)}` : ''}
+                </p>
+                {wonDeals.slice(0, 2).map(d => (
+                  <p key={d.id} className="text-xs text-emerald-800 truncate">{d.name}</p>
+                ))}
+                {wonDeals.length > 2 && <p className="text-[11px] text-emerald-600">+{wonDeals.length - 2} more</p>}
+              </div>
             )}
           </div>
+        ) : (
+          /* FALLBACK: PMO signals when no HubSpot match */
+          pmoSignals.length > 0 ? (
+            <div className="space-y-2">
+              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">PMO Signals · No HubSpot match</p>
+              {pmoSignals.map(p => (
+                <ProductInterestRow key={p.label} label={p.label} signal={p.signal} />
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-gray-400 italic text-center py-2">No active pipeline or signals</p>
+          )
         )}
+
+        {/* CONTEXT: PMO signals below HubSpot data */}
+        {hasHubspot && pmoSignals.length > 0 && (
+          <div className="pt-2 border-t border-gray-100 space-y-1.5">
+            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">PMO Product Signals</p>
+            {pmoSignals.map(p => (
+              <ProductInterestRow key={p.label} label={p.label} signal={p.signal} />
+            ))}
+          </div>
+        )}
+
       </div>
     </Card>
   );
@@ -1117,19 +1189,38 @@ export default function CustomerSuccessPage() {
       {/* Section 3 — Growth Opportunities (unified upsell + cross-sell) */}
       <div ref={upsellRef} className="scroll-mt-6">
         {activeTab === 'migration' && (() => {
-          const growthAccounts = filtered.filter(a =>
-            a.cfMigrate.level !== 'none' ||
-            a.professionalServices.level !== 'none' ||
-            a.cfManage.level !== 'none' ||
-            a.managedServices.level !== 'none'
-          );
+          const growthAccounts = filtered
+            .filter(a => {
+              const hs = hubspotFor(a.customerName);
+              const hasHubspot = (hs?.deals.length ?? 0) > 0;
+              const hasPmoSignals =
+                a.cfMigrate.level !== 'none' ||
+                a.professionalServices.level !== 'none' ||
+                a.cfManage.level !== 'none' ||
+                a.managedServices.level !== 'none';
+              return hasHubspot || hasPmoSignals;
+            })
+            .sort((a, b) => {
+              // HubSpot-matched customers with open pipeline first, sorted by value
+              const aVal = hubspotFor(a.customerName)?.openValue ?? 0;
+              const bVal = hubspotFor(b.customerName)?.openValue ?? 0;
+              return bVal - aVal;
+            });
+
           if (growthAccounts.length === 0) return null;
           return (
             <div className="space-y-3">
-              <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                <TrendingUp className="w-5 h-5 text-blue-500" /> Growth Opportunities
-                <span className="text-sm font-normal text-gray-400">— upsell &amp; cross-sell signals per customer</span>
-              </h2>
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5 text-blue-500" /> Growth Opportunities
+                  <span className="text-sm font-normal text-gray-400">— live pipeline &amp; signals per customer</span>
+                </h2>
+                {hubspotData?.configured && (
+                  <span className="text-[11px] text-emerald-600 font-medium bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                    HubSpot live
+                  </span>
+                )}
+              </div>
               <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
                 {growthAccounts.map(account => (
                   <GrowthCard
