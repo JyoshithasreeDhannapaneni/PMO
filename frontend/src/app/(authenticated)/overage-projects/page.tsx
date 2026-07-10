@@ -402,15 +402,6 @@ export default function OverageProjectsPage() {
                                 <Pencil size={14} />
                               </button>
                             )}
-                            {canEditProject(p) && p.isOveraged && (
-                              <button
-                                onClick={() => handleUnmarkOverage(p.id)}
-                                title="Remove overage flag"
-                                className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 text-orange-500 hover:bg-orange-100 transition-colors"
-                              >
-                                <X size={14} />
-                              </button>
-                            )}
                             {canEditProject(p) && (
                               <button
                                 onClick={() => handleDeleteProject(p.id)}

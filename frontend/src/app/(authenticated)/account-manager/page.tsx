@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { Card } from '@/components/ui/Card';
 import { useAuth } from '@/context/AuthContext';
 import { useAccountManagerView, useHubspotSignals } from '@/hooks/useProjects';
@@ -50,7 +50,8 @@ const DEAL_CATEGORY_CFG: Record<HubspotDealCategory, { badge: string; label: str
 type SortKey =
   | 'name' | 'customerName' | 'accountManager' | 'projectManager'
   | 'status' | 'phase' | 'delayStatus' | 'planType'
-  | 'actualStart' | 'plannedStart' | 'plannedEnd' | 'expectedEnd' | 'migrationTypes' | 'pocOutcome';
+  | 'actualStart' | 'plannedStart' | 'plannedEnd' | 'expectedEnd'
+  | 'migrationTypes' | 'pocOutcome' | 'csatScore' | 'delayHappened';
 type SortDir = 'asc' | 'desc';
 
 function scrollTo(ref: React.RefObject<HTMLDivElement>) {
@@ -141,6 +142,8 @@ type ProjectRow = {
   migrationTypes: string;
   trackType: 'migration' | 'poc';
   pocOutcome?: string | null;
+  csatScore?: number | null;
+  delayHappened?: 'CUSTOMER_DELAY' | 'INTERNAL_DELAY' | null;
   [key: string]: any;
 };
 
@@ -164,6 +167,24 @@ export default function AccountManagerPage() {
   const renewalRef    = useRef<HTMLDivElement>(null);
   const overageRef    = useRef<HTMLDivElement>(null);
   const upsellRef     = useRef<HTMLDivElement>(null);
+  const tableScrollRef = useRef<HTMLDivElement>(null);
+  const [tableCanScrollRight, setTableCanScrollRight] = useState(true);
+
+  const checkTableScroll = useCallback(() => {
+    const el = tableScrollRef.current;
+    if (!el) return;
+    setTableCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
+  }, []);
+
+  useEffect(() => {
+    const el = tableScrollRef.current;
+    if (!el) return;
+    checkTableScroll();
+    el.addEventListener('scroll', checkTableScroll);
+    const ro = new ResizeObserver(checkTableScroll);
+    ro.observe(el);
+    return () => { el.removeEventListener('scroll', checkTableScroll); ro.disconnect(); };
+  }, [checkTableScroll]);
 
   const { data, isLoading, error } = useAccountManagerView();
   const accounts: AccountView[] = data?.data || [];
@@ -231,6 +252,8 @@ export default function AccountManagerPage() {
         trackType: 'poc' as const,
         pocOutcome: poc.pocOutcome,
         isEscalated: !!poc.isEscalated,
+        csatScore: poc.csatScore ?? null,
+        delayHappened: poc.delayHappened ?? null,
         ...poc,
       } as ProjectRow;
     }
@@ -289,6 +312,8 @@ export default function AccountManagerPage() {
       migrationTypes: allTypes.join(', '),
       trackType: 'migration' as const,
       isEscalated: anyEscalated,
+      csatScore: primary.csatScore ?? null,
+      delayHappened: worstDelay.delayHappened ?? primary.delayHappened ?? null,
     } as ProjectRow;
   }).filter(Boolean) as ProjectRow[];
 
@@ -498,11 +523,20 @@ export default function AccountManagerPage() {
         </Card>
       ) : (
         <Card className="overflow-hidden">
-          <div className="overflow-auto max-h-[calc(100vh-14rem)]">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b border-gray-100 sticky top-0 z-10">
+          <div className="relative">
+          {tableCanScrollRight && (
+            <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-16 z-40 bg-gradient-to-l from-white/90 to-transparent flex items-center justify-end pr-2">
+              <div className="flex flex-col items-center gap-0.5 text-gray-400 animate-pulse">
+                <ArrowUp className="w-3.5 h-3.5 rotate-90" />
+                <span className="text-[10px] font-medium whitespace-nowrap">scroll</span>
+              </div>
+            </div>
+          )}
+          <div ref={tableScrollRef} className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-14rem)]">
+            <table className="min-w-max w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-100 sticky top-0 z-20">
                 <tr>
-                  <SortTh label="Project"         sortKey="name"           current={sortKey} dir={sortDir} onSort={handleSort} />
+                  <SortTh label="Project"         sortKey="name"           current={sortKey} dir={sortDir} onSort={handleSort} className="sticky left-0 z-30 bg-gray-50 border-r border-gray-200 shadow-[2px_0_4px_-1px_rgba(0,0,0,0.06)]" />
                   <SortTh label="Migration Types" sortKey="migrationTypes"  current={sortKey} dir={sortDir} onSort={handleSort} />
                   <SortTh label="Account Manager" sortKey="accountManager"  current={sortKey} dir={sortDir} onSort={handleSort} />
                   <SortTh label="Project Manager" sortKey="projectManager"  current={sortKey} dir={sortDir} onSort={handleSort} />
@@ -518,14 +552,16 @@ export default function AccountManagerPage() {
                     ? <SortTh label="POC Outcome"  sortKey="pocOutcome"   current={sortKey} dir={sortDir} onSort={handleSort} />
                     : <SortTh label="Project End"  sortKey="expectedEnd"  current={sortKey} dir={sortDir} onSort={handleSort} />
                   }
+                  <SortTh label="C-SAT"          sortKey="csatScore"    current={sortKey} dir={sortDir} onSort={handleSort} />
+                  <SortTh label="Delay Happened" sortKey="delayHappened" current={sortKey} dir={sortDir} onSort={handleSort} />
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {sortedRows.map(row => (
-                  <tr key={`${row.customerName}-${row.id}`} className="hover:bg-gray-50 transition-colors">
+                  <tr key={`${row.customerName}-${row.id}`} className="hover:bg-gray-50 transition-colors group">
 
-                    {/* Project name + customer as subtitle */}
-                    <td className="px-4 py-3">
+                    {/* Project name + customer as subtitle — frozen */}
+                    <td className="px-4 py-3 sticky left-0 z-10 bg-white group-hover:bg-gray-50 transition-colors border-r border-gray-200 shadow-[2px_0_4px_-1px_rgba(0,0,0,0.04)]">
                       <div className="flex flex-col gap-0.5">
                         <div className="flex items-center gap-1.5">
                           <span className="font-medium text-gray-900 capitalize">{row.name}</span>
@@ -645,10 +681,35 @@ export default function AccountManagerPage() {
                         </span>
                       </td>
                     )}
+
+                    {/* C-SAT */}
+                    <td className="px-4 py-3 whitespace-nowrap text-center">
+                      {row.csatScore != null ? (
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                          row.csatScore >= 4 ? 'bg-green-100 text-green-700' :
+                          row.csatScore >= 3 ? 'bg-yellow-100 text-yellow-700' :
+                          'bg-red-100 text-red-700'
+                        }`}>
+                          {row.csatScore}/5
+                        </span>
+                      ) : <span className="text-xs text-gray-400">—</span>}
+                    </td>
+
+                    {/* Delay Happened */}
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {row.delayHappened ? (
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                          row.delayHappened === 'CUSTOMER_DELAY' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'
+                        }`}>
+                          {row.delayHappened === 'CUSTOMER_DELAY' ? 'Customer' : 'Internal'}
+                        </span>
+                      ) : <span className="text-xs text-gray-400">—</span>}
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+          </div>
           </div>
         </Card>
       )}

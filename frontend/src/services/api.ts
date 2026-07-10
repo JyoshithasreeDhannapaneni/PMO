@@ -458,7 +458,7 @@ export const platformReviewsApi = {
     reviewText?: string;
     reviewUrl?: string;
     reviewDate?: string;
-    segment?: 'SMB' | 'ENT';
+    segment?: 'SMB' | 'ENT' | 'PS';
   }) => {
     const { data } = await api.post('/platform-reviews', review);
     return data;
