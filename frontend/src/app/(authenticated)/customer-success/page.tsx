@@ -14,7 +14,7 @@ import type {
 } from '@/types';
 import {
   HeartHandshake, Loader2, AlertTriangle, User, X, Search,
-  Smile, Meh, Frown, TrendingUp, RefreshCw, ArrowUpRight,
+  Smile, Meh, Frown, TrendingUp, RefreshCw,
   ChevronDown, ChevronUp, Edit3, Save, Calendar, Zap, FlaskConical, FolderKanban,
   SlidersHorizontal,
 } from 'lucide-react';
@@ -51,18 +51,125 @@ function ScoreBar({ label, value }: { label: string; value: number | null }) {
   );
 }
 
-function SignalCell({ label, signal }: { label: string; signal: CfProductSignal }) {
+const INTEREST_BAR_CFG: Record<CfSignalLevel, { width: string; bg: string }> = {
+  active:   { width: '100%', bg: 'bg-emerald-400' },
+  strong:   { width: '72%',  bg: 'bg-blue-400'    },
+  moderate: { width: '44%',  bg: 'bg-amber-400'   },
+  none:     { width: '8%',   bg: 'bg-gray-200'    },
+};
+
+const SIGNAL_SORT_ORDER: Record<CfSignalLevel, number> = { active: 0, strong: 1, moderate: 2, none: 3 };
+
+function ProductInterestRow({ label, signal }: { label: string; signal: CfProductSignal }) {
   const cfg = SIGNAL_CFG[signal.level];
+  const bar = INTEREST_BAR_CFG[signal.level];
   return (
-    <div className={`p-3 rounded-xl border ${cfg.badge} flex flex-col gap-1.5`}>
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-xs font-semibold leading-tight">{label}</span>
-        <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-full ${cfg.badge} border whitespace-nowrap`}>
+    <div className="space-y-0.5">
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-gray-700 shrink-0" style={{ width: '140px' }}>{label}</span>
+        <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+          <div className={`h-full rounded-full ${bar.bg}`} style={{ width: bar.width }} />
+        </div>
+        <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border whitespace-nowrap ml-1 ${cfg.badge}`}>
           {cfg.label}
         </span>
       </div>
-      <p className="text-[11px] opacity-75 leading-snug">{signal.reason}</p>
+      {signal.reason && signal.level !== 'none' && (
+        <p className="text-[11px] text-gray-500 leading-snug" style={{ paddingLeft: '148px' }}>{signal.reason}</p>
+      )}
     </div>
+  );
+}
+
+function GrowthCard({
+  account, hubspot, canEdit, onEdit,
+}: {
+  account: CustomerSuccessEntry;
+  hubspot?: HubspotCustomerDeals | null;
+  canEdit: boolean;
+  onEdit: () => void;
+}) {
+  const products = [
+    { label: 'CF Migrate',            signal: account.cfMigrate            },
+    { label: 'Professional Services', signal: account.professionalServices  },
+    { label: 'CF Manage',             signal: account.cfManage              },
+    { label: 'Managed Services',      signal: account.managedServices       },
+  ].sort((a, b) => SIGNAL_SORT_ORDER[a.signal.level] - SIGNAL_SORT_ORDER[b.signal.level]);
+
+  const topProduct  = products.find(p => p.signal.level !== 'none');
+  const openDeals   = hubspot?.deals.filter(d => d.isOpen) ?? [];
+
+  return (
+    <Card className="overflow-hidden">
+      <div className="p-4 space-y-3">
+        {/* Header */}
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <p className="font-semibold text-gray-900 capitalize">{account.customerName}</p>
+            {account.accountManager && (
+              <p className="text-xs text-gray-500 flex items-center gap-1 mt-0.5">
+                <User className="w-3 h-3" /> {account.accountManager}
+              </p>
+            )}
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            {topProduct && (
+              <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${SIGNAL_CFG[topProduct.signal.level].badge}`}>
+                {topProduct.label}
+              </span>
+            )}
+            {canEdit && (
+              <button
+                onClick={onEdit}
+                className="p-1.5 rounded-lg hover:bg-gray-100 transition text-gray-400 hover:text-gray-700"
+                title="Edit signals"
+              >
+                <Edit3 className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Product interest bars */}
+        <div className="space-y-2">
+          <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Product Interest</p>
+          {products.map(p => (
+            <ProductInterestRow key={p.label} label={p.label} signal={p.signal} />
+          ))}
+        </div>
+
+        {/* HubSpot open deals */}
+        {openDeals.length > 0 && (
+          <div className="pt-2 border-t border-gray-100 space-y-1.5">
+            <div className="flex items-center justify-between">
+              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">HubSpot Pipeline</p>
+              <div className="flex gap-3 text-[11px] font-medium">
+                {(hubspot?.openValue ?? 0) > 0 && <span className="text-blue-600">{currencyFmt.format(hubspot!.openValue)}</span>}
+                {(hubspot?.wonValue  ?? 0) > 0 && <span className="text-emerald-600">{currencyFmt.format(hubspot!.wonValue)} won</span>}
+              </div>
+            </div>
+            {openDeals.slice(0, 3).map(d => {
+              const cfg = DEAL_CATEGORY_CFG[d.category];
+              return (
+                <div key={d.id} className="flex items-center justify-between gap-2 bg-gray-50 rounded-lg px-2.5 py-1.5">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs text-gray-700 truncate">{d.name}</p>
+                    <p className="text-[11px] text-gray-400">{d.stage}</p>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-full border ${cfg.badge}`}>{cfg.label}</span>
+                    {d.amount !== null && <span className="text-xs font-semibold text-gray-600">{currencyFmt.format(d.amount)}</span>}
+                  </div>
+                </div>
+              );
+            })}
+            {openDeals.length > 3 && (
+              <p className="text-[11px] text-gray-400 text-center">+{openDeals.length - 3} more deals</p>
+            )}
+          </div>
+        )}
+      </div>
+    </Card>
   );
 }
 
@@ -82,45 +189,52 @@ function normalizeCustomerKey(name: string): string {
 }
 
 function HubspotDealsPanel({ hubspot }: { hubspot: HubspotCustomerDeals }) {
+  const openDeals = hubspot.deals.filter(d => d.isOpen);
+  const wonDeals  = hubspot.deals.filter(d => d.isClosedWon);
   return (
-    <div>
-      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
-        HubSpot Pipeline — {hubspot.upsellCount} upsell · {hubspot.crossSellCount} cross-sell
-        {hubspot.openValue > 0 && <span className="ml-1 text-gray-500 normal-case">· {currencyFmt.format(hubspot.openValue)} open</span>}
-      </p>
-      <div className="space-y-1.5">
-        {hubspot.deals.map(d => {
-          const cfg = DEAL_CATEGORY_CFG[d.category];
-          return (
-            <div key={d.id} className="flex items-start justify-between gap-2 bg-white border border-gray-200 rounded-lg px-3 py-2">
-              <div className="min-w-0">
-                <p className="text-xs font-medium text-gray-800 truncate">{d.name}</p>
-                <p className="text-[11px] text-gray-500">
-                  {d.isClosedWon ? 'Closed won' : d.stage}
-                  {d.closeDate ? ` · closes ${new Date(d.closeDate).toLocaleDateString()}` : ''}
-                </p>
-              </div>
-              <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-full border ${cfg.badge}`}>
-                  {cfg.label}
-                </span>
-                {d.amount !== null && <span className="text-xs font-semibold text-gray-700">{currencyFmt.format(d.amount)}</span>}
-              </div>
-            </div>
-          );
-        })}
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">HubSpot Pipeline</p>
+        <div className="flex items-center gap-3 text-[11px] font-medium">
+          {hubspot.openValue > 0 && <span className="text-blue-600">{currencyFmt.format(hubspot.openValue)} open</span>}
+          {hubspot.wonValue  > 0 && <span className="text-emerald-600">{currencyFmt.format(hubspot.wonValue)} won</span>}
+        </div>
       </div>
+      {openDeals.length > 0 && (
+        <div className="space-y-1.5">
+          {openDeals.map(d => {
+            const cfg = DEAL_CATEGORY_CFG[d.category];
+            return (
+              <div key={d.id} className="flex items-start justify-between gap-2 bg-white border border-gray-200 rounded-lg px-3 py-2">
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-gray-800 truncate">{d.name}</p>
+                  <p className="text-[11px] text-gray-400">
+                    {d.stage}{d.closeDate ? ` · closes ${new Date(d.closeDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : ''}
+                  </p>
+                </div>
+                <div className="flex flex-col items-end gap-1 shrink-0">
+                  <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-full border ${cfg.badge}`}>{cfg.label}</span>
+                  {d.amount !== null && <span className="text-xs font-semibold text-gray-700">{currencyFmt.format(d.amount)}</span>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {wonDeals.length > 0 && (
+        <div className="space-y-1 pt-1">
+          <p className="text-[10px] text-gray-400 font-medium uppercase tracking-wider">Closed Won</p>
+          {wonDeals.map(d => (
+            <div key={d.id} className="flex items-center justify-between gap-2 bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-1.5">
+              <p className="text-xs text-emerald-800 truncate flex-1">{d.name}</p>
+              {d.amount !== null && <span className="text-xs font-semibold text-emerald-700 shrink-0">{currencyFmt.format(d.amount)}</span>}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
-
-// ── Product → form key mapping (for inline upsell editing) ────────────────
-const PRODUCT_SIGNAL_KEYS: Record<string, { levelKey: string; reasonKey: string }> = {
-  'CF Migrate':            { levelKey: 'cfMigrateSignal', reasonKey: 'cfMigrateSignalReason' },
-  'CF Manage':             { levelKey: 'cfManageSignal',  reasonKey: 'cfManageSignalReason'  },
-  'Professional Services': { levelKey: 'cfPsSignal',      reasonKey: 'cfPsSignalReason'      },
-  'Managed Services':      { levelKey: 'cfMsSignal',      reasonKey: 'cfMsSignalReason'      },
-};
 
 // ── Edit form types & constants ────────────────────────────────────────────
 const SIGNAL_OPTS: CfSignalLevel[] = ['none', 'moderate', 'strong', 'active'];
@@ -314,12 +428,16 @@ function AccountCard({
           )}
 
           <div>
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">CF Product Signals</p>
-            <div className="grid grid-cols-2 gap-2">
-              <SignalCell label="CF Migrate"            signal={account.cfMigrate} />
-              <SignalCell label="CF Manage"             signal={account.cfManage} />
-              <SignalCell label="Professional Services" signal={account.professionalServices} />
-              <SignalCell label="Managed Services"      signal={account.managedServices} />
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Product Interest</p>
+            <div className="space-y-2">
+              {[
+                { label: 'CF Migrate',            signal: account.cfMigrate            },
+                { label: 'Professional Services', signal: account.professionalServices  },
+                { label: 'CF Manage',             signal: account.cfManage              },
+                { label: 'Managed Services',      signal: account.managedServices       },
+              ]
+                .sort((a, b) => SIGNAL_SORT_ORDER[a.signal.level] - SIGNAL_SORT_ORDER[b.signal.level])
+                .map(p => <ProductInterestRow key={p.label} label={p.label} signal={p.signal} />)}
             </div>
           </div>
 
@@ -537,126 +655,6 @@ function SignalTable({ signals }: { signals: SignalItem[] }) {
   );
 }
 
-// ── Editable upsell signal table ──────────────────────────────────────────
-function EditableSignalTable({
-  signals, accounts, canEdit, onSaveRow,
-}: {
-  signals: SignalItem[];
-  accounts: CustomerSuccessEntry[];
-  canEdit: boolean;
-  onSaveRow: (customerName: string, payload: Record<string, any>) => Promise<void>;
-}) {
-  const [editKey, setEditKey] = useState<string | null>(null); // `${customerName}|${product}`
-  const [editLevel, setEditLevel] = useState<CfSignalLevel>('none');
-  const [editReason, setEditReason] = useState('');
-  const [saving, setSaving] = useState(false);
-
-  function startEdit(s: SignalItem) {
-    setEditKey(`${s.customerName}|${s.product}`);
-    setEditLevel(s.level);
-    setEditReason(s.reason);
-  }
-
-  async function handleSave(s: SignalItem) {
-    const account = accounts.find(a => a.customerName === s.customerName);
-    if (!account) return;
-    const keys = PRODUCT_SIGNAL_KEYS[s.product];
-    if (!keys) return;
-    setSaving(true);
-    try {
-      const base = buildEditForm(account);
-      await onSaveRow(s.customerName, {
-        csatScore:             base.csatScore             ? Number(base.csatScore)             : null,
-        csatVerbatim:          base.csatVerbatim          || null,
-        csatMigrationQuality:  base.csatMigrationQuality  ? Number(base.csatMigrationQuality)  : null,
-        csatSupportExperience: base.csatSupportExperience ? Number(base.csatSupportExperience) : null,
-        csatOnboarding:        base.csatOnboarding        ? Number(base.csatOnboarding)        : null,
-        csatDate:              base.csatDate              || null,
-        cfMigrateSignal:       base.cfMigrateSignal,       cfMigrateSignalReason: base.cfMigrateSignalReason || null,
-        cfManageSignal:        base.cfManageSignal,        cfManageSignalReason:  base.cfManageSignalReason  || null,
-        cfPsSignal:            base.cfPsSignal,            cfPsSignalReason:      base.cfPsSignalReason      || null,
-        cfMsSignal:            base.cfMsSignal,            cfMsSignalReason:      base.cfMsSignalReason      || null,
-        [keys.levelKey]:  editLevel,
-        [keys.reasonKey]: editReason || null,
-      });
-      setEditKey(null);
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  const inpCls = 'border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white';
-
-  return (
-    <Card className="overflow-hidden">
-      <table className="w-full text-sm">
-        <thead className="bg-gray-50 border-b border-gray-100">
-          <tr>
-            <th className="text-left px-4 py-3 font-medium text-gray-600">Customer</th>
-            <th className="text-left px-4 py-3 font-medium text-gray-600">Account Manager</th>
-            <th className="text-left px-4 py-3 font-medium text-gray-600">Product</th>
-            <th className="text-left px-4 py-3 font-medium text-gray-600">Signal</th>
-            <th className="text-left px-4 py-3 font-medium text-gray-600">Talking Point</th>
-            {canEdit && <th className="px-4 py-3" />}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-gray-50">
-          {signals.map((s, i) => {
-            const key = `${s.customerName}|${s.product}`;
-            const isEditing = editKey === key;
-            const cfg = SIGNAL_CFG[isEditing ? editLevel : s.level];
-            return (
-              <tr key={i} className={`transition ${isEditing ? 'bg-blue-50' : 'hover:bg-gray-50'}`}>
-                <td className="px-4 py-3 font-medium text-gray-900">{s.customerName}</td>
-                <td className="px-4 py-3 text-gray-600">{s.accountManager || '—'}</td>
-                <td className="px-4 py-3">
-                  <span className="flex items-center gap-1.5 font-medium text-gray-800">
-                    <Zap className="w-3.5 h-3.5 text-blue-500" /> {s.product}
-                  </span>
-                </td>
-                <td className="px-4 py-3">
-                  {isEditing ? (
-                    <select value={editLevel} onChange={e => setEditLevel(e.target.value as CfSignalLevel)} className={inpCls}>
-                      {SIGNAL_OPTS.map(o => <option key={o} value={o}>{SIGNAL_CFG[o].label}</option>)}
-                    </select>
-                  ) : (
-                    <span className={`text-xs font-bold uppercase px-2 py-0.5 rounded-full border ${cfg.badge}`}>
-                      {cfg.label}
-                    </span>
-                  )}
-                </td>
-                <td className="px-4 py-3 text-gray-600 max-w-xs">
-                  {isEditing ? (
-                    <input type="text" value={editReason} onChange={e => setEditReason(e.target.value)}
-                      placeholder="Talking point..." className={`${inpCls} w-full`} />
-                  ) : s.reason}
-                </td>
-                {canEdit && (
-                  <td className="px-4 py-3 text-right whitespace-nowrap">
-                    {isEditing ? (
-                      <div className="flex items-center gap-1.5 justify-end">
-                        <button onClick={() => handleSave(s)} disabled={saving}
-                          className="flex items-center gap-1 text-xs px-2.5 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 transition">
-                          {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />} Save
-                        </button>
-                        <button onClick={() => setEditKey(null)} className="text-xs px-2 py-1 border border-gray-200 rounded hover:bg-gray-100 transition text-gray-600">Cancel</button>
-                      </div>
-                    ) : (
-                      <button onClick={() => startEdit(s)}
-                        className="p-1 rounded hover:bg-gray-200 transition text-gray-400 hover:text-gray-700" title="Edit">
-                        <Edit3 className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </td>
-                )}
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </Card>
-  );
-}
 
 // ── Filter dropdown (matches All Projects style) ───────────────────────────
 function FilterDropdown({ label, value, options, onChange }: {
@@ -742,7 +740,6 @@ export default function CustomerSuccessPage() {
   const accounts: CustomerSuccessEntry[] = pageData?.accounts ?? [];
   const renewalDue: RenewalDueItem[]     = pageData?.renewalDue ?? [];
   const upsellSignals: SignalItem[]      = pageData?.upsellSignals ?? [];
-  const crossSellSignals: SignalItem[]   = pageData?.crossSellSignals ?? [];
 
   // Re-compute per-customer data scoped to the active tab's project type
   function applyTabFilter(account: CustomerSuccessEntry): CustomerSuccessEntry {
@@ -821,11 +818,6 @@ export default function CustomerSuccessPage() {
       return order[a.level] - order[b.level];
     });
   })();
-
-  async function handleSaveUpsellRow(customerName: string, payload: Record<string, any>) {
-    await updateCS.mutateAsync({ customerName, data: payload });
-    showToast('success', 'Signal updated');
-  }
 
   async function handleSave(form: EditForm) {
     if (!editingAccount) return;
@@ -1122,22 +1114,36 @@ export default function CustomerSuccessPage() {
       )}
       </div>
 
-      {/* Section 3 — Upsell Signals */}
+      {/* Section 3 — Growth Opportunities (unified upsell + cross-sell) */}
       <div ref={upsellRef} className="scroll-mt-6">
-        {activeTab === 'migration' && upsellSignals.length > 0 && (
-          <div className="space-y-3">
-            <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-              <TrendingUp className="w-5 h-5 text-blue-500" /> Upsell Signals
-              <span className="text-sm font-normal text-gray-400">— accounts ready to expand</span>
-            </h2>
-            <EditableSignalTable
-              signals={upsellSignals}
-              accounts={accounts}
-              canEdit={canEdit}
-              onSaveRow={handleSaveUpsellRow}
-            />
-          </div>
-        )}
+        {activeTab === 'migration' && (() => {
+          const growthAccounts = filtered.filter(a =>
+            a.cfMigrate.level !== 'none' ||
+            a.professionalServices.level !== 'none' ||
+            a.cfManage.level !== 'none' ||
+            a.managedServices.level !== 'none'
+          );
+          if (growthAccounts.length === 0) return null;
+          return (
+            <div className="space-y-3">
+              <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <TrendingUp className="w-5 h-5 text-blue-500" /> Growth Opportunities
+                <span className="text-sm font-normal text-gray-400">— upsell &amp; cross-sell signals per customer</span>
+              </h2>
+              <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+                {growthAccounts.map(account => (
+                  <GrowthCard
+                    key={account.customerName}
+                    account={account}
+                    hubspot={hubspotFor(account.customerName)}
+                    canEdit={canEdit}
+                    onEdit={() => setEditingAccount(account)}
+                  />
+                ))}
+              </div>
+            </div>
+          );
+        })()}
         {activeTab === 'poc' && pocUpsellSignals.length > 0 && (
           <div className="space-y-3">
             <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
@@ -1148,17 +1154,6 @@ export default function CustomerSuccessPage() {
           </div>
         )}
       </div>
-
-      {/* Section 4 — Cross-sell Signals (migration tab only) */}
-      {activeTab === 'migration' && crossSellSignals.length > 0 && (
-        <div className="space-y-3">
-          <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-            <ArrowUpRight className="w-5 h-5 text-emerald-500" /> Cross-sell Signals
-            <span className="text-sm font-normal text-gray-400">— existing customers, new products</span>
-          </h2>
-          <SignalTable signals={crossSellSignals} />
-        </div>
-      )}
 
       {/* Section 5 — Renewal Due */}
       <div ref={renewalRef} className="scroll-mt-6">
