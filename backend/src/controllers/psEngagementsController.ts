@@ -16,7 +16,7 @@ export const psEngagementsController = {
               cf_ps_lead, account_manager, start_date, end_date, engagement_type,
               workloads, delivery_model, priority, sow_status, engagement_description,
               client_objectives, success_criteria, assumptions, out_of_scope,
-              phases, signoffs, created_at, created_by
+              phases, signoffs, line_items, created_at, created_by
        FROM ps_engagements
        ORDER BY created_at DESC`,
       []
@@ -43,6 +43,7 @@ export const psEngagementsController = {
       outOfScope: r.out_of_scope,
       phases: r.phases ?? [],
       signoffs: r.signoffs ?? [],
+      lineItems: r.line_items ?? [],
       createdAt: r.created_at,
       createdBy: r.created_by,
     }));
@@ -57,15 +58,15 @@ export const psEngagementsController = {
         cf_ps_lead, account_manager, start_date, end_date, engagement_type,
         workloads, delivery_model, priority, sow_status, engagement_description,
         client_objectives, success_criteria, assumptions, out_of_scope,
-        phases, signoffs, created_by
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
+        phases, signoffs, line_items, created_by
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)`,
       [
         b.id, b.clientName, b.sowRefId, b.clientContact, b.clientContactEmail,
         b.cfPsLead, b.accountManager, b.startDate, b.endDate, b.engagementType,
         JSON.stringify(b.workloads ?? []), b.deliveryModel, b.priority, b.sowStatus,
         b.engagementDescription, b.clientObjectives, b.successCriteria, b.assumptions,
         b.outOfScope, JSON.stringify(b.phases ?? []), JSON.stringify(b.signoffs ?? []),
-        b.createdBy ?? null,
+        JSON.stringify(b.lineItems ?? []), b.createdBy ?? null,
       ]
     );
     logger.info(`PS engagement created: ${b.id} (${b.clientName})`);
@@ -82,8 +83,8 @@ export const psEngagementsController = {
         engagement_type = $9, workloads = $10, delivery_model = $11, priority = $12,
         sow_status = $13, engagement_description = $14, client_objectives = $15,
         success_criteria = $16, assumptions = $17, out_of_scope = $18,
-        phases = $19, signoffs = $20, updated_at = NOW()
-       WHERE id = $21`,
+        phases = $19, signoffs = $20, line_items = $21, updated_at = NOW()
+       WHERE id = $22`,
       [
         b.clientName, b.sowRefId, b.clientContact, b.clientContactEmail,
         b.cfPsLead, b.accountManager, b.startDate, b.endDate,
@@ -91,6 +92,7 @@ export const psEngagementsController = {
         b.sowStatus, b.engagementDescription, b.clientObjectives,
         b.successCriteria, b.assumptions, b.outOfScope,
         JSON.stringify(b.phases ?? []), JSON.stringify(b.signoffs ?? []),
+        JSON.stringify(b.lineItems ?? []),
         id,
       ]
     );
