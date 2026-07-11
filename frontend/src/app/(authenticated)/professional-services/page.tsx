@@ -30,6 +30,14 @@ const ACTIVITY_STATUS_STYLE: Record<string, string> = {
   'Blocked': 'bg-red-100 text-red-700',
 };
 
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const fmtDate = (d: string) => {
+  if (!d) return '—';
+  const [y, m, day] = d.split('-');
+  if (!y || !m || !day) return d;
+  return `${MONTHS[+m - 1]} ${+day}, ${y}`;
+};
+
 const LABEL_CLS = 'block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5';
 const INPUT_CLS = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100 bg-white transition-colors';
 const TEXTAREA_CLS = `${INPUT_CLS} resize-none`;
@@ -162,9 +170,8 @@ function EngagementCard({ eng, onClick }: { eng: PSEngagement; onClick: () => vo
       <div className="text-xs text-slate-500 space-y-0.5">
         {eng.cfPsLead && <p><span className="text-slate-400">PS Lead:</span> {eng.cfPsLead}</p>}
         {eng.accountManager && <p><span className="text-slate-400">AM:</span> {eng.accountManager}</p>}
-        {(eng.startDate || eng.endDate) && (
-          <p><span className="text-slate-400">Dates:</span> {eng.startDate || '—'} → {eng.endDate || '—'}</p>
-        )}
+        {eng.startDate && <p><span className="text-slate-400">Start:</span> {fmtDate(eng.startDate)}</p>}
+        {eng.endDate && <p><span className="text-slate-400">End:</span> {fmtDate(eng.endDate)}</p>}
       </div>
     </div>
   );
@@ -894,7 +901,7 @@ export default function ProfessionalServicesPage() {
                       <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500">Client / SOW Ref</th>
                       <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500">Line Items</th>
                       <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500">PS Lead / AM</th>
-                      <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500">Dates</th>
+                      <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500">Engagement Dates</th>
                       <th className="py-3 px-4 text-xs font-semibold text-slate-500"></th>
                     </tr>
                   </thead>
@@ -927,8 +934,9 @@ export default function ProfessionalServicesPage() {
                             {eng.cfPsLead && <p className="text-sm text-slate-600">{eng.cfPsLead}</p>}
                             {eng.accountManager && <p className="text-xs text-slate-400 mt-0.5">{eng.accountManager}</p>}
                           </td>
-                          <td className="py-3 px-4 text-sm text-slate-600 whitespace-nowrap">
-                            {eng.startDate || '—'} → {eng.endDate || '—'}
+                          <td className="py-3 px-4">
+                            <p className="text-xs text-slate-400">Start <span className="text-slate-600 font-medium">{fmtDate(eng.startDate)}</span></p>
+                            <p className="text-xs text-slate-400 mt-0.5">End <span className="text-slate-600 font-medium">{fmtDate(eng.endDate)}</span></p>
                           </td>
                           <td className="py-3 px-4" onClick={e => e.stopPropagation()}>
                             {canEditEngagement(eng) && (

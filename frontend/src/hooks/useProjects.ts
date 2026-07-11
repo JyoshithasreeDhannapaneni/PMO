@@ -432,6 +432,23 @@ export function useUnmarkOverageProject() {
   });
 }
 
+export function useDeleteOverageHistoryEntry() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (historyId: string) => {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
+      return fetch(`${API_BASE}/api/dashboard/overage-history/${historyId}`, {
+        method: 'DELETE',
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      }).then(r => r.json());
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['overagedProjects'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+  });
+}
+
 export function useEscalateProject() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -511,10 +528,13 @@ export function useUnarchiveEscalation() {
   });
 }
 
-export function useEscalationDailyNotes(projectId: string | null) {
+export function useEscalationDailyNotes(projectId: string | null, columnName?: string) {
   return useQuery({
-    queryKey: ['escalationDailyNotes', projectId],
-    queryFn: () => authFetch(`${API_BASE}/api/dashboard/escalation-daily-notes/${projectId}`),
+    queryKey: ['escalationDailyNotes', projectId, columnName],
+    queryFn: () => {
+      const params = columnName ? `?columnName=${encodeURIComponent(columnName)}` : '';
+      return authFetch(`${API_BASE}/api/dashboard/escalation-daily-notes/${projectId}${params}`);
+    },
     enabled: !!projectId,
     staleTime: 0,
   });
@@ -523,12 +543,12 @@ export function useEscalationDailyNotes(projectId: string | null) {
 export function useAddEscalationDailyNote() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ projectId, note, author, noteDate }: { projectId: string; note: string; author?: string; noteDate?: string }) => {
+    mutationFn: ({ projectId, note, author, noteDate, columnName }: { projectId: string; note: string; author?: string; noteDate?: string; columnName?: string }) => {
       const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
       return fetch(`${API_BASE}/api/dashboard/escalation-daily-notes/${projectId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ note, author, noteDate }),
+        body: JSON.stringify({ note, author, noteDate, columnName }),
       }).then(r => r.json());
     },
     onSuccess: (_data, vars) => {

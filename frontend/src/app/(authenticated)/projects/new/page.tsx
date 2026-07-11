@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useCreateProject } from '@/hooks/useProjects';
 import { ProjectForm } from '@/components/projects/ProjectForm';
@@ -54,6 +54,10 @@ export default function NewProjectPage() {
   const createProject = useCreateProject();
   const { showToast } = useToast();
   const [createdProjectName, setCreatedProjectName] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (user && user.role === 'VIEWER') router.replace('/projects');
+  }, [user, router]);
 
   const defaultManagerName = user?.role === 'PROJECT_MANAGER' ? user.name : undefined;
 

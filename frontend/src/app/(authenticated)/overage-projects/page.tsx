@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo, Fragment } from 'react';
-import { useOveragedProjects, useMarkOverageProject, useUpdateOverageProject, useUnmarkOverageProject, useProjects } from '@/hooks/useProjects';
+import { useOveragedProjects, useMarkOverageProject, useUpdateOverageProject, useUnmarkOverageProject, useDeleteOverageHistoryEntry, useProjects } from '@/hooks/useProjects';
 import { useAuth } from '@/context/AuthContext';
 import { Card } from '@/components/ui/Card';
 import Link from 'next/link';
@@ -39,6 +39,7 @@ export default function OverageProjectsPage() {
   const markOverage = useMarkOverageProject();
   const updateOverage = useUpdateOverageProject();
   const unmarkOverage = useUnmarkOverageProject();
+  const deleteHistoryEntry = useDeleteOverageHistoryEntry();
 
   const [search, setSearch] = useState('');
   const [managerSel, setManagerSel] = useState('');
@@ -137,6 +138,12 @@ export default function OverageProjectsPage() {
   async function handleDeleteProject(id: string) {
     if (!confirm('Remove this project from overage?')) return;
     await unmarkOverage.mutateAsync(id);
+    refetch();
+  }
+
+  async function handleDeleteHistoryEntry(historyId: string) {
+    if (!confirm('Delete this overage history entry? This cannot be undone.')) return;
+    await deleteHistoryEntry.mutateAsync(historyId);
     refetch();
   }
 
@@ -430,16 +437,28 @@ export default function OverageProjectsPage() {
                                       <th className="text-left py-1 pr-3 font-medium">Extended Start</th>
                                       <th className="text-left py-1 pr-3 font-medium">Extended End</th>
                                       <th className="text-left py-1 pr-3 font-medium">Notes</th>
+                                      {canEditProject(p) && <th className="py-1 font-medium"></th>}
                                     </tr>
                                   </thead>
                                   <tbody>
                                     {p.overageHistory.map((h: any) => (
-                                      <tr key={h.id} className="border-b border-gray-100 last:border-0">
+                                      <tr key={h.id} className="border-b border-gray-100 last:border-0 group">
                                         <td className="py-1 pr-3 text-gray-600">{h.createdAt ? format(new Date(h.createdAt), 'MMM d, yyyy') : '—'}</td>
                                         <td className="py-1 pr-3 text-green-700 font-medium">{formatCurrency(h.overageAmount)}</td>
                                         <td className="py-1 pr-3 text-gray-600">{h.extendedStartDate ? format(new Date(h.extendedStartDate), 'MMM d, yyyy') : '—'}</td>
                                         <td className="py-1 pr-3 text-orange-600">{h.extendedEndDate ? format(new Date(h.extendedEndDate), 'MMM d, yyyy') : '—'}</td>
                                         <td className="py-1 pr-3 text-gray-600">{h.notes || '—'}</td>
+                                        {canEditProject(p) && (
+                                          <td className="py-1">
+                                            <button
+                                              onClick={() => handleDeleteHistoryEntry(h.id)}
+                                              title="Delete this entry"
+                                              className="opacity-0 group-hover:opacity-100 inline-flex items-center justify-center w-6 h-6 rounded text-red-400 hover:bg-red-100 hover:text-red-600 transition-all"
+                                            >
+                                              <Trash2 size={12} />
+                                            </button>
+                                          </td>
+                                        )}
                                       </tr>
                                     ))}
                                   </tbody>
