@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import type { ReactNode } from 'react';
 import { Card } from '@/components/ui/Card';
@@ -768,21 +768,13 @@ export default function CustomerSuccessPage() {
   const { showToast } = useToast();
   const canEdit = user?.role === 'ADMIN' || user?.role === 'ACCOUNT_MANAGER';
 
-  const [activeTab, setActiveTab] = useState<'migration' | 'poc'>('migration');
+  const [activeTab, setActiveTab] = useState<'migration' | 'poc' | 'escalations' | 'growth' | 'renewal'>('migration');
   const [search, setSearch] = useState('');
   const [amFilter, setAmFilter] = useState('');
   const [signalFilter, setSignalFilter] = useState<CfSignalLevel | ''>('');
   const [editingAccount, setEditingAccount] = useState<CustomerSuccessEntry | null>(null);
   const [showFilters, setShowFilters] = useState(true);
   const [mounted, setMounted] = useState(false);
-
-  const escalationRef = useRef<HTMLDivElement>(null);
-  const upsellRef     = useRef<HTMLDivElement>(null);
-  const renewalRef    = useRef<HTMLDivElement>(null);
-
-  function scrollTo(ref: React.RefObject<HTMLDivElement>) {
-    ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }
 
   useEffect(() => setMounted(true), []);
 
@@ -840,26 +832,22 @@ export default function CustomerSuccessPage() {
   const renewalDue: RenewalDueItem[]     = pageData?.renewalDue ?? [];
   const upsellSignals: SignalItem[]      = pageData?.upsellSignals ?? [];
 
-  // Re-compute per-customer data scoped to the active tab's project type
-  function applyTabFilter(account: CustomerSuccessEntry): CustomerSuccessEntry {
+  // Effective project tab type ('escalations'/'growth'/'renewal' tabs behave like 'migration' for filtering)
+  const effectiveTab = activeTab === 'poc' ? 'poc' : 'migration';
+
+  function applyTabFilter(account: CustomerSuccessEntry, tab: 'migration' | 'poc'): CustomerSuccessEntry {
     const tabEscalations = account.escalations.filter(e =>
-      activeTab === 'poc' ? e.projectType === 'POC' : e.projectType !== 'POC'
+      tab === 'poc' ? e.projectType === 'POC' : e.projectType !== 'POC'
     );
     return {
       ...account,
-      activeProjects:    activeTab === 'poc' ? (account.pocActiveCount    ?? 0) : (account.migrationActiveCount    ?? account.activeProjects),
-      completedProjects: activeTab === 'poc' ? (account.pocCompletedCount ?? 0) : (account.migrationCompletedCount ?? account.completedProjects),
+      activeProjects:    tab === 'poc' ? (account.pocActiveCount    ?? 0) : (account.migrationActiveCount    ?? account.activeProjects),
+      completedProjects: tab === 'poc' ? (account.pocCompletedCount ?? 0) : (account.migrationCompletedCount ?? account.completedProjects),
       escalations:       tabEscalations,
       hasEscalations:    tabEscalations.length > 0,
       escalationCount:   tabEscalations.length,
     };
   }
-
-  // Filter renewal due list to only include projects matching the active tab
-  const tabRenewalDue = renewalDue.filter(r => {
-    const ptype = r.projectType || 'MIGRATION';
-    return activeTab === 'poc' ? ptype === 'POC' : ptype !== 'POC';
-  });
 
   const allAMs = Array.from(new Set(accounts.map(a => a.accountManager).filter(Boolean)));
   const activeFilterCount = [search, amFilter, signalFilter].filter(Boolean).length;
@@ -870,7 +858,7 @@ export default function CustomerSuccessPage() {
 
   const filtered = accounts
     .filter(a => {
-      if (!customerHasType(a, activeTab)) return false;
+      if (!customerHasType(a, effectiveTab)) return false;
       if (search && !a.customerName.toLowerCase().includes(search.toLowerCase())) return false;
       if (amFilter && a.accountManager !== amFilter) return false;
       if (signalFilter) {
@@ -879,9 +867,20 @@ export default function CustomerSuccessPage() {
       }
       return true;
     })
-    .map(applyTabFilter);
+    .map(a => applyTabFilter(a, effectiveTab));
 
-  const escalatedAccounts = filtered.filter(a => a.hasEscalations);
+  // Standalone tab data (not filtered by search/AM)
+  const allEscalatedAccounts = accounts.filter(a => a.hasEscalations);
+
+  const growthAccounts = accounts
+    .filter(a => customerHasType(a, 'migration'))
+    .filter(a => {
+      const hs = hubspotFor(a.customerName);
+      const hasHubspot = (hs?.deals.length ?? 0) > 0;
+      const hasPmoSignals = a.cfMigrate.level !== 'none' || a.professionalServices.level !== 'none' || a.cfManage.level !== 'none' || a.managedServices.level !== 'none';
+      return hasHubspot || hasPmoSignals;
+    })
+    .sort((a, b) => (hubspotFor(b.customerName)?.openValue ?? 0) - (hubspotFor(a.customerName)?.openValue ?? 0));
 
   const migrationCount = accounts.filter(a => customerHasType(a, 'migration')).length;
   const pocCount       = accounts.filter(a => customerHasType(a, 'poc')).length;
@@ -1007,15 +1006,15 @@ export default function CustomerSuccessPage() {
       {/* Summary strip */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         {([
-          { icon: <HeartHandshake className="w-4 h-4" />, label: 'Customer Accounts', value: accounts.length,          color: 'text-pink-600',  bg: 'bg-pink-50',   scrollRef: null          },
-          { icon: <FolderKanban   className="w-4 h-4" />, label: 'Total Projects',    value: totalProjects,            color: 'text-indigo-600', bg: 'bg-indigo-50', scrollRef: null          },
-          { icon: <AlertTriangle  className="w-4 h-4" />, label: 'Escalations',       value: escalatedAccounts.length, color: 'text-red-600',   bg: 'bg-red-50',    scrollRef: escalationRef },
-          { icon: <TrendingUp     className="w-4 h-4" />, label: 'Upsell Opps',       value: activeTab === 'poc' ? pocUpsellSignals.length : upsellSignals.length, color: 'text-blue-600', bg: 'bg-blue-50', scrollRef: upsellRef },
-          { icon: <RefreshCw      className="w-4 h-4" />, label: 'Renewal Due',       value: tabRenewalDue.length,     color: 'text-amber-600', bg: 'bg-amber-50',  scrollRef: renewalRef    },
-        ]).map(s => (
+          { icon: <HeartHandshake className="w-4 h-4" />, label: 'Customer Accounts', value: accounts.length,              color: 'text-pink-600',   bg: 'bg-pink-50',   tab: null             },
+          { icon: <FolderKanban   className="w-4 h-4" />, label: 'Total Projects',    value: totalProjects,                color: 'text-indigo-600', bg: 'bg-indigo-50', tab: null             },
+          { icon: <AlertTriangle  className="w-4 h-4" />, label: 'Escalations',       value: allEscalatedAccounts.length,  color: 'text-red-600',    bg: 'bg-red-50',    tab: 'escalations'    },
+          { icon: <TrendingUp     className="w-4 h-4" />, label: 'Growth Opps',       value: growthAccounts.length,        color: 'text-blue-600',   bg: 'bg-blue-50',   tab: 'growth'         },
+          { icon: <RefreshCw      className="w-4 h-4" />, label: 'Renewal Due',       value: renewalDue.length,            color: 'text-amber-600',  bg: 'bg-amber-50',  tab: 'renewal'        },
+        ] as const).map(s => (
           <div key={s.label}
-            onClick={() => s.scrollRef && scrollTo(s.scrollRef)}
-            className={`${s.bg} rounded-xl p-3 flex items-center gap-3 ${s.scrollRef ? 'cursor-pointer hover:brightness-95 transition' : ''}`}
+            onClick={() => s.tab && setActiveTab(s.tab)}
+            className={`${s.bg} rounded-xl p-3 flex items-center gap-3 ${s.tab ? 'cursor-pointer hover:brightness-95 transition' : ''}`}
           >
             <div className={s.color}>{s.icon}</div>
             <div>
@@ -1027,15 +1026,18 @@ export default function CustomerSuccessPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 border-b border-gray-200">
+      <div className="flex gap-1 border-b border-gray-200 overflow-x-auto">
         {([
-          { key: 'migration', label: 'Projects',     icon: <FolderKanban className="w-4 h-4" />, count: migrationCount },
-          { key: 'poc',       label: 'POC Projects', icon: <FlaskConical  className="w-4 h-4" />, count: pocCount       },
+          { key: 'migration',  label: 'Projects',             icon: <FolderKanban  className="w-4 h-4" />, count: migrationCount             },
+          { key: 'poc',        label: 'POC Projects',         icon: <FlaskConical   className="w-4 h-4" />, count: pocCount                   },
+          { key: 'escalations',label: 'Active Escalations',   icon: <AlertTriangle  className="w-4 h-4" />, count: allEscalatedAccounts.length },
+          { key: 'growth',     label: 'Growth Opportunities', icon: <TrendingUp     className="w-4 h-4" />, count: growthAccounts.length       },
+          { key: 'renewal',    label: 'Renewal Due',          icon: <RefreshCw      className="w-4 h-4" />, count: renewalDue.length           },
         ] as const).map(tab => (
           <button
             key={tab.key}
             onClick={() => { setActiveTab(tab.key); setSearch(''); setAmFilter(''); setSignalFilter(''); }}
-            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition -mb-px ${
+            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition -mb-px whitespace-nowrap ${
               activeTab === tab.key
                 ? 'border-blue-600 text-blue-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -1052,126 +1054,204 @@ export default function CustomerSuccessPage() {
         ))}
       </div>
 
-      {/* Filters Section */}
-      <Card padding="sm" className="bg-white">
-        <div className="flex items-center justify-between mb-4">
-          <button
-            onClick={() => setShowFilters(!showFilters)}
-            className="flex items-center gap-2 text-gray-700 hover:text-primary-600 transition-colors"
-          >
-            <SlidersHorizontal size={18} />
-            <span className="font-medium">Filters</span>
-            {activeFilterCount > 0 && (
-              <span className="px-2 py-0.5 text-xs font-semibold bg-primary-100 text-primary-700 rounded-full">
-                {activeFilterCount}
-              </span>
-            )}
-          </button>
-          {activeFilterCount > 0 && (
-            <button
-              onClick={clearAllFilters}
-              className="flex items-center gap-1 text-sm text-gray-500 hover:text-red-600 transition-colors"
-            >
-              <X size={14} />
-              Clear all
-            </button>
-          )}
-        </div>
-
-        {showFilters && (
-          <div className="space-y-4">
-            <div className="relative">
-              <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input
-                type="text"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                placeholder="Search by customer name..."
-                className="w-full pl-10 pr-4 py-2.5 text-sm rounded-lg border border-gray-200 bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all"
-              />
-              {search && (
-                <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                  <X size={16} />
+      {/* ── Projects / POC Projects tab ─────────────────────────────────── */}
+      {(activeTab === 'migration' || activeTab === 'poc') && (
+        <>
+          {/* Filters */}
+          <Card padding="sm" className="bg-white">
+            <div className="flex items-center justify-between mb-4">
+              <button
+                onClick={() => setShowFilters(!showFilters)}
+                className="flex items-center gap-2 text-gray-700 hover:text-primary-600 transition-colors"
+              >
+                <SlidersHorizontal size={18} />
+                <span className="font-medium">Filters</span>
+                {activeFilterCount > 0 && (
+                  <span className="px-2 py-0.5 text-xs font-semibold bg-primary-100 text-primary-700 rounded-full">
+                    {activeFilterCount}
+                  </span>
+                )}
+              </button>
+              {activeFilterCount > 0 && (
+                <button
+                  onClick={clearAllFilters}
+                  className="flex items-center gap-1 text-sm text-gray-500 hover:text-red-600 transition-colors"
+                >
+                  <X size={14} />
+                  Clear all
                 </button>
               )}
             </div>
-
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              <FilterDropdown
-                label="Account Manager"
-                value={amFilter}
-                options={[
-                  { value: '', label: 'All Account Managers' },
-                  ...allAMs.map(am => ({ value: am, label: am })),
-                ]}
-                onChange={setAmFilter}
-              />
-              <FilterDropdown
-                label="Signal Level"
-                value={signalFilter}
-                options={[
-                  { value: '', label: 'All Signal Levels' },
-                  ...(Object.keys(SIGNAL_CFG) as CfSignalLevel[]).map(l => ({ value: l, label: SIGNAL_CFG[l].label })),
-                ]}
-                onChange={v => setSignalFilter(v as CfSignalLevel | '')}
-              />
-            </div>
-
-            {activeFilterCount > 0 && (
-              <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-gray-200">
-                <span className="text-xs text-gray-500">Active filters:</span>
-                {search && (
-                  <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-gray-100 text-gray-700 rounded-full">
-                    Search: {search}
-                    <button onClick={() => setSearch('')} className="hover:text-gray-900"><X size={12} /></button>
-                  </span>
-                )}
-                {amFilter && (
-                  <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-teal-100 text-teal-700 rounded-full">
-                    AM: {amFilter}
-                    <button onClick={() => setAmFilter('')} className="hover:text-teal-900"><X size={12} /></button>
-                  </span>
-                )}
-                {signalFilter && (
-                  <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-blue-100 text-blue-700 rounded-full">
-                    Signal: {SIGNAL_CFG[signalFilter as CfSignalLevel]?.label}
-                    <button onClick={() => setSignalFilter('')} className="hover:text-blue-900"><X size={12} /></button>
-                  </span>
+            {showFilters && (
+              <div className="space-y-4">
+                <div className="relative">
+                  <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="text"
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                    placeholder="Search by customer name..."
+                    className="w-full pl-10 pr-4 py-2.5 text-sm rounded-lg border border-gray-200 bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all"
+                  />
+                  {search && (
+                    <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                      <X size={16} />
+                    </button>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  <FilterDropdown
+                    label="Account Manager"
+                    value={amFilter}
+                    options={[
+                      { value: '', label: 'All Account Managers' },
+                      ...allAMs.map(am => ({ value: am, label: am })),
+                    ]}
+                    onChange={setAmFilter}
+                  />
+                  <FilterDropdown
+                    label="Signal Level"
+                    value={signalFilter}
+                    options={[
+                      { value: '', label: 'All Signal Levels' },
+                      ...(Object.keys(SIGNAL_CFG) as CfSignalLevel[]).map(l => ({ value: l, label: SIGNAL_CFG[l].label })),
+                    ]}
+                    onChange={v => setSignalFilter(v as CfSignalLevel | '')}
+                  />
+                </div>
+                {activeFilterCount > 0 && (
+                  <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-gray-200">
+                    <span className="text-xs text-gray-500">Active filters:</span>
+                    {search && (
+                      <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-gray-100 text-gray-700 rounded-full">
+                        Search: {search}
+                        <button onClick={() => setSearch('')} className="hover:text-gray-900"><X size={12} /></button>
+                      </span>
+                    )}
+                    {amFilter && (
+                      <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-teal-100 text-teal-700 rounded-full">
+                        AM: {amFilter}
+                        <button onClick={() => setAmFilter('')} className="hover:text-teal-900"><X size={12} /></button>
+                      </span>
+                    )}
+                    {signalFilter && (
+                      <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-blue-100 text-blue-700 rounded-full">
+                        Signal: {SIGNAL_CFG[signalFilter as CfSignalLevel]?.label}
+                        <button onClick={() => setSignalFilter('')} className="hover:text-blue-900"><X size={12} /></button>
+                      </span>
+                    )}
+                  </div>
                 )}
               </div>
             )}
-          </div>
-        )}
-      </Card>
+          </Card>
 
-      {/* Section 1 — Account cards */}
-      {filtered.length === 0 ? (
-        <Card className="p-12 text-center text-gray-400">
-          <HeartHandshake className="w-12 h-12 mx-auto mb-3 opacity-30" />
-          <p className="text-lg font-medium">No accounts found</p>
-        </Card>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-          {filtered.map(account => (
-            <AccountCard
-              key={account.customerName}
-              account={account}
-              projectNames={getProjectNames(account)}
-              canEdit={canEdit}
-              onEdit={() => setEditingAccount(account)}
-              hubspot={hubspotFor(account.customerName)}
-            />
-          ))}
-        </div>
+          {/* Accounts table */}
+          {filtered.length === 0 ? (
+            <Card className="p-12 text-center text-gray-400">
+              <HeartHandshake className="w-12 h-12 mx-auto mb-3 opacity-30" />
+              <p className="text-lg font-medium">No accounts found</p>
+            </Card>
+          ) : (
+            <Card className="overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b border-gray-100">
+                  <tr>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600">Customer</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600">Account Manager</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600">Projects</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600">Workloads</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600">Active</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600">Completed</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600">CSAT</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600">Top Signal</th>
+                    <th className="py-3 px-4"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {filtered.map(account => {
+                    const projectNames = getProjectNames(account);
+                    const signals = [
+                      { label: 'CF Migrate', signal: account.cfMigrate },
+                      { label: 'CF Manage',  signal: account.cfManage  },
+                      { label: 'PS',         signal: account.professionalServices },
+                      { label: 'MS',         signal: account.managedServices },
+                    ].sort((a, b) => SIGNAL_SORT_ORDER[a.signal.level] - SIGNAL_SORT_ORDER[b.signal.level]);
+                    const topSignal = signals[0];
+                    const csatScore = account.csat.score;
+                    const csatColor = csatScore === null ? 'text-gray-400' : csatScore >= 8 ? 'text-green-600' : csatScore >= 6 ? 'text-amber-600' : 'text-red-600';
+                    return (
+                      <tr key={account.customerName} className="hover:bg-gray-50 transition">
+                        <td className="px-4 py-3 font-semibold text-gray-900 capitalize">{account.customerName}</td>
+                        <td className="px-4 py-3 text-gray-600">{account.accountManager || '—'}</td>
+                        <td className="px-4 py-3">
+                          <div className="flex flex-col gap-0.5">
+                            {projectNames.length > 0
+                              ? projectNames.map(n => <span key={n} className="text-sm text-gray-800 capitalize">{n}</span>)
+                              : <span className="text-sm text-gray-400 italic">No projects</span>}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex flex-wrap gap-1">
+                            {account.workloadTypes.map(w => (
+                              <span key={w} className="text-[10px] px-1.5 py-0.5 bg-purple-50 text-purple-700 rounded-full">{w}</span>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 font-medium text-gray-700">{account.activeProjects}</td>
+                        <td className="px-4 py-3 text-gray-600">{account.completedProjects}</td>
+                        <td className="px-4 py-3">
+                          {csatScore !== null
+                            ? <span className={`text-sm font-bold ${csatColor}`}>{csatScore.toFixed(1)}</span>
+                            : <span className="text-gray-400">—</span>}
+                        </td>
+                        <td className="px-4 py-3">
+                          {topSignal.signal.level !== 'none' && (
+                            <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${SIGNAL_CFG[topSignal.signal.level].badge}`}>
+                              {topSignal.label} · {SIGNAL_CFG[topSignal.signal.level].label}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          {canEdit && (
+                            <button
+                              onClick={() => setEditingAccount(account)}
+                              className="p-1 rounded hover:bg-gray-200 transition text-gray-400 hover:text-gray-700"
+                              title="Edit CSAT & signals"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </Card>
+          )}
+
+          {/* POC conversion opportunities (within POC tab) */}
+          {activeTab === 'poc' && pocUpsellSignals.length > 0 && (
+            <div className="space-y-3 mt-2">
+              <h2 className="text-base font-semibold text-gray-900 flex items-center gap-2">
+                <TrendingUp className="w-4 h-4 text-blue-500" /> Conversion Opportunities
+                <span className="text-sm font-normal text-gray-400">— POC outcomes ready to progress</span>
+              </h2>
+              <SignalTable signals={pocUpsellSignals} />
+            </div>
+          )}
+        </>
       )}
 
-      {/* Section 2 — Escalations */}
-      <div ref={escalationRef} className="scroll-mt-6">
-      {escalatedAccounts.length > 0 && (
-        <div className="space-y-3">
-          <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-            <AlertTriangle className="w-5 h-5 text-red-500" /> Active Escalations
-          </h2>
+      {/* ── Active Escalations tab ───────────────────────────────────────── */}
+      {activeTab === 'escalations' && (
+        allEscalatedAccounts.length === 0 ? (
+          <Card className="p-12 text-center text-gray-400">
+            <AlertTriangle className="w-12 h-12 mx-auto mb-3 opacity-30" />
+            <p className="text-lg font-medium">No active escalations</p>
+          </Card>
+        ) : (
           <Card className="overflow-hidden">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-100">
@@ -1180,12 +1260,13 @@ export default function CustomerSuccessPage() {
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Account Manager</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Count</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Projects</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">Priority</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-50">
-                {escalatedAccounts.map(a => (
+              <tbody className="divide-y divide-gray-100">
+                {allEscalatedAccounts.map(a => (
                   <tr key={a.customerName} className="hover:bg-gray-50 transition">
-                    <td className="px-4 py-3 font-medium text-gray-900">{a.customerName}</td>
+                    <td className="px-4 py-3 font-semibold text-gray-900 capitalize">{a.customerName}</td>
                     <td className="px-4 py-3 text-gray-600">{a.accountManager || '—'}</td>
                     <td className="px-4 py-3">
                       <span className="flex items-center gap-1 text-red-600 font-medium">
@@ -1193,14 +1274,18 @@ export default function CustomerSuccessPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex flex-wrap gap-1">
+                      <div className="flex flex-col gap-0.5">
                         {a.escalations.map(e => (
-                          <span
-                            key={e.projectId}
-                            className="text-xs px-2 py-0.5 bg-red-50 text-red-600 rounded-full border border-red-100"
-                          >
-                            {e.projectName}
-                          </span>
+                          <span key={e.projectId} className="text-sm text-gray-800 capitalize">{e.projectName}</span>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-col gap-0.5">
+                        {a.escalations.map(e => (
+                          e.priority
+                            ? <span key={e.projectId} className="text-xs px-2 py-0.5 bg-red-50 text-red-600 rounded-full border border-red-100 w-fit">{e.priority}</span>
+                            : null
                         ))}
                       </div>
                     </td>
@@ -1209,78 +1294,48 @@ export default function CustomerSuccessPage() {
               </tbody>
             </table>
           </Card>
-        </div>
+        )
       )}
-      </div>
 
-      {/* Section 3 — Growth Opportunities (unified upsell + cross-sell) */}
-      <div ref={upsellRef} className="scroll-mt-6">
-        {activeTab === 'migration' && (() => {
-          const growthAccounts = filtered
-            .filter(a => {
-              const hs = hubspotFor(a.customerName);
-              const hasHubspot = (hs?.deals.length ?? 0) > 0;
-              const hasPmoSignals =
-                a.cfMigrate.level !== 'none' ||
-                a.professionalServices.level !== 'none' ||
-                a.cfManage.level !== 'none' ||
-                a.managedServices.level !== 'none';
-              return hasHubspot || hasPmoSignals;
-            })
-            .sort((a, b) => {
-              // HubSpot-matched customers with open pipeline first, sorted by value
-              const aVal = hubspotFor(a.customerName)?.openValue ?? 0;
-              const bVal = hubspotFor(b.customerName)?.openValue ?? 0;
-              return bVal - aVal;
-            });
-
-          if (growthAccounts.length === 0) return null;
-          return (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                  <TrendingUp className="w-5 h-5 text-blue-500" /> Growth Opportunities
-                  <span className="text-sm font-normal text-gray-400">— live pipeline &amp; signals per customer</span>
-                </h2>
-                {hubspotData?.configured && (
-                  <span className="text-[11px] text-emerald-600 font-medium bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-                    HubSpot live
-                  </span>
-                )}
+      {/* ── Growth Opportunities tab ─────────────────────────────────────── */}
+      {activeTab === 'growth' && (
+        growthAccounts.length === 0 ? (
+          <Card className="p-12 text-center text-gray-400">
+            <TrendingUp className="w-12 h-12 mx-auto mb-3 opacity-30" />
+            <p className="text-lg font-medium">No growth opportunities found</p>
+          </Card>
+        ) : (
+          <>
+            {hubspotData?.configured && (
+              <div className="flex justify-end">
+                <span className="text-[11px] text-emerald-600 font-medium bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                  HubSpot live
+                </span>
               </div>
-              <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-                {growthAccounts.map(account => (
-                  <GrowthCard
-                    key={account.customerName}
-                    account={account}
-                    hubspot={hubspotFor(account.customerName)}
-                    canEdit={canEdit}
-                    onEdit={() => setEditingAccount(account)}
-                  />
-                ))}
-              </div>
+            )}
+            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+              {growthAccounts.map(account => (
+                <GrowthCard
+                  key={account.customerName}
+                  account={account}
+                  hubspot={hubspotFor(account.customerName)}
+                  canEdit={canEdit}
+                  onEdit={() => setEditingAccount(account)}
+                />
+              ))}
             </div>
-          );
-        })()}
-        {activeTab === 'poc' && pocUpsellSignals.length > 0 && (
-          <div className="space-y-3">
-            <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-              <TrendingUp className="w-5 h-5 text-blue-500" /> Conversion Opportunities
-              <span className="text-sm font-normal text-gray-400">— POC outcomes ready to progress</span>
-            </h2>
-            <SignalTable signals={pocUpsellSignals} />
-          </div>
-        )}
-      </div>
+          </>
+        )
+      )}
 
-      {/* Section 5 — Renewal Due */}
-      <div ref={renewalRef} className="scroll-mt-6">
-      {tabRenewalDue.length > 0 && (
-        <div className="space-y-3">
-          <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-            <RefreshCw className="w-5 h-5 text-amber-500" /> Renewal Due
-            <span className="text-sm font-normal text-gray-400">— active projects past planned end date</span>
-          </h2>
+      {/* ── Renewal Due tab ──────────────────────────────────────────────── */}
+      {activeTab === 'renewal' && (
+        renewalDue.length === 0 ? (
+          <Card className="p-12 text-center text-gray-400">
+            <RefreshCw className="w-12 h-12 mx-auto mb-3 opacity-30" />
+            <p className="text-lg font-medium">No renewal items due</p>
+          </Card>
+        ) : (
           <Card className="overflow-hidden">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-100">
@@ -1295,10 +1350,10 @@ export default function CustomerSuccessPage() {
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Plan</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-50">
-                {tabRenewalDue.map((r: RenewalDueItem) => (
+              <tbody className="divide-y divide-gray-100">
+                {renewalDue.map((r: RenewalDueItem) => (
                   <tr key={r.id} className="hover:bg-gray-50 transition">
-                    <td className="px-4 py-3 font-medium text-gray-900 capitalize">{r.name}</td>
+                    <td className="px-4 py-3 font-semibold text-gray-900 capitalize">{r.name}</td>
                     <td className="px-4 py-3 text-gray-700">{r.customerName}</td>
                     <td className="px-4 py-3 text-gray-600">{r.accountManager || '—'}</td>
                     <td className="px-4 py-3 text-gray-600">{r.projectManager || '—'}</td>
@@ -1314,23 +1369,18 @@ export default function CustomerSuccessPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <span className="text-xs px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded-full">
-                        {r.phase}
-                      </span>
+                      <span className="text-xs px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded-full">{r.phase}</span>
                     </td>
                     <td className="px-4 py-3">
-                      <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full">
-                        {r.planType}
-                      </span>
+                      <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full">{r.planType}</span>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </Card>
-        </div>
+        )
       )}
-      </div>
 
       {modal}
     </div>

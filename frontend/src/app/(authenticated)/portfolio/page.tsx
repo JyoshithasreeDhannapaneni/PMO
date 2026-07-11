@@ -349,6 +349,7 @@ export default function PortfolioPage() {
   const { settings } = useSettings();
   const isAdmin   = user?.role === 'ADMIN';
   const isManager = user?.role === 'PROJECT_MANAGER';
+  const isViewer  = user?.role === 'VIEWER';
   const phaseProgress = useMemo(
     () => buildPhaseProgress(settings.phases.map((p) => ({ code: p.code, order: p.order }))),
     [settings.phases]
@@ -471,12 +472,14 @@ export default function PortfolioPage() {
               </div>
             )}
           </div>
-          <Link
-            href="/projects/new"
-            className="flex items-center gap-1.5 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors"
-          >
-            <Plus size={15} /> New Project
-          </Link>
+          {!isViewer && (
+            <Link
+              href="/projects/new"
+              className="flex items-center gap-1.5 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors"
+            >
+              <Plus size={15} /> New Project
+            </Link>
+          )}
         </div>
       </div>
 

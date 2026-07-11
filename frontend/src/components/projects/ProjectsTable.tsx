@@ -205,14 +205,23 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
   const [dailyNotesProject, setDailyNotesProject] = useState<{ project: Project; columnName: string } | null>(null);
   const [newDailyNote, setNewDailyNote] = useState('');
   const [dailyNoteDate, setDailyNoteDate] = useState(() => new Date().toISOString().split('T')[0]);
-  const { data: dailyNotesData, isLoading: loadingNotes } = useEscalationDailyNotes(dailyNotesProject?.project.id ?? null);
+  const { data: dailyNotesData, isLoading: loadingNotes } = useEscalationDailyNotes(
+    dailyNotesProject?.project.id ?? null,
+    dailyNotesProject?.columnName
+  );
   const dailyNotes: any[] = dailyNotesData?.data || [];
   const addDailyNote = useAddEscalationDailyNote();
   const deleteDailyNote = useDeleteEscalationDailyNote();
 
   async function handleAddDailyNote() {
     if (!dailyNotesProject || !newDailyNote.trim()) return;
-    await addDailyNote.mutateAsync({ projectId: dailyNotesProject.project.id, note: newDailyNote.trim(), author: user?.name, noteDate: dailyNoteDate });
+    await addDailyNote.mutateAsync({
+      projectId: dailyNotesProject.project.id,
+      note: newDailyNote.trim(),
+      author: user?.name,
+      noteDate: dailyNoteDate,
+      columnName: dailyNotesProject.columnName,
+    });
     setNewDailyNote('');
   }
 

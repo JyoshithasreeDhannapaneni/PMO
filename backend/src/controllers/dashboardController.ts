@@ -215,6 +215,12 @@ export const dashboardController = {
     res.json({ success: true, message: 'Overage removed' });
   }),
 
+  deleteOverageHistoryEntry: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const { historyId } = req.params;
+    await dashboardService.deleteOverageHistoryEntry(historyId);
+    res.json({ success: true, message: 'Overage history entry deleted' });
+  }),
+
   escalateProject: asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const { id } = req.params;
     const { priority = 'MEDIUM', notes } = req.body;
@@ -255,15 +261,16 @@ export const dashboardController = {
 
   getEscalationDailyNotes: asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const { projectId } = req.params;
-    const notes = await dashboardService.getEscalationDailyNotes(projectId);
+    const columnName = req.query.columnName as string | undefined;
+    const notes = await dashboardService.getEscalationDailyNotes(projectId, columnName);
     res.json({ success: true, data: notes });
   }),
 
   addEscalationDailyNote: asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const { projectId } = req.params;
-    const { note, author, noteDate } = req.body;
+    const { note, author, noteDate, columnName } = req.body;
     if (!note?.trim()) { res.status(400).json({ success: false, message: 'Note text is required' }); return; }
-    const result = await dashboardService.addEscalationDailyNote(projectId, note.trim(), author, noteDate);
+    const result = await dashboardService.addEscalationDailyNote(projectId, note.trim(), author, noteDate, columnName);
     res.json({ success: true, data: result });
   }),
 

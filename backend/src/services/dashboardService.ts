@@ -744,6 +744,25 @@ class DashboardService {
     );
   }
 
+  async deleteOverageHistoryEntry(historyId: string) {
+    await this.ensureOverageHistoryTable();
+    const result = await execute(
+      `DELETE FROM overage_history WHERE id = $1 RETURNING project_id`,
+      [historyId]
+    );
+    const row = (result as any).rows?.[0];
+    if (!row) return;
+    // Sync the project's overage_amount to the sum of remaining history entries
+    await execute(
+      `UPDATE projects
+       SET overage_amount = (
+         SELECT COALESCE(SUM(overage_amount), 0) FROM overage_history WHERE project_id = $1
+       )
+       WHERE id = $1`,
+      [row.project_id]
+    );
+  }
+
   async escalateProject(projectId: string, priority: 'LOW' | 'MEDIUM' | 'HIGH', notes?: string) {
     await this.ensureEscalationHistoryTable();
     // Parse type and notes from combined notes string (format: "Type — user notes")
@@ -881,35 +900,43 @@ class DashboardService {
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
     )`, []);
     try { await execute(`CREATE INDEX IF NOT EXISTS idx_daily_notes_project ON escalation_daily_notes(project_id, note_date DESC)`, []); } catch (_) {}
+    // Add column_name if it doesn't exist (migration for existing installs)
+    try { await execute(`ALTER TABLE escalation_daily_notes ADD COLUMN column_name VARCHAR(100)`, []); } catch (_) { /* already exists */ }
     this._dailyNotesReady = true;
   }
 
-  async getEscalationDailyNotes(projectId: string) {
+  async getEscalationDailyNotes(projectId: string, columnName?: string) {
     await this.ensureDailyNotesTable();
-    const result = await query(
-      `SELECT * FROM escalation_daily_notes WHERE project_id = $1 ORDER BY note_date DESC, created_at DESC`,
-      [projectId]
-    );
+    const result = columnName
+      ? await query(
+          `SELECT * FROM escalation_daily_notes WHERE project_id = $1 AND column_name = $2 ORDER BY note_date DESC, created_at DESC`,
+          [projectId, columnName]
+        )
+      : await query(
+          `SELECT * FROM escalation_daily_notes WHERE project_id = $1 ORDER BY note_date DESC, created_at DESC`,
+          [projectId]
+        );
     return result.rows.map((r: any) => ({
       id: r.id,
       projectId: r.project_id,
       noteDate: r.note_date,
       author: r.author,
       note: r.note,
+      columnName: r.column_name,
       createdAt: r.created_at,
     }));
   }
 
-  async addEscalationDailyNote(projectId: string, note: string, author?: string, noteDate?: string) {
+  async addEscalationDailyNote(projectId: string, note: string, author?: string, noteDate?: string, columnName?: string) {
     await this.ensureDailyNotesTable();
     const date = noteDate || new Date().toISOString().split('T')[0];
     const result = await query(
-      `INSERT INTO escalation_daily_notes (project_id, note_date, author, note)
-       VALUES ($1, $2, $3, $4) RETURNING *`,
-      [projectId, date, author || null, note]
+      `INSERT INTO escalation_daily_notes (project_id, note_date, author, note, column_name)
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [projectId, date, author || null, note, columnName || null]
     );
     const r = result.rows[0];
-    return { id: r.id, projectId: r.project_id, noteDate: r.note_date, author: r.author, note: r.note, createdAt: r.created_at };
+    return { id: r.id, projectId: r.project_id, noteDate: r.note_date, author: r.author, note: r.note, columnName: r.column_name, createdAt: r.created_at };
   }
 
   async deleteEscalationDailyNote(projectId: string, noteId: string) {
