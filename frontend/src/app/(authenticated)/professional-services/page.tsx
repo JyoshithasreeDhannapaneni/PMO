@@ -900,6 +900,7 @@ export default function ProfessionalServicesPage() {
                     <tr className="border-b border-slate-200 bg-slate-50">
                       <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500">Client / SOW Ref</th>
                       <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500">Line Items</th>
+                      <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500">Progress</th>
                       <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500">PS Lead / AM</th>
                       <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500">Engagement Dates</th>
                       <th className="py-3 px-4 text-xs font-semibold text-slate-500"></th>
@@ -907,6 +908,10 @@ export default function ProfessionalServicesPage() {
                   </thead>
                   <tbody>
                     {filteredEngagements.map(eng => {
+                      const lineItems = eng.lineItems || [];
+                      const allCompleted = lineItems.length > 0 && lineItems.every((item: LineItem) => item.status === 'Completed');
+                      const progress = lineItems.length === 0 ? null : allCompleted ? 'Completed' : 'In Progress';
+
                       return (
                         <tr
                           key={eng.id}
@@ -918,14 +923,28 @@ export default function ProfessionalServicesPage() {
                             <p className="text-xs text-slate-400 font-mono mt-0.5">{eng.sowRefId}</p>
                           </td>
                           <td className="py-3 px-4">
-                            {(eng.lineItems || []).length > 0 ? (
+                            {lineItems.length > 0 ? (
                               <div className="flex flex-wrap gap-1">
-                                {(eng.lineItems || []).map((item: LineItem) => (
+                                {lineItems.map((item: LineItem) => (
                                   <span key={item.id} className="text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 font-medium border border-indigo-100">
                                     {item.name || '(unnamed)'}
                                   </span>
                                 ))}
                               </div>
+                            ) : (
+                              <span className="text-xs text-slate-400">—</span>
+                            )}
+                          </td>
+                          <td className="py-3 px-4">
+                            {progress ? (
+                              <span className={cn(
+                                'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold',
+                                allCompleted
+                                  ? 'bg-emerald-100 text-emerald-700'
+                                  : 'bg-blue-100 text-blue-700'
+                              )}>
+                                {progress}
+                              </span>
                             ) : (
                               <span className="text-xs text-slate-400">—</span>
                             )}
