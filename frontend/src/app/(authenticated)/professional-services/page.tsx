@@ -658,6 +658,7 @@ export default function ProfessionalServicesPage() {
   const [searchFilter, setSearchFilter] = useState('');
   const [engTypeFilter, setEngTypeFilter] = useState('');
   const [showFilters, setShowFilters] = useState(true);
+  const [listTab, setListTab] = useState<'active' | 'archive'>('active');
   const [migrating, setMigrating] = useState(false);
 
   const localStorageCount = (() => {
@@ -695,6 +696,14 @@ export default function ProfessionalServicesPage() {
     if (engTypeFilter && eng.engagementType !== engTypeFilter) return false;
     return true;
   });
+
+  const isEngCompleted = (eng: PSEngagement) => {
+    const items = eng.lineItems || [];
+    return items.length > 0 && items.every((li: LineItem) => li.status === 'Completed');
+  };
+  const activeEngagements   = filteredEngagements.filter(eng => !isEngCompleted(eng));
+  const archivedEngagements = filteredEngagements.filter(eng =>  isEngCompleted(eng));
+  const displayEngagements  = listTab === 'archive' ? archivedEngagements : activeEngagements;
 
   const activeFilterCount = [searchFilter, engTypeFilter].filter(Boolean).length;
   const clearFilters = () => { setSearchFilter(''); setEngTypeFilter(''); };
@@ -890,90 +899,137 @@ export default function ProfessionalServicesPage() {
             </div>
           ) : (
             <>
-              <p className="text-xs text-slate-500">
-                {filteredEngagements.length} engagement{filteredEngagements.length !== 1 ? 's' : ''}
-                {activeFilterCount > 0 ? ' matching filters' : ''}
-              </p>
-              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-slate-200 bg-slate-50">
-                      <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500">Client / SOW Ref</th>
-                      <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500">Line Items</th>
-                      <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500">Progress</th>
-                      <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500">PS Lead / AM</th>
-                      <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500">Engagement Dates</th>
-                      <th className="py-3 px-4 text-xs font-semibold text-slate-500"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredEngagements.map(eng => {
-                      const lineItems = eng.lineItems || [];
-                      const allCompleted = lineItems.length > 0 && lineItems.every((item: LineItem) => item.status === 'Completed');
-                      const progress = lineItems.length === 0 ? null : allCompleted ? 'Completed' : 'In Progress';
-
-                      return (
-                        <tr
-                          key={eng.id}
-                          onClick={() => openEngagement(eng.id)}
-                          className="border-b border-slate-100 last:border-0 hover:bg-indigo-50/30 cursor-pointer transition-colors"
-                        >
-                          <td className="py-3 px-4">
-                            <p className="text-sm font-semibold text-slate-800">{eng.clientName}</p>
-                            <p className="text-xs text-slate-400 font-mono mt-0.5">{eng.sowRefId}</p>
-                          </td>
-                          <td className="py-3 px-4">
-                            {lineItems.length > 0 ? (
-                              <div className="flex flex-wrap gap-1">
-                                {lineItems.map((item: LineItem) => (
-                                  <span key={item.id} className="text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 font-medium border border-indigo-100">
-                                    {item.name || '(unnamed)'}
-                                  </span>
-                                ))}
-                              </div>
-                            ) : (
-                              <span className="text-xs text-slate-400">—</span>
-                            )}
-                          </td>
-                          <td className="py-3 px-4">
-                            {progress ? (
-                              <span className={cn(
-                                'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold',
-                                allCompleted
-                                  ? 'bg-emerald-100 text-emerald-700'
-                                  : 'bg-blue-100 text-blue-700'
-                              )}>
-                                {progress}
-                              </span>
-                            ) : (
-                              <span className="text-xs text-slate-400">—</span>
-                            )}
-                          </td>
-                          <td className="py-3 px-4">
-                            {eng.cfPsLead && <p className="text-sm text-slate-600">{eng.cfPsLead}</p>}
-                            {eng.accountManager && <p className="text-xs text-slate-400 mt-0.5">{eng.accountManager}</p>}
-                          </td>
-                          <td className="py-3 px-4">
-                            <p className="text-xs text-slate-400">Start <span className="text-slate-600 font-medium">{fmtDate(eng.startDate)}</span></p>
-                            <p className="text-xs text-slate-400 mt-0.5">End <span className="text-slate-600 font-medium">{fmtDate(eng.endDate)}</span></p>
-                          </td>
-                          <td className="py-3 px-4" onClick={e => e.stopPropagation()}>
-                            {canEditEngagement(eng) && (
-                              <button
-                                onClick={() => { if (confirm(`Delete engagement for "${eng.clientName}"? This cannot be undone.`)) deleteEngagement(eng.id); }}
-                                className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                                title="Delete engagement"
-                              >
-                                <Trash2 size={14} />
-                              </button>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+              {/* ── Tab bar ────────────────────────────────────────────────── */}
+              <div className="flex gap-1 border-b border-slate-200">
+                {([
+                  { key: 'active'  as const, label: 'Active',          count: activeEngagements.length   },
+                  { key: 'archive' as const, label: 'History Archive',  count: archivedEngagements.length },
+                ]).map(tab => (
+                  <button
+                    key={tab.key}
+                    onClick={() => setListTab(tab.key)}
+                    className={cn(
+                      'flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition -mb-px whitespace-nowrap',
+                      listTab === tab.key
+                        ? 'border-indigo-600 text-indigo-600'
+                        : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+                    )}
+                  >
+                    {tab.label}
+                    <span className={cn(
+                      'text-xs px-1.5 py-0.5 rounded-full font-semibold',
+                      listTab === tab.key ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-500'
+                    )}>
+                      {tab.count}
+                    </span>
+                  </button>
+                ))}
               </div>
+
+              {/* ── Tab content ────────────────────────────────────────────── */}
+              {displayEngagements.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <Briefcase className="w-10 h-10 text-slate-200 mb-3" />
+                  <p className="text-sm font-medium text-slate-500">
+                    {listTab === 'archive'
+                      ? 'No completed engagements — engagements move here once all line items are marked Completed'
+                      : 'No active engagements matching filters'}
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <p className="text-xs text-slate-500">
+                    {displayEngagements.length} engagement{displayEngagements.length !== 1 ? 's' : ''}
+                    {activeFilterCount > 0 ? ' matching filters' : ''}
+                  </p>
+                  <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b border-slate-200 bg-slate-50">
+                          <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500">Client / SOW Ref</th>
+                          <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500">Line Items</th>
+                          <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500">Progress</th>
+                          <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500">PS Lead / AM</th>
+                          <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500">Engagement Dates</th>
+                          <th className="py-3 px-4 text-xs font-semibold text-slate-500"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {displayEngagements.map(eng => {
+                          const lineItems = eng.lineItems || [];
+                          const allCompleted = lineItems.length > 0 && lineItems.every((item: LineItem) => item.status === 'Completed');
+                          const progress = lineItems.length === 0 ? null : allCompleted ? 'Completed' : 'In Progress';
+
+                          return (
+                            <tr
+                              key={eng.id}
+                              onClick={() => openEngagement(eng.id)}
+                              className={cn(
+                                'border-b border-slate-100 last:border-0 cursor-pointer transition-colors',
+                                allCompleted ? 'hover:bg-emerald-50/40' : 'hover:bg-indigo-50/30'
+                              )}
+                            >
+                              <td className="py-3 px-4">
+                                <p className="text-sm font-semibold text-slate-800">{eng.clientName}</p>
+                                <p className="text-xs text-slate-400 font-mono mt-0.5">{eng.sowRefId}</p>
+                              </td>
+                              <td className="py-3 px-4">
+                                {lineItems.length > 0 ? (
+                                  <div className="flex flex-wrap gap-1">
+                                    {lineItems.map((item: LineItem) => (
+                                      <span key={item.id} className={cn(
+                                        'text-xs px-2 py-0.5 rounded-full font-medium border',
+                                        item.status === 'Completed'
+                                          ? 'bg-emerald-50 text-emerald-600 border-emerald-100'
+                                          : 'bg-indigo-50 text-indigo-600 border-indigo-100'
+                                      )}>
+                                        {item.name || '(unnamed)'}
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <span className="text-xs text-slate-400">—</span>
+                                )}
+                              </td>
+                              <td className="py-3 px-4">
+                                {progress ? (
+                                  <span className={cn(
+                                    'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold',
+                                    allCompleted ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'
+                                  )}>
+                                    {progress}
+                                  </span>
+                                ) : (
+                                  <span className="text-xs text-slate-400">—</span>
+                                )}
+                              </td>
+                              <td className="py-3 px-4">
+                                {eng.cfPsLead && <p className="text-sm text-slate-600">{eng.cfPsLead}</p>}
+                                {eng.accountManager && <p className="text-xs text-slate-400 mt-0.5">{eng.accountManager}</p>}
+                              </td>
+                              <td className="py-3 px-4">
+                                <p className="text-xs text-slate-400">Start <span className="text-slate-600 font-medium">{fmtDate(eng.startDate)}</span></p>
+                                <p className="text-xs text-slate-400 mt-0.5">End <span className="text-slate-600 font-medium">{fmtDate(eng.endDate)}</span></p>
+                              </td>
+                              <td className="py-3 px-4" onClick={e => e.stopPropagation()}>
+                                {canEditEngagement(eng) && (
+                                  <button
+                                    onClick={() => { if (confirm(`Delete engagement for "${eng.clientName}"? This cannot be undone.`)) deleteEngagement(eng.id); }}
+                                    className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                                    title="Delete engagement"
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
             </>
           )}
         </div>

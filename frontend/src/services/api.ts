@@ -515,8 +515,8 @@ export const customerSuccessApi = {
     const { data } = await api.get('/customer-success');
     return data;
   },
-  updateEntry: async (customerName: string, updates: Record<string, any>) => {
-    const { data } = await api.put(`/customer-success/${encodeURIComponent(customerName)}`, updates);
+  updateEntry: async (projectId: string, updates: Record<string, any>) => {
+    const { data } = await api.put(`/customer-success/${encodeURIComponent(projectId)}`, updates);
     return data;
   },
 };

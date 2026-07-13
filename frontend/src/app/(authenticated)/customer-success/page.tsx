@@ -98,9 +98,10 @@ function GrowthCard({
   canEdit: boolean;
   onEdit: () => void;
 }) {
-  const openDeals = hubspot?.deals.filter((d: HubspotDeal) => d.isOpen) ?? [];
-  const wonDeals  = hubspot?.deals.filter((d: HubspotDeal) => d.isClosedWon) ?? [];
-  const hasHubspot = openDeals.length > 0 || wonDeals.length > 0;
+  const openDeals   = hubspot?.deals.filter((d: HubspotDeal) => d.isOpen) ?? [];
+  const wonDeals    = hubspot?.deals.filter((d: HubspotDeal) => d.isClosedWon) ?? [];
+  const lostDeals   = hubspot?.deals.filter((d: HubspotDeal) => d.isClosedLost) ?? [];
+  const hasHubspot  = (hubspot?.deals.length ?? 0) > 0;
 
   // Group open deals by category
   const grouped: Partial<Record<HubspotDealCategory, HubspotDeal[]>> = {};
@@ -126,7 +127,8 @@ function GrowthCard({
         {/* Header */}
         <div className="flex items-start justify-between gap-2">
           <div>
-            <p className="font-semibold text-gray-900 capitalize">{account.customerName}</p>
+            <p className="font-semibold text-gray-900 capitalize">{account.projectName}</p>
+            <p className="text-xs text-gray-400">{account.customerName}</p>
             {account.accountManager && (
               <p className="text-xs text-gray-500 flex items-center gap-1 mt-0.5">
                 <User className="w-3 h-3" /> {account.accountManager}
@@ -263,6 +265,7 @@ function normalizeCustomerKey(name: string): string {
 function HubspotDealsPanel({ hubspot }: { hubspot: HubspotCustomerDeals }) {
   const openDeals = hubspot.deals.filter(d => d.isOpen);
   const wonDeals  = hubspot.deals.filter(d => d.isClosedWon);
+  const lostDeals = hubspot.deals.filter(d => d.isClosedLost);
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
@@ -300,6 +303,17 @@ function HubspotDealsPanel({ hubspot }: { hubspot: HubspotCustomerDeals }) {
             <div key={d.id} className="flex items-center justify-between gap-2 bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-1.5">
               <p className="text-xs text-emerald-800 truncate flex-1">{d.name}</p>
               {d.amount !== null && <span className="text-xs font-semibold text-emerald-700 shrink-0">{currencyFmt.format(d.amount)}</span>}
+            </div>
+          ))}
+        </div>
+      )}
+      {lostDeals.length > 0 && (
+        <div className="space-y-1 pt-1">
+          <p className="text-[10px] text-gray-400 font-medium uppercase tracking-wider">Closed Lost</p>
+          {lostDeals.map(d => (
+            <div key={d.id} className="flex items-center justify-between gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 opacity-70">
+              <p className="text-xs text-gray-500 truncate flex-1 line-through">{d.name}</p>
+              {d.amount !== null && <span className="text-xs text-gray-400 shrink-0">{currencyFmt.format(d.amount)}</span>}
             </div>
           ))}
         </div>
@@ -439,8 +453,10 @@ function AccountCard({
           )}
 
           <div className="flex items-center gap-3 mt-1.5 text-xs text-gray-500">
-            <span>{account.completedProjects} completed</span>
-            {account.activeProjects > 0 && <span>· {account.activeProjects} active</span>}
+            <span className={account.isCompleted ? 'text-blue-600 font-medium' : ''}>
+              {account.isCompleted ? 'Completed' : account.isActive ? 'Active' : account.status}
+            </span>
+            {account.planType && <span>· {account.planType}</span>}
           </div>
 
           {account.csat.verbatim && (
@@ -553,7 +569,7 @@ function EditModal({
           <div className="flex items-center gap-3">
             <HeartHandshake className="w-5 h-5" />
             <div>
-              <h2 className="text-base font-bold leading-tight">Edit CS Entry</h2>
+              <h2 className="text-base font-bold leading-tight">{account.projectName}</h2>
               <p className="text-xs text-indigo-200">{account.customerName}</p>
             </div>
           </div>
@@ -693,7 +709,7 @@ function SignalTable({ signals }: { signals: SignalItem[] }) {
       <table className="w-full text-sm">
         <thead className="bg-gray-50 border-b border-gray-100">
           <tr>
-            <th className="text-left px-4 py-3 font-medium text-gray-600">Customer</th>
+            <th className="text-left px-4 py-3 font-medium text-gray-600">Project</th>
             <th className="text-left px-4 py-3 font-medium text-gray-600">Account Manager</th>
             <th className="text-left px-4 py-3 font-medium text-gray-600">Product</th>
             <th className="text-left px-4 py-3 font-medium text-gray-600">Signal</th>
@@ -705,7 +721,10 @@ function SignalTable({ signals }: { signals: SignalItem[] }) {
             const cfg = SIGNAL_CFG[s.level];
             return (
               <tr key={i} className="hover:bg-gray-50 transition">
-                <td className="px-4 py-3 font-medium text-gray-900">{s.customerName}</td>
+                <td className="px-4 py-3">
+                  <p className="font-medium text-gray-900">{s.projectName}</p>
+                  <p className="text-xs text-gray-400">{s.customerName}</p>
+                </td>
                 <td className="px-4 py-3 text-gray-600">{s.accountManager || '—'}</td>
                 <td className="px-4 py-3">
                   <span className="flex items-center gap-1.5 font-medium text-gray-800">
@@ -784,46 +803,55 @@ export default function CustomerSuccessPage() {
   const { data: hubspotResponse } = useHubspotSignals();
   const hubspotData = (hubspotResponse?.data ?? null) as HubspotSignalsData | null;
 
-  function hubspotFor(customerName: string): HubspotCustomerDeals | null {
+  function hubspotFor(projectName: string, customerName?: string): HubspotCustomerDeals | null {
     if (!hubspotData?.configured) return null;
     const customers = hubspotData.customers;
-    const pmoKey = normalizeCustomerKey(customerName);
-    if (!pmoKey) return null;
 
-    // Tier 1: exact normalized match
-    if (customers[pmoKey]) return customers[pmoKey];
+    // Try project name first, then customer name
+    for (const name of [projectName, customerName].filter(Boolean) as string[]) {
+      const pmoKey = normalizeCustomerKey(name);
+      if (!pmoKey || pmoKey.length < 3) continue;
 
-    // Tier 2: substring — PMO key inside HubSpot key, or HubSpot key inside PMO key (min 4 chars)
-    if (pmoKey.length >= 4) {
-      for (const [hsKey, data] of Object.entries(customers)) {
-        if (hsKey.includes(pmoKey) || (hsKey.length >= 4 && pmoKey.includes(hsKey))) {
-          return data;
+      // Tier 1: exact normalized match on company key
+      if (customers[pmoKey]) return customers[pmoKey];
+
+      // Tier 2: substring match on company key — ratio guard prevents short PMO names (e.g. "apex")
+      // from matching long unrelated keys (e.g. "apextechgroupboxtosharepoint"). Pick shortest key
+      // (most specific match) when multiple keys qualify.
+      let tier2Best: HubspotCustomerDeals | null = null;
+      let tier2BestLen = Infinity;
+      for (const [hsKey, hsData] of Object.entries(customers)) {
+        const ratio = Math.max(hsKey.length, pmoKey.length) / Math.min(hsKey.length, pmoKey.length);
+        if (ratio > 3.0) continue; // lengths too different → likely a false positive
+        if (hsKey.includes(pmoKey) || (hsKey.length >= 3 && pmoKey.includes(hsKey))) {
+          if (hsKey.length < tier2BestLen) { tier2BestLen = hsKey.length; tier2Best = hsData; }
         }
       }
-    }
+      if (tier2Best) return tier2Best;
 
-    // Tier 3: word-level — split on whitespace/punctuation, match significant words (≥4 chars)
-    const pmoWords = customerName.toLowerCase().split(/[\s\-_.,&/()]+/).filter(w => w.length >= 4);
-    if (pmoWords.length > 0) {
-      for (const data of Object.values(customers)) {
-        const hsWords = data.companyName.toLowerCase().split(/[\s\-_.,&/()]+/).filter((w: string) => w.length >= 4);
-        if (pmoWords.some(pw => hsWords.some((hw: string) => hw === pw))) {
-          return data;
+      // Tier 3: word-level match on company display name — significant words ≥3 chars
+      const pmoWords = name.toLowerCase().split(/[\s\-_.,&/()·]+/).filter(w => w.length >= 3);
+      if (pmoWords.length > 0) {
+        for (const hsData of Object.values(customers)) {
+          const hsWords = hsData.companyName.toLowerCase().split(/[\s\-_.,&/()·]+/).filter((w: string) => w.length >= 3);
+          if (pmoWords.some(pw => hsWords.some((hw: string) => hw === pw))) {
+            return hsData;
+          }
+        }
+      }
+
+      // Tier 4: match against individual deal names (catches deals grouped by deal name when no company linked)
+      for (const hsData of Object.values(customers)) {
+        for (const deal of hsData.deals) {
+          const dealKey = normalizeCustomerKey(deal.name);
+          if (dealKey.length >= 3 && dealKey.includes(pmoKey)) {
+            return hsData;
+          }
         }
       }
     }
 
     return null;
-  }
-
-  function getProjectNames(account: CustomerSuccessEntry): string[] {
-    if (activeTab === 'poc') return account.pocProjectNames ?? [];
-    return account.migrationProjectNames ?? account.projectNames ?? [];
-  }
-
-  function customerHasType(account: CustomerSuccessEntry, type: 'migration' | 'poc'): boolean {
-    if (type === 'poc') return account.hasPocProjects ?? false;
-    return account.hasMigrationProjects ?? true;
   }
 
   const pageData = (data?.data ?? null) as CustomerSuccessPageData | null;
@@ -832,23 +860,6 @@ export default function CustomerSuccessPage() {
   const renewalDue: RenewalDueItem[]     = pageData?.renewalDue ?? [];
   const upsellSignals: SignalItem[]      = pageData?.upsellSignals ?? [];
 
-  // Effective project tab type ('escalations'/'growth'/'renewal' tabs behave like 'migration' for filtering)
-  const effectiveTab = activeTab === 'poc' ? 'poc' : 'migration';
-
-  function applyTabFilter(account: CustomerSuccessEntry, tab: 'migration' | 'poc'): CustomerSuccessEntry {
-    const tabEscalations = account.escalations.filter(e =>
-      tab === 'poc' ? e.projectType === 'POC' : e.projectType !== 'POC'
-    );
-    return {
-      ...account,
-      activeProjects:    tab === 'poc' ? (account.pocActiveCount    ?? 0) : (account.migrationActiveCount    ?? account.activeProjects),
-      completedProjects: tab === 'poc' ? (account.pocCompletedCount ?? 0) : (account.migrationCompletedCount ?? account.completedProjects),
-      escalations:       tabEscalations,
-      hasEscalations:    tabEscalations.length > 0,
-      escalationCount:   tabEscalations.length,
-    };
-  }
-
   const allAMs = Array.from(new Set(accounts.map(a => a.accountManager).filter(Boolean)));
   const activeFilterCount = [search, amFilter, signalFilter].filter(Boolean).length;
 
@@ -856,58 +867,54 @@ export default function CustomerSuccessPage() {
     setSearch(''); setAmFilter(''); setSignalFilter('');
   }
 
-  const filtered = accounts
-    .filter(a => {
-      if (!customerHasType(a, effectiveTab)) return false;
-      if (search && !a.customerName.toLowerCase().includes(search.toLowerCase())) return false;
-      if (amFilter && a.accountManager !== amFilter) return false;
-      if (signalFilter) {
-        const levels = [a.cfMigrate.level, a.cfManage.level, a.professionalServices.level, a.managedServices.level];
-        if (!levels.includes(signalFilter)) return false;
-      }
-      return true;
-    })
-    .map(a => applyTabFilter(a, effectiveTab));
+  const filtered = accounts.filter(a => {
+    if (activeTab === 'migration' && a.projectType === 'POC') return false;
+    if (activeTab === 'poc'       && a.projectType !== 'POC') return false;
+    if (search) {
+      const s = search.toLowerCase();
+      if (!a.projectName.toLowerCase().includes(s) && !a.customerName.toLowerCase().includes(s)) return false;
+    }
+    if (amFilter && a.accountManager !== amFilter) return false;
+    if (signalFilter) {
+      const levels = [a.cfMigrate.level, a.cfManage.level, a.professionalServices.level, a.managedServices.level];
+      if (!levels.includes(signalFilter as CfSignalLevel)) return false;
+    }
+    return true;
+  });
 
   // Standalone tab data (not filtered by search/AM)
   const allEscalatedAccounts = accounts.filter(a => a.hasEscalations);
 
   const growthAccounts = accounts
-    .filter(a => customerHasType(a, 'migration'))
+    .filter(a => a.projectType !== 'POC')
     .filter(a => {
-      const hs = hubspotFor(a.customerName);
+      const hs = hubspotFor(a.projectName, a.customerName);
       const hasHubspot = (hs?.deals.length ?? 0) > 0;
       const hasPmoSignals = a.cfMigrate.level !== 'none' || a.professionalServices.level !== 'none' || a.cfManage.level !== 'none' || a.managedServices.level !== 'none';
       return hasHubspot || hasPmoSignals;
     })
-    .sort((a, b) => (hubspotFor(b.customerName)?.openValue ?? 0) - (hubspotFor(a.customerName)?.openValue ?? 0));
+    .sort((a, b) => (hubspotFor(b.projectName, b.customerName)?.openValue ?? 0) - (hubspotFor(a.projectName, a.customerName)?.openValue ?? 0));
 
-  const migrationCount = accounts.filter(a => customerHasType(a, 'migration')).length;
-  const pocCount       = accounts.filter(a => customerHasType(a, 'poc')).length;
+  const migrationCount = accounts.filter(a => a.projectType !== 'POC').length;
+  const pocCount       = accounts.filter(a => a.projectType === 'POC').length;
 
-  // POC-specific upsell signals: conversion opportunities derived from POC outcomes
+  // POC-specific upsell signals: derived from each POC project's outcome
   const pocUpsellSignals: SignalItem[] = (() => {
     const signals: SignalItem[] = [];
     for (const account of accounts) {
-      const pocProjects = account.pocProjectDetails ?? [];
-      if (pocProjects.length === 0) continue;
+      if (account.projectType !== 'POC') continue;
 
-      const won        = pocProjects.filter(p => p.pocOutcome === 'won');
-      const extended   = pocProjects.filter(p => p.pocOutcome === 'extended' || p.pocOutcome === 'on_hold');
-      const inProgress = pocProjects.filter(p => !p.pocOutcome);
-
-      if (won.length > 0) {
-        signals.push({ customerName: account.customerName, accountManager: account.accountManager,
-          product: 'CF Migrate', level: 'active',
-          reason: `${won.length} POC won — ready to convert to full migration` });
-      } else if (extended.length > 0) {
-        signals.push({ customerName: account.customerName, accountManager: account.accountManager,
+      const outcome = account.pocOutcome;
+      if (outcome === 'won') {
+        signals.push({ projectId: account.projectId, projectName: account.projectName, customerName: account.customerName, accountManager: account.accountManager,
+          product: 'CF Migrate', level: 'active', reason: 'POC won — ready to convert to full migration' });
+      } else if (outcome === 'extended' || outcome === 'on_hold') {
+        signals.push({ projectId: account.projectId, projectName: account.projectName, customerName: account.customerName, accountManager: account.accountManager,
           product: 'CF Migrate', level: 'moderate',
-          reason: `POC ${extended[0].pocOutcome === 'extended' ? 'extended' : 'on hold'} — re-engage to close` });
-      } else if (inProgress.length > 0) {
-        signals.push({ customerName: account.customerName, accountManager: account.accountManager,
-          product: 'CF Migrate', level: 'moderate',
-          reason: `${inProgress.length} POC in progress — nurture toward conversion` });
+          reason: `POC ${outcome === 'extended' ? 'extended' : 'on hold'} — re-engage to close` });
+      } else if (!outcome) {
+        signals.push({ projectId: account.projectId, projectName: account.projectName, customerName: account.customerName, accountManager: account.accountManager,
+          product: 'CF Migrate', level: 'moderate', reason: 'POC in progress — nurture toward conversion' });
       }
     }
 
@@ -921,8 +928,9 @@ export default function CustomerSuccessPage() {
     if (!editingAccount) return;
     try {
       await updateCS.mutateAsync({
-        customerName: editingAccount.customerName,
+        projectId: editingAccount.projectId,
         data: {
+          customerName: editingAccount.customerName,
           csatScore:             form.csatScore             ? Number(form.csatScore)             : null,
           csatVerbatim:          form.csatVerbatim          || null,
           csatMigrationQuality:  form.csatMigrationQuality  ? Number(form.csatMigrationQuality)  : null,
@@ -977,9 +985,9 @@ export default function CustomerSuccessPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Customer Success</h1>
           <p className="text-sm text-gray-500">
-            {accounts.length} customer account{accounts.length !== 1 ? 's' : ''}
-            {totalProjects > 0 && (
-              <span className="ml-2 text-pink-600 font-medium">· {totalProjects} total project{totalProjects !== 1 ? 's' : ''}</span>
+            {totalProjects} project{totalProjects !== 1 ? 's' : ''}
+            {accounts.length > 0 && (
+              <span className="ml-2 text-pink-600 font-medium">· {new Set(accounts.map(a => a.customerName)).size} customer{new Set(accounts.map(a => a.customerName)).size !== 1 ? 's' : ''}</span>
             )}
           </p>
         </div>
@@ -1002,12 +1010,36 @@ export default function CustomerSuccessPage() {
           </span>
         </div>
       )}
+      {hubspotData?.configured && hubspotData.diagnostics?.companyFetchFailed && (
+        <div className="flex items-start gap-3 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800">
+          <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+          <span>
+            <strong>HubSpot company names could not be fetched</strong> — the private app token may be missing the
+            {' '}<code className="font-mono">crm.objects.companies.read</code> scope. Deals are still indexed by deal
+            name as a fallback ({hubspotData.diagnostics.dealsKeyedByDealName} deals), but company-name matching
+            won{"'"}t work. In HubSpot → Settings → Private Apps → your app → Scopes, add{' '}
+            <code className="font-mono">crm.objects.companies.read</code> and regenerate the token.
+          </span>
+        </div>
+      )}
+      {hubspotData?.configured && !hubspotData.error && !hubspotData.diagnostics?.companyFetchFailed &&
+       hubspotData.diagnostics && hubspotData.diagnostics.totalDeals > 0 &&
+       hubspotData.diagnostics.companyIdsFound === 0 && (
+        <div className="flex items-start gap-3 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800">
+          <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+          <span>
+            <strong>HubSpot deals have no company associations</strong> — {hubspotData.diagnostics.totalDeals} deals
+            were fetched but none are linked to a company in HubSpot. Open each deal in HubSpot and add the company
+            association, or deals will be matched by deal name only.
+          </span>
+        </div>
+      )}
 
       {/* Summary strip */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         {([
-          { icon: <HeartHandshake className="w-4 h-4" />, label: 'Customer Accounts', value: accounts.length,              color: 'text-pink-600',   bg: 'bg-pink-50',   tab: null             },
-          { icon: <FolderKanban   className="w-4 h-4" />, label: 'Total Projects',    value: totalProjects,                color: 'text-indigo-600', bg: 'bg-indigo-50', tab: null             },
+          { icon: <HeartHandshake className="w-4 h-4" />, label: 'Total Projects',    value: totalProjects,                color: 'text-pink-600',   bg: 'bg-pink-50',   tab: null             },
+          { icon: <FolderKanban   className="w-4 h-4" />, label: 'Customers',         value: new Set(accounts.map(a => a.customerName)).size, color: 'text-indigo-600', bg: 'bg-indigo-50', tab: null },
           { icon: <AlertTriangle  className="w-4 h-4" />, label: 'Escalations',       value: allEscalatedAccounts.length,  color: 'text-red-600',    bg: 'bg-red-50',    tab: 'escalations'    },
           { icon: <TrendingUp     className="w-4 h-4" />, label: 'Growth Opps',       value: growthAccounts.length,        color: 'text-blue-600',   bg: 'bg-blue-50',   tab: 'growth'         },
           { icon: <RefreshCw      className="w-4 h-4" />, label: 'Renewal Due',       value: renewalDue.length,            color: 'text-amber-600',  bg: 'bg-amber-50',  tab: 'renewal'        },
@@ -1090,7 +1122,7 @@ export default function CustomerSuccessPage() {
                     type="text"
                     value={search}
                     onChange={e => setSearch(e.target.value)}
-                    placeholder="Search by customer name..."
+                    placeholder="Search by project or customer name..."
                     className="w-full pl-10 pr-4 py-2.5 text-sm rounded-lg border border-gray-200 bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all"
                   />
                   {search && (
@@ -1157,39 +1189,38 @@ export default function CustomerSuccessPage() {
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-b border-gray-100">
                   <tr>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600">Customer</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600">Project</th>
                     <th className="text-left px-4 py-3 font-medium text-gray-600">Account Manager</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600">Projects</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600">Status</th>
                     <th className="text-left px-4 py-3 font-medium text-gray-600">Workloads</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600">Active</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600">Completed</th>
                     <th className="text-left px-4 py-3 font-medium text-gray-600">CSAT</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600">Top Signal</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600">Signals</th>
                     <th className="py-3 px-4"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {filtered.map(account => {
-                    const projectNames = getProjectNames(account);
                     const signals = [
                       { label: 'CF Migrate', signal: account.cfMigrate },
                       { label: 'CF Manage',  signal: account.cfManage  },
                       { label: 'PS',         signal: account.professionalServices },
                       { label: 'MS',         signal: account.managedServices },
                     ].sort((a, b) => SIGNAL_SORT_ORDER[a.signal.level] - SIGNAL_SORT_ORDER[b.signal.level]);
-                    const topSignal = signals[0];
+                    const visibleSignals = signals.filter(s => s.signal.level !== 'none').slice(0, 2);
                     const csatScore = account.csat.score;
                     const csatColor = csatScore === null ? 'text-gray-400' : csatScore >= 8 ? 'text-green-600' : csatScore >= 6 ? 'text-amber-600' : 'text-red-600';
+                    const statusColor = account.isActive ? 'bg-green-50 text-green-700' : account.isCompleted ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-gray-600';
                     return (
-                      <tr key={account.customerName} className="hover:bg-gray-50 transition">
-                        <td className="px-4 py-3 font-semibold text-gray-900 capitalize">{account.customerName}</td>
+                      <tr key={account.projectId} className="hover:bg-gray-50 transition">
+                        <td className="px-4 py-3">
+                          <p className="font-semibold text-gray-900 capitalize">{account.projectName}</p>
+                          <p className="text-xs text-gray-400">{account.customerName}</p>
+                        </td>
                         <td className="px-4 py-3 text-gray-600">{account.accountManager || '—'}</td>
                         <td className="px-4 py-3">
-                          <div className="flex flex-col gap-0.5">
-                            {projectNames.length > 0
-                              ? projectNames.map(n => <span key={n} className="text-sm text-gray-800 capitalize">{n}</span>)
-                              : <span className="text-sm text-gray-400 italic">No projects</span>}
-                          </div>
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColor}`}>
+                            {account.status}
+                          </span>
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex flex-wrap gap-1">
@@ -1198,19 +1229,19 @@ export default function CustomerSuccessPage() {
                             ))}
                           </div>
                         </td>
-                        <td className="px-4 py-3 font-medium text-gray-700">{account.activeProjects}</td>
-                        <td className="px-4 py-3 text-gray-600">{account.completedProjects}</td>
                         <td className="px-4 py-3">
                           {csatScore !== null
                             ? <span className={`text-sm font-bold ${csatColor}`}>{csatScore.toFixed(1)}</span>
                             : <span className="text-gray-400">—</span>}
                         </td>
                         <td className="px-4 py-3">
-                          {topSignal.signal.level !== 'none' && (
-                            <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${SIGNAL_CFG[topSignal.signal.level].badge}`}>
-                              {topSignal.label} · {SIGNAL_CFG[topSignal.signal.level].label}
-                            </span>
-                          )}
+                          <div className="flex flex-wrap gap-1">
+                            {visibleSignals.length > 0 ? visibleSignals.map(s => (
+                              <span key={s.label} className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${SIGNAL_CFG[s.signal.level].badge}`}>
+                                {s.label} · {SIGNAL_CFG[s.signal.level].label}
+                              </span>
+                            )) : <span className="text-gray-400 text-xs">—</span>}
+                          </div>
                         </td>
                         <td className="px-4 py-3">
                           {canEdit && (
@@ -1256,38 +1287,28 @@ export default function CustomerSuccessPage() {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-100">
                 <tr>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">Project</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Customer</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Account Manager</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Count</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Projects</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-600">Priority</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-600">Notes</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {allEscalatedAccounts.map(a => (
-                  <tr key={a.customerName} className="hover:bg-gray-50 transition">
-                    <td className="px-4 py-3 font-semibold text-gray-900 capitalize">{a.customerName}</td>
+                  <tr key={a.projectId} className="hover:bg-gray-50 transition">
+                    <td className="px-4 py-3 font-semibold text-gray-900 capitalize">{a.projectName}</td>
+                    <td className="px-4 py-3 text-gray-600">{a.customerName}</td>
                     <td className="px-4 py-3 text-gray-600">{a.accountManager || '—'}</td>
                     <td className="px-4 py-3">
-                      <span className="flex items-center gap-1 text-red-600 font-medium">
-                        <AlertTriangle className="w-3.5 h-3.5" /> {a.escalationCount}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
                       <div className="flex flex-col gap-0.5">
                         {a.escalations.map(e => (
-                          <span key={e.projectId} className="text-sm text-gray-800 capitalize">{e.projectName}</span>
+                          e.priority ? <span key={e.projectId} className="text-xs px-2 py-0.5 bg-red-50 text-red-600 rounded-full border border-red-100 w-fit">{e.priority}</span> : null
                         ))}
                       </div>
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-col gap-0.5">
-                        {a.escalations.map(e => (
-                          e.priority
-                            ? <span key={e.projectId} className="text-xs px-2 py-0.5 bg-red-50 text-red-600 rounded-full border border-red-100 w-fit">{e.priority}</span>
-                            : null
-                        ))}
-                      </div>
+                    <td className="px-4 py-3 text-xs text-gray-600">
+                      {a.escalations[0]?.notes || '—'}
                     </td>
                   </tr>
                 ))}
@@ -1316,9 +1337,9 @@ export default function CustomerSuccessPage() {
             <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
               {growthAccounts.map(account => (
                 <GrowthCard
-                  key={account.customerName}
+                  key={account.projectId}
                   account={account}
-                  hubspot={hubspotFor(account.customerName)}
+                  hubspot={hubspotFor(account.projectName, account.customerName)}
                   canEdit={canEdit}
                   onEdit={() => setEditingAccount(account)}
                 />

@@ -34,6 +34,37 @@ export const hubspotController = {
     }
   }),
 
+  // Returns all company keys and deal names currently indexed — for diagnosing match failures
+  debugKeys: asyncHandler(async (_req: Request, res: Response): Promise<void> => {
+    if (!isHubspotConfigured()) {
+      res.json({ success: false, error: 'HubSpot not configured' });
+      return;
+    }
+    try {
+      const signalData = await getDealsByCustomer(true); // force fresh fetch
+      const entries = Object.entries(signalData.customers).map(([key, c]) => ({
+        normalizedKey: key,
+        companyName: c.companyName,
+        dealCount: c.deals.length,
+        openDeals: c.deals.filter(d => d.isOpen).length,
+        wonDeals: c.deals.filter(d => d.isClosedWon).length,
+        lostDeals: c.deals.filter(d => d.isClosedLost).length,
+        dealNames: c.deals.map((d) => d.name),
+      }));
+      res.json({
+        success: true,
+        data: {
+          totalCompanies: entries.length,
+          diagnostics: signalData.diagnostics,
+          entries,
+        },
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      res.json({ success: false, error: msg });
+    }
+  }),
+
   // Diagnostic endpoint — open in browser to verify connectivity and token scopes
   testConnection: asyncHandler(async (_req: Request, res: Response): Promise<void> => {
     const token = (process.env.HUBSPOT_ACCESS_TOKEN || '').trim();

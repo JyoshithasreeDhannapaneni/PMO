@@ -357,21 +357,18 @@ export interface EscalationItem {
 }
 
 export interface CustomerSuccessEntry {
+  projectId: string;
+  projectName: string;
   customerName: string;
   accountManager: string;
-  projectNames: string[];
+  projectManager: string;
+  projectType: string;
+  status: string;
+  planType: string;
   workloadTypes: string[];
-  activeProjects: number;
-  completedProjects: number;
-  hasMigrationProjects?: boolean;
-  hasPocProjects?: boolean;
-  migrationProjectNames?: string[];
-  pocProjectNames?: string[];
-  migrationActiveCount?: number;
-  migrationCompletedCount?: number;
-  pocActiveCount?: number;
-  pocCompletedCount?: number;
-  pocProjectDetails?: Array<{ id: string; name: string; status: string; pocOutcome: string | null }>;
+  isActive: boolean;
+  isCompleted: boolean;
+  pocOutcome: string | null;
   csat: CsatData;
   cfMigrate: CfProductSignal;
   cfManage: CfProductSignal;
@@ -380,6 +377,7 @@ export interface CustomerSuccessEntry {
   hasEscalations: boolean;
   escalationCount: number;
   escalations: EscalationItem[];
+  plannedEnd?: string | null;
 }
 
 export interface RenewalDueItem {
@@ -397,6 +395,8 @@ export interface RenewalDueItem {
 }
 
 export interface SignalItem {
+  projectId: string;
+  projectName: string;
   customerName: string;
   accountManager: string;
   product: string;
@@ -426,6 +426,7 @@ export interface HubspotDeal {
   dealType: string | null;
   closeDate: string | null;
   isClosedWon: boolean;
+  isClosedLost: boolean;
   isOpen: boolean;
   category: HubspotDealCategory;
   cfProduct: CfProductTag;
@@ -447,4 +448,11 @@ export interface HubspotSignalsData {
   fetchedAt: string | null;
   customers: Record<string, HubspotCustomerDeals>;
   error?: string;
+  diagnostics?: {
+    totalDeals: number;
+    companyIdsFound: number;
+    companyNamesFetched: number;
+    companyFetchFailed: boolean;
+    dealsKeyedByDealName: number;
+  };
 }

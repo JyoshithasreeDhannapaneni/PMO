@@ -254,8 +254,8 @@ export function useHubspotSignals() {
 export function useUpdateCustomerSuccess() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ customerName, data }: { customerName: string; data: Record<string, any> }) =>
-      customerSuccessApi.updateEntry(customerName, data),
+    mutationFn: ({ projectId, data }: { projectId: string; data: Record<string, any> }) =>
+      customerSuccessApi.updateEntry(projectId, data),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['customer-success'] }),
   });
 }
