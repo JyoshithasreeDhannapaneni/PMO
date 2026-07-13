@@ -313,7 +313,7 @@ async function runMigrations() {
     await execute(`
       CREATE TABLE IF NOT EXISTS customer_success_entries (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        customer_name VARCHAR(255) NOT NULL UNIQUE,
+        customer_name VARCHAR(255),
         csat_score DECIMAL(3,1),
         csat_verbatim TEXT,
         csat_migration_quality DECIMAL(3,1),
@@ -333,6 +333,11 @@ async function runMigrations() {
       )
     `);
   } catch {}
+  // Add project_id to customer_success_entries (per-project keying)
+  try { await execute(`ALTER TABLE customer_success_entries ADD COLUMN IF NOT EXISTS project_id UUID`); } catch {}
+  try { await execute(`ALTER TABLE customer_success_entries DROP CONSTRAINT IF EXISTS customer_success_entries_customer_name_key`); } catch {}
+  try { await execute(`ALTER TABLE customer_success_entries ADD CONSTRAINT cse_project_id_unique UNIQUE (project_id)`); } catch {}
+  try { await execute(`ALTER TABLE customer_success_entries ALTER COLUMN customer_name DROP NOT NULL`); } catch {}
 
   // Migration checklists table
   await execute(`CREATE TABLE IF NOT EXISTS migration_checklists (

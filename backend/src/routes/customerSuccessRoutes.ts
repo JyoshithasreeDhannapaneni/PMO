@@ -4,6 +4,6 @@ import { customerSuccessController } from '../controllers/customerSuccessControl
 const router = Router();
 
 router.get('/', customerSuccessController.getView);
-router.put('/:customerName', customerSuccessController.updateEntry);
+router.put('/:projectId', customerSuccessController.updateEntry);
 
 export default router;

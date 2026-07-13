@@ -683,22 +683,44 @@ export const dealDeskService = {
 
   async reparseAllDeals(): Promise<{ updated: number }> {
     await ensureTables();
-    // Include deals with email body even if extracted_text is empty
     const rows = await query(
-      `SELECT d.id, d.extracted_text, e.subject, e.body_text
+      `SELECT d.id, d.extracted_text, e.id AS email_id, e.subject, e.body_text, e.message_id
        FROM deal_desk_deals d
        JOIN deal_desk_emails e ON e.id = d.email_id`,
       []
     );
     let updated = 0;
+    const mailbox = process.env.DEAL_DESK_EMAIL || 'dealdesk@zenop.ai';
+    let graphToken: string | null = null;
+
     for (const row of rows.rows) {
       let text: string = row.extracted_text || '';
       const subject: string = row.subject || '';
-      const bodyText: string = row.body_text || '';
+      let bodyText: string = row.body_text || '';
 
-      // If stored text is short/empty but we have an email body, use that
+      // Body was never fetched (email processed before body-fetch code existed) — go get it now
+      if (bodyText.trim().length < 20 && row.message_id && this.isConfigured()) {
+        try {
+          if (!graphToken) graphToken = await getAccessToken();
+          const bodyRes = await axios.get(
+            `https://graph.microsoft.com/v1.0/users/${mailbox}/messages/${row.message_id}?$select=body`,
+            { headers: { Authorization: `Bearer ${graphToken}` } }
+          );
+          const bodyContent: string = bodyRes.data?.body?.content || '';
+          const bodyType: string = bodyRes.data?.body?.contentType || 'text';
+          bodyText = (bodyType === 'html' ? stripHtml(bodyContent) : bodyContent).substring(0, 10000);
+          if (bodyText.trim().length > 20) {
+            await execute(`UPDATE deal_desk_emails SET body_text = $2 WHERE id = $1`, [row.email_id, bodyText]);
+            logger.info(`Reparse: fetched email body (${bodyText.trim().length} chars) for message ${row.message_id}`);
+          }
+        } catch (bodyErr: any) {
+          logger.warn(`Reparse: could not fetch email body for ${row.message_id}: ${bodyErr?.message}`);
+        }
+      }
+
+      // Use email body as text source when PDF was encrypted/image-based
       if (text.trim().length < 20 && bodyText.trim().length > 20) {
-        text = `[Extracted from email body — PDF encrypted or image-based]\n\n${bodyText}`;
+        text = `[PDF encrypted or image-based — fields extracted from email body]\n\n${bodyText}`;
       }
       if (text.trim().length < 10) continue;
 
