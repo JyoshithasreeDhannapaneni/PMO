@@ -50,6 +50,7 @@ import aiRoutes from './routes/aiRoutes';
 import apiKeyRoutes from './routes/apiKeyRoutes';
 import clientReviewRoutes from './routes/clientReviewRoutes';
 import platformReviewRoutes from './routes/platformReviewRoutes';
+import dealDeskRoutes from './routes/dealDeskRoutes';
 import { logger } from './utils/logger';
 import { authService } from './services/authService';
 import { templateService } from './services/templateService';
@@ -117,6 +118,7 @@ app.use('/api/jira', jiraRoutes);
 app.use('/api/hubspot', hubspotRoutes);
 app.use('/api/ps-engagements', psEngagementsRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/deal-desk', dealDeskRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
@@ -515,6 +517,55 @@ async function runMigrations() {
   }
   try { await execute(`CREATE INDEX IF NOT EXISTS idx_platform_reviews_platform ON platform_reviews(platform)`); } catch {}
   try { await execute(`CREATE INDEX IF NOT EXISTS idx_platform_reviews_project ON platform_reviews(project_id)`); } catch {}
+
+  // App settings table
+  try {
+    await execute(`CREATE TABLE IF NOT EXISTS app_settings (
+      id INTEGER PRIMARY KEY,
+      settings JSONB NOT NULL DEFAULT '{}',
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )`);
+  } catch {}
+
+  // Deal Desk email inbox tables
+  try {
+    await execute(`
+      CREATE TABLE IF NOT EXISTS deal_desk_emails (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        message_id VARCHAR(1000) UNIQUE NOT NULL,
+        subject TEXT,
+        sender_email VARCHAR(300),
+        sender_name VARCHAR(300),
+        received_at TIMESTAMP,
+        has_attachments BOOLEAN DEFAULT false,
+        processed BOOLEAN DEFAULT false,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW()
+      )
+    `);
+    await execute(`
+      CREATE TABLE IF NOT EXISTS deal_desk_deals (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        email_id UUID NOT NULL REFERENCES deal_desk_emails(id) ON DELETE CASCADE,
+        source_filename VARCHAR(500),
+        customer_name VARCHAR(300),
+        sow_ref VARCHAR(200),
+        deal_value DECIMAL(15,2),
+        deal_status VARCHAR(100),
+        signer_name VARCHAR(300),
+        signed_at TIMESTAMP,
+        line_items JSONB DEFAULT '[]',
+        matched_ps_id VARCHAR(64),
+        matched_project_id UUID,
+        match_type VARCHAR(50),
+        match_confidence VARCHAR(20),
+        extracted_text TEXT,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW()
+      )
+    `);
+    await execute(`CREATE INDEX IF NOT EXISTS idx_deal_desk_deals_email ON deal_desk_deals(email_id)`);
+    await execute(`CREATE INDEX IF NOT EXISTS idx_deal_desk_deals_status ON deal_desk_deals(deal_status)`);
+    await execute(`CREATE INDEX IF NOT EXISTS idx_deal_desk_emails_msg ON deal_desk_emails(message_id)`);
+  } catch {}
 
 }
 

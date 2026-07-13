@@ -572,3 +572,82 @@ export function useDeleteEscalationDailyNote() {
     },
   });
 }
+
+export function useDealDeskDeals(params?: {
+  page?: number;
+  limit?: number;
+  status?: string;
+  search?: string;
+  matchType?: string;
+}) {
+  const search = params?.search || '';
+  const status = params?.status || '';
+  const matchType = params?.matchType || '';
+  const page = params?.page || 1;
+  const limit = params?.limit || 25;
+  const qs = new URLSearchParams({
+    page: String(page),
+    limit: String(limit),
+    ...(status ? { status } : {}),
+    ...(search ? { search } : {}),
+    ...(matchType ? { matchType } : {}),
+  }).toString();
+  return useQuery({
+    queryKey: ['dealDeskDeals', page, limit, status, search, matchType],
+    queryFn: () => authFetch(`${API_BASE}/api/deal-desk?${qs}`),
+    staleTime: 60_000,
+  });
+}
+
+export function useDealDeskStats() {
+  return useQuery({
+    queryKey: ['dealDeskStats'],
+    queryFn: () => authFetch(`${API_BASE}/api/deal-desk/stats`),
+    staleTime: 60_000,
+  });
+}
+
+export function useDealDeskConfig() {
+  return useQuery({
+    queryKey: ['dealDeskConfig'],
+    queryFn: () => authFetch(`${API_BASE}/api/deal-desk/config`),
+    staleTime: 5 * 60_000,
+  });
+}
+
+export function useTriggerDealDeskPoll() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
+      return fetch(`${API_BASE}/api/deal-desk/poll`, {
+        method: 'POST',
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      }).then(r => r.json());
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dealDeskDeals'] });
+      queryClient.invalidateQueries({ queryKey: ['dealDeskStats'] });
+    },
+  });
+}
+
+export function useUpdateDealMatch() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, matchedPsId, matchedProjectId }: { id: string; matchedPsId?: string; matchedProjectId?: string }) => {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
+      return fetch(`${API_BASE}/api/deal-desk/${id}/match`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ matchedPsId, matchedProjectId }),
+      }).then(r => r.json());
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dealDeskDeals'] });
+    },
+  });
+}

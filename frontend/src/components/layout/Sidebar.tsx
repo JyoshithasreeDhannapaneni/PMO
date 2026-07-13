@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
@@ -29,6 +30,7 @@ const allNavigation = [
   { name: 'History Archive',    href: '/archive',                icon: Archive,         adminOnly: false },
   { name: 'Server Notifications', href: '/server-alerts',         icon: Bell,            adminOnly: false },
   { name: 'Templates',          href: '/templates',              icon: Layers,          adminOnly: false },
+  { name: 'Deal Desk',           href: '/deal-desk',              icon: Briefcase,       adminOnly: false },
   { name: 'Case Studies',       href: '/case-studies',           icon: FileText,        adminOnly: false },
   {
     name: 'Reports', href: '#', icon: BarChart2, adminOnly: false,
@@ -68,13 +70,13 @@ export function Sidebar() {
         </button>
         {!collapsed && (
           <Link href="/" className="flex items-center gap-2.5 overflow-hidden">
-            <img src="/cloudfuze-logo.png" alt="CloudFuze" className="block w-8 h-8 object-contain flex-shrink-0" />
+            <Image src="/cloudfuze-logo.png" alt="CloudFuze" width={32} height={32} priority className="object-contain flex-shrink-0" />
             <span className="text-sm font-bold text-slate-800 truncate">{companyName}</span>
           </Link>
         )}
         {collapsed && (
           <Link href="/" className="w-8 h-8 flex items-center justify-center mx-auto">
-            <img src="/cloudfuze-logo.png" alt="CloudFuze" className="block w-8 h-8 object-contain" />
+            <Image src="/cloudfuze-logo.png" alt="CloudFuze" width={32} height={32} priority className="object-contain" />
           </Link>
         )}
       </div>
