@@ -117,21 +117,35 @@ function mapProjectRow(row: any) {
     const as = row.actual_start ? new Date(row.actual_start) : null;
     const extEnd = row.extended_end_date ? new Date(row.extended_end_date) : null;
 
-    // Project End Date = kickoff + SOW duration (used for display and delay calc)
     const sowMs = pe.getTime() - ps.getTime();
     const kickoffEnd = as ? new Date(as.getTime() + sowMs) : pe;
-    expectedEnd = extEnd || kickoffEnd;
 
-    // Completed/cancelled/inactive projects stop accruing delay days —
-    // freeze on whatever was last stored instead of recalculating against today.
     const isFinished = row.status === 'COMPLETED' || row.status === 'CANCELLED' || row.status === 'INACTIVE' || row.phase === 'COMPLETED';
-    if (isFinished) {
+    const isOveraged = !!row.is_overaged;
+
+    if (isOveraged && !isFinished) {
+      // planned_end is the original SOW end and must not be used for delay calculation.
+      // extended_end_date is the agreed extension deadline; delay is days past that.
+      const deadline = extEnd || pe;
+      expectedEnd = extEnd;
+      const diffMs = new Date().getTime() - deadline.getTime();
+      liveDelayDays   = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+      liveDelayStatus = 'EXTENDED';
+    } else if (isFinished) {
+      expectedEnd = extEnd || kickoffEnd;
       liveDelayStatus = row.delay_status;
       liveDelayDays   = Number(row.delay_days) || 0;
     } else {
+      expectedEnd = extEnd || kickoffEnd;
       const result = calculateDelay(ps, pe, as, null, new Date(), extEnd);
       liveDelayStatus = result.delayStatus;
       liveDelayDays   = result.delayDays;
+    }
+
+    // Phase=COMPLETED always zeroes delay regardless of overage state
+    if (row.phase === 'COMPLETED') {
+      liveDelayDays   = 0;
+      liveDelayStatus = 'NOT_DELAYED';
     }
   }
 
