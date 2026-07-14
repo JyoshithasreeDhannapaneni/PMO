@@ -76,7 +76,55 @@ export const dealDeskController = {
     res.json({ success: true, message: 'Match updated' });
   }),
 
+  importHistory: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const daysBack = parseInt((req.query.daysBack as string) || '0', 10);
+    if (isNaN(daysBack) || daysBack < 0 || daysBack > 9999) {
+      res.status(400).json({ success: false, error: 'daysBack must be 0 (all time) or 1–9999' });
+      return;
+    }
+    logger.info(`Deal Desk: SendGrid history import triggered — daysBack=${daysBack}`);
+    try {
+      const result = await dealDeskService.importMsGraphHistory(daysBack);
+      res.json({ success: true, data: result });
+    } catch (err: any) {
+      logger.error('Deal Desk MS Graph history import failed:', err.message);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  }),
+
   checkConfig: asyncHandler(async (req: Request, res: Response): Promise<void> => {
-    res.json({ success: true, data: { configured: dealDeskService.isConfigured() } });
+    const mode = dealDeskService.isSendGridMode() ? 'sendgrid'
+      : dealDeskService.isConfigured() ? 'msgraph' : 'none';
+    res.json({ success: true, data: { configured: dealDeskService.isConfigured(), mode } });
+  }),
+
+  inboundWebhook: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const secret = process.env.SENDGRID_WEBHOOK_SECRET;
+    if (secret && req.query.secret !== secret) {
+      res.status(403).json({ success: false, error: 'Invalid webhook secret' });
+      return;
+    }
+
+    const body = req.body || {};
+    const files: Express.Multer.File[] = (req.files as Express.Multer.File[]) || [];
+    const from = body.from || '';
+    const subject = body.subject || '';
+    const text = body.text || '';
+    const html = body.html || '';
+    const headers = body.headers || '';
+    const attachmentCount = parseInt(body.attachments || '0', 10);
+
+    logger.info(`Deal Desk [SendGrid]: inbound from="${from}" subject="${subject}" attachments=${attachmentCount} files=${files.length}`);
+
+    try {
+      const result = await dealDeskService.processSendGridInbound({
+        from, subject, text, html, headers, attachmentCount, files,
+      });
+      // Always 200 — SendGrid retries on non-2xx
+      res.status(200).json({ success: true, data: result });
+    } catch (err: any) {
+      logger.error('Deal Desk [SendGrid]: inbound error:', err.message);
+      res.status(200).json({ success: true, error: err.message });
+    }
   }),
 };
