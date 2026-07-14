@@ -11,12 +11,14 @@ import {
   ArrowLeft, FolderOpen, User, Calendar, Layers, Search, SlidersHorizontal, X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { StatusBadge } from '@/components/ui/StatusBadge';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type MigrationType = 'content' | 'message' | 'email';
-type Phase = 'pre_onetime' | 'post_onetime' | 'pre_delta' | 'post_delta';
+type ChecklistConfigKey = 'onetime_pre' | 'onetime_post' | 'delta_pre' | 'delta_post';
 type ChecklistStatus = 'not_started' | 'engineer_submitted' | 'pm_verified';
+interface ParsedPhase { group: 'onetime' | 'delta'; index: number; check: 'pre' | 'post'; }
 
 interface ChecklistItem {
   id: string;
@@ -78,9 +80,9 @@ function inferTypeFromPart(part: string): MigrationType {
 
 // ── Checklist Config ──────────────────────────────────────────────────────────
 
-const CHECKLIST_CONFIG: Record<MigrationType, Record<Phase, ChecklistSection[]>> = {
+const CHECKLIST_CONFIG: Record<MigrationType, Record<ChecklistConfigKey, ChecklistSection[]>> = {
   content: {
-    pre_onetime: [
+    onetime_pre: [
       {
         id: 'precheck1_setup',
         title: 'Pre-Check 1 — Source & Workspace Setup',
@@ -105,7 +107,7 @@ const CHECKLIST_CONFIG: Record<MigrationType, Record<Phase, ChecklistSection[]>>
         hasNotes: true,
       },
     ],
-    post_onetime: [
+    onetime_post: [
       {
         id: 'post_ot_data_validation',
         title: 'Post-Onetime Data Validation',
@@ -142,7 +144,7 @@ const CHECKLIST_CONFIG: Record<MigrationType, Record<Phase, ChecklistSection[]>>
         hasNotes: true,
       },
     ],
-    pre_delta: [
+    delta_pre: [
       {
         id: 'delta_precheck1',
         title: 'Pre-Check 1 — Previous Migration Completion',
@@ -208,7 +210,7 @@ const CHECKLIST_CONFIG: Record<MigrationType, Record<Phase, ChecklistSection[]>>
         hasNotes: true,
       },
     ],
-    post_delta: [
+    delta_post: [
       {
         id: 'post_delta_verification',
         title: 'Post-Delta Data Verification',
@@ -236,7 +238,7 @@ const CHECKLIST_CONFIG: Record<MigrationType, Record<Phase, ChecklistSection[]>>
   },
 
   message: {
-    pre_onetime: [
+    onetime_pre: [
       {
         id: 'permission_mapping',
         title: 'Permission Mapping',
@@ -270,7 +272,7 @@ const CHECKLIST_CONFIG: Record<MigrationType, Record<Phase, ChecklistSection[]>>
         hasNotes: true,
       },
     ],
-    post_onetime: [
+    onetime_post: [
       {
         id: 'post_ot_message_validation',
         title: 'Post-Onetime Message Validation',
@@ -292,7 +294,7 @@ const CHECKLIST_CONFIG: Record<MigrationType, Record<Phase, ChecklistSection[]>>
         hasNotes: true,
       },
     ],
-    pre_delta: [
+    delta_pre: [
       {
         id: 'delta_prerequisites',
         title: 'Delta Migration Prerequisites',
@@ -338,7 +340,7 @@ const CHECKLIST_CONFIG: Record<MigrationType, Record<Phase, ChecklistSection[]>>
         hasNotes: true,
       },
     ],
-    post_delta: [
+    delta_post: [
       {
         id: 'post_delta_message_verification',
         title: 'Post-Delta Message Verification',
@@ -366,7 +368,7 @@ const CHECKLIST_CONFIG: Record<MigrationType, Record<Phase, ChecklistSection[]>>
   },
 
   email: {
-    pre_onetime: [
+    onetime_pre: [
       {
         id: 'permission_mapping',
         title: 'Permission Mapping',
@@ -415,7 +417,7 @@ const CHECKLIST_CONFIG: Record<MigrationType, Record<Phase, ChecklistSection[]>>
         hasNotes: true,
       },
     ],
-    post_onetime: [
+    onetime_post: [
       {
         id: 'post_ot_email_validation',
         title: 'Post-Onetime Email Validation',
@@ -436,7 +438,7 @@ const CHECKLIST_CONFIG: Record<MigrationType, Record<Phase, ChecklistSection[]>>
         hasNotes: true,
       },
     ],
-    pre_delta: [
+    delta_pre: [
       {
         id: 'onetime_complete',
         title: 'One-Time Migration Completion Check',
@@ -482,7 +484,7 @@ const CHECKLIST_CONFIG: Record<MigrationType, Record<Phase, ChecklistSection[]>>
         hasNotes: true,
       },
     ],
-    post_delta: [
+    delta_post: [
       {
         id: 'post_delta_email_validation',
         title: 'Post-Delta Email Validation',
@@ -517,11 +519,43 @@ const STATUS_CONFIG: Record<ChecklistStatus, { label: string; color: string; ico
   pm_verified:        { label: 'PM Verified',          color: 'bg-green-100 text-green-700', icon: CheckCircle2 },
 };
 
-const PHASE_CONFIG: Record<Phase, { label: string; shortLabel: string; activeColor: string; badgeColor: string }> = {
-  pre_onetime:  { label: 'Onetime pre-checks',  shortLabel: 'OT Pre',    activeColor: 'bg-indigo-600 text-white border-indigo-600',  badgeColor: 'bg-indigo-100 text-indigo-700' },
-  post_onetime: { label: 'Onetime post-checks', shortLabel: 'OT Post',   activeColor: 'bg-green-600 text-white border-green-600',    badgeColor: 'bg-green-100 text-green-700'   },
-  pre_delta:    { label: 'Delta pre-checks',    shortLabel: 'Δ Pre',     activeColor: 'bg-purple-600 text-white border-purple-600',  badgeColor: 'bg-purple-100 text-purple-700' },
-  post_delta:   { label: 'Delta post-checks',   shortLabel: 'Δ Post',    activeColor: 'bg-teal-600 text-white border-teal-600',      badgeColor: 'bg-teal-100 text-teal-700'     },
+// ── Phase key helpers ─────────────────────────────────────────────────────────
+
+const LEGACY_PHASE: Record<string, string> = {
+  pre_onetime:  'onetime_1_pre',
+  post_onetime: 'onetime_1_post',
+  pre_delta:    'delta_1_pre',
+  post_delta:   'delta_1_post',
+};
+
+function parsePhaseKey(key: string): ParsedPhase | null {
+  const m = key.match(/^(onetime|delta)_(\d+)_(pre|post)$/);
+  if (!m) return null;
+  return { group: m[1] as 'onetime' | 'delta', index: parseInt(m[2], 10), check: m[3] as 'pre' | 'post' };
+}
+
+function makePhaseKey(group: 'onetime' | 'delta', index: number, check: 'pre' | 'post'): string {
+  return `${group}_${index}_${check}`;
+}
+
+function normalizeLegacyPhase(phase: string): string {
+  return LEGACY_PHASE[phase] ?? phase;
+}
+
+function getConfigKey(phaseKey: string): ChecklistConfigKey | null {
+  const p = parsePhaseKey(phaseKey);
+  if (!p) return null;
+  return `${p.group}_${p.check}` as ChecklistConfigKey;
+}
+
+const CHECK_STYLE: Record<'pre' | 'post', { activeColor: string; badgeColor: string }> = {
+  pre:  { activeColor: 'bg-indigo-600 text-white border-indigo-600',  badgeColor: 'bg-indigo-100 text-indigo-700'  },
+  post: { activeColor: 'bg-green-600 text-white border-green-600',    badgeColor: 'bg-green-100 text-green-700'    },
+};
+
+const GROUP_STYLE: Record<'onetime' | 'delta', { color: string; accent: string }> = {
+  onetime: { color: 'text-indigo-700', accent: 'bg-indigo-50 border-indigo-200' },
+  delta:   { color: 'text-purple-700', accent: 'bg-purple-50 border-purple-200' },
 };
 
 const API_BASE = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api`;
@@ -542,7 +576,9 @@ export default function MigrationValidationPage() {
 
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
   const [activeType, setActiveType] = useState<MigrationType>('content');
-  const [activePhase, setActivePhase] = useState<Phase>('pre_onetime');
+  const [activePhaseKey, setActivePhaseKey] = useState<string>('onetime_1_pre');
+  const [onetimeCount, setOnetimeCount] = useState(1);
+  const [deltaCount, setDeltaCount] = useState(1);
   const [checklists, setChecklists] = useState<ChecklistRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -628,35 +664,74 @@ export default function MigrationValidationPage() {
     setLoading(false);
   };
 
-  const currentRecord = checklists.find(
-    (c) => c.migrationType === activeType && c.phase === activePhase
-  );
-  const getPhaseRecord = (ph: Phase) => checklists.find((c) => c.migrationType === activeType && c.phase === ph);
-  const isPhaseUnlocked = (ph: Phase): boolean => {
-    if (ph === 'pre_onetime') return true;
-    if (ph === 'post_onetime') return getPhaseRecord('pre_onetime')?.status === 'pm_verified';
-    if (ph === 'pre_delta') return getPhaseRecord('post_onetime')?.status === 'pm_verified';
-    if (ph === 'post_delta') return getPhaseRecord('pre_delta')?.status === 'pm_verified';
-    return false;
+  // Normalise legacy phase keys on load so old records appear in the batch/run view
+  const getRecord = (phaseKey: string) =>
+    checklists.find(c => c.migrationType === activeType && normalizeLegacyPhase(c.phase) === phaseKey);
+
+  const currentRecord = getRecord(activePhaseKey);
+
+  // Derive batch/run counts from loaded checklists
+  useEffect(() => {
+    const phases = checklists
+      .filter(c => c.migrationType === activeType)
+      .map(c => parsePhaseKey(normalizeLegacyPhase(c.phase)))
+      .filter(Boolean) as ParsedPhase[];
+    const onetimeIdxs = phases.filter(p => p.group === 'onetime').map(p => p.index);
+    const deltaIdxs   = phases.filter(p => p.group === 'delta').map(p => p.index);
+    setOnetimeCount(onetimeIdxs.length > 0 ? Math.max(...onetimeIdxs) : 1);
+    setDeltaCount(deltaIdxs.length > 0 ? Math.max(...deltaIdxs) : 1);
+  }, [checklists, activeType]);
+
+  const isPhaseKeyLocked = (key: string): boolean => {
+    const p = parsePhaseKey(key);
+    if (!p) return true;
+    const { group, index, check } = p;
+    if (group === 'onetime') {
+      if (check === 'pre') return index > 1 && getRecord(makePhaseKey('onetime', index - 1, 'post'))?.status !== 'pm_verified';
+      return getRecord(makePhaseKey('onetime', index, 'pre'))?.status !== 'pm_verified';
+    }
+    // delta
+    if (check === 'pre') {
+      if (index === 1) {
+        return !Array.from({ length: onetimeCount }, (_, i) => i + 1)
+          .some(i => getRecord(makePhaseKey('onetime', i, 'post'))?.status === 'pm_verified');
+      }
+      return getRecord(makePhaseKey('delta', index - 1, 'post'))?.status !== 'pm_verified';
+    }
+    return getRecord(makePhaseKey('delta', index, 'pre'))?.status !== 'pm_verified';
   };
+
+  const canAddOnetimeBatch =
+    getRecord(makePhaseKey('onetime', onetimeCount, 'post'))?.status === 'pm_verified';
+
+  const canAddDeltaRun = (() => {
+    const anyOnetimeDone = Array.from({ length: onetimeCount }, (_, i) => i + 1)
+      .some(i => getRecord(makePhaseKey('onetime', i, 'post'))?.status === 'pm_verified');
+    if (!anyOnetimeDone) return false;
+    return getRecord(makePhaseKey('delta', deltaCount, 'post'))?.status === 'pm_verified';
+  })();
 
   useEffect(() => {
     if (currentRecord?.checklistData && Object.keys(currentRecord.checklistData).length > 0) {
       setLocalData(currentRecord.checklistData);
     } else {
-      const sections = CHECKLIST_CONFIG[activeType][activePhase];
+      const configKey = getConfigKey(activePhaseKey);
+      if (!configKey) return;
+      const sections = CHECKLIST_CONFIG[activeType][configKey];
       const empty: typeof localData = {};
       sections.forEach((s) => { empty[s.id] = { items: {}, notes: '' }; });
       setLocalData(empty);
     }
     setPmNotes(currentRecord?.pmNotes || '');
     setShowPmPanel(false);
-  }, [currentRecord, activeType, activePhase]);
+  }, [currentRecord, activeType, activePhaseKey]);
 
   const handleSelectProject = (id: string) => {
     setSelectedProjectId(id);
     setChecklists([]);
-    setActivePhase('pre_onetime');
+    setActivePhaseKey('onetime_1_pre');
+    setOnetimeCount(1);
+    setDeltaCount(1);
   };
 
   const handleBack = () => {
@@ -702,7 +777,7 @@ export default function MigrationValidationPage() {
     setSaving(true);
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`${API_BASE}/migration-checklists/${selectedProjectId}/${activeType}/${activePhase}`, {
+      const res = await fetch(`${API_BASE}/migration-checklists/${selectedProjectId}/${activeType}/${activePhaseKey}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ checklistData: localData }),
@@ -710,7 +785,7 @@ export default function MigrationValidationPage() {
       const json = await res.json();
       if (json.success) {
         setChecklists((prev) => {
-          const idx = prev.findIndex((c) => c.migrationType === activeType && c.phase === activePhase);
+          const idx = prev.findIndex((c) => c.migrationType === activeType && normalizeLegacyPhase(c.phase) === activePhaseKey);
           if (idx >= 0) { const n = [...prev]; n[idx] = json.data; return n; }
           return [...prev, json.data];
         });
@@ -725,19 +800,19 @@ export default function MigrationValidationPage() {
     setSaving(true);
     try {
       const token = localStorage.getItem('token');
-      await fetch(`${API_BASE}/migration-checklists/${selectedProjectId}/${activeType}/${activePhase}`, {
+      await fetch(`${API_BASE}/migration-checklists/${selectedProjectId}/${activeType}/${activePhaseKey}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ checklistData: localData }),
       });
-      const res = await fetch(`${API_BASE}/migration-checklists/${selectedProjectId}/${activeType}/${activePhase}/submit`, {
+      const res = await fetch(`${API_BASE}/migration-checklists/${selectedProjectId}/${activeType}/${activePhaseKey}/submit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       });
       const json = await res.json();
       if (json.success) {
         setChecklists((prev) => {
-          const idx = prev.findIndex((c) => c.migrationType === activeType && c.phase === activePhase);
+          const idx = prev.findIndex((c) => c.migrationType === activeType && normalizeLegacyPhase(c.phase) === activePhaseKey);
           if (idx >= 0) { const n = [...prev]; n[idx] = json.data; return n; }
           return [...prev, json.data];
         });
@@ -752,7 +827,7 @@ export default function MigrationValidationPage() {
     setSaving(true);
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`${API_BASE}/migration-checklists/${selectedProjectId}/${activeType}/${activePhase}/verify`, {
+      const res = await fetch(`${API_BASE}/migration-checklists/${selectedProjectId}/${activeType}/${activePhaseKey}/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ approved, pmNotes }),
@@ -760,7 +835,7 @@ export default function MigrationValidationPage() {
       const json = await res.json();
       if (json.success) {
         setChecklists((prev) => {
-          const idx = prev.findIndex((c) => c.migrationType === activeType && c.phase === activePhase);
+          const idx = prev.findIndex((c) => c.migrationType === activeType && normalizeLegacyPhase(c.phase) === activePhaseKey);
           if (idx >= 0) { const n = [...prev]; n[idx] = json.data; return n; }
           return [...prev, json.data];
         });
@@ -773,10 +848,17 @@ export default function MigrationValidationPage() {
 
   const handleFinalize = async () => {
     if (!selectedProjectId) return;
-    const allVerified = (['pre_onetime', 'post_onetime', 'pre_delta', 'post_delta'] as Phase[]).every(
-      (ph) => checklists.find((c) => c.migrationType === activeType && c.phase === ph)?.status === 'pm_verified'
+    const allVerified = (
+      Array.from({ length: onetimeCount }, (_, i) => i + 1).every(i =>
+        getRecord(makePhaseKey('onetime', i, 'pre'))?.status === 'pm_verified' &&
+        getRecord(makePhaseKey('onetime', i, 'post'))?.status === 'pm_verified'
+      ) &&
+      Array.from({ length: deltaCount }, (_, i) => i + 1).every(i =>
+        getRecord(makePhaseKey('delta', i, 'pre'))?.status === 'pm_verified' &&
+        getRecord(makePhaseKey('delta', i, 'post'))?.status === 'pm_verified'
+      )
     );
-    if (!allVerified) { showToast('error', 'All four phases must be PM-verified before finalizing'); return; }
+    if (!allVerified) { showToast('error', 'All batches and delta runs must be PM-verified before finalizing'); return; }
     setSaving(true);
     try {
       const token = localStorage.getItem('token');
@@ -792,9 +874,11 @@ export default function MigrationValidationPage() {
     setSaving(false);
   };
 
-  const calcProgress = (record?: ChecklistRecord, type?: MigrationType, phase?: Phase) => {
-    if (!record || !type || !phase) return { checked: 0, total: 0 };
-    const sections = CHECKLIST_CONFIG[type][phase];
+  const calcProgress = (record?: ChecklistRecord, type?: MigrationType, phaseKey?: string) => {
+    if (!record || !type || !phaseKey) return { checked: 0, total: 0 };
+    const configKey = getConfigKey(phaseKey);
+    if (!configKey) return { checked: 0, total: 0 };
+    const sections = CHECKLIST_CONFIG[type][configKey];
     let total = 0; let checked = 0;
     sections.forEach((s) => {
       s.items.forEach((item) => {
@@ -805,10 +889,11 @@ export default function MigrationValidationPage() {
     return { checked, total };
   };
 
-  const currentSections = CHECKLIST_CONFIG[activeType][activePhase];
+  const configKey = getConfigKey(activePhaseKey);
+  const currentSections = configKey ? CHECKLIST_CONFIG[activeType][configKey] : [];
   const isReadOnly = currentRecord?.status === 'pm_verified' ||
     (currentRecord?.status === 'engineer_submitted' && !canVerify);
-  const { checked, total } = calcProgress(currentRecord || { checklistData: localData } as any, activeType, activePhase);
+  const { checked, total } = calcProgress(currentRecord || { checklistData: localData } as any, activeType, activePhaseKey);
 
   // ── Project card for the list view ──────────────────────────────────────────
 
@@ -860,31 +945,44 @@ export default function MigrationValidationPage() {
             )}
           </div>
           <div className="flex flex-col items-end gap-1 flex-shrink-0">
-            <span className={cn(
-              'text-[10px] px-2 py-0.5 rounded-full font-medium',
-              project.phase === 'COMPLETED' ? 'bg-green-100 text-green-700' :
-              project.phase === 'MIGRATION' ? 'bg-blue-100 text-blue-700' :
-              'bg-slate-100 text-slate-600'
-            )}>
-              {project.phase}
-            </span>
+            {project.phase && <StatusBadge status={project.phase} variant="phase" />}
           </div>
         </div>
 
         {/* Checklist status strip */}
         <div className="flex flex-wrap items-center gap-1.5 mt-3 pt-3 border-t border-slate-100">
-          {(['pre_onetime', 'post_onetime', 'pre_delta', 'post_delta'] as Phase[]).map((ph) => {
-            const rec = checklists.find((c) => c.projectId === project.id && c.migrationType === activeType && c.phase === ph);
-            const st = rec?.status || 'not_started';
-            const cfg = STATUS_CONFIG[st as ChecklistStatus];
-            const phCfg = PHASE_CONFIG[ph];
-            return (
-              <span key={ph} className={cn('flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium', cfg.color)}>
-                <cfg.icon className="w-3 h-3" />
-                {phCfg.shortLabel}
-              </span>
-            );
-          })}
+          {(() => {
+            const recs = checklists.filter(c => c.projectId === project.id && c.migrationType === activeType);
+            let maxOT = 0, maxD = 0;
+            recs.forEach(c => {
+              const norm = normalizeLegacyPhase(c.phase);
+              const parsed = parsePhaseKey(norm);
+              if (parsed?.group === 'onetime' && parsed.index > maxOT) maxOT = parsed.index;
+              if (parsed?.group === 'delta' && parsed.index > maxD) maxD = parsed.index;
+            });
+            if (maxOT === 0) maxOT = 1;
+            if (maxD === 0) maxD = 1;
+            const phases: Array<{ key: string; label: string }> = [];
+            for (let i = 1; i <= maxOT; i++) {
+              phases.push({ key: makePhaseKey('onetime', i, 'pre'), label: `OT${i} Pre` });
+              phases.push({ key: makePhaseKey('onetime', i, 'post'), label: `OT${i} Post` });
+            }
+            for (let i = 1; i <= maxD; i++) {
+              phases.push({ key: makePhaseKey('delta', i, 'pre'), label: `D${i} Pre` });
+              phases.push({ key: makePhaseKey('delta', i, 'post'), label: `D${i} Post` });
+            }
+            return phases.map(({ key, label }) => {
+              const rec = recs.find(c => normalizeLegacyPhase(c.phase) === key);
+              const st = (rec?.status || 'not_started') as ChecklistStatus;
+              const cfg = STATUS_CONFIG[st];
+              return (
+                <span key={key} className={cn('flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium', cfg.color)}>
+                  <cfg.icon className="w-3 h-3" />
+                  {label}
+                </span>
+              );
+            });
+          })()}
         </div>
       </button>
     );
@@ -913,7 +1011,7 @@ export default function MigrationValidationPage() {
               key={tab.id}
               onClick={() => {
                 setActiveType(tab.id);
-                setActivePhase('pre_onetime');
+                setActivePhaseKey('onetime_1_pre');
                 setSelectedProjectId('');
                 setChecklists([]);
                 clearFilters();
@@ -1004,7 +1102,11 @@ export default function MigrationValidationPage() {
                         className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-400 bg-white appearance-none pr-8"
                       >
                         <option value="">All Phases</option>
-                        {['ONBOARDING', 'MIGRATION', 'COMPLETED', 'PAUSED'].map(ph => <option key={ph}>{ph}</option>)}
+                        {[...settings.phases].sort((a, b) => a.order - b.order).map(ph => (
+                          <option key={ph.code || ph.name} value={(ph.code || ph.name).toUpperCase()}>
+                            {ph.name}
+                          </option>
+                        ))}
                       </select>
                       <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                       {phaseFilter && (
@@ -1090,29 +1192,42 @@ export default function MigrationValidationPage() {
                           <td className="py-3 px-4 text-sm text-slate-600">{p.customerName || '—'}</td>
                           <td className="py-3 px-4 text-sm text-slate-600">{p.projectManager || '—'}</td>
                           <td className="py-3 px-4">
-                            <span className={cn(
-                              'text-xs px-2 py-0.5 rounded-full font-medium',
-                              p.phase === 'COMPLETED' ? 'bg-green-100 text-green-700' :
-                              p.phase === 'MIGRATION' ? 'bg-blue-100 text-blue-700' :
-                              'bg-slate-100 text-slate-600'
-                            )}>
-                              {p.phase || '—'}
-                            </span>
+                            {p.phase ? <StatusBadge status={p.phase} variant="phase" /> : <span className="text-slate-400">—</span>}
                           </td>
                           <td className="py-3 px-4">
                             <div className="flex flex-wrap gap-1">
-                              {(['pre_onetime', 'post_onetime', 'pre_delta', 'post_delta'] as Phase[]).map((ph) => {
-                                const rec = checklists.find((c) => c.projectId === p.id && c.migrationType === activeType && c.phase === ph);
-                                const st = rec?.status || 'not_started';
-                                const cfg = STATUS_CONFIG[st as ChecklistStatus];
-                                const phCfg = PHASE_CONFIG[ph];
-                                return (
-                                  <span key={ph} className={cn('flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium', cfg.color)}>
-                                    <cfg.icon className="w-3 h-3" />
-                                    {phCfg.shortLabel}
-                                  </span>
-                                );
-                              })}
+                              {(() => {
+                                const recs = checklists.filter(c => c.projectId === p.id && c.migrationType === activeType);
+                                let maxOT = 0, maxD = 0;
+                                recs.forEach(c => {
+                                  const norm = normalizeLegacyPhase(c.phase);
+                                  const parsed = parsePhaseKey(norm);
+                                  if (parsed?.group === 'onetime' && parsed.index > maxOT) maxOT = parsed.index;
+                                  if (parsed?.group === 'delta' && parsed.index > maxD) maxD = parsed.index;
+                                });
+                                if (maxOT === 0) maxOT = 1;
+                                if (maxD === 0) maxD = 1;
+                                const phases: Array<{ key: string; label: string }> = [];
+                                for (let i = 1; i <= maxOT; i++) {
+                                  phases.push({ key: makePhaseKey('onetime', i, 'pre'), label: `OT${i} Pre` });
+                                  phases.push({ key: makePhaseKey('onetime', i, 'post'), label: `OT${i} Post` });
+                                }
+                                for (let i = 1; i <= maxD; i++) {
+                                  phases.push({ key: makePhaseKey('delta', i, 'pre'), label: `D${i} Pre` });
+                                  phases.push({ key: makePhaseKey('delta', i, 'post'), label: `D${i} Post` });
+                                }
+                                return phases.map(({ key, label }) => {
+                                  const rec = recs.find(c => normalizeLegacyPhase(c.phase) === key);
+                                  const st = (rec?.status || 'not_started') as ChecklistStatus;
+                                  const cfg = STATUS_CONFIG[st];
+                                  return (
+                                    <span key={key} className={cn('flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium', cfg.color)}>
+                                      <cfg.icon className="w-3 h-3" />
+                                      {label}
+                                    </span>
+                                  );
+                                });
+                              })()}
                             </div>
                           </td>
                         </tr>
@@ -1159,37 +1274,82 @@ export default function MigrationValidationPage() {
             )}
           </div>
 
-          {/* Phase switcher */}
-          <div className="flex flex-wrap items-center gap-2">
-            {(['pre_onetime', 'post_onetime', 'pre_delta', 'post_delta'] as Phase[]).map((phase, idx) => {
-              const rec = checklists.find((c) => c.migrationType === activeType && c.phase === phase);
-              const locked = !isPhaseUnlocked(phase);
-              const statusCfg = rec ? STATUS_CONFIG[rec.status] : null;
-              const phCfg = PHASE_CONFIG[phase];
-              const prevLabel = idx > 0 ? PHASE_CONFIG[(['pre_onetime', 'post_onetime', 'pre_delta', 'post_delta'] as Phase[])[idx - 1]].label : '';
+          {/* Phase switcher — Batch + Run model */}
+          <div className="grid grid-cols-2 gap-3">
+            {(['onetime', 'delta'] as const).map(group => {
+              const count = group === 'onetime' ? onetimeCount : deltaCount;
+              const canAdd = group === 'onetime' ? canAddOnetimeBatch : canAddDeltaRun;
+              const gs = GROUP_STYLE[group];
               return (
-                <button
-                  key={phase}
-                  onClick={() => !locked && setActivePhase(phase)}
-                  disabled={locked}
-                  title={locked ? `Requires ${prevLabel} PM approval` : undefined}
-                  className={cn(
-                    'flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-medium transition-all',
-                    activePhase === phase && !locked
-                      ? phCfg.activeColor + ' shadow-sm'
-                      : locked
-                      ? 'bg-slate-50 text-slate-400 border-slate-200 cursor-not-allowed'
-                      : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400'
-                  )}
-                >
-                  {locked ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
-                  {phCfg.label}
-                  {statusCfg && (
-                    <span className={cn('text-[10px] px-1.5 py-0.5 rounded-full font-medium ml-1', statusCfg.color)}>
-                      {statusCfg.label}
-                    </span>
-                  )}
-                </button>
+                <div key={group} className={cn('rounded-xl border p-3 space-y-2', gs.accent)}>
+                  <p className={cn('text-[11px] font-bold uppercase tracking-widest', gs.color)}>
+                    {group === 'onetime' ? 'Onetime Batches' : 'Delta Runs'}
+                  </p>
+                  {Array.from({ length: count }, (_, i) => i + 1).map(idx => (
+                    <div key={idx} className="space-y-1">
+                      <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">
+                        {group === 'onetime' ? `Batch ${idx}` : `Delta ${idx}`}
+                      </p>
+                      <div className="flex gap-1.5">
+                        {(['pre', 'post'] as const).map(check => {
+                          const key = makePhaseKey(group, idx, check);
+                          const locked = isPhaseKeyLocked(key);
+                          const rec = getRecord(key);
+                          const statusCfg = rec ? STATUS_CONFIG[rec.status] : null;
+                          const style = CHECK_STYLE[check];
+                          const isActive = activePhaseKey === key;
+                          return (
+                            <button
+                              key={check}
+                              onClick={() => !locked && setActivePhaseKey(key)}
+                              disabled={locked}
+                              title={locked ? 'Locked — complete previous step first' : undefined}
+                              className={cn(
+                                'flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-medium transition-all flex-1 justify-center',
+                                isActive && !locked
+                                  ? style.activeColor + ' shadow-sm'
+                                  : locked
+                                  ? 'bg-slate-50 text-slate-300 border-slate-200 cursor-not-allowed'
+                                  : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400'
+                              )}
+                            >
+                              {locked
+                                ? <Lock className="w-3 h-3 flex-shrink-0" />
+                                : statusCfg
+                                ? <statusCfg.icon className="w-3 h-3 flex-shrink-0" />
+                                : <Unlock className="w-3 h-3 flex-shrink-0" />
+                              }
+                              {check === 'pre' ? 'Pre' : 'Post'}
+                              {statusCfg && !isActive && (
+                                <span className={cn('hidden sm:inline text-[9px] px-1 py-0.5 rounded-full font-medium', statusCfg.color)}>
+                                  {rec?.status === 'pm_verified' ? '✓' : rec?.status === 'engineer_submitted' ? '●' : '○'}
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                  <button
+                    onClick={() => {
+                      if (group === 'onetime') {
+                        const next = onetimeCount + 1;
+                        setOnetimeCount(next);
+                        setActivePhaseKey(makePhaseKey('onetime', next, 'pre'));
+                      } else {
+                        const next = deltaCount + 1;
+                        setDeltaCount(next);
+                        setActivePhaseKey(makePhaseKey('delta', next, 'pre'));
+                      }
+                    }}
+                    disabled={!canAdd}
+                    title={!canAdd ? `Complete and verify the current ${group === 'onetime' ? 'batch' : 'delta run'} first` : undefined}
+                    className="w-full text-xs font-medium py-1 rounded-lg border border-dashed transition-all disabled:opacity-40 disabled:cursor-not-allowed text-slate-500 border-slate-300 hover:enabled:border-indigo-400 hover:enabled:text-indigo-600 hover:enabled:bg-white"
+                  >
+                    + Add {group === 'onetime' ? 'Onetime Batch' : 'Delta Run'}
+                  </button>
+                </div>
               );
             })}
           </div>
@@ -1419,9 +1579,15 @@ export default function MigrationValidationPage() {
 
           {/* Final Validation button */}
           {canVerify && (() => {
-            const allVerified = (['pre_onetime', 'post_onetime', 'pre_delta', 'post_delta'] as Phase[]).every(
-              (ph) => checklists.find((c) => c.migrationType === activeType && c.phase === ph)?.status === 'pm_verified'
-            );
+            const allVerified =
+              Array.from({ length: onetimeCount }, (_, i) => i + 1).every(i =>
+                getRecord(makePhaseKey('onetime', i, 'pre'))?.status === 'pm_verified' &&
+                getRecord(makePhaseKey('onetime', i, 'post'))?.status === 'pm_verified'
+              ) &&
+              Array.from({ length: deltaCount }, (_, i) => i + 1).every(i =>
+                getRecord(makePhaseKey('delta', i, 'pre'))?.status === 'pm_verified' &&
+                getRecord(makePhaseKey('delta', i, 'post'))?.status === 'pm_verified'
+              );
             if (!allVerified) return null;
             return (
               <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-xl p-5 flex items-center justify-between gap-4">
@@ -1430,8 +1596,10 @@ export default function MigrationValidationPage() {
                     <Flag className="w-5 h-5 text-green-600" />
                   </div>
                   <div>
-                    <p className="text-sm font-bold text-green-800">All four phases verified!</p>
-                    <p className="text-xs text-green-700">Onetime pre-checks, Onetime post-checks, Delta pre-checks, and Delta post-checks are all PM-approved. Ready to move to Final Validation.</p>
+                    <p className="text-sm font-bold text-green-800">All batches and delta runs verified!</p>
+                    <p className="text-xs text-green-700">
+                      {onetimeCount} onetime batch{onetimeCount !== 1 ? 'es' : ''} and {deltaCount} delta run{deltaCount !== 1 ? 's' : ''} are all PM-approved. Ready to move to Final Validation.
+                    </p>
                   </div>
                 </div>
                 <button

@@ -34,13 +34,14 @@ interface PlatformReview {
   reviewText: string | null;
   reviewUrl: string | null;
   reviewDate: string;
-  segment: 'SMB' | 'ENT' | null;
+  segment: 'SMB' | 'ENT' | 'PS' | null;
 }
 
-const SEGMENT_LABEL: Record<string, string> = { SMB: 'SMB', ENT: 'Enterprise' };
+const SEGMENT_LABEL: Record<string, string> = { SMB: 'SMB', ENT: 'Enterprise', PS: 'Professional Services' };
 const SEGMENT_STYLE: Record<string, string> = {
   SMB: 'bg-cyan-50 text-cyan-700 border-cyan-200',
   ENT: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+  PS: 'bg-violet-50 text-violet-700 border-violet-200',
 };
 
 interface ManagerRatingSummary {
@@ -211,7 +212,7 @@ function AddPlatformReviewModal({
 }: {
   platforms: string[];
   defaultPlatform: string;
-  defaultSegment: 'SMB' | 'ENT';
+  defaultSegment: 'SMB' | 'ENT' | 'PS';
   projects: Project[];
   onClose: () => void;
   onCreated: () => void;
@@ -226,7 +227,7 @@ function AddPlatformReviewModal({
   const [reviewText, setReviewText] = useState('');
   const [reviewUrl, setReviewUrl] = useState('');
   const [reviewDate, setReviewDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [segment, setSegment] = useState<'' | 'SMB' | 'ENT'>(defaultSegment || '');
+  const [segment, setSegment] = useState<'' | 'SMB' | 'ENT' | 'PS'>(defaultSegment || '');
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -339,11 +340,12 @@ function AddPlatformReviewModal({
             <label className="block text-sm font-medium text-gray-700 mb-1">Segment</label>
             <Select
               value={segment}
-              onChange={(e) => setSegment(e.target.value as '' | 'SMB' | 'ENT')}
+              onChange={(e) => setSegment(e.target.value as '' | 'SMB' | 'ENT' | 'PS')}
               options={[
                 { value: '', label: 'Not specified' },
                 { value: 'SMB', label: 'SMB' },
                 { value: 'ENT', label: 'Enterprise (ENT)' },
+                { value: 'PS', label: 'Professional Services (PS)' },
               ]}
             />
           </div>
@@ -467,7 +469,7 @@ export default function ReviewsPage() {
   const [platformReviews, setPlatformReviews] = useState<PlatformReview[]>([]);
   const [platforms, setPlatforms] = useState<string[]>(['Gartner', 'G2', 'Trustpilot', 'TrustRadius']);
   const [activeTab, setActiveTab] = useState('Gartner');
-  const [segmentTab, setSegmentTab] = useState<'SMB' | 'ENT'>('SMB');
+  const [segmentTab, setSegmentTab] = useState<'SMB' | 'ENT' | 'PS'>('SMB');
   const [managerOptions, setManagerOptions] = useState<{ projectManagers: string[]; accountManagers: string[] }>({ projectManagers: [], accountManagers: [] });
   const [pmFilter, setPmFilter] = useState('');
   const [amFilter, setAmFilter] = useState('');
@@ -612,7 +614,7 @@ export default function ReviewsPage() {
 
       {/* Segment sub-tabs */}
       <div className="flex items-center gap-2 mb-6">
-        {(['SMB', 'ENT'] as const).map((seg) => {
+        {(['SMB', 'ENT', 'PS'] as const).map((seg) => {
           const count = reviewsForTab.filter((r) => r.segment === seg).length;
           const active = segmentTab === seg;
           return (
@@ -630,7 +632,7 @@ export default function ReviewsPage() {
         })}
         {unsegmentedCount > 0 && (
           <span className="text-xs text-amber-600 ml-1">
-            {unsegmentedCount} {activeTab} review{unsegmentedCount !== 1 ? 's' : ''} not yet tagged SMB/ENT
+            {unsegmentedCount} {activeTab} review{unsegmentedCount !== 1 ? 's' : ''} not yet tagged SMB/ENT/PS
           </span>
         )}
       </div>

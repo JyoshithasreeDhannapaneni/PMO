@@ -138,11 +138,18 @@ function mapProjectRow(row: any) {
     // Only pass actualEnd for truly finished projects — ACTIVE/ON_HOLD projects
     // may have actualEnd filled as "expected end" by users, which would cause
     // calculateDelay to treat them as completed (always NOT_DELAYED).
-    const isFinished = row.status === 'COMPLETED' || row.status === 'CANCELLED';
-    const actualEndForDelay = isFinished && row.actual_end ? new Date(row.actual_end) : null;
-    const result = calculateDelay(ps, pe, as, actualEndForDelay, new Date(), extEnd);
-    liveDelayStatus = result.delayStatus;
-    liveDelayDays   = result.delayDays;
+    const isFinished = row.status === 'COMPLETED' || row.status === 'CANCELLED' || row.status === 'INACTIVE' || row.phase === 'COMPLETED';
+    if (isFinished) {
+      // Freeze at whatever was last stored — inactive/completed projects should
+      // stop accruing delay days rather than keep counting against today's date.
+      liveDelayStatus = row.delay_status;
+      liveDelayDays   = Number(row.delay_days) || 0;
+      expectedEnd = (extEnd || pe).toISOString().split('T')[0];
+    } else {
+      const result = calculateDelay(ps, pe, as, null, new Date(), extEnd);
+      liveDelayStatus = result.delayStatus;
+      liveDelayDays   = result.delayDays;
+    }
   }
 
   return {

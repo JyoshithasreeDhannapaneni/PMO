@@ -30,7 +30,23 @@ export function initializeCronJobs(): void {
     }
   });
 
+  // Deal Desk email poll — every 15 minutes
+  cron.schedule('*/15 * * * *', async () => {
+    try {
+      const { dealDeskService } = require('../services/dealDeskService');
+      if (!dealDeskService.isConfigured()) return;
+      logger.info('Deal Desk: polling for new emails...');
+      const result = await dealDeskService.processNewEmails();
+      if (result.processed > 0 || result.errors > 0) {
+        logger.info(`Deal Desk: processed=${result.processed} skipped=${result.skipped} errors=${result.errors}`);
+      }
+    } catch (error) {
+      logger.error('Deal Desk email poll failed:', error);
+    }
+  });
+
   logger.info('Cron jobs scheduled:');
   logger.info('  - Delay check: Daily at 6:00 AM');
   logger.info('  - Server alerts: Daily at 8:00 AM');
+  logger.info('  - Deal Desk email poll: Every 15 minutes');
 }

@@ -1,16 +1,17 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { useSettings } from '@/context/SettingsContext';
 import {
   LayoutDashboard, FolderKanban, AlertTriangle, FileText,
-  Settings, Layers, Users, BarChart2, ChevronDown,
+  Settings, Layers, BarChart2, ChevronDown,
   ChevronRight, LogOut, DollarSign, Siren, Menu, X, Archive,
   FlaskConical, Building2, HeartHandshake, BookOpen, Briefcase, Bell,
-  LayoutGrid,
+  LayoutGrid, Star,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
@@ -21,7 +22,7 @@ const allNavigation = [
   { name: 'Migration Validation', href: '/migration-runbooks',     icon: BookOpen,        adminOnly: false },
   { name: 'Overage Projects',   href: '/overage-projects',       icon: DollarSign,      adminOnly: false },
   { name: 'Escalated Projects', href: '/escalation-projects',    icon: Siren,           adminOnly: false },
-  { name: 'Managers & Goals',   href: '/managers',               icon: Users,   badge: 'goals', adminOnly: false },
+  { name: 'Reviews',             href: '/reviews',                icon: Star,            adminOnly: false },
   { name: 'Manager Dashboard',  href: '/manager-dashboard',      icon: LayoutGrid,               adminOnly: true },
   { name: 'Pre-sales',          href: '/poc-projects',           icon: FlaskConical,    adminOnly: false },
   { name: 'Account Manager View', href: '/account-manager',     icon: Building2,       adminOnly: false },
@@ -29,8 +30,8 @@ const allNavigation = [
   { name: 'History Archive',    href: '/archive',                icon: Archive,         adminOnly: false },
   { name: 'Server Notifications', href: '/server-alerts',         icon: Bell,            adminOnly: false },
   { name: 'Templates',          href: '/templates',              icon: Layers,          adminOnly: false },
+  { name: 'Deal Desk',           href: '/deal-desk',              icon: Briefcase,       adminOnly: false },
   { name: 'Case Studies',       href: '/case-studies',           icon: FileText,        adminOnly: false },
-  { name: 'CS Template',        href: '/case-studies/template',  icon: Layers, badge: 'cstemplate', adminOnly: false },
   {
     name: 'Reports', href: '#', icon: BarChart2, adminOnly: false,
     children: [
@@ -40,12 +41,6 @@ const allNavigation = [
     ],
   },
 ];
-
-const badgeColors: Record<string, string> = {
-  goals:      'bg-orange-100 text-orange-600 border border-orange-200',
-  chat:       'bg-emerald-100 text-emerald-600 border border-emerald-200',
-  cstemplate: 'bg-blue-100 text-blue-600 border border-blue-200',
-};
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -65,25 +60,23 @@ export function Sidebar() {
   const sidebarContent = (
     <div className="flex flex-col h-full">
       {/* Logo */}
-      <div className="flex items-center h-16 px-3 gap-2 border-b border-blue-100">
+      <div className="flex items-center h-16 pl-1 pr-3 gap-2 border-b border-blue-100">
         <button
           onClick={() => { setCollapsed((c) => !c); setMobileOpen(false); }}
-          className="p-2 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-all flex-shrink-0"
+          className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-all flex-shrink-0"
           title={collapsed ? 'Expand' : 'Collapse'}
         >
           {collapsed ? <Menu size={20} /> : <X size={20} />}
         </button>
         {!collapsed && (
           <Link href="/" className="flex items-center gap-2.5 overflow-hidden">
-            <div className="w-8 h-8 rounded-lg bg-indigo-gradient flex items-center justify-center shadow-glow-sm flex-shrink-0">
-              <FolderKanban className="text-white" size={18} />
-            </div>
+            <Image src="/cloudfuze-logo.png" alt="CloudFuze" width={32} height={32} priority className="object-contain flex-shrink-0" />
             <span className="text-sm font-bold text-slate-800 truncate">{companyName}</span>
           </Link>
         )}
         {collapsed && (
-          <Link href="/" className="w-8 h-8 rounded-lg bg-indigo-gradient flex items-center justify-center shadow-glow-sm mx-auto">
-            <FolderKanban className="text-white" size={18} />
+          <Link href="/" className="w-8 h-8 flex items-center justify-center mx-auto">
+            <Image src="/cloudfuze-logo.png" alt="CloudFuze" width={32} height={32} priority className="object-contain" />
           </Link>
         )}
       </div>
@@ -151,16 +144,7 @@ export function Sidebar() {
               style={{ animationDelay: `${idx * 0.04}s` }}
             >
               <item.icon size={17} className="flex-shrink-0" />
-              {!collapsed && (
-                <>
-                  <span className="flex-1">{item.name}</span>
-                  {item.badge && badgeColors[item.badge] && (
-                    <span className={cn('text-[10px] px-1.5 py-0.5 rounded-full font-medium', badgeColors[item.badge])}>
-                      {item.badge === 'goals' ? 'Goals' : item.badge === 'chat' ? 'AI' : 'New'}
-                    </span>
-                  )}
-                </>
-              )}
+              {!collapsed && <span className="flex-1">{item.name}</span>}
             </Link>
           );
         })}

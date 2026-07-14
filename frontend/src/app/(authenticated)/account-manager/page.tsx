@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { Card } from '@/components/ui/Card';
 import { useAuth } from '@/context/AuthContext';
-import { useAccountManagerView } from '@/hooks/useProjects';
-import type { AccountView } from '@/types';
+import { useAccountManagerView, useHubspotSignals } from '@/hooks/useProjects';
+import type { AccountView, HubspotSignalsData, HubspotCustomerDeals, HubspotDealCategory } from '@/types';
 import {
   Building2, ChevronDown, Loader2, AlertTriangle,
   FlaskConical, FolderKanban, RefreshCw, Calendar,
@@ -33,10 +33,25 @@ const PLAN_BADGE: Record<string, string> = {
   PLATINUM: 'bg-indigo-50 text-indigo-700 border border-indigo-200',
 };
 
+const currencyFmt = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+
+function normalizeCustomerKey(name: string): string {
+  return (name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+const DEAL_CATEGORY_CFG: Record<HubspotDealCategory, { badge: string; label: string }> = {
+  upsell:       { badge: 'bg-blue-100 text-blue-700 border-blue-200',       label: 'Upsell'     },
+  cross_sell:   { badge: 'bg-purple-100 text-purple-700 border-purple-200', label: 'Cross-sell' },
+  renewal:      { badge: 'bg-amber-100 text-amber-700 border-amber-200',    label: 'Renewal'    },
+  new_business: { badge: 'bg-green-100 text-green-700 border-green-200',    label: 'New'        },
+  other:        { badge: 'bg-gray-100 text-gray-600 border-gray-200',       label: 'Deal'       },
+};
+
 type SortKey =
   | 'name' | 'customerName' | 'accountManager' | 'projectManager'
   | 'status' | 'phase' | 'delayStatus' | 'planType'
-  | 'actualStart' | 'plannedStart' | 'plannedEnd' | 'expectedEnd' | 'migrationTypes' | 'pocOutcome';
+  | 'actualStart' | 'plannedStart' | 'plannedEnd' | 'expectedEnd'
+  | 'migrationTypes' | 'pocOutcome' | 'csatScore' | 'delayHappened';
 type SortDir = 'asc' | 'desc';
 
 function scrollTo(ref: React.RefObject<HTMLDivElement>) {
@@ -127,6 +142,8 @@ type ProjectRow = {
   migrationTypes: string;
   trackType: 'migration' | 'poc';
   pocOutcome?: string | null;
+  csatScore?: number | null;
+  delayHappened?: 'CUSTOMER_DELAY' | 'INTERNAL_DELAY' | null;
   [key: string]: any;
 };
 
@@ -148,11 +165,39 @@ export default function AccountManagerPage() {
 
   const escalationRef = useRef<HTMLDivElement>(null);
   const renewalRef    = useRef<HTMLDivElement>(null);
+  const overageRef    = useRef<HTMLDivElement>(null);
+  const upsellRef     = useRef<HTMLDivElement>(null);
+  const tableScrollRef = useRef<HTMLDivElement>(null);
+  const [tableCanScrollRight, setTableCanScrollRight] = useState(true);
+
+  const checkTableScroll = useCallback(() => {
+    const el = tableScrollRef.current;
+    if (!el) return;
+    setTableCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
+  }, []);
+
+  useEffect(() => {
+    const el = tableScrollRef.current;
+    if (!el) return;
+    checkTableScroll();
+    el.addEventListener('scroll', checkTableScroll);
+    const ro = new ResizeObserver(checkTableScroll);
+    ro.observe(el);
+    return () => { el.removeEventListener('scroll', checkTableScroll); ro.disconnect(); };
+  }, [checkTableScroll]);
 
   const { data, isLoading, error } = useAccountManagerView();
   const accounts: AccountView[] = data?.data || [];
   const totalProjects: number = data?.meta?.totalProjects ?? 0;
   const today = new Date();
+
+  const { data: hubspotResponse } = useHubspotSignals();
+  const hubspotData = (hubspotResponse?.data ?? null) as HubspotSignalsData | null;
+
+  function hubspotFor(customerName: string): HubspotCustomerDeals | null {
+    if (!hubspotData?.configured) return null;
+    return hubspotData.customers[normalizeCustomerKey(customerName)] ?? null;
+  }
 
   const escalatedAccounts  = accounts.filter(a => (a.migrationTracks || []).some((t: any) => t.isEscalated));
   const renewalDueAccounts = accounts.filter(a =>
@@ -160,6 +205,11 @@ export default function AccountManagerPage() {
       t.plannedEnd && new Date(t.plannedEnd) < today && t.status !== 'COMPLETED' && t.status !== 'CANCELLED'
     )
   );
+  const overagedAccounts   = accounts.filter(a => (a.migrationTracks || []).some((t: any) => t.isOveraged));
+  const upsellAccounts     = accounts.filter(a => {
+    const hs = hubspotFor(a.customerName);
+    return hs && (hs.upsellCount > 0 || hs.crossSellCount > 0);
+  });
   const pocAccounts       = accounts.filter(a => a.pocTrack);
   const migrationAccounts = accounts.filter(a => (a.migrationTracks || []).length > 0);
 
@@ -202,6 +252,8 @@ export default function AccountManagerPage() {
         trackType: 'poc' as const,
         pocOutcome: poc.pocOutcome,
         isEscalated: !!poc.isEscalated,
+        csatScore: poc.csatScore ?? null,
+        delayHappened: poc.delayHappened ?? null,
         ...poc,
       } as ProjectRow;
     }
@@ -260,6 +312,8 @@ export default function AccountManagerPage() {
       migrationTypes: allTypes.join(', '),
       trackType: 'migration' as const,
       isEscalated: anyEscalated,
+      csatScore: primary.csatScore ?? null,
+      delayHappened: worstDelay.delayHappened ?? primary.delayHappened ?? null,
     } as ProjectRow;
   }).filter(Boolean) as ProjectRow[];
 
@@ -330,12 +384,14 @@ export default function AccountManagerPage() {
       </div>
 
       {/* Summary strip */}
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         {[
-          { icon: <Building2 className="w-4 h-4" />, label: 'Customer Accounts', value: accounts.length, color: 'text-indigo-600', bg: 'bg-indigo-50', ref: null },
-          { icon: <FolderKanban className="w-4 h-4" />, label: 'Total Projects', value: totalProjects, color: 'text-blue-600', bg: 'bg-blue-50', ref: null },
-          { icon: <AlertTriangle className="w-4 h-4" />, label: 'Escalations', value: escalatedAccounts.length, color: 'text-red-600', bg: 'bg-red-50', ref: escalationRef },
-          { icon: <RefreshCw className="w-4 h-4" />, label: 'Renewal Due', value: renewalDueAccounts.length, color: 'text-amber-600', bg: 'bg-amber-50', ref: renewalRef },
+          { icon: <Building2 className="w-4 h-4" />,    label: 'Customer Accounts', value: accounts.length,           color: 'text-indigo-600', bg: 'bg-indigo-50', ref: null },
+          { icon: <FolderKanban className="w-4 h-4" />, label: 'Total Projects',    value: totalProjects,             color: 'text-blue-600',   bg: 'bg-blue-50',   ref: null },
+          { icon: <AlertTriangle className="w-4 h-4" />,label: 'Escalations',       value: escalatedAccounts.length,  color: 'text-red-600',    bg: 'bg-red-50',    ref: escalationRef },
+          { icon: <RefreshCw className="w-4 h-4" />,    label: 'Renewal Due',       value: renewalDueAccounts.length, color: 'text-amber-600',  bg: 'bg-amber-50',  ref: renewalRef },
+          { icon: <ArrowUp className="w-4 h-4" />,      label: 'Overaged',          value: overagedAccounts.length,   color: 'text-orange-600', bg: 'bg-orange-50', ref: overageRef },
+          { icon: <ArrowUp className="w-4 h-4" />,      label: 'Upsell / X-sell',   value: upsellAccounts.length,     color: 'text-teal-600',   bg: 'bg-teal-50',   ref: upsellRef },
         ].map(s => (
           <div
             key={s.label}
@@ -467,11 +523,20 @@ export default function AccountManagerPage() {
         </Card>
       ) : (
         <Card className="overflow-hidden">
-          <div className="overflow-auto max-h-[calc(100vh-14rem)]">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b border-gray-100 sticky top-0 z-10">
+          <div className="relative">
+          {tableCanScrollRight && (
+            <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-16 z-40 bg-gradient-to-l from-white/90 to-transparent flex items-center justify-end pr-2">
+              <div className="flex flex-col items-center gap-0.5 text-gray-400 animate-pulse">
+                <ArrowUp className="w-3.5 h-3.5 rotate-90" />
+                <span className="text-[10px] font-medium whitespace-nowrap">scroll</span>
+              </div>
+            </div>
+          )}
+          <div ref={tableScrollRef} className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-14rem)]">
+            <table className="min-w-max w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-100 sticky top-0 z-20">
                 <tr>
-                  <SortTh label="Project"         sortKey="name"           current={sortKey} dir={sortDir} onSort={handleSort} />
+                  <SortTh label="Project"         sortKey="name"           current={sortKey} dir={sortDir} onSort={handleSort} className="sticky left-0 z-30 bg-gray-50 border-r border-gray-200 shadow-[2px_0_4px_-1px_rgba(0,0,0,0.06)]" />
                   <SortTh label="Migration Types" sortKey="migrationTypes"  current={sortKey} dir={sortDir} onSort={handleSort} />
                   <SortTh label="Account Manager" sortKey="accountManager"  current={sortKey} dir={sortDir} onSort={handleSort} />
                   <SortTh label="Project Manager" sortKey="projectManager"  current={sortKey} dir={sortDir} onSort={handleSort} />
@@ -487,14 +552,16 @@ export default function AccountManagerPage() {
                     ? <SortTh label="POC Outcome"  sortKey="pocOutcome"   current={sortKey} dir={sortDir} onSort={handleSort} />
                     : <SortTh label="Project End"  sortKey="expectedEnd"  current={sortKey} dir={sortDir} onSort={handleSort} />
                   }
+                  <SortTh label="C-SAT"          sortKey="csatScore"    current={sortKey} dir={sortDir} onSort={handleSort} />
+                  <SortTh label="Delay Happened" sortKey="delayHappened" current={sortKey} dir={sortDir} onSort={handleSort} />
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {sortedRows.map(row => (
-                  <tr key={`${row.customerName}-${row.id}`} className="hover:bg-gray-50 transition-colors">
+                  <tr key={`${row.customerName}-${row.id}`} className="hover:bg-gray-50 transition-colors group">
 
-                    {/* Project name + customer as subtitle */}
-                    <td className="px-4 py-3">
+                    {/* Project name + customer as subtitle — frozen */}
+                    <td className="px-4 py-3 sticky left-0 z-10 bg-white group-hover:bg-gray-50 transition-colors border-r border-gray-200 shadow-[2px_0_4px_-1px_rgba(0,0,0,0.04)]">
                       <div className="flex flex-col gap-0.5">
                         <div className="flex items-center gap-1.5">
                           <span className="font-medium text-gray-900 capitalize">{row.name}</span>
@@ -614,10 +681,35 @@ export default function AccountManagerPage() {
                         </span>
                       </td>
                     )}
+
+                    {/* C-SAT */}
+                    <td className="px-4 py-3 whitespace-nowrap text-center">
+                      {row.csatScore != null ? (
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                          row.csatScore >= 4 ? 'bg-green-100 text-green-700' :
+                          row.csatScore >= 3 ? 'bg-yellow-100 text-yellow-700' :
+                          'bg-red-100 text-red-700'
+                        }`}>
+                          {row.csatScore}/5
+                        </span>
+                      ) : <span className="text-xs text-gray-400">—</span>}
+                    </td>
+
+                    {/* Delay Happened */}
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {row.delayHappened ? (
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                          row.delayHappened === 'CUSTOMER_DELAY' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'
+                        }`}>
+                          {row.delayHappened === 'CUSTOMER_DELAY' ? 'Customer' : 'Internal'}
+                        </span>
+                      ) : <span className="text-xs text-gray-400">—</span>}
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+          </div>
           </div>
         </Card>
       )}
@@ -726,6 +818,169 @@ export default function AccountManagerPage() {
             </Card>
           </div>
         )}
+      </div>
+
+      {/* Overaged Projects */}
+      <div ref={overageRef} className="scroll-mt-6">
+        <div className="space-y-3">
+          <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+            <ArrowUp className="w-5 h-5 text-orange-500" /> Overaged Projects
+            <span className="text-sm font-normal text-gray-400">— projects that exceeded their contracted budget</span>
+          </h2>
+          {overagedAccounts.length === 0 ? (
+            <Card className="py-8 text-center text-gray-400 text-sm">No overaged projects</Card>
+          ) : (
+            <Card className="overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-orange-50 border-b border-orange-100">
+                  <tr>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600">Customer</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600">Project</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600">Account Manager</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600">Project Manager</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600">Plan</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600">Overage Amount</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600">Phase</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-600">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {overagedAccounts.flatMap(a =>
+                    (a.migrationTracks || []).filter((t: any) => t.isOveraged).map((t: any) => (
+                      <tr key={`overage-${a.customerName}-${t.id}`} className="hover:bg-orange-50/40 transition">
+                        <td className="px-4 py-3 font-medium text-gray-900">{a.customerName}</td>
+                        <td className="px-4 py-3 text-gray-700">{t.name}</td>
+                        <td className="px-4 py-3 text-gray-600">{a.accountManager || '—'}</td>
+                        <td className="px-4 py-3 text-gray-600">{t.projectManager || '—'}</td>
+                        <td className="px-4 py-3">
+                          {t.planType ? (
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${PLAN_BADGE[t.planType] || 'bg-gray-100 text-gray-600'}`}>
+                              {t.planType}
+                            </span>
+                          ) : '—'}
+                        </td>
+                        <td className="px-4 py-3">
+                          {t.overageAmount != null ? (
+                            <span className="font-semibold text-orange-600">
+                              {currencyFmt.format(t.overageAmount)}
+                            </span>
+                          ) : (
+                            <span className="text-xs font-medium text-orange-500 bg-orange-50 px-2 py-0.5 rounded-full border border-orange-200">Overaged</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="text-xs px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded-full">{t.phase || '—'}</span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[t.status] || 'bg-gray-100 text-gray-600'}`}>
+                            {(t.status || '').replace(/_/g, ' ')}
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </Card>
+          )}
+        </div>
+      </div>
+
+      {/* HubSpot Upsell & Cross-sell */}
+      <div ref={upsellRef} className="scroll-mt-6">
+        <div className="space-y-3">
+          <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+            <ArrowUp className="w-5 h-5 text-teal-500" /> Upsell &amp; Cross-sell Opportunities
+            <span className="text-sm font-normal text-gray-400">— live HubSpot pipeline per customer</span>
+          </h2>
+
+          {!hubspotData?.configured ? (
+            <Card className="py-8 text-center space-y-1">
+              <p className="text-sm text-gray-500 font-medium">HubSpot not connected</p>
+              <p className="text-xs text-gray-400">Add <code className="font-mono bg-gray-100 px-1 rounded">HUBSPOT_ACCESS_TOKEN</code> to backend/.env and restart the server to see live deal signals here.</p>
+            </Card>
+          ) : hubspotData.error ? (
+            <Card className="py-6 text-center">
+              <p className="text-sm text-yellow-600 font-medium flex items-center justify-center gap-2">
+                <AlertTriangle className="w-4 h-4" /> HubSpot connected but data fetch failed
+              </p>
+              <p className="text-xs text-gray-400 mt-1">{hubspotData.error}</p>
+            </Card>
+          ) : upsellAccounts.length === 0 ? (
+            <Card className="py-8 text-center text-gray-400 text-sm">No upsell or cross-sell deals found in HubSpot for current customers</Card>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+              {upsellAccounts.map(a => {
+                const hs = hubspotFor(a.customerName)!;
+                const upsellDeals   = hs.deals.filter(d => d.category === 'upsell' || d.category === 'cross_sell');
+                const migTracks     = (a.migrationTracks || []) as any[];
+                const anyEscalated  = migTracks.some(t => t.isEscalated);
+                const anyOveraged   = migTracks.some(t => t.isOveraged);
+                return (
+                  <Card key={a.customerName} className="p-4 space-y-3">
+                    {/* Account header */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="font-semibold text-gray-900 text-sm">{a.customerName}</p>
+                        <p className="text-xs text-gray-400">{a.accountManager || 'No AM assigned'}</p>
+                      </div>
+                      <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                        <div className="flex gap-1">
+                          {anyEscalated && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-50 text-red-600 border border-red-100 font-medium">Escalated</span>
+                          )}
+                          {anyOveraged && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-orange-50 text-orange-600 border border-orange-100 font-medium">Overaged</span>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-gray-400 font-medium uppercase tracking-wide">
+                          {hs.upsellCount} upsell · {hs.crossSellCount} cross-sell
+                          {hs.openValue > 0 && <span className="ml-1">&nbsp;· {currencyFmt.format(hs.openValue)} open</span>}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Active projects context */}
+                    {migTracks.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {migTracks.slice(0, 3).map((t: any) => (
+                          <span key={t.id} className="text-[10px] px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded-full">
+                            {t.name}
+                          </span>
+                        ))}
+                        {migTracks.length > 3 && (
+                          <span className="text-[10px] px-1.5 py-0.5 bg-gray-100 text-gray-400 rounded-full">+{migTracks.length - 3} more</span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Deal list */}
+                    <div className="space-y-1.5">
+                      {upsellDeals.map(d => {
+                        const cfg = DEAL_CATEGORY_CFG[d.category];
+                        return (
+                          <div key={d.id} className="flex items-start justify-between gap-2 bg-gray-50 border border-gray-100 rounded-lg px-3 py-2">
+                            <div className="min-w-0">
+                              <p className="text-xs font-medium text-gray-800 truncate">{d.name}</p>
+                              <p className="text-[11px] text-gray-400">
+                                {d.isClosedWon ? 'Closed won' : d.stage}
+                                {d.closeDate ? ` · closes ${new Date(d.closeDate).toLocaleDateString()}` : ''}
+                              </p>
+                            </div>
+                            <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                              <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded-full border ${cfg.badge}`}>{cfg.label}</span>
+                              {d.amount !== null && <span className="text-xs font-semibold text-gray-700">{currencyFmt.format(d.amount!)}</span>}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
 
     </div>

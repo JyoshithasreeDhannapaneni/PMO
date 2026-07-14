@@ -7,10 +7,11 @@ export const archiveController = {
     const result = await archiveService.getArchivedProjects({
       search: req.query.search as string,
       status: req.query.status as string,
+      tab: req.query.tab as string,
       migrationType: req.query.migrationType as string,
       projectManager: req.query.projectManager as string,
-      yearFrom: req.query.yearFrom as string,
-      yearTo: req.query.yearTo as string,
+      monthFrom: req.query.monthFrom as string,
+      monthTo: req.query.monthTo as string,
       page: parseInt(req.query.page as string) || 1,
       limit: parseInt(req.query.limit as string) || 20,
       sortBy: req.query.sortBy as string,

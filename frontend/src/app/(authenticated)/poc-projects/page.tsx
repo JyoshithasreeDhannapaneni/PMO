@@ -1169,7 +1169,7 @@ function PocRow({ project: p, canEdit, expandedId, setExpandedId, isDeleteConfir
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-semibold text-gray-900 capitalize">{p.customerName}</span>
-            {isFlagged && <AlertTriangle className="w-3.5 h-3.5 text-red-500" title="POC exceeds 30 days" />}
+            {isFlagged && <span className="inline-flex" title="POC exceeds 30 days"><AlertTriangle className="w-3.5 h-3.5 text-red-500" /></span>}
           </div>
           <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
             {workloads.map(w => <span key={w} className="text-xs px-1.5 py-0.5 bg-purple-50 text-purple-700 rounded-full">{w}</span>)}

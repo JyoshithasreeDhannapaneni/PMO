@@ -5,141 +5,203 @@ import { asyncHandler } from '../middleware/errorHandler';
 type CfSignalLevel = 'none' | 'moderate' | 'strong' | 'active';
 interface CfSignal { level: CfSignalLevel; reason: string; }
 
+// Keywords for chat/email-based signal detection
+const CF_MANAGE_KW = [
+  'cf manage', 'ongoing management', 'post-migration support', 'monthly support',
+  'maintenance contract', 'managed support', 'management service',
+];
+const PS_KW = [
+  'professional service', 'ps pack', 'ps bundle', 'consulting',
+  'training', 'implementation service', 'customization', 'expert service',
+  'advisory service', 'professional support',
+];
+
+function computeFromText(texts: string[]): { cfManage: CfSignal; ps: CfSignal } {
+  const combined = texts.join(' ').toLowerCase();
+  const cfManageHits = CF_MANAGE_KW.filter(kw => combined.includes(kw));
+  const psHits = PS_KW.filter(kw => combined.includes(kw));
+
+  return {
+    cfManage: cfManageHits.length >= 2
+      ? { level: 'strong', reason: `Communications mention: ${cfManageHits.slice(0, 2).join(', ')}` }
+      : cfManageHits.length === 1
+      ? { level: 'moderate', reason: `Communication mentions "${cfManageHits[0]}"` }
+      : { level: 'none', reason: 'No CF Manage signals in communications' },
+    ps: psHits.length >= 2
+      ? { level: 'strong', reason: `Communications mention: ${psHits.slice(0, 2).join(', ')}` }
+      : psHits.length === 1
+      ? { level: 'moderate', reason: `Communication mentions "${psHits[0]}"` }
+      : { level: 'none', reason: 'No Professional Services signals in communications' },
+  };
+}
+
 export const customerSuccessController = {
 
   getView: asyncHandler(async (req: Request, res: Response): Promise<void> => {
-    const [projectsResult, csEntriesResult] = await Promise.all([
+    const [projectsResult, csEntriesResult, emailsResult] = await Promise.all([
       query(`
         SELECT id, name, customer_name, account_manager, project_manager,
                plan_type, status, phase, delay_status,
                is_escalated, escalation_priority, escalation_notes,
-               is_overaged, overage_amount, migration_types,
-               project_type, poc_outcome, planned_end, actual_end
+               is_overaged, overage_amount, overage_notes,
+               migration_types, project_type, poc_outcome, planned_end, actual_end
         FROM projects
         WHERE status != 'CANCELLED'
-        ORDER BY customer_name ASC
+        ORDER BY customer_name ASC, name ASC
       `),
       query(`SELECT * FROM customer_success_entries`),
+      query(`
+        SELECT subject, body_text, extracted_text
+        FROM deal_desk_emails
+        WHERE processed = true
+        ORDER BY created_at DESC
+        LIMIT 500
+      `).catch(() => ({ rows: [] as any[] })),
     ]);
 
-    const csEntryMap: Record<string, any> = {};
+    // Build CS entry lookup by project_id (primary) then customer_name (legacy fallback)
+    const csEntryByProjectId: Record<string, any> = {};
+    const csEntryByCustomerName: Record<string, any> = {};
     for (const row of csEntriesResult.rows) {
-      csEntryMap[(row.customer_name || '').toLowerCase()] = row;
+      if (row.project_id) csEntryByProjectId[row.project_id] = row;
+      if (row.customer_name) csEntryByCustomerName[(row.customer_name || '').toLowerCase()] = row;
     }
 
-    const customerMap: Record<string, any> = {};
-    const now = new Date();
-
-    for (const row of projectsResult.rows) {
-      const key = (row.customer_name || '').toLowerCase();
-      if (!customerMap[key]) {
-        customerMap[key] = { customerName: row.customer_name, accountManager: row.account_manager || '', projects: [] };
-      }
-      customerMap[key].projects.push(row);
-      if (!customerMap[key].accountManager && row.account_manager) {
-        customerMap[key].accountManager = row.account_manager;
-      }
-    }
+    // Build flattened email text pool for keyword matching
+    const emailTexts: string[] = (emailsResult.rows as any[]).map((e: any) =>
+      `${e.subject || ''} ${e.body_text || ''} ${e.extracted_text || ''}`.toLowerCase()
+    );
 
     const renewalDue: any[] = [];
     const accounts: any[] = [];
     const upsellSignals: any[] = [];
     const crossSellSignals: any[] = [];
+    const now = new Date();
 
-    for (const entry of Object.values(customerMap) as any[]) {
-      const projects = entry.projects as any[];
-      const cse = csEntryMap[entry.customerName.toLowerCase()] || null;
+    for (const row of projectsResult.rows) {
+      const cse = csEntryByProjectId[row.id]
+        || csEntryByCustomerName[(row.customer_name || '').toLowerCase()]
+        || null;
 
-      const completedProjects = projects.filter(p => p.status === 'COMPLETED');
-      const activeProjects    = projects.filter(p => p.status === 'ACTIVE');
-      const pocWon            = projects.some(p => p.project_type === 'POC' && p.poc_outcome === 'won');
-      const escalations       = projects.filter(p => p.is_escalated);
-      const overaged          = projects.filter(p => p.is_overaged);
+      const isCompleted = row.status === 'COMPLETED';
+      const isActive    = row.status === 'ACTIVE';
+      const isPoc       = row.project_type === 'POC';
+      const isPocWon    = isPoc && row.poc_outcome === 'won';
 
       // Renewal due: ACTIVE projects past their planned_end
-      for (const p of activeProjects) {
-        if (p.planned_end) {
-          const plannedEnd = new Date(p.planned_end);
-          if (plannedEnd < now) {
-            const daysOverdue = Math.floor((now.getTime() - plannedEnd.getTime()) / 86_400_000);
-            renewalDue.push({
-              id: p.id,
-              name: p.name,
-              customerName: p.customer_name,
-              accountManager: p.account_manager || '',
-              projectManager: p.project_manager || '',
-              plannedEnd: p.planned_end,
-              daysOverdue,
-              status: p.status,
-              phase: p.phase,
-              planType: p.plan_type,
-              projectType: p.project_type || 'MIGRATION',
-            });
-          }
+      if (isActive && row.planned_end) {
+        const plannedEnd = new Date(row.planned_end);
+        if (plannedEnd < now) {
+          renewalDue.push({
+            id: row.id,
+            name: row.name,
+            customerName: row.customer_name,
+            accountManager: row.account_manager || '',
+            projectManager: row.project_manager || '',
+            plannedEnd: row.planned_end,
+            daysOverdue: Math.floor((now.getTime() - plannedEnd.getTime()) / 86_400_000),
+            status: row.status,
+            phase: row.phase,
+            planType: row.plan_type,
+            projectType: row.project_type || 'MIGRATION',
+          });
         }
       }
 
-      const cfMigrate          = resolveSignal(cse?.cf_migrate_signal, cse?.cf_migrate_signal_reason, computeCfMigrate(completedProjects, activeProjects, pocWon));
-      const cfManage           = resolveSignal(cse?.cf_manage_signal,  cse?.cf_manage_signal_reason,  computeCfManage(completedProjects));
-      const professionalSvcs   = resolveSignal(cse?.cf_ps_signal,      cse?.cf_ps_signal_reason,      computeProfessionalServices(projects, overaged));
-      const managedSvcs        = resolveSignal(cse?.cf_ms_signal,      cse?.cf_ms_signal_reason,      computeManagedServices(completedProjects));
+      // CF Migrate: per-project status
+      const cfMigrate = resolveSignal(cse?.cf_migrate_signal, cse?.cf_migrate_signal_reason,
+        isCompleted
+          ? { level: 'active', reason: 'Migration completed — renewal or expand opportunity' }
+          : isActive && !isPoc
+          ? { level: 'strong', reason: 'Active migration in flight' }
+          : isPocWon
+          ? { level: 'moderate', reason: 'POC won — ready to convert to migration' }
+          : isActive && isPoc
+          ? { level: 'moderate', reason: 'POC in progress' }
+          : { level: 'none', reason: 'No migration activity' }
+      );
 
-      const workloadTypes = Array.from(new Set(
-        projects.flatMap(p => (p.migration_types || '').split(',').map((t: string) => t.trim())).filter(Boolean)
-      )) as string[];
+      // Collect text signals from emails mentioning this customer or project
+      const customerKey = (row.customer_name || '').toLowerCase();
+      const projectKey  = (row.name || '').toLowerCase();
+      const projectTexts: string[] = [];
+      if (row.escalation_notes) projectTexts.push(row.escalation_notes.toLowerCase());
+      if (row.overage_notes)    projectTexts.push(row.overage_notes.toLowerCase());
+      if (cse?.csat_verbatim)   projectTexts.push(cse.csat_verbatim.toLowerCase());
+      for (const emailText of emailTexts) {
+        if (customerKey.length >= 4 && emailText.includes(customerKey)) {
+          projectTexts.push(emailText);
+        } else if (projectKey.length >= 4 && emailText.includes(projectKey)) {
+          projectTexts.push(emailText);
+        }
+      }
+      const textSignals = computeFromText(projectTexts);
 
-      const projectNames = projects.map((p: any) => p.name).filter(Boolean);
+      // CF Manage and PS: text-based when CF Migrate is active; fallback to project-data signals
+      const cfManageComputed: CfSignal = cfMigrate.level !== 'none'
+        ? textSignals.cfManage
+        : computeCfManageFallback(row);
 
-      const migrationProjectsList = projects.filter((p: any) => p.project_type !== 'POC');
-      const pocProjectsList       = projects.filter((p: any) => p.project_type === 'POC');
+      const psComputed: CfSignal = cfMigrate.level !== 'none'
+        ? textSignals.ps
+        : computePsFallback(row);
 
-      const allEscalations = escalations.map((e: any) => ({
-        projectId:   e.id,
-        projectName: e.name,
-        priority:    e.escalation_priority || 'MEDIUM',
-        notes:       e.escalation_notes   || '',
-        projectType: e.project_type || 'MIGRATION',
-      }));
+      // Managed Services: based on completion + plan tier
+      const planType = (row.plan_type || '').toUpperCase();
+      const msComputed: CfSignal = isCompleted
+        ? ['PLATINUM', 'GOLD'].includes(planType)
+          ? { level: 'strong', reason: 'Completed Gold/Platinum migration — prime managed services candidate' }
+          : { level: 'moderate', reason: 'Completed migration — introduce managed services' }
+        : { level: 'none', reason: 'No completed migrations yet' };
+
+      const cfManage         = resolveSignal(cse?.cf_manage_signal,  cse?.cf_manage_signal_reason,  cfManageComputed);
+      const professionalSvcs = resolveSignal(cse?.cf_ps_signal,      cse?.cf_ps_signal_reason,      psComputed);
+      const managedSvcs      = resolveSignal(cse?.cf_ms_signal,      cse?.cf_ms_signal_reason,      msComputed);
+
+      const workloadTypes = (row.migration_types || '').split(',')
+        .map((t: string) => t.trim()).filter(Boolean);
+
+      const escalations = row.is_escalated ? [{
+        projectId:   row.id,
+        projectName: row.name,
+        priority:    row.escalation_priority || 'MEDIUM',
+        notes:       row.escalation_notes   || '',
+        projectType: row.project_type || 'MIGRATION',
+      }] : [];
 
       accounts.push({
-        customerName: entry.customerName,
-        accountManager: entry.accountManager,
-        projectNames,
+        projectId:      row.id,
+        projectName:    row.name,
+        customerName:   row.customer_name,
+        accountManager: row.account_manager || '',
+        projectManager: row.project_manager || '',
+        projectType:    row.project_type || 'MIGRATION',
+        status:         row.status,
+        planType:       row.plan_type || '',
         workloadTypes,
-        activeProjects: activeProjects.length,
-        completedProjects: completedProjects.length,
-        hasMigrationProjects: migrationProjectsList.length > 0,
-        hasPocProjects:       pocProjectsList.length > 0,
-        migrationProjectNames: migrationProjectsList.map((p: any) => p.name).filter(Boolean),
-        pocProjectNames:       pocProjectsList.map((p: any) => p.name).filter(Boolean),
-        migrationActiveCount:    migrationProjectsList.filter((p: any) => p.status === 'ACTIVE').length,
-        migrationCompletedCount: migrationProjectsList.filter((p: any) => p.status === 'COMPLETED').length,
-        pocActiveCount:    pocProjectsList.filter((p: any) => p.status === 'ACTIVE').length,
-        pocCompletedCount: pocProjectsList.filter((p: any) => p.status === 'COMPLETED').length,
-        pocProjectDetails: pocProjectsList.map((p: any) => ({
-          id: p.id, name: p.name, status: p.status, pocOutcome: p.poc_outcome ?? null,
-        })),
+        isActive,
+        isCompleted,
+        pocOutcome: row.poc_outcome || null,
         csat: {
-          score:            cse?.csat_score            ?? null,
-          verbatim:         cse?.csat_verbatim         ?? null,
+          score:            cse?.csat_score             ?? null,
+          verbatim:         cse?.csat_verbatim          ?? null,
           migrationQuality: cse?.csat_migration_quality ?? null,
           supportExperience:cse?.csat_support_experience?? null,
-          onboarding:       cse?.csat_onboarding       ?? null,
-          date:             cse?.csat_date             ?? null,
+          onboarding:       cse?.csat_onboarding        ?? null,
+          date:             cse?.csat_date              ?? null,
         },
         cfMigrate,
         cfManage,
         professionalServices: professionalSvcs,
         managedServices:      managedSvcs,
-        hasEscalations: allEscalations.length > 0,
-        escalationCount: allEscalations.length,
-        escalations: allEscalations,
+        hasEscalations: !!row.is_escalated,
+        escalationCount: row.is_escalated ? 1 : 0,
+        escalations,
+        plannedEnd: row.planned_end || null,
       });
 
-      // Classify upsell / cross-sell
-      const hasActive = [cfMigrate, cfManage, professionalSvcs, managedSvcs].some(s => s.level === 'active');
+      // Classify upsell / cross-sell (per-project)
       const cfMigrateActive = cfMigrate.level === 'active';
-
       const products = [
         { name: 'CF Migrate',            signal: cfMigrate,        isCfMigrate: true  },
         { name: 'CF Manage',             signal: cfManage,         isCfMigrate: false },
@@ -152,20 +214,20 @@ export const customerSuccessController = {
         if (p.signal.level === 'none')   continue;
 
         const item = {
-          customerName:   entry.customerName,
-          accountManager: entry.accountManager,
+          projectId:      row.id,
+          projectName:    row.name,
+          customerName:   row.customer_name,
+          accountManager: row.account_manager || '',
           product:        p.name,
           level:          p.signal.level,
           reason:         p.signal.reason,
         };
 
-        // Cross-sell: customer already uses CF Migrate + signal is for another product
         if (cfMigrateActive && !p.isCfMigrate) {
           crossSellSignals.push(item);
         } else if (p.signal.level === 'strong') {
-          // Upsell: strong signal to close on any product not yet active
           upsellSignals.push(item);
-        } else if (p.signal.level === 'moderate' && !hasActive) {
+        } else if (p.signal.level === 'moderate' && cfMigrate.level === 'none') {
           upsellSignals.push(item);
         }
       }
@@ -174,19 +236,23 @@ export const customerSuccessController = {
     renewalDue.sort((a, b) => b.daysOverdue - a.daysOverdue);
     upsellSignals.sort((a, b) => (a.level === 'strong' ? -1 : 1) - (b.level === 'strong' ? -1 : 1));
 
-    const totalProjects = projectsResult.rows.length;
-    const totalCustomers = accounts.length;
+    const totalProjects  = projectsResult.rows.length;
+    const totalCustomers = new Set(projectsResult.rows.map((r: any) => r.customer_name)).size;
 
-    res.json({ success: true, data: { accounts, renewalDue, upsellSignals, crossSellSignals }, meta: { totalProjects, totalCustomers } });
+    res.json({
+      success: true,
+      data: { accounts, renewalDue, upsellSignals, crossSellSignals },
+      meta: { totalProjects, totalCustomers },
+    });
   }),
 
   updateEntry: asyncHandler(async (req: Request, res: Response): Promise<void> => {
-    const { customerName } = req.params;
+    const { projectId } = req.params;
     const b = req.body;
 
     await execute(`
       INSERT INTO customer_success_entries (
-        customer_name,
+        project_id, customer_name,
         csat_score, csat_verbatim, csat_migration_quality,
         csat_support_experience, csat_onboarding, csat_date,
         cf_migrate_signal, cf_migrate_signal_reason,
@@ -194,8 +260,9 @@ export const customerSuccessController = {
         cf_ps_signal,      cf_ps_signal_reason,
         cf_ms_signal,      cf_ms_signal_reason,
         updated_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NOW())
-      ON CONFLICT (customer_name) DO UPDATE SET
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,NOW())
+      ON CONFLICT (project_id) DO UPDATE SET
+        customer_name            = EXCLUDED.customer_name,
         csat_score               = EXCLUDED.csat_score,
         csat_verbatim            = EXCLUDED.csat_verbatim,
         csat_migration_quality   = EXCLUDED.csat_migration_quality,
@@ -212,7 +279,8 @@ export const customerSuccessController = {
         cf_ms_signal_reason      = EXCLUDED.cf_ms_signal_reason,
         updated_at               = NOW()
     `, [
-      customerName,
+      projectId,
+      b.customerName          ?? null,
       b.csatScore             ?? null,
       b.csatVerbatim          ?? null,
       b.csatMigrationQuality  ?? null,
@@ -244,31 +312,15 @@ function resolveSignal(
   return computed;
 }
 
-function computeCfMigrate(completed: any[], active: any[], pocWon: boolean): CfSignal {
-  if (completed.length > 0) return { level: 'active',   reason: `${completed.length} migration(s) completed — renewal or expand opportunity` };
-  if (active.length > 0)    return { level: 'strong',   reason: `${active.length} active migration(s) in flight` };
-  if (pocWon)                return { level: 'moderate', reason: 'POC won — ready to convert to migration' };
-  return { level: 'none', reason: 'No migrations yet' };
+function computeCfManageFallback(row: any): CfSignal {
+  const plan = (row.plan_type || '').toUpperCase();
+  if (['GOLD', 'PLATINUM'].includes(plan)) return { level: 'strong', reason: 'Gold/Platinum plan — strong candidate for ongoing management' };
+  if (plan === 'SILVER') return { level: 'moderate', reason: 'Silver plan — explore management add-on' };
+  return { level: 'none', reason: 'No CF Manage indicators' };
 }
 
-function computeCfManage(completed: any[]): CfSignal {
-  const goldPlat = completed.filter(p => ['GOLD', 'PLATINUM'].includes((p.plan_type || '').toUpperCase()));
-  const silver   = completed.filter(p => (p.plan_type || '').toUpperCase() === 'SILVER');
-  if (goldPlat.length > 0) return { level: 'strong',   reason: `${goldPlat.length} Gold/Platinum migration(s) — strong candidate for ongoing management` };
-  if (silver.length > 0)   return { level: 'moderate', reason: `${silver.length} Silver migration(s) — explore management add-on` };
-  return { level: 'none', reason: 'No eligible completed plans' };
-}
-
-function computeProfessionalServices(all: any[], overaged: any[]): CfSignal {
-  const platinum = all.filter(p => (p.plan_type || '').toUpperCase() === 'PLATINUM');
-  if (overaged.length > 0) return { level: 'strong',   reason: `${overaged.length} project(s) exceeded budget — professional services can prevent future overages` };
-  if (platinum.length > 0) return { level: 'strong',   reason: 'Platinum plan — professional services alignment expected' };
-  if (all.length > 1)      return { level: 'moderate', reason: `${all.length} projects across portfolio — PS bundle conversation` };
-  return { level: 'none', reason: 'No PS indicators' };
-}
-
-function computeManagedServices(completed: any[]): CfSignal {
-  if (completed.length >= 3) return { level: 'strong',   reason: `${completed.length} completed migrations — strong fit for long-term managed services` };
-  if (completed.length >= 1) return { level: 'moderate', reason: `${completed.length} completed migration(s) — introduce managed services` };
-  return { level: 'none', reason: 'No completed migrations yet' };
+function computePsFallback(row: any): CfSignal {
+  if (row.is_overaged) return { level: 'strong', reason: 'Project exceeded budget — professional services can prevent future overages' };
+  if ((row.plan_type || '').toUpperCase() === 'PLATINUM') return { level: 'strong', reason: 'Platinum plan — professional services alignment expected' };
+  return { level: 'none', reason: 'No Professional Services indicators' };
 }

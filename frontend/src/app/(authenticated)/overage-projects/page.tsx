@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo, Fragment } from 'react';
-import { useOveragedProjects, useMarkOverageProject, useUnmarkOverageProject, useProjects } from '@/hooks/useProjects';
+import { useOveragedProjects, useMarkOverageProject, useUpdateOverageProject, useUnmarkOverageProject, useDeleteOverageHistoryEntry, useProjects } from '@/hooks/useProjects';
 import { useAuth } from '@/context/AuthContext';
 import { Card } from '@/components/ui/Card';
 import Link from 'next/link';
@@ -26,8 +26,9 @@ export default function OverageProjectsPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'ADMIN';
   const isManager = user?.role === 'PROJECT_MANAGER';
+  const isViewer = user?.role === 'VIEWER';
   // Everyone sees all overage projects; edit rights are per-project
-  const canEditProject = (p: any) => isAdmin || (isManager && p.projectManager === user?.name);
+  const canEditProject = (p: any) => !isViewer && (isAdmin || (isManager && p.projectManager === user?.name));
 
   const { data, isLoading, refetch } = useOveragedProjects(undefined);
   const projects: any[] = data?.data || [];
@@ -36,7 +37,9 @@ export default function OverageProjectsPage() {
   const allProjects: any[] = allProjectsData?.data || [];
 
   const markOverage = useMarkOverageProject();
+  const updateOverage = useUpdateOverageProject();
   const unmarkOverage = useUnmarkOverageProject();
+  const deleteHistoryEntry = useDeleteOverageHistoryEntry();
 
   const [search, setSearch] = useState('');
   const [managerSel, setManagerSel] = useState('');
@@ -72,7 +75,7 @@ export default function OverageProjectsPage() {
     setEditSaving(true);
     setEditError('');
     try {
-      await markOverage.mutateAsync({
+      await updateOverage.mutateAsync({
         id: editProject.id,
         overageAmount: editForm.overageAmount ? parseFloat(editForm.overageAmount) : undefined,
         notes: editForm.notes || undefined,
@@ -138,6 +141,12 @@ export default function OverageProjectsPage() {
     refetch();
   }
 
+  async function handleDeleteHistoryEntry(historyId: string) {
+    if (!confirm('Delete this overage history entry? This cannot be undone.')) return;
+    await deleteHistoryEntry.mutateAsync(historyId);
+    refetch();
+  }
+
   const managers = useMemo(() => [...new Set(projects.map((p) => p.projectManager).filter(Boolean))], [projects]);
   const types = useMemo(() => {
     const all: string[] = [];
@@ -163,8 +172,14 @@ export default function OverageProjectsPage() {
   const totalPages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
   const paged = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
 
+  // Per-project cumulative overage = sum of all history entries for that project
+  function projectCumulativeAmount(p: any): number {
+    const hist: any[] = p.overageHistory || [];
+    return hist.reduce((s, h) => s + (parseFloat(h.overageAmount) || 0), 0);
+  }
+
   // Stats
-  const totalOverageAmount = projects.reduce((sum, p) => sum + (parseFloat(p.overageAmount) || 0), 0);
+  const totalOverageAmount = projects.reduce((sum, p) => sum + projectCumulativeAmount(p), 0);
   const newThisWeek = projects.filter((p) => p.plannedEnd && isThisWeek(new Date(p.plannedEnd))).length;
 
   function downloadCSV() {
@@ -207,9 +222,11 @@ export default function OverageProjectsPage() {
           >
             <Download size={14} /> Export
           </button>
-          <button onClick={() => setShowModal(true)} className="flex items-center gap-1.5 px-3 py-2 text-sm bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors">
-            <Plus size={14} /> Add Overage
-          </button>
+          {!isViewer && (
+            <button onClick={() => setShowModal(true)} className="flex items-center gap-1.5 px-3 py-2 text-sm bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors">
+              <Plus size={14} /> Add Overage
+            </button>
+          )}
         </div>
       </div>
 
@@ -346,8 +363,13 @@ export default function OverageProjectsPage() {
                           ))}
                           {!p.migrationTypes && <span className="text-gray-400">—</span>}
                         </td>
-                        <td className="py-3 px-4 text-center font-semibold text-green-700">
-                          {formatCurrency(p.overageAmount)}
+                        <td className="py-3 px-4 text-center">
+                          <span className="font-semibold text-green-700">{formatCurrency(projectCumulativeAmount(p)) || '—'}</span>
+                          {(p.overageHistory?.length || 0) > 1 && (
+                            <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-700 font-medium">
+                              {p.overageHistory.length} events
+                            </span>
+                          )}
                         </td>
                         <td className="py-3 px-4 text-center">
                           <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${p.daysOverdue > 14 ? 'bg-red-100 text-red-700' : p.daysOverdue > 7 ? 'bg-orange-100 text-orange-700' : 'bg-yellow-100 text-yellow-700'}`}>
@@ -387,15 +409,6 @@ export default function OverageProjectsPage() {
                                 <Pencil size={14} />
                               </button>
                             )}
-                            {canEditProject(p) && p.isOveraged && (
-                              <button
-                                onClick={() => handleUnmarkOverage(p.id)}
-                                title="Remove overage flag"
-                                className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 text-orange-500 hover:bg-orange-100 transition-colors"
-                              >
-                                <X size={14} />
-                              </button>
-                            )}
                             {canEditProject(p) && (
                               <button
                                 onClick={() => handleDeleteProject(p.id)}
@@ -424,16 +437,28 @@ export default function OverageProjectsPage() {
                                       <th className="text-left py-1 pr-3 font-medium">Extended Start</th>
                                       <th className="text-left py-1 pr-3 font-medium">Extended End</th>
                                       <th className="text-left py-1 pr-3 font-medium">Notes</th>
+                                      {canEditProject(p) && <th className="py-1 font-medium"></th>}
                                     </tr>
                                   </thead>
                                   <tbody>
                                     {p.overageHistory.map((h: any) => (
-                                      <tr key={h.id} className="border-b border-gray-100 last:border-0">
+                                      <tr key={h.id} className="border-b border-gray-100 last:border-0 group">
                                         <td className="py-1 pr-3 text-gray-600">{h.createdAt ? format(new Date(h.createdAt), 'MMM d, yyyy') : '—'}</td>
                                         <td className="py-1 pr-3 text-green-700 font-medium">{formatCurrency(h.overageAmount)}</td>
                                         <td className="py-1 pr-3 text-gray-600">{h.extendedStartDate ? format(new Date(h.extendedStartDate), 'MMM d, yyyy') : '—'}</td>
                                         <td className="py-1 pr-3 text-orange-600">{h.extendedEndDate ? format(new Date(h.extendedEndDate), 'MMM d, yyyy') : '—'}</td>
                                         <td className="py-1 pr-3 text-gray-600">{h.notes || '—'}</td>
+                                        {canEditProject(p) && (
+                                          <td className="py-1">
+                                            <button
+                                              onClick={() => handleDeleteHistoryEntry(h.id)}
+                                              title="Delete this entry"
+                                              className="opacity-0 group-hover:opacity-100 inline-flex items-center justify-center w-6 h-6 rounded text-red-400 hover:bg-red-100 hover:text-red-600 transition-all"
+                                            >
+                                              <Trash2 size={12} />
+                                            </button>
+                                          </td>
+                                        )}
                                       </tr>
                                     ))}
                                   </tbody>

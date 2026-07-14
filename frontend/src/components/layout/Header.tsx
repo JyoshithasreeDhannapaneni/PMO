@@ -5,7 +5,6 @@ import { LogOut, Settings, ChevronDown } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useSettings } from '@/context/SettingsContext';
 import Link from 'next/link';
-import { GlobalSearch } from './GlobalSearch';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import { NotificationCenter } from '@/components/notifications/NotificationCenter';
 
@@ -35,10 +34,7 @@ export function Header() {
       {/* Bottom accent line */}
       <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-blue-400/30 to-transparent" />
 
-      {/* Search */}
-      <div className="flex-1 max-w-sm">
-        <GlobalSearch />
-      </div>
+      <div className="flex-1" />
 
       {/* Right actions */}
       <div className="flex items-center gap-2">

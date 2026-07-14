@@ -281,6 +281,7 @@ export interface CreateProjectInput {
   actualCost?: number;
   numberOfServers?: number;
   projectMemory?: string;
+  customerContact?: string | null;
   description?: string;
   notes?: string;
   phase?: ProjectPhase;
@@ -356,21 +357,18 @@ export interface EscalationItem {
 }
 
 export interface CustomerSuccessEntry {
+  projectId: string;
+  projectName: string;
   customerName: string;
   accountManager: string;
-  projectNames: string[];
+  projectManager: string;
+  projectType: string;
+  status: string;
+  planType: string;
   workloadTypes: string[];
-  activeProjects: number;
-  completedProjects: number;
-  hasMigrationProjects?: boolean;
-  hasPocProjects?: boolean;
-  migrationProjectNames?: string[];
-  pocProjectNames?: string[];
-  migrationActiveCount?: number;
-  migrationCompletedCount?: number;
-  pocActiveCount?: number;
-  pocCompletedCount?: number;
-  pocProjectDetails?: Array<{ id: string; name: string; status: string; pocOutcome: string | null }>;
+  isActive: boolean;
+  isCompleted: boolean;
+  pocOutcome: string | null;
   csat: CsatData;
   cfMigrate: CfProductSignal;
   cfManage: CfProductSignal;
@@ -379,6 +377,7 @@ export interface CustomerSuccessEntry {
   hasEscalations: boolean;
   escalationCount: number;
   escalations: EscalationItem[];
+  plannedEnd?: string | null;
 }
 
 export interface RenewalDueItem {
@@ -396,6 +395,8 @@ export interface RenewalDueItem {
 }
 
 export interface SignalItem {
+  projectId: string;
+  projectName: string;
   customerName: string;
   accountManager: string;
   product: string;
@@ -412,3 +413,46 @@ export interface CustomerSuccessPageData {
 
 // Keep for backwards compatibility in customer-success page import
 export type CustomerSuccessView = CustomerSuccessEntry;
+
+export type HubspotDealCategory = 'upsell' | 'cross_sell' | 'renewal' | 'new_business' | 'other';
+export type CfProductTag = 'cf_migrate' | 'cf_manage' | 'professional_services' | 'managed_services' | 'other';
+
+export interface HubspotDeal {
+  id: string;
+  name: string;
+  amount: number | null;
+  stage: string;
+  pipeline: string;
+  dealType: string | null;
+  closeDate: string | null;
+  isClosedWon: boolean;
+  isClosedLost: boolean;
+  isOpen: boolean;
+  category: HubspotDealCategory;
+  cfProduct: CfProductTag;
+  companyName: string;
+}
+
+export interface HubspotCustomerDeals {
+  companyName: string;
+  deals: HubspotDeal[];
+  upsellCount: number;
+  crossSellCount: number;
+  openValue: number;
+  wonValue: number;
+  productBreakdown: Partial<Record<CfProductTag, { openValue: number; wonValue: number; openCount: number }>>;
+}
+
+export interface HubspotSignalsData {
+  configured: boolean;
+  fetchedAt: string | null;
+  customers: Record<string, HubspotCustomerDeals>;
+  error?: string;
+  diagnostics?: {
+    totalDeals: number;
+    companyIdsFound: number;
+    companyNamesFetched: number;
+    companyFetchFailed: boolean;
+    dealsKeyedByDealName: number;
+  };
+}

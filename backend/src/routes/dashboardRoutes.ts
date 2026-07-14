@@ -45,11 +45,17 @@ router.get('/overaged-projects', dashboardController.getOveragedProjects);
 // GET /api/dashboard/escalated-projects - Escalated or highly delayed projects
 router.get('/escalated-projects', dashboardController.getEscalatedProjects);
 
-// POST /api/dashboard/mark-overage/:id - Mark a project as overaged
+// POST /api/dashboard/mark-overage/:id - Add a new overage event
 router.post('/mark-overage/:id', dashboardController.markOverageProject);
+
+// PUT /api/dashboard/update-overage/:id - Edit the latest overage event (no new history row)
+router.put('/update-overage/:id', dashboardController.updateOverageProject);
 
 // POST /api/dashboard/unmark-overage/:id - Remove overage from a project
 router.post('/unmark-overage/:id', dashboardController.unmarkOverageProject);
+
+// DELETE /api/dashboard/overage-history/:historyId - Delete a single overage history entry
+router.delete('/overage-history/:historyId', dashboardController.deleteOverageHistoryEntry);
 
 // POST /api/dashboard/escalate/:id - Mark a project as escalated
 router.post('/escalate/:id', dashboardController.escalateProject);
