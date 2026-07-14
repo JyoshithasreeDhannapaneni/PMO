@@ -124,8 +124,8 @@ export default function ProjectsPage() {
 
   // Tab-filtered projects — computed here so exportToCSV can use them
   const allProjects = data?.data || [];
-  const migrationProjects = allProjects.filter((p: any) => !p.projectType || p.projectType !== 'POC');
-  const pocProjects = allProjects.filter((p: any) => p.projectType === 'POC');
+  const migrationProjects = allProjects.filter((p: any) => (!p.projectType || p.projectType !== 'POC') && p.phase !== 'COMPLETED');
+  const pocProjects = allProjects.filter((p: any) => p.projectType === 'POC' && p.phase !== 'COMPLETED');
   const tabProjects = activeTab === 'poc' ? pocProjects : migrationProjects;
 
   const exportToCSV = () => {
@@ -276,6 +276,7 @@ export default function ProjectsPage() {
     { value: 'NOT_DELAYED', label: 'On Track', color: 'green' },
     { value: 'AT_RISK', label: 'At Risk', color: 'yellow' },
     { value: 'DELAYED', label: 'Delayed', color: 'red' },
+    { value: 'EXTENDED', label: 'Extended', color: 'purple' },
   ];
 
   const planOptions = [

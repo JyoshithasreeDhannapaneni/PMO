@@ -335,7 +335,7 @@ export default function OverageProjectsPage() {
                       <th key={h} className="py-3 px-4 text-xs font-semibold text-gray-500 text-center">{h}</th>
                     ))}
                     <th className="py-3 px-4 text-xs font-semibold text-gray-500 text-center">
-                      Planned End <span className="text-gray-400 font-normal">(Updated when extended)</span>
+                      Planned End
                     </th>
                     <th className="py-3 px-4 text-xs font-semibold text-gray-500 text-center">Extended Start</th>
                     <th className="py-3 px-4 text-xs font-semibold text-gray-500 text-center">Extended End</th>

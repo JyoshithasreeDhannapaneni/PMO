@@ -17,7 +17,7 @@ export type ProjectPhase =
   | 'FINAL_VALIDATION'
   | 'COMPLETED';
 export type ProjectStatus = 'ACTIVE' | 'INACTIVE' | 'ON_HOLD' | 'COMPLETED' | 'CANCELLED';
-export type DelayStatus = 'NOT_DELAYED' | 'AT_RISK' | 'DELAYED';
+export type DelayStatus = 'NOT_DELAYED' | 'AT_RISK' | 'DELAYED' | 'EXTENDED';
 export type PhaseStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'SKIPPED';
 export type CaseStudyStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'PUBLISHED';
 

@@ -1,5 +1,6 @@
 'use client';
 
+import React from 'react';
 import { cn } from '@/lib/utils';
 import { AlertCircle, AlertTriangle, CheckCircle } from 'lucide-react';
 import type { DelayStatus } from '@/types';
@@ -31,7 +32,7 @@ export function DelayIndicator({
     lg: 20,
   };
 
-  const config = {
+  const config: Record<string, { icon: React.ElementType; color: string; bgColor: string; label: string }> = {
     NOT_DELAYED: {
       icon: CheckCircle,
       color: 'text-green-600',
@@ -50,9 +51,15 @@ export function DelayIndicator({
       bgColor: 'bg-red-50',
       label: 'Delayed',
     },
+    EXTENDED: {
+      icon: AlertCircle,
+      color: 'text-purple-600',
+      bgColor: 'bg-purple-50',
+      label: 'Extended',
+    },
   };
 
-  const { icon: Icon, color, bgColor, label } = config[status];
+  const { icon: Icon, color, bgColor, label } = config[status] ?? config['NOT_DELAYED'];
 
   return (
     <div
