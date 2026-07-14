@@ -48,20 +48,16 @@ const STATUS_BADGE: Record<string, string> = {
 };
 
 // ── Implementation Process Step Timeline ────────────────────────────────────
-const DEFAULT_STEPS = ['Assessment', 'Planning', 'Migration', 'Testing', 'Go-Live'];
-const STEP_DESC: Record<string, string> = {
-  Assessment: 'Analyzed current system and data',
-  Planning: 'Defined migration strategy and mapped content',
-  Migration: 'Executed secure migration to Microsoft Teams',
-  Testing: 'Validated data accuracy and access',
-  'Go-Live': 'Successfully migrated and went live',
-};
 const STEP_COLORS = ['#6366f1', '#3b82f6', '#f59e0b', '#22c55e', '#10b981'];
 
 function StepTimeline({ html }: { html: string }) {
   const text = html.replace(/<[^>]+>/g, '\n').replace(/\n+/g, '\n').trim();
   const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
-  const steps = lines.length >= 2 ? lines.slice(0, 5) : DEFAULT_STEPS;
+
+  // Only render the step-timeline widget when the content actually looks like
+  // a list of steps — otherwise show the real text instead of a fabricated one.
+  if (lines.length < 2) return <HtmlContent html={html} className="mt-2" />;
+  const steps = lines.slice(0, 5);
 
   return (
     <div className="flex flex-wrap items-start gap-0 mt-2">
@@ -74,11 +70,8 @@ function StepTimeline({ html }: { html: string }) {
             >
               {step.charAt(0)}
             </div>
-            <p className="text-xs font-semibold text-center mt-1 max-w-[80px]" style={{ color: STEP_COLORS[i] }}>
-              {step.length > 12 ? step.slice(0, 10) + '…' : step}
-            </p>
-            <p className="text-xs text-gray-500 text-center max-w-[80px] leading-tight mt-0.5">
-              {STEP_DESC[step] || ''}
+            <p className="text-xs font-semibold text-center mt-1 max-w-[90px] leading-tight" style={{ color: STEP_COLORS[i] }}>
+              {step}
             </p>
           </div>
           {i < steps.length - 1 && (
@@ -95,26 +88,27 @@ function StepTimeline({ html }: { html: string }) {
 }
 
 // ── Results & Benefits Cards ─────────────────────────────────────────────────
-const DEFAULT_BENEFITS = [
-  { title: 'Improved Collaboration', desc: 'Teams can now collaborate in real-time with secure access to documents.', color: '#22c55e', icon: '✅' },
-  { title: 'Enhanced Security', desc: 'Data is now secure with role-based access and compliance.', color: '#8b5cf6', icon: '🔒' },
-  { title: 'Cost Savings', desc: 'Reduced storage and operational costs significantly.', color: '#f59e0b', icon: '💰' },
-  { title: 'Increased Efficiency', desc: 'Manual processes eliminated, saving time and effort.', color: '#3b82f6', icon: '✔️' },
+const BENEFIT_STYLE = [
+  { color: '#22c55e', icon: '✅' },
+  { color: '#8b5cf6', icon: '🔒' },
+  { color: '#f59e0b', icon: '💰' },
+  { color: '#3b82f6', icon: '✔️' },
 ];
 
 function BenefitCards({ html }: { html: string }) {
   const text = html.replace(/<[^>]+>/g, '\n').replace(/\n+/g, '\n').trim();
   const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
 
-  let cards = DEFAULT_BENEFITS;
-  if (lines.length >= 2) {
-    cards = lines.slice(0, 4).map((l, i) => ({
-      title: l,
-      desc: lines[i + 4] || '',
-      color: DEFAULT_BENEFITS[i]?.color || '#6366f1',
-      icon: DEFAULT_BENEFITS[i]?.icon || '✅',
-    }));
-  }
+  // Only render the benefit-card widget when the content actually looks like
+  // a list of benefits — otherwise show the real text instead of a fabricated one.
+  if (lines.length < 2) return <HtmlContent html={html} className="mt-2" />;
+
+  const cards = lines.slice(0, 4).map((l, i) => ({
+    title: l,
+    desc: lines[i + 4] || '',
+    color: BENEFIT_STYLE[i]?.color || '#6366f1',
+    icon: BENEFIT_STYLE[i]?.icon || '✅',
+  }));
 
   return (
     <div className="grid grid-cols-2 gap-3 mt-2">
@@ -147,7 +141,8 @@ function HtmlContent({ html, className }: { html: string; className?: string }) 
 function Testimonial({ html }: { html: string }) {
   const text = html.replace(/<[^>]+>/g, '\n').replace(/\n+/g, '\n').trim();
   const lines = text.split('\n').filter(Boolean);
-  const quote = lines[0] || '"The migration has transformed the way we work."';
+  if (!lines[0]) return <HtmlContent html={html} className="mt-2" />;
+  const quote = lines[0];
   const author = lines[1] || '';
 
   return (

@@ -37,21 +37,25 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: pmo-backend
+    # Load ALL variables from backend/.env into the container.
+    # This means HUBSPOT_ACCESS_TOKEN, ANTHROPIC_API_KEY, Jira OAuth keys, etc.
+    # are picked up automatically whenever they are added to backend/.env —
+    # no need to update this file for every new secret.
+    env_file:
+      - ./backend/.env
     environment:
-      # Database — points to the postgres service on the internal Docker network
+      # These explicit values override any matching keys in backend/.env above,
+      # so the DB points to the Docker-internal postgres service (not localhost).
       DB_HOST:     postgres
       DB_PORT:     5432
       DB_USER:     ${DB_USER:-pmo_user}
       DB_PASSWORD: ${DB_PASSWORD:-pmo_password}
       DB_NAME:     ${DB_NAME:-pmo_tracker}
-      # App
       PORT:            3001
       NODE_ENV:        production
       FRONTEND_URL:    https://${SERVER_IP:-localhost}
       ENABLE_CRON_JOBS: ${ENABLE_CRON_JOBS:-true}
-      # Server Alerts — Microsoft Graph API (no SMTP/password needed)
       ALERT_FROM_EMAIL:        ${ALERT_FROM_EMAIL:-}
-      # Microsoft SSO + Graph API (shared credentials)
       MICROSOFT_CLIENT_ID:     ${MICROSOFT_CLIENT_ID:-}
       MICROSOFT_CLIENT_SECRET: ${MICROSOFT_CLIENT_SECRET:-}
       MICROSOFT_TENANT_ID:     ${MICROSOFT_TENANT_ID:-common}

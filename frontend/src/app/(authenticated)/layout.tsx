@@ -4,6 +4,7 @@ import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { ToastProvider } from '@/context/ToastContext';
+import { ChatWidget } from '@/components/chat/ChatWidget';
 
 export default function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -28,6 +29,8 @@ export default function AuthenticatedLayout({ children }: { children: React.Reac
               </div>
             </main>
           </div>
+
+          <ChatWidget />
         </div>
       </ToastProvider>
     </ProtectedRoute>

@@ -380,6 +380,95 @@ export const managerGoalsApi = {
   },
 };
 
+// Client Reviews API
+export const clientReviewsApi = {
+  getAll: async (filters?: { projectManager?: string; customerName?: string }) => {
+    const { data } = await api.get('/reviews', { params: filters });
+    return data;
+  },
+  getByProject: async (projectId: string) => {
+    const { data } = await api.get(`/reviews/project/${projectId}`);
+    return data;
+  },
+  getManagerSummary: async () => {
+    const { data } = await api.get('/reviews/manager-summary');
+    return data;
+  },
+  create: async (review: {
+    projectId: string;
+    reviewerName: string;
+    reviewDate?: string;
+    communicationScore: number;
+    deliveryScore: number;
+    qualityScore: number;
+    supportScore: number;
+    comments?: string;
+  }) => {
+    const { data } = await api.post('/reviews', review);
+    return data;
+  },
+  update: async (id: string, updates: Partial<{
+    reviewerName: string;
+    reviewDate: string;
+    communicationScore: number;
+    deliveryScore: number;
+    qualityScore: number;
+    supportScore: number;
+    comments: string;
+  }>) => {
+    const { data } = await api.put(`/reviews/${id}`, updates);
+    return data;
+  },
+  delete: async (id: string) => {
+    const { data } = await api.delete(`/reviews/${id}`);
+    return data;
+  },
+};
+
+// Platform Reviews API — reviews sourced from Gartner, G2, Trustpilot, TrustRadius, etc.
+export const platformReviewsApi = {
+  getAll: async (filters?: { platform?: string; projectName?: string; projectManager?: string; accountManager?: string; minRating?: number; segment?: string }) => {
+    const { data } = await api.get('/platform-reviews', { params: filters });
+    return data;
+  },
+  getPlatforms: async () => {
+    const { data } = await api.get('/platform-reviews/platforms');
+    return data;
+  },
+  getManagerOptions: async () => {
+    const { data } = await api.get('/platform-reviews/manager-options');
+    return data;
+  },
+  getSummary: async () => {
+    const { data } = await api.get('/platform-reviews/summary');
+    return data;
+  },
+  getManagerSummary: async (type: 'accountManager' | 'projectManager') => {
+    const { data } = await api.get('/platform-reviews/manager-summary', { params: { type } });
+    return data;
+  },
+  create: async (review: {
+    platform: string;
+    projectName: string;
+    projectId?: string;
+    projectManager?: string;
+    accountManager?: string;
+    reviewerName?: string;
+    rating: number;
+    reviewText?: string;
+    reviewUrl?: string;
+    reviewDate?: string;
+    segment?: 'SMB' | 'ENT' | 'PS';
+  }) => {
+    const { data } = await api.post('/platform-reviews', review);
+    return data;
+  },
+  delete: async (id: string) => {
+    const { data } = await api.delete(`/platform-reviews/${id}`);
+    return data;
+  },
+};
+
 // SMTP API
 export const smtpApi = {
   get: async () => {
@@ -426,8 +515,20 @@ export const customerSuccessApi = {
     const { data } = await api.get('/customer-success');
     return data;
   },
-  updateEntry: async (customerName: string, updates: Record<string, any>) => {
-    const { data } = await api.put(`/customer-success/${encodeURIComponent(customerName)}`, updates);
+  updateEntry: async (projectId: string, updates: Record<string, any>) => {
+    const { data } = await api.put(`/customer-success/${encodeURIComponent(projectId)}`, updates);
+    return data;
+  },
+};
+
+// HubSpot API — upsell / cross-sell deal signals
+export const hubspotApi = {
+  getSignals: async (refresh?: boolean) => {
+    const { data } = await api.get('/hubspot/signals', { params: refresh ? { refresh: 'true' } : undefined });
+    return data;
+  },
+  getStatus: async () => {
+    const { data } = await api.get('/hubspot/status');
     return data;
   },
 };
@@ -452,6 +553,18 @@ export const pmoSettingsApi = {
   },
   patch: async (partial: Record<string, any>): Promise<{ success: boolean; data: Record<string, any>; message: string }> => {
     const { data } = await api.patch('/pmo-settings', partial);
+    return data;
+  },
+};
+
+// External API Key Management — scope is 'all' | 'migrationManager' | 'mbr'
+export const apiKeyApi = {
+  get: async (scope: string): Promise<{ success: boolean; data: { scope: string; apiKey: string } }> => {
+    const { data } = await api.get(`/api-key/${scope}`);
+    return data;
+  },
+  regenerate: async (scope: string): Promise<{ success: boolean; data: { scope: string; apiKey: string } }> => {
+    const { data } = await api.post(`/api-key/${scope}/regenerate`);
     return data;
   },
 };
@@ -497,6 +610,26 @@ export const templateCombinationsApi = {
     await api.delete(`/template-combinations/documents/${docId}`);
   },
   getDownloadUrl: (docId: string) => `/api/template-combinations/documents/${docId}/download`,
+};
+
+// Professional Services Engagements API
+export const psEngagementsApi = {
+  getAll: async () => {
+    const { data } = await api.get('/ps-engagements');
+    return data.data as any[];
+  },
+  create: async (engagement: any) => {
+    const { data } = await api.post('/ps-engagements', engagement);
+    return data;
+  },
+  update: async (id: string, engagement: any) => {
+    const { data } = await api.put(`/ps-engagements/${id}`, engagement);
+    return data;
+  },
+  remove: async (id: string) => {
+    const { data } = await api.delete(`/ps-engagements/${id}`);
+    return data;
+  },
 };
 
 export default api;

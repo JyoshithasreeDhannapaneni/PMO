@@ -35,8 +35,12 @@ export function calculateDelay(
   // Extended end date (PM-approved overage) overrides the calculated end.
   const deadline = extendedEndDate || expectedEnd;
 
-  // Delay Days = Today − Project End Date
-  const diffMs = currentDate.getTime() - deadline.getTime();
+  // Once a project has an actual end (completed/cancelled/inactive), freeze the
+  // delay calculation at that date instead of letting it keep growing with today's date.
+  const asOfDate = actualEnd || currentDate;
+
+  // Delay Days = As-Of Date − Project End Date
+  const diffMs = asOfDate.getTime() - deadline.getTime();
   const delayDays = Math.floor(diffMs / MS_PER_DAY);
 
   if (delayDays > 0) {

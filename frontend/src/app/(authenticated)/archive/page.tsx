@@ -46,13 +46,12 @@ export default function ArchivePage() {
   const isAdmin = user?.role === 'ADMIN';
   const queryClient = useQueryClient();
 
-  // Filters — non-admins are auto-scoped to their own name
-  const [search, setSearch]               = useState('');
-  const [statusFilter, setStatusFilter]   = useState('');
-  const [managerFilter, setManagerFilter] = useState('');
-  const [yearFrom, setYearFrom]           = useState('');
-  const [yearTo, setYearTo]               = useState('');
-  const [sortBy, setSortBy]               = useState('archived_at');
+  const [tab, setTab]                       = useState<'completed' | 'cancelled'>('completed');
+  const [search, setSearch]                 = useState('');
+  const [managerFilter, setManagerFilter]   = useState('');
+  const [monthFrom, setMonthFrom]           = useState('');
+  const [monthTo, setMonthTo]               = useState('');
+  const [sortBy, setSortBy]                 = useState('archived_at');
   const [sortOrder, setSortOrder]         = useState<'asc'|'desc'>('desc');
   const [page, setPage]                   = useState(1);
   const [expandedId, setExpandedId]       = useState<string | null>(null);
@@ -61,17 +60,17 @@ export default function ArchivePage() {
 
   const queryParams = useMemo(() => {
     const p = new URLSearchParams();
+    p.set('tab', tab);
     if (search)        p.set('search', search);
-    if (statusFilter)  p.set('status', statusFilter);
     if (managerFilter) p.set('projectManager', managerFilter);
-    if (yearFrom)     p.set('yearFrom', yearFrom);
-    if (yearTo)       p.set('yearTo', yearTo);
+    if (monthFrom)     p.set('monthFrom', monthFrom);
+    if (monthTo)       p.set('monthTo', monthTo);
     p.set('sortBy', sortBy);
     p.set('sortOrder', sortOrder);
     p.set('page', String(page));
     p.set('limit', String(PER_PAGE));
     return p.toString();
-  }, [search, statusFilter, managerFilter, yearFrom, yearTo, sortBy, sortOrder, page]);
+  }, [tab, search, managerFilter, monthFrom, monthTo, sortBy, sortOrder, page]);
 
   const { data: archiveData, isLoading, refetch } = useQuery({
     queryKey: ['archive', queryParams],
@@ -102,8 +101,8 @@ export default function ArchivePage() {
   const managers = useMemo(() => [...new Set(projects.map((p) => p.projectManager).filter(Boolean))], [projects]);
 
   const resetFilters = () => {
-    setSearch(''); setStatusFilter('');
-    setManagerFilter(''); setYearFrom(''); setYearTo('');
+    setSearch('');
+    setManagerFilter(''); setMonthFrom(''); setMonthTo('');
     setSortBy('archived_at'); setSortOrder('desc'); setPage(1);
   };
 
@@ -159,8 +158,16 @@ export default function ArchivePage() {
     }
   }
 
-  const currentYear = new Date().getFullYear();
-  const years = Array.from({ length: 10 }, (_, i) => currentYear - i);
+  const months = useMemo(() => {
+    const list: { value: string; label: string }[] = [];
+    const now = new Date();
+    for (let i = 0; i < 48; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      list.push({ value, label: format(d, 'MMM yyyy') });
+    }
+    return list;
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -273,7 +280,7 @@ export default function ArchivePage() {
               const max = Math.max(...stats.byYear.map((b: any) => b.count));
               const pct = max > 0 ? Math.round((y.count / max) * 100) : 0;
               return (
-                <button key={y.year} onClick={() => { setYearFrom(String(y.year)); setYearTo(String(y.year)); setPage(1); }}
+                <button key={y.year} onClick={() => { setMonthFrom(`${y.year}-01`); setMonthTo(`${y.year}-12`); setPage(1); }}
                   className="flex flex-col items-center gap-1 group cursor-pointer">
                   <span className="text-xs font-semibold text-gray-600 dark:text-gray-400 group-hover:text-primary-600">{y.count}</span>
                   <div className="w-10 rounded-t-md bg-primary-200 dark:bg-primary-800/50 group-hover:bg-primary-400 transition-colors" style={{ height: `${Math.max(8, pct * 0.6)}px` }} />
@@ -284,6 +291,24 @@ export default function ArchivePage() {
           </div>
         </Card>
       )}
+
+      {/* Tab Toggle */}
+      <div className="flex gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-xl w-fit">
+        <button
+          onClick={() => { setTab('completed'); setPage(1); }}
+          className={`flex items-center gap-2 px-5 py-2 text-sm font-medium rounded-lg transition-colors ${tab === 'completed' ? 'bg-white dark:bg-gray-700 text-green-600 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+        >
+          <CheckCircle size={14} /> Completed
+          {stats && <span className={`ml-1 px-1.5 py-0.5 rounded-full text-xs font-bold ${tab === 'completed' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'}`}>{stats.totals.completed || 0}</span>}
+        </button>
+        <button
+          onClick={() => { setTab('cancelled'); setPage(1); }}
+          className={`flex items-center gap-2 px-5 py-2 text-sm font-medium rounded-lg transition-colors ${tab === 'cancelled' ? 'bg-white dark:bg-gray-700 text-red-600 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+        >
+          <XCircle size={14} /> Cancelled
+          {stats && <span className={`ml-1 px-1.5 py-0.5 rounded-full text-xs font-bold ${tab === 'cancelled' ? 'bg-red-100 text-red-700' : 'bg-gray-200 text-gray-600'}`}>{(stats.totals.cancelled || 0) + (stats.totals.closed || 0) + (stats.totals.decommissioned || 0)}</span>}
+        </button>
+      </div>
 
       {/* Filters */}
       <Card>
@@ -302,17 +327,17 @@ export default function ArchivePage() {
             </select>
           )}
           <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-500 dark:text-gray-400">Year:</span>
-            <select value={yearFrom} onChange={(e) => { setYearFrom(e.target.value); setPage(1); }}
+            <span className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1"><Calendar size={12} /> Month:</span>
+            <select value={monthFrom} onChange={(e) => { setMonthFrom(e.target.value); setPage(1); }}
               className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
               <option value="">From</option>
-              {years.map(y => <option key={y} value={y}>{y}</option>)}
+              {months.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
             </select>
             <span className="text-gray-400">—</span>
-            <select value={yearTo} onChange={(e) => { setYearTo(e.target.value); setPage(1); }}
+            <select value={monthTo} onChange={(e) => { setMonthTo(e.target.value); setPage(1); }}
               className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
               <option value="">To</option>
-              {years.map(y => <option key={y} value={y}>{y}</option>)}
+              {months.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
             </select>
           </div>
           <div className="flex items-center gap-2">
@@ -337,7 +362,7 @@ export default function ArchivePage() {
       <Card>
         <div className="flex items-center justify-between mb-3">
           <p className="text-sm text-gray-600 dark:text-gray-400">
-            {total} archived project{total !== 1 ? 's' : ''} found
+            {total} {tab === 'completed' ? 'completed' : 'cancelled'} project{total !== 1 ? 's' : ''} found
           </p>
         </div>
         {isLoading ? (
@@ -346,9 +371,13 @@ export default function ArchivePage() {
           </div>
         ) : projects.length === 0 ? (
           <div className="flex flex-col items-center py-16 text-gray-400 gap-3">
-            <Archive size={40} className="opacity-30" />
-            <p className="text-sm">No archived projects found</p>
-            <p className="text-xs text-gray-400">Projects are automatically archived when their status changes to Completed, Cancelled, Closed, or Decommissioned</p>
+            {tab === 'completed' ? <CheckCircle size={40} className="opacity-30 text-green-500" /> : <XCircle size={40} className="opacity-30 text-red-500" />}
+            <p className="text-sm">No {tab === 'completed' ? 'completed' : 'cancelled'} projects found</p>
+            <p className="text-xs text-gray-400">
+              {tab === 'completed'
+                ? 'Projects move here automatically when their phase is set to Completed'
+                : 'Projects move here when their status is set to Cancelled, Closed, or Decommissioned'}
+            </p>
           </div>
         ) : (
           <>

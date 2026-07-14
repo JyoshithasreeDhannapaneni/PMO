@@ -420,6 +420,7 @@ export default function DashboardPage() {
   const dash = settings.dashboardSettings;
   const isAdmin = user?.role === 'ADMIN';
   const isManager = user?.role === 'PROJECT_MANAGER';
+  const isViewer = user?.role === 'VIEWER';
   // ADMIN defaults to overall; MANAGER/others default to my
   const [viewMode, setViewMode] = useState<ViewMode>(isAdmin ? 'overall' : 'my');
   const pmFilter = viewMode === 'my' && user?.name ? `&projectManager=${encodeURIComponent(user.name)}` : '';
@@ -587,9 +588,11 @@ export default function DashboardPage() {
             className="flex items-center gap-1.5 px-3 py-2 bg-white border border-blue-200 text-slate-700 rounded-lg text-xs font-medium hover:bg-blue-50 transition-colors">
             <FileText size={14} className="text-primary-600" /> Weekly Report
           </button>
-          <Link href="/projects/new" className="flex items-center gap-1.5 px-3 py-2 bg-primary-600 text-white rounded-lg text-xs font-medium hover:bg-primary-700 transition-colors">
-            <Plus size={14} /> New Project
-          </Link>
+          {!isViewer && (
+            <Link href="/projects/new" className="flex items-center gap-1.5 px-3 py-2 bg-primary-600 text-white rounded-lg text-xs font-medium hover:bg-primary-700 transition-colors">
+              <Plus size={14} /> New Project
+            </Link>
+          )}
         </div>
       </div>
 
@@ -1357,9 +1360,11 @@ export default function DashboardPage() {
           <Card>
             <h3 className="text-sm font-semibold text-gray-900 mb-3">Quick Actions</h3>
             <div className="grid grid-cols-2 gap-2">
-              <Link href="/projects/new" className="flex items-center gap-2 p-2.5 rounded-lg bg-primary-50 text-primary-700 hover:bg-primary-100 transition-colors">
-                <Plus size={14} /><span className="text-xs font-medium">New Project</span>
-              </Link>
+              {!isViewer && (
+                <Link href="/projects/new" className="flex items-center gap-2 p-2.5 rounded-lg bg-primary-50 text-primary-700 hover:bg-primary-100 transition-colors">
+                  <Plus size={14} /><span className="text-xs font-medium">New Project</span>
+                </Link>
+              )}
               <Link href="/projects" className="flex items-center gap-2 p-2.5 rounded-lg bg-slate-50 text-slate-700 hover:bg-blue-50 transition-colors">
                 <FolderKanban size={14} /><span className="text-xs font-medium">All Projects</span>
               </Link>

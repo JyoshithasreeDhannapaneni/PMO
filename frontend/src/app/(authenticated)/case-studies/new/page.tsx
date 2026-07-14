@@ -8,10 +8,10 @@ import { Input } from '@/components/ui/Input';
 import { Textarea } from '@/components/ui/Textarea';
 import { Select } from '@/components/ui/Select';
 import Link from 'next/link';
-import { 
-  ArrowLeft, 
-  Save, 
-  Loader2, 
+import {
+  ArrowLeft,
+  Save,
+  Loader2,
   CheckCircle,
   AlertCircle,
   FileText,
@@ -19,19 +19,7 @@ import {
   ChevronUp,
   Sparkles
 } from 'lucide-react';
-
-interface TemplateSection {
-  id: string;
-  title: string;
-  description: string;
-  placeholder: string;
-  required: boolean;
-}
-
-interface CaseStudyTemplate {
-  name: string;
-  sections: TemplateSection[];
-}
+import { useCaseStudyTemplate } from '@/hooks/useCaseStudyTemplate';
 
 interface Project {
   id: string;
@@ -50,43 +38,35 @@ interface SectionContent {
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
-const defaultTemplate: CaseStudyTemplate = {
-  name: 'Default Case Study Template',
-  sections: [
-    { id: '1', title: 'Executive Summary', description: 'Brief overview of the project and its outcomes', placeholder: 'Provide a 2-3 paragraph summary...', required: true },
-    { id: '2', title: 'Client Background', description: 'Information about the client and their business', placeholder: 'Describe the client organization...', required: true },
-    { id: '3', title: 'Challenge', description: 'The problems or challenges the client faced', placeholder: 'Detail the specific challenges...', required: true },
-    { id: '4', title: 'Solution', description: 'The approach and solution implemented', placeholder: 'Explain the migration strategy...', required: true },
-    { id: '5', title: 'Implementation Process', description: 'Details of how the solution was implemented', placeholder: 'Describe the phases, timeline...', required: false },
-    { id: '6', title: 'Results & Benefits', description: 'Quantifiable outcomes and benefits achieved', placeholder: 'List specific metrics...', required: true },
-    { id: '7', title: 'What Went Well', description: 'Highlights, wins and positive outcomes from the project', placeholder: 'List the things that went smoothly, standout achievements, team wins, client praise, and any moments you would repeat...', required: true },
-    { id: '8', title: 'Issues & Challenges', description: 'Problems, obstacles and difficult moments encountered during the project', placeholder: 'Describe the issues faced, how they were handled, and what could have been done differently to avoid them...', required: true },
-    { id: '9', title: 'Lessons Learned', description: 'Key takeaways and insights from the project', placeholder: 'Share important lessons...', required: false },
-    { id: '10', title: 'Client Testimonial', description: 'Quote or feedback from the client', placeholder: 'Include a direct quote...', required: false },
-  ],
-};
-
 export default function NewCaseStudyPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const projectIdParam = searchParams.get('projectId');
-  
+
+  // Same source of truth as the editor/preview pages — keeps generated and
+  // manually-created case studies using identical section ids.
+  const { sections: templateSections } = useCaseStudyTemplate();
+
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string>(projectIdParam || '');
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
-  const [template, setTemplate] = useState<CaseStudyTemplate>(defaultTemplate);
   const [title, setTitle] = useState('');
   const [sectionContent, setSectionContent] = useState<SectionContent>({});
-  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['1']));
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   useEffect(() => {
-    loadTemplate();
     fetchProjects();
   }, []);
+
+  useEffect(() => {
+    if (templateSections.length > 0) {
+      setExpandedSections((prev) => (prev.size > 0 ? prev : new Set([templateSections[0].id])));
+    }
+  }, [templateSections]);
 
   useEffect(() => {
     if (selectedProjectId && projects.length > 0) {
@@ -97,20 +77,6 @@ export default function NewCaseStudyPage() {
       }
     }
   }, [selectedProjectId, projects]);
-
-  const loadTemplate = () => {
-    try {
-      const saved = localStorage.getItem('pmoSettings');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed.template && parsed.template.sections) {
-          setTemplate(parsed.template);
-        }
-      }
-    } catch (e) {
-      console.error('Failed to load template from settings');
-    }
-  };
 
   const fetchProjects = async () => {
     try {
@@ -161,7 +127,8 @@ export default function NewCaseStudyPage() {
   };
 
   const getCompletionPercentage = () => {
-    const requiredSections = template.sections.filter((s) => s.required);
+    const requiredSections = templateSections.filter((s) => s.required);
+    if (requiredSections.length === 0) return 0;
     const completedRequired = requiredSections.filter(
       (s) => sectionContent[s.id] && sectionContent[s.id].trim().length > 0
     );
@@ -182,35 +149,31 @@ export default function NewCaseStudyPage() {
       const data = await response.json();
 
       if (data.success && data.data?.generatedContent) {
-        // Parse generated content into sections
+        // Map generated content onto the same semantic section ids the
+        // editor/preview pages use, so this never renders under the wrong section.
         const generated = data.data.generatedContent;
         const newContent: SectionContent = {};
-        
-        // Map generated content to template sections
-        if (generated.executiveSummary) newContent['1'] = generated.executiveSummary;
-        if (generated.clientBackground) newContent['2'] = generated.clientBackground;
-        if (generated.challenge) newContent['3'] = generated.challenge;
-        if (generated.solution) newContent['4'] = generated.solution;
-        if (generated.implementation) newContent['5'] = generated.implementation;
-        if (generated.results) newContent['6'] = generated.results;
-        if (generated.lessonsLearned) newContent['7'] = generated.lessonsLearned;
-        
+        if (generated.executiveSummary) newContent['executive_summary'] = generated.executiveSummary;
+        if (generated.clientBackground) newContent['client_background'] = generated.clientBackground;
+        if (generated.challenge) newContent['challenge'] = generated.challenge;
+        if (generated.solution) newContent['solution'] = generated.solution;
+        if (generated.implementation) newContent['implementation_process'] = generated.implementation;
+        if (generated.results) newContent['results_benefits'] = generated.results;
+        if (generated.lessonsLearned) newContent['lessons_learned'] = generated.lessonsLearned;
+
         setSectionContent(newContent);
         setExpandedSections(new Set(Object.keys(newContent)));
         setMessage({ type: 'success', text: 'Content generated! Review and edit as needed.' });
-      } else {
-        // Generate placeholder content based on project info
-        if (selectedProject) {
-          const placeholderContent: SectionContent = {
-            '1': `This case study documents the successful ${selectedProject.sourcePlatform || 'legacy system'} to ${selectedProject.targetPlatform || 'modern platform'} migration for ${selectedProject.customerName}.`,
-            '2': `${selectedProject.customerName} is an organization that required modernization of their IT infrastructure.`,
-            '3': `The client faced challenges with their existing ${selectedProject.sourcePlatform || 'system'} including...`,
-            '4': `Our team implemented a comprehensive migration strategy to ${selectedProject.targetPlatform || 'the new platform'}...`,
-          };
-          setSectionContent(placeholderContent);
-          setExpandedSections(new Set(['1', '2', '3', '4']));
-          setMessage({ type: 'success', text: 'Template content generated. Please customize for your project.' });
-        }
+      } else if (selectedProject) {
+        const placeholderContent: SectionContent = {
+          executive_summary: `This case study documents the successful ${selectedProject.sourcePlatform || 'legacy system'} to ${selectedProject.targetPlatform || 'modern platform'} migration for ${selectedProject.customerName}.`,
+          client_background: `${selectedProject.customerName} is an organization that required modernization of their IT infrastructure.`,
+          challenge: `The client faced challenges with their existing ${selectedProject.sourcePlatform || 'system'} including...`,
+          solution: `Our team implemented a comprehensive migration strategy to ${selectedProject.targetPlatform || 'the new platform'}...`,
+        };
+        setSectionContent(placeholderContent);
+        setExpandedSections(new Set(Object.keys(placeholderContent)));
+        setMessage({ type: 'success', text: 'Template content generated. Please customize for your project.' });
       }
     } catch (error) {
       setMessage({ type: 'error', text: 'Failed to generate content. Please fill in manually.' });
@@ -373,7 +336,7 @@ export default function NewCaseStudyPage() {
           <Card>
             <h3 className="font-semibold text-gray-900 mb-3">Sections</h3>
             <div className="space-y-1">
-              {template.sections.map((section) => {
+              {templateSections.map((section) => {
                 const hasContent = sectionContent[section.id]?.trim().length > 0;
                 return (
                   <button
@@ -419,7 +382,7 @@ export default function NewCaseStudyPage() {
           </Card>
 
           {/* Template Sections */}
-          {template.sections.map((section) => {
+          {templateSections.map((section) => {
             const isExpanded = expandedSections.has(section.id);
             const hasContent = sectionContent[section.id]?.trim().length > 0;
 

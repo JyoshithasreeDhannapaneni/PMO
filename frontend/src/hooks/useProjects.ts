@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { projectsApi, dashboardApi, statusReportsApi, managerGoalsApi, migrationTypeApi, pocProjectsApi, accountManagerApi, customerSuccessApi } from '@/services/api';
+import { projectsApi, dashboardApi, statusReportsApi, managerGoalsApi, migrationTypeApi, pocProjectsApi, accountManagerApi, customerSuccessApi, hubspotApi, psEngagementsApi } from '@/services/api';
 import type { CreateProjectInput, UpdateProjectInput } from '@/types';
 
 export function useProjects(params?: {
@@ -241,12 +241,55 @@ export function useCustomerSuccess() {
   });
 }
 
+export function useHubspotSignals() {
+  return useQuery({
+    queryKey: ['hubspot-signals'],
+    queryFn: () => hubspotApi.getSignals(),
+    staleTime: 5 * 60_000,
+    retry: 1,
+    refetchOnWindowFocus: false,
+  });
+}
+
 export function useUpdateCustomerSuccess() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ customerName, data }: { customerName: string; data: Record<string, any> }) =>
-      customerSuccessApi.updateEntry(customerName, data),
+    mutationFn: ({ projectId, data }: { projectId: string; data: Record<string, any> }) =>
+      customerSuccessApi.updateEntry(projectId, data),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['customer-success'] }),
+  });
+}
+
+export function usePsEngagements() {
+  return useQuery({
+    queryKey: ['ps-engagements'],
+    queryFn: () => psEngagementsApi.getAll(),
+    staleTime: 30_000,
+    refetchOnWindowFocus: true,
+  });
+}
+
+export function useCreatePsEngagement() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (engagement: any) => psEngagementsApi.create(engagement),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['ps-engagements'] }),
+  });
+}
+
+export function useUpdatePsEngagement() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: any }) => psEngagementsApi.update(id, data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['ps-engagements'] }),
+  });
+}
+
+export function useDeletePsEngagement() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => psEngagementsApi.remove(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['ps-engagements'] }),
   });
 }
 
@@ -352,6 +395,25 @@ export function useMarkOverageProject() {
   });
 }
 
+export function useUpdateOverageProject() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, overageAmount, notes, extendedStartDate, extendedEndDate }: { id: string; overageAmount?: number; notes?: string; extendedStartDate?: string; extendedEndDate?: string }) => {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
+      return fetch(`${API_BASE}/api/dashboard/update-overage/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ overageAmount, notes, extendedStartDate, extendedEndDate }),
+      }).then(r => r.json());
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['overagedProjects'] });
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+  });
+}
+
 export function useUnmarkOverageProject() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -365,6 +427,23 @@ export function useUnmarkOverageProject() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['overagedProjects'] });
       queryClient.invalidateQueries({ queryKey: ['projects'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+  });
+}
+
+export function useDeleteOverageHistoryEntry() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (historyId: string) => {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
+      return fetch(`${API_BASE}/api/dashboard/overage-history/${historyId}`, {
+        method: 'DELETE',
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      }).then(r => r.json());
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['overagedProjects'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     },
   });
@@ -449,10 +528,13 @@ export function useUnarchiveEscalation() {
   });
 }
 
-export function useEscalationDailyNotes(projectId: string | null) {
+export function useEscalationDailyNotes(projectId: string | null, columnName?: string) {
   return useQuery({
-    queryKey: ['escalationDailyNotes', projectId],
-    queryFn: () => authFetch(`${API_BASE}/api/dashboard/escalation-daily-notes/${projectId}`),
+    queryKey: ['escalationDailyNotes', projectId, columnName],
+    queryFn: () => {
+      const params = columnName ? `?columnName=${encodeURIComponent(columnName)}` : '';
+      return authFetch(`${API_BASE}/api/dashboard/escalation-daily-notes/${projectId}${params}`);
+    },
     enabled: !!projectId,
     staleTime: 0,
   });
@@ -461,12 +543,12 @@ export function useEscalationDailyNotes(projectId: string | null) {
 export function useAddEscalationDailyNote() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ projectId, note, author, noteDate }: { projectId: string; note: string; author?: string; noteDate?: string }) => {
+    mutationFn: ({ projectId, note, author, noteDate, columnName }: { projectId: string; note: string; author?: string; noteDate?: string; columnName?: string }) => {
       const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
       return fetch(`${API_BASE}/api/dashboard/escalation-daily-notes/${projectId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ note, author, noteDate }),
+        body: JSON.stringify({ note, author, noteDate, columnName }),
       }).then(r => r.json());
     },
     onSuccess: (_data, vars) => {
@@ -487,6 +569,85 @@ export function useDeleteEscalationDailyNote() {
     },
     onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: ['escalationDailyNotes', vars.projectId] });
+    },
+  });
+}
+
+export function useDealDeskDeals(params?: {
+  page?: number;
+  limit?: number;
+  status?: string;
+  search?: string;
+  matchType?: string;
+}) {
+  const search = params?.search || '';
+  const status = params?.status || '';
+  const matchType = params?.matchType || '';
+  const page = params?.page || 1;
+  const limit = params?.limit || 25;
+  const qs = new URLSearchParams({
+    page: String(page),
+    limit: String(limit),
+    ...(status ? { status } : {}),
+    ...(search ? { search } : {}),
+    ...(matchType ? { matchType } : {}),
+  }).toString();
+  return useQuery({
+    queryKey: ['dealDeskDeals', page, limit, status, search, matchType],
+    queryFn: () => authFetch(`${API_BASE}/api/deal-desk?${qs}`),
+    staleTime: 60_000,
+  });
+}
+
+export function useDealDeskStats() {
+  return useQuery({
+    queryKey: ['dealDeskStats'],
+    queryFn: () => authFetch(`${API_BASE}/api/deal-desk/stats`),
+    staleTime: 60_000,
+  });
+}
+
+export function useDealDeskConfig() {
+  return useQuery({
+    queryKey: ['dealDeskConfig'],
+    queryFn: () => authFetch(`${API_BASE}/api/deal-desk/config`),
+    staleTime: 5 * 60_000,
+  });
+}
+
+export function useTriggerDealDeskPoll() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
+      return fetch(`${API_BASE}/api/deal-desk/poll`, {
+        method: 'POST',
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      }).then(r => r.json());
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dealDeskDeals'] });
+      queryClient.invalidateQueries({ queryKey: ['dealDeskStats'] });
+    },
+  });
+}
+
+export function useUpdateDealMatch() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, matchedPsId, matchedProjectId }: { id: string; matchedPsId?: string; matchedProjectId?: string }) => {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
+      return fetch(`${API_BASE}/api/deal-desk/${id}/match`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ matchedPsId, matchedProjectId }),
+      }).then(r => r.json());
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dealDeskDeals'] });
     },
   });
 }

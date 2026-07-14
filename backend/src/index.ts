@@ -43,6 +43,14 @@ import migrationChecklistRoutes from './routes/migrationChecklistRoutes';
 import serverAlertRoutes from './routes/serverAlertRoutes';
 import templateCombinationRoutes from './routes/templateCombinationRoutes';
 import jiraRoutes from './routes/jiraRoutes';
+import hubspotRoutes from './routes/hubspotRoutes';
+import psEngagementsRoutes from './routes/psEngagementsRoutes';
+import externalRoutes from './routes/externalRoutes';
+import aiRoutes from './routes/aiRoutes';
+import apiKeyRoutes from './routes/apiKeyRoutes';
+import clientReviewRoutes from './routes/clientReviewRoutes';
+import platformReviewRoutes from './routes/platformReviewRoutes';
+import dealDeskRoutes from './routes/dealDeskRoutes';
 import { logger } from './utils/logger';
 import { authService } from './services/authService';
 import { templateService } from './services/templateService';
@@ -92,6 +100,10 @@ app.use('/api/comments', commentRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api/export', exportRoutes);
 app.use('/api/manager-goals', managerGoalsRoutes);
+app.use('/api/external', externalRoutes);
+app.use('/api/api-key', apiKeyRoutes);
+app.use('/api/reviews', clientReviewRoutes);
+app.use('/api/platform-reviews', platformReviewRoutes);
 app.use('/api/smtp', smtpRoutes);
 app.use('/api/pmo-settings', pmoSettingsRoutes);
 app.use('/api/archive', archiveRoutes);
@@ -103,6 +115,10 @@ app.use('/api/migration-checklists', migrationChecklistRoutes);
 app.use('/api/server-alerts', serverAlertRoutes);
 app.use('/api/template-combinations', templateCombinationRoutes);
 app.use('/api/jira', jiraRoutes);
+app.use('/api/hubspot', hubspotRoutes);
+app.use('/api/ps-engagements', psEngagementsRoutes);
+app.use('/api/ai', aiRoutes);
+app.use('/api/deal-desk', dealDeskRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
@@ -297,7 +313,7 @@ async function runMigrations() {
     await execute(`
       CREATE TABLE IF NOT EXISTS customer_success_entries (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        customer_name VARCHAR(255) NOT NULL UNIQUE,
+        customer_name VARCHAR(255),
         csat_score DECIMAL(3,1),
         csat_verbatim TEXT,
         csat_migration_quality DECIMAL(3,1),
@@ -317,6 +333,11 @@ async function runMigrations() {
       )
     `);
   } catch {}
+  // Add project_id to customer_success_entries (per-project keying)
+  try { await execute(`ALTER TABLE customer_success_entries ADD COLUMN IF NOT EXISTS project_id UUID`); } catch {}
+  try { await execute(`ALTER TABLE customer_success_entries DROP CONSTRAINT IF EXISTS customer_success_entries_customer_name_key`); } catch {}
+  try { await execute(`ALTER TABLE customer_success_entries ADD CONSTRAINT cse_project_id_unique UNIQUE (project_id)`); } catch {}
+  try { await execute(`ALTER TABLE customer_success_entries ALTER COLUMN customer_name DROP NOT NULL`); } catch {}
 
   // Migration checklists table
   await execute(`CREATE TABLE IF NOT EXISTS migration_checklists (
@@ -423,6 +444,133 @@ async function runMigrations() {
   )`);
   try { await execute(`CREATE INDEX IF NOT EXISTS idx_tmpl_combo_cat ON template_combinations(migration_category)`); } catch {}
   try { await execute(`CREATE INDEX IF NOT EXISTS idx_tmpl_combo_docs ON template_combination_documents(combination_id)`); } catch {}
+
+  // Professional Services engagements
+  await execute(`CREATE TABLE IF NOT EXISTS ps_engagements (
+    id VARCHAR(64) PRIMARY KEY,
+    client_name VARCHAR(255) NOT NULL,
+    sow_ref_id VARCHAR(100),
+    client_contact VARCHAR(255),
+    client_contact_email VARCHAR(255),
+    cf_ps_lead VARCHAR(255),
+    account_manager VARCHAR(255),
+    start_date VARCHAR(20),
+    end_date VARCHAR(20),
+    engagement_type VARCHAR(100),
+    workloads JSONB DEFAULT '[]',
+    delivery_model VARCHAR(100),
+    priority VARCHAR(50),
+    sow_status VARCHAR(100) DEFAULT 'Draft',
+    engagement_description TEXT,
+    client_objectives TEXT,
+    success_criteria TEXT,
+    assumptions TEXT,
+    out_of_scope TEXT,
+    phases JSONB DEFAULT '[]',
+    signoffs JSONB DEFAULT '[]',
+    line_items JSONB DEFAULT '[]',
+    created_by VARCHAR(255),
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+  )`);
+  await execute(`ALTER TABLE ps_engagements ADD COLUMN IF NOT EXISTS line_items JSONB DEFAULT '[]'`);
+
+  // Client reviews (Reviews tab) — structured customer feedback scorecard per project
+  await execute(`CREATE TABLE IF NOT EXISTS client_reviews (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    reviewer_name VARCHAR(255) NOT NULL,
+    review_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    communication_score SMALLINT NOT NULL CHECK (communication_score BETWEEN 1 AND 5),
+    delivery_score SMALLINT NOT NULL CHECK (delivery_score BETWEEN 1 AND 5),
+    quality_score SMALLINT NOT NULL CHECK (quality_score BETWEEN 1 AND 5),
+    support_score SMALLINT NOT NULL CHECK (support_score BETWEEN 1 AND 5),
+    comments TEXT,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+  )`);
+  try { await execute(`CREATE INDEX IF NOT EXISTS idx_client_reviews_project ON client_reviews(project_id)`); } catch {}
+
+  // Platform reviews (Reviews tab) — reviews pulled in from external sites
+  // (Gartner, G2, Trustpilot, TrustRadius, or any custom platform an admin adds),
+  // matched to a project by name. project_id is nullable since a platform review
+  // may reference a customer/project that doesn't have a matching internal record.
+  await execute(`CREATE TABLE IF NOT EXISTS platform_reviews (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    platform VARCHAR(100) NOT NULL,
+    project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
+    project_name VARCHAR(255) NOT NULL,
+    project_manager VARCHAR(255),
+    account_manager VARCHAR(255),
+    reviewer_name VARCHAR(255),
+    rating DECIMAL(3,1) NOT NULL CHECK (rating BETWEEN 0 AND 5),
+    review_text TEXT,
+    review_url TEXT,
+    review_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    segment VARCHAR(10),
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+  )`);
+  if (!await columnExists('platform_reviews', 'project_manager')) {
+    try { await execute(`ALTER TABLE platform_reviews ADD COLUMN project_manager VARCHAR(255)`); } catch {}
+  }
+  if (!await columnExists('platform_reviews', 'account_manager')) {
+    try { await execute(`ALTER TABLE platform_reviews ADD COLUMN account_manager VARCHAR(255)`); } catch {}
+  }
+  if (!await columnExists('platform_reviews', 'segment')) {
+    try { await execute(`ALTER TABLE platform_reviews ADD COLUMN segment VARCHAR(10)`); } catch {}
+  }
+  try { await execute(`CREATE INDEX IF NOT EXISTS idx_platform_reviews_platform ON platform_reviews(platform)`); } catch {}
+  try { await execute(`CREATE INDEX IF NOT EXISTS idx_platform_reviews_project ON platform_reviews(project_id)`); } catch {}
+
+  // App settings table
+  try {
+    await execute(`CREATE TABLE IF NOT EXISTS app_settings (
+      id INTEGER PRIMARY KEY,
+      settings JSONB NOT NULL DEFAULT '{}',
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )`);
+  } catch {}
+
+  // Deal Desk email inbox tables
+  try {
+    await execute(`
+      CREATE TABLE IF NOT EXISTS deal_desk_emails (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        message_id VARCHAR(1000) UNIQUE NOT NULL,
+        subject TEXT,
+        sender_email VARCHAR(300),
+        sender_name VARCHAR(300),
+        received_at TIMESTAMP,
+        has_attachments BOOLEAN DEFAULT false,
+        processed BOOLEAN DEFAULT false,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW()
+      )
+    `);
+    await execute(`
+      CREATE TABLE IF NOT EXISTS deal_desk_deals (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        email_id UUID NOT NULL REFERENCES deal_desk_emails(id) ON DELETE CASCADE,
+        source_filename VARCHAR(500),
+        customer_name VARCHAR(300),
+        sow_ref VARCHAR(200),
+        deal_value DECIMAL(15,2),
+        deal_status VARCHAR(100),
+        signer_name VARCHAR(300),
+        signed_at TIMESTAMP,
+        line_items JSONB DEFAULT '[]',
+        matched_ps_id VARCHAR(64),
+        matched_project_id UUID,
+        match_type VARCHAR(50),
+        match_confidence VARCHAR(20),
+        extracted_text TEXT,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW()
+      )
+    `);
+    await execute(`CREATE INDEX IF NOT EXISTS idx_deal_desk_deals_email ON deal_desk_deals(email_id)`);
+    await execute(`CREATE INDEX IF NOT EXISTS idx_deal_desk_deals_status ON deal_desk_deals(deal_status)`);
+    await execute(`CREATE INDEX IF NOT EXISTS idx_deal_desk_emails_msg ON deal_desk_emails(message_id)`);
+  } catch {}
 
 }
 

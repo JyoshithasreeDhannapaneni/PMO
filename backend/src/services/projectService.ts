@@ -118,14 +118,21 @@ function mapProjectRow(row: any) {
     const extEnd = row.extended_end_date ? new Date(row.extended_end_date) : null;
 
     // Project End Date = kickoff + SOW duration (used for display and delay calc)
-    const ae = row.actual_end ? new Date(row.actual_end) : null;
     const sowMs = pe.getTime() - ps.getTime();
     const kickoffEnd = as ? new Date(as.getTime() + sowMs) : pe;
     expectedEnd = extEnd || kickoffEnd;
 
-    const result = calculateDelay(ps, pe, as, ae, new Date(), extEnd);
-    liveDelayStatus = result.delayStatus;
-    liveDelayDays   = result.delayDays;
+    // Completed/cancelled/inactive projects stop accruing delay days —
+    // freeze on whatever was last stored instead of recalculating against today.
+    const isFinished = row.status === 'COMPLETED' || row.status === 'CANCELLED' || row.status === 'INACTIVE' || row.phase === 'COMPLETED';
+    if (isFinished) {
+      liveDelayStatus = row.delay_status;
+      liveDelayDays   = Number(row.delay_days) || 0;
+    } else {
+      const result = calculateDelay(ps, pe, as, null, new Date(), extEnd);
+      liveDelayStatus = result.delayStatus;
+      liveDelayDays   = result.delayDays;
+    }
   }
 
   return {
@@ -386,7 +393,7 @@ class ProjectService {
     const actualStart = data.actualStart ? new Date(data.actualStart) : null;
     const actualEnd = data.actualEnd ? new Date(data.actualEnd) : null;
     const createStatus = (data.status || 'ACTIVE').toUpperCase();
-    const createIsFinished = createStatus === 'COMPLETED' || createStatus === 'CANCELLED';
+    const createIsFinished = createStatus === 'COMPLETED' || createStatus === 'CANCELLED' || createStatus === 'INACTIVE';
     const { delayDays, delayStatus } = calculateDelay(plannedStart, plannedEnd, actualStart, createIsFinished ? actualEnd : null);
 
     const migrationTypes = data.migrationTypes?.toUpperCase().split(',').map(t => t.trim()) || [];
@@ -599,8 +606,8 @@ class ProjectService {
     const extendedEndDate = existing.extended_end_date ? new Date(existing.extended_end_date) : null;
 
     const newStatus = (data.status || existing.status || 'ACTIVE').toUpperCase();
-    const isFinished = newStatus === 'COMPLETED' || newStatus === 'CANCELLED';
-    const actualEndForDelay = isFinished ? actualEnd : null;
+    const isFinished = newStatus === 'COMPLETED' || newStatus === 'CANCELLED' || newStatus === 'INACTIVE';
+    const actualEndForDelay = isFinished ? (actualEnd || new Date()) : null;
     const calculated = calculateDelay(plannedStart, plannedEnd, actualStart, actualEndForDelay, new Date(), extendedEndDate);
     const delayDays = Math.floor(Number(calculated.delayDays) || 0);
     const delayStatus = data.delayStatus || calculated.delayStatus;
@@ -726,20 +733,16 @@ class ProjectService {
       [...params, id]
     );
 
-    // Auto-archive when status becomes CANCELLED, CLOSED, or DECOMMISSIONED
-    if (data.status && ['CANCELLED', 'CLOSED', 'DECOMMISSIONED'].includes(data.status.toUpperCase())) {
+    // Auto-archive when status becomes a terminal state
+    if (data.status && ['COMPLETED', 'CANCELLED', 'CLOSED', 'DECOMMISSIONED'].includes(data.status.toUpperCase())) {
       try {
         const { archiveService } = require('./archiveService');
         await archiveService.autoArchive(id, data.status);
       } catch (_) { /* non-critical */ }
     }
 
-    // Clear archived_at when status moves back to an active state (ACTIVE or ON_HOLD)
-    // This prevents stale archived_at from a previous cancellation showing the project in the archive
-    if (data.status && (
-      ['ACTIVE', 'ON_HOLD'].includes(data.status.toUpperCase()) ||
-      (data.status.toUpperCase() === 'COMPLETED' && existing.status !== 'COMPLETED')
-    )) {
+    // Clear archived_at when status moves back to an active state
+    if (data.status && ['ACTIVE', 'ON_HOLD'].includes(data.status.toUpperCase())) {
       try {
         await execute(
           `UPDATE projects SET archived_at = NULL, archive_reason = NULL, archived_by = NULL WHERE id = $1`,
@@ -748,37 +751,16 @@ class ProjectService {
       } catch (_) { /* non-critical */ }
     }
 
-    // When phase is set to COMPLETED, auto-create case study and mark project COMPLETED.
-    // This is the canonical trigger: phase → COMPLETED means the project is done.
+    // When phase is set to COMPLETED, mark the project COMPLETED and send it to the archive.
     if (data.phase && data.phase.toUpperCase() === 'COMPLETED') {
       try {
-        const existingCS = await query(
-          `SELECT id FROM case_studies WHERE project_id = $1 LIMIT 1`, [id]
+        await execute(
+          `UPDATE projects SET status = 'COMPLETED', actual_end = COALESCE(actual_end, NOW()) WHERE id = $1`,
+          [id]
         );
-        if (existingCS.rows.length === 0) {
-          const proj = await query(`SELECT * FROM projects WHERE id = $1`, [id]);
-          if (proj.rows.length > 0) {
-            const p = proj.rows[0];
-            const caseStudyId = uuidv4();
-            await transaction(async (client) => {
-              await client.query(
-                `INSERT INTO case_studies (id, project_id, title, content, status) VALUES ($1, $2, $3, NULL, 'PENDING')`,
-                [caseStudyId, id, `${p.customer_name} - ${p.name} Case Study`]
-              );
-              await client.query(
-                `UPDATE projects SET status = 'COMPLETED', actual_end = COALESCE(actual_end, NOW()) WHERE id = $1`,
-                [id]
-              );
-            });
-            logger.info(`Project ${id} phase set to COMPLETED — case study auto-created`);
-          }
-        } else {
-          // Case study already exists; just ensure the project is marked COMPLETED
-          await execute(
-            `UPDATE projects SET status = 'COMPLETED', actual_end = COALESCE(actual_end, NOW()) WHERE id = $1`,
-            [id]
-          );
-        }
+        const { archiveService } = require('./archiveService');
+        await archiveService.autoArchive(id, 'COMPLETED');
+        logger.info(`Project ${id} phase set to COMPLETED — auto-archived`);
       } catch (err: any) {
         logger.warn(`Phase-completion trigger failed for project ${id}: ${err?.message}`);
       }

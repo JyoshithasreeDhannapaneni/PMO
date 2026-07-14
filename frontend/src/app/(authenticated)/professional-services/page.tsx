@@ -2,11 +2,14 @@
 
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
+import { useToast } from '@/context/ToastContext';
+import { usePsEngagements, useCreatePsEngagement, useUpdatePsEngagement, useDeletePsEngagement } from '@/hooks/useProjects';
 import {
-  Briefcase, Plus, ChevronLeft, ChevronDown, ChevronRight,
-  FileText, Layers, ClipboardCheck, X, Search, SlidersHorizontal, Trash2,
+  Briefcase, Plus, ChevronLeft, ChevronDown,
+  FileText, X, Search, SlidersHorizontal, Trash2,
 } from 'lucide-react';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -17,30 +20,22 @@ const ENGAGEMENT_TYPES = [
   'Post-migration Support', 'Other',
 ];
 const DELIVERY_MODELS = ['Fixed price', 'T&M', 'Retainer', 'Milestone'];
-const PRIORITIES = ['Critical', 'High', 'Medium', 'Low'];
-const SOW_STATUSES = ['Draft', 'Pending approval', 'Approved', 'Active'];
 const WORKLOADS = ['Content', 'Email', 'Messaging'];
 const ACTIVITY_STATUSES = ['Not started', 'In progress', 'Completed', 'Blocked'];
-
-const SOW_STATUS_STYLE: Record<string, string> = {
-  Draft: 'bg-gray-100 text-gray-600',
-  'Pending approval': 'bg-amber-100 text-amber-700',
-  Approved: 'bg-blue-100 text-blue-700',
-  Active: 'bg-emerald-100 text-emerald-700',
-};
-
-const PRIORITY_STYLE: Record<string, string> = {
-  Critical: 'bg-red-100 text-red-700',
-  High: 'bg-orange-100 text-orange-700',
-  Medium: 'bg-amber-100 text-amber-700',
-  Low: 'bg-green-100 text-green-700',
-};
 
 const ACTIVITY_STATUS_STYLE: Record<string, string> = {
   'Not started': 'bg-gray-100 text-gray-500',
   'In progress': 'bg-blue-100 text-blue-700',
   'Completed': 'bg-emerald-100 text-emerald-700',
   'Blocked': 'bg-red-100 text-red-700',
+};
+
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const fmtDate = (d: string) => {
+  if (!d) return '—';
+  const [y, m, day] = d.split('-');
+  if (!y || !m || !day) return d;
+  return `${MONTHS[+m - 1]} ${+day}, ${y}`;
 };
 
 const LABEL_CLS = 'block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5';
@@ -57,15 +52,17 @@ interface PhaseActivity {
 interface Phase { name: string; activities: PhaseActivity[]; }
 interface SignoffRow { item: string; role: string; confirmation: string; date: string; }
 interface SignoffSection { section: string; rows: SignoffRow[]; }
+interface LineItem { id: string; name: string; description: string; status: string; startDate: string; endDate: string; }
 
 interface PSEngagement {
   id: string; clientName: string; sowRefId: string; clientContact: string;
   clientContactEmail: string; cfPsLead: string; accountManager: string;
   startDate: string; endDate: string;
-  engagementType: string; workloads: string[]; deliveryModel: string;
-  priority: string; sowStatus: string; engagementDescription: string;
+  engagementType?: string; workloads?: string[]; deliveryModel?: string;
+  priority?: string; sowStatus?: string; engagementDescription: string;
   clientObjectives: string; successCriteria: string; assumptions: string;
-  outOfScope: string; phases: Phase[]; signoffs: SignoffSection[]; createdAt: string;
+  outOfScope: string; lineItems?: LineItem[];
+  phases: Phase[]; signoffs: SignoffSection[]; createdAt: string;
   createdBy?: string;
 }
 
@@ -148,56 +145,33 @@ function defaultSignoffs(): SignoffSection[] {
 // ── Engagement card ───────────────────────────────────────────────────────────
 
 function EngagementCard({ eng, onClick }: { eng: PSEngagement; onClick: () => void }) {
-  const totalActs = eng.phases.reduce((s, p) => s + p.activities.length, 0);
-  const doneActs = eng.phases.reduce((s, p) => s + p.activities.filter(a => a.status === 'Completed').length, 0);
-  const pct = totalActs > 0 ? Math.round((doneActs / totalActs) * 100) : 0;
+  const lineItems = eng.lineItems || [];
 
   return (
     <div
       onClick={onClick}
       className="bg-white rounded-xl border border-gray-200 p-5 cursor-pointer hover:border-indigo-300 hover:shadow-md transition-all space-y-3"
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex-1 min-w-0">
-          <p className="font-semibold text-slate-800 truncate">{eng.clientName}</p>
-          <p className="text-xs text-slate-400 font-mono mt-0.5">{eng.sowRefId}</p>
-        </div>
-        <span className={cn('text-xs px-2.5 py-1 rounded-full font-medium whitespace-nowrap flex-shrink-0', SOW_STATUS_STYLE[eng.sowStatus] || 'bg-gray-100 text-gray-600')}>
-          {eng.sowStatus}
-        </span>
+      <div className="flex-1 min-w-0">
+        <p className="font-semibold text-slate-800 truncate">{eng.clientName}</p>
+        <p className="text-xs text-slate-400 font-mono mt-0.5">{eng.sowRefId}</p>
       </div>
 
-      <div className="flex flex-wrap gap-1.5">
-        {eng.workloads.map(w => (
-          <span key={w} className="text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 font-medium">{w}</span>
-        ))}
-        {eng.deliveryModel && (
-          <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">{eng.deliveryModel}</span>
-        )}
-        {eng.priority && (
-          <span className={cn('text-xs px-2 py-0.5 rounded-full font-medium', PRIORITY_STYLE[eng.priority] || 'bg-gray-100 text-gray-500')}>{eng.priority}</span>
-        )}
-      </div>
+      {lineItems.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {lineItems.map((item: LineItem) => (
+            <span key={item.id} className="text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 font-medium border border-indigo-100">
+              {item.name || '(unnamed)'}
+            </span>
+          ))}
+        </div>
+      )}
 
       <div className="text-xs text-slate-500 space-y-0.5">
         {eng.cfPsLead && <p><span className="text-slate-400">PS Lead:</span> {eng.cfPsLead}</p>}
-        {eng.engagementType && <p><span className="text-slate-400">Type:</span> {eng.engagementType}</p>}
-        {(eng.startDate || eng.endDate) && (
-          <p><span className="text-slate-400">Dates:</span> {eng.startDate || '—'} → {eng.endDate || '—'}</p>
-        )}
-      </div>
-
-      <div>
-        <div className="flex items-center justify-between text-xs text-slate-500 mb-1.5">
-          <span>Scope progress</span>
-          <span>{doneActs}/{totalActs} activities · {pct}%</span>
-        </div>
-        <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-          <div
-            className={cn('h-full rounded-full transition-all', pct === 100 ? 'bg-emerald-500' : 'bg-indigo-500')}
-            style={{ width: `${pct}%` }}
-          />
-        </div>
+        {eng.accountManager && <p><span className="text-slate-400">AM:</span> {eng.accountManager}</p>}
+        {eng.startDate && <p><span className="text-slate-400">Start:</span> {fmtDate(eng.startDate)}</p>}
+        {eng.endDate && <p><span className="text-slate-400">End:</span> {fmtDate(eng.endDate)}</p>}
       </div>
     </div>
   );
@@ -207,7 +181,7 @@ function EngagementCard({ eng, onClick }: { eng: PSEngagement; onClick: () => vo
 
 function NewEngagementModal({ existingCount, onAdd, onClose, createdBy }: {
   existingCount: number;
-  onAdd: (eng: PSEngagement) => void;
+  onAdd: (eng: PSEngagement) => Promise<void>;
   onClose: () => void;
   createdBy: string;
 }) {
@@ -217,24 +191,26 @@ function NewEngagementModal({ existingCount, onAdd, onClose, createdBy }: {
   const [form, setForm] = useState({
     clientName: '', clientContact: '', clientContactEmail: '', cfPsLead: '',
     accountManager: '', startDate: '', endDate: '',
-    engagementType: '', workloads: [] as string[],
-    deliveryModel: '', priority: '', sowStatus: 'Draft',
     engagementDescription: '', clientObjectives: '', successCriteria: '',
     assumptions: '', outOfScope: '',
+    lineItems: [] as LineItem[],
   });
 
   const set = (field: string, value: any) => setForm(f => ({ ...f, [field]: value }));
-  const toggleWorkload = (w: string) =>
-    set('workloads', form.workloads.includes(w) ? form.workloads.filter(x => x !== w) : [...form.workloads, w]);
+
+  const addLineItem = () => set('lineItems', [
+    ...form.lineItems,
+    { id: `li-${Date.now()}-${form.lineItems.length}`, name: '', description: '', status: 'Not started', startDate: '', endDate: '' },
+  ]);
+  const removeLineItem = (idx: number) => set('lineItems', form.lineItems.filter((_, i) => i !== idx));
+  const updateLineItem = (idx: number, field: 'name' | 'description' | 'status' | 'startDate' | 'endDate', value: string) =>
+    set('lineItems', form.lineItems.map((item, i) => i === idx ? { ...item, [field]: value } : item));
 
   const isValid =
-    form.clientName.trim() && form.clientContact.trim() && form.cfPsLead.trim() &&
-    form.accountManager.trim() && form.startDate && form.endDate &&
-    form.engagementType && form.deliveryModel && form.priority && form.workloads.length > 0 &&
-    form.engagementDescription.trim() && form.clientObjectives.trim() &&
-    form.successCriteria.trim() && form.assumptions.trim() && form.outOfScope.trim();
+    form.clientName.trim() && form.cfPsLead.trim() &&
+    form.accountManager.trim() && form.startDate && form.endDate;
 
-  const submit = () => {
+  const submit = async () => {
     const eng: PSEngagement = {
       id: `ps-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
       sowRefId,
@@ -244,9 +220,10 @@ function NewEngagementModal({ existingCount, onAdd, onClose, createdBy }: {
       signoffs: defaultSignoffs(),
       createdAt: new Date().toISOString(),
     };
-    onAdd(eng);
+    await onAdd(eng);
     onClose();
   };
+
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
@@ -273,11 +250,7 @@ function NewEngagementModal({ existingCount, onAdd, onClose, createdBy }: {
                 <input value={form.clientName} onChange={e => set('clientName', e.target.value)} placeholder="Legal entity name as on contract" className={INPUT_CLS} />
               </div>
               <div>
-                <label className={LABEL_CLS}>Client Primary Contact *</label>
-                <input value={form.clientContact} onChange={e => set('clientContact', e.target.value)} placeholder="Full name and title" className={INPUT_CLS} />
-              </div>
-              <div>
-                <label className={LABEL_CLS}>Client Contact Email *</label>
+                <label className={LABEL_CLS}>Client Contact Email</label>
                 <input value={form.clientContactEmail} onChange={e => set('clientContactEmail', e.target.value)} placeholder="email@client.com" type="email" className={INPUT_CLS} />
               </div>
               <div>
@@ -299,55 +272,70 @@ function NewEngagementModal({ existingCount, onAdd, onClose, createdBy }: {
             </div>
           </div>
 
-          {/* Section 2 */}
+          {/* Section 2 — Line Items */}
           <div>
             <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-4 pb-2 border-b border-gray-100">
-              2 — Engagement type &amp; workload classification
+              2 — Line items
             </h3>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className={LABEL_CLS}>Engagement Type *</label>
-                <select value={form.engagementType} onChange={e => set('engagementType', e.target.value)} className={SELECT_CLS}>
-                  <option value="">Select type…</option>
-                  {ENGAGEMENT_TYPES.map(t => <option key={t}>{t}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className={LABEL_CLS}>Delivery Model *</label>
-                <select value={form.deliveryModel} onChange={e => set('deliveryModel', e.target.value)} className={SELECT_CLS}>
-                  <option value="">Select model…</option>
-                  {DELIVERY_MODELS.map(m => <option key={m}>{m}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className={LABEL_CLS}>Priority *</label>
-                <select value={form.priority} onChange={e => set('priority', e.target.value)} className={SELECT_CLS}>
-                  <option value="">Select priority…</option>
-                  {PRIORITIES.map(p => <option key={p}>{p}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className={LABEL_CLS}>SOW Status</label>
-                <select value={form.sowStatus} onChange={e => set('sowStatus', e.target.value)} className={SELECT_CLS}>
-                  {SOW_STATUSES.map(s => <option key={s}>{s}</option>)}
-                </select>
-              </div>
-              <div className="col-span-2">
-                <label className={LABEL_CLS}>Workloads in Scope *</label>
-                <div className="flex gap-5">
-                  {WORKLOADS.map(w => (
-                    <label key={w} className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={form.workloads.includes(w)}
-                        onChange={() => toggleWorkload(w)}
-                        className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                      />
-                      <span className="text-sm text-slate-700">{w}</span>
-                    </label>
-                  ))}
+            <div className="space-y-2">
+              {form.lineItems.length > 0 && (
+                <div className="flex gap-2 mb-1 pr-7">
+                  <span className="w-32 shrink-0 text-xs font-semibold text-slate-400 uppercase tracking-wide">Name</span>
+                  <span className="flex-1 text-xs font-semibold text-slate-400 uppercase tracking-wide">Description</span>
+                  <span className="w-32 shrink-0 text-xs font-semibold text-slate-400 uppercase tracking-wide">Status</span>
+                  <span className="w-28 shrink-0 text-xs font-semibold text-slate-400 uppercase tracking-wide">Start date</span>
+                  <span className="w-28 shrink-0 text-xs font-semibold text-slate-400 uppercase tracking-wide">End date</span>
                 </div>
-              </div>
+              )}
+              {form.lineItems.map((item, idx) => (
+                <div key={item.id} className="flex gap-2 items-center">
+                  <input
+                    value={item.name}
+                    onChange={e => updateLineItem(idx, 'name', e.target.value)}
+                    placeholder="Item name…"
+                    className={cn(INPUT_CLS, 'w-32 shrink-0')}
+                  />
+                  <input
+                    value={item.description}
+                    onChange={e => updateLineItem(idx, 'description', e.target.value)}
+                    placeholder="Item description…"
+                    className={cn(INPUT_CLS, 'flex-1')}
+                  />
+                  <select
+                    value={item.status || 'Not started'}
+                    onChange={e => updateLineItem(idx, 'status', e.target.value)}
+                    className={cn('text-xs px-2 py-1.5 rounded-lg cursor-pointer font-medium w-32 shrink-0 outline-none border border-gray-200', ACTIVITY_STATUS_STYLE[item.status] || 'bg-gray-100 text-gray-500')}
+                  >
+                    {ACTIVITY_STATUSES.map(s => <option key={s}>{s}</option>)}
+                  </select>
+                  <input
+                    type="date"
+                    value={item.startDate}
+                    onChange={e => updateLineItem(idx, 'startDate', e.target.value)}
+                    className={cn(INPUT_CLS, 'w-28 shrink-0')}
+                  />
+                  <input
+                    type="date"
+                    value={item.endDate}
+                    onChange={e => updateLineItem(idx, 'endDate', e.target.value)}
+                    className={cn(INPUT_CLS, 'w-28 shrink-0')}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeLineItem(idx)}
+                    className="w-5 shrink-0 text-gray-300 hover:text-red-500 transition-colors flex items-center justify-center"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={addLineItem}
+                className="flex items-center gap-1.5 text-xs text-indigo-600 hover:text-indigo-800 font-medium transition-colors mt-2"
+              >
+                <Plus className="w-3.5 h-3.5" /> Add line item
+              </button>
             </div>
           </div>
 
@@ -358,19 +346,19 @@ function NewEngagementModal({ existingCount, onAdd, onClose, createdBy }: {
             </h3>
             <div className="space-y-4">
               <div>
-                <label className={LABEL_CLS}>Engagement Description *</label>
+                <label className={LABEL_CLS}>Engagement Description</label>
                 <textarea rows={3} value={form.engagementDescription} onChange={e => set('engagementDescription', e.target.value)} placeholder="Describe what CloudFuze Professional Services will deliver…" className={TEXTAREA_CLS} />
               </div>
               <div>
-                <label className={LABEL_CLS}>Client Objectives *</label>
+                <label className={LABEL_CLS}>Client Objectives</label>
                 <textarea rows={2} value={form.clientObjectives} onChange={e => set('clientObjectives', e.target.value)} placeholder="What does the client want to achieve? Define measurable outcomes…" className={TEXTAREA_CLS} />
               </div>
               <div>
-                <label className={LABEL_CLS}>Success Criteria *</label>
+                <label className={LABEL_CLS}>Success Criteria</label>
                 <textarea rows={2} value={form.successCriteria} onChange={e => set('successCriteria', e.target.value)} placeholder="How will success be measured? List specific, verifiable criteria…" className={TEXTAREA_CLS} />
               </div>
               <div>
-                <label className={LABEL_CLS}>Assumptions *</label>
+                <label className={LABEL_CLS}>Assumptions</label>
                 <textarea rows={2} value={form.assumptions} onChange={e => set('assumptions', e.target.value)} placeholder="What is assumed to be true? Platform readiness, access, client resources…" className={TEXTAREA_CLS} />
               </div>
             </div>
@@ -382,7 +370,7 @@ function NewEngagementModal({ existingCount, onAdd, onClose, createdBy }: {
               4 — Exclusions &amp; out of scope
             </h3>
             <div>
-              <label className={LABEL_CLS}>Out of Scope Items *</label>
+              <label className={LABEL_CLS}>Out of Scope Items</label>
               <textarea rows={3} value={form.outOfScope} onChange={e => set('outOfScope', e.target.value)} placeholder="List items, activities, or deliverables explicitly NOT included in this engagement…" className={TEXTAREA_CLS} />
             </div>
           </div>
@@ -424,7 +412,6 @@ function SowTab({ eng, onChange }: { eng: PSEngagement; onChange: (field: string
           {([
             ['Client / Account Name *', 'clientName', 'Legal entity name as on contract', 'text'],
             ['SOW Reference ID', 'sowRefId', '', 'text'],
-            ['Client Primary Contact *', 'clientContact', 'Full name and title', 'text'],
             ['Client Contact Email *', 'clientContactEmail', 'email@client.com', 'email'],
             ['CloudFuze PS Lead *', 'cfPsLead', 'Full name', 'text'],
             ['Account Manager *', 'accountManager', 'Full name', 'text'],
@@ -447,56 +434,67 @@ function SowTab({ eng, onChange }: { eng: PSEngagement; onChange: (field: string
 
       <section>
         <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-4 pb-2 border-b border-gray-100">
-          2 — Engagement type &amp; workload classification
+          2 — Line items
         </h3>
-        <div className="grid grid-cols-2 gap-x-8 gap-y-4">
-          <div>
-            <label className={LABEL_CLS}>Engagement Type *</label>
-            <select value={eng.engagementType} onChange={e => onChange('engagementType', e.target.value)} className={SELECT_CLS}>
-              <option value="">Select type…</option>
-              {ENGAGEMENT_TYPES.map(t => <option key={t}>{t}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className={LABEL_CLS}>Delivery Model *</label>
-            <select value={eng.deliveryModel} onChange={e => onChange('deliveryModel', e.target.value)} className={SELECT_CLS}>
-              <option value="">Select model…</option>
-              {DELIVERY_MODELS.map(m => <option key={m}>{m}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className={LABEL_CLS}>Priority *</label>
-            <select value={eng.priority} onChange={e => onChange('priority', e.target.value)} className={SELECT_CLS}>
-              <option value="">Select priority…</option>
-              {PRIORITIES.map(p => <option key={p}>{p}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className={LABEL_CLS}>SOW Status</label>
-            <select value={eng.sowStatus} onChange={e => onChange('sowStatus', e.target.value)} className={SELECT_CLS}>
-              {SOW_STATUSES.map(s => <option key={s}>{s}</option>)}
-            </select>
-          </div>
-          <div className="col-span-2">
-            <label className={LABEL_CLS}>Workloads in Scope *</label>
-            <div className="flex gap-5">
-              {WORKLOADS.map(w => (
-                <label key={w} className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={eng.workloads.includes(w)}
-                    onChange={() =>
-                      onChange('workloads', eng.workloads.includes(w)
-                        ? eng.workloads.filter(x => x !== w)
-                        : [...eng.workloads, w])
-                    }
-                    className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                  />
-                  <span className="text-sm text-slate-700">{w}</span>
-                </label>
-              ))}
+        <div className="space-y-2">
+          {(eng.lineItems || []).length > 0 && (
+            <div className="flex gap-2 mb-1 pr-7">
+              <span className="w-32 shrink-0 text-xs font-semibold text-slate-400 uppercase tracking-wide">Name</span>
+              <span className="flex-1 text-xs font-semibold text-slate-400 uppercase tracking-wide">Description</span>
+              <span className="w-32 shrink-0 text-xs font-semibold text-slate-400 uppercase tracking-wide">Status</span>
+              <span className="w-28 shrink-0 text-xs font-semibold text-slate-400 uppercase tracking-wide">Start date</span>
+              <span className="w-28 shrink-0 text-xs font-semibold text-slate-400 uppercase tracking-wide">End date</span>
             </div>
-          </div>
+          )}
+          {(eng.lineItems || []).map((item: LineItem, idx: number) => (
+            <div key={item.id} className="flex gap-2 items-center">
+              <input
+                value={item.name || ''}
+                onChange={e => onChange('lineItems', (eng.lineItems || []).map((li: LineItem, i: number) => i === idx ? { ...li, name: e.target.value } : li))}
+                placeholder="Item name…"
+                className={cn(INPUT_CLS, 'w-32 shrink-0')}
+              />
+              <input
+                value={item.description}
+                onChange={e => onChange('lineItems', (eng.lineItems || []).map((li: LineItem, i: number) => i === idx ? { ...li, description: e.target.value } : li))}
+                placeholder="Item description…"
+                className={cn(INPUT_CLS, 'flex-1')}
+              />
+              <select
+                value={item.status || 'Not started'}
+                onChange={e => onChange('lineItems', (eng.lineItems || []).map((li: LineItem, i: number) => i === idx ? { ...li, status: e.target.value } : li))}
+                className={cn('text-xs px-2 py-1.5 rounded-lg cursor-pointer font-medium w-32 shrink-0 outline-none border border-gray-200', ACTIVITY_STATUS_STYLE[item.status] || 'bg-gray-100 text-gray-500')}
+              >
+                {ACTIVITY_STATUSES.map(s => <option key={s}>{s}</option>)}
+              </select>
+              <input
+                type="date"
+                value={item.startDate}
+                onChange={e => onChange('lineItems', (eng.lineItems || []).map((li: LineItem, i: number) => i === idx ? { ...li, startDate: e.target.value } : li))}
+                className={cn(INPUT_CLS, 'w-28 shrink-0')}
+              />
+              <input
+                type="date"
+                value={item.endDate}
+                onChange={e => onChange('lineItems', (eng.lineItems || []).map((li: LineItem, i: number) => i === idx ? { ...li, endDate: e.target.value } : li))}
+                className={cn(INPUT_CLS, 'w-28 shrink-0')}
+              />
+              <button
+                type="button"
+                onClick={() => onChange('lineItems', (eng.lineItems || []).filter((_: LineItem, i: number) => i !== idx))}
+                className="w-5 shrink-0 text-gray-300 hover:text-red-500 transition-colors flex items-center justify-center"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ))}
+          <button
+            type="button"
+            onClick={() => onChange('lineItems', [...(eng.lineItems || []), { id: `li-${Date.now()}`, name: '', description: '', status: 'Not started', startDate: '', endDate: '' }])}
+            className="flex items-center gap-1.5 text-xs text-indigo-600 hover:text-indigo-800 font-medium transition-colors mt-2"
+          >
+            <Plus className="w-3.5 h-3.5" /> Add line item
+          </button>
         </div>
       </section>
 
@@ -506,10 +504,10 @@ function SowTab({ eng, onChange }: { eng: PSEngagement; onChange: (field: string
         </h3>
         <div className="space-y-5">
           {([
-            ['Engagement Description *', 'engagementDescription', 'Describe what CloudFuze Professional Services will deliver — scope, context, and key activities.', 4],
-            ['Client Objectives *', 'clientObjectives', 'What does the client want to achieve? Define measurable outcomes expected at engagement close.', 3],
-            ['Success Criteria *', 'successCriteria', 'How will success be measured? List specific, verifiable criteria that must be met for sign-off.', 3],
-            ['Assumptions *', 'assumptions', 'What is assumed to be true? Platform readiness, client resource availability, access, etc.', 3],
+            ['Engagement Description', 'engagementDescription', 'Describe what CloudFuze Professional Services will deliver — scope, context, and key activities.', 4],
+            ['Client Objectives', 'clientObjectives', 'What does the client want to achieve? Define measurable outcomes expected at engagement close.', 3],
+            ['Success Criteria', 'successCriteria', 'How will success be measured? List specific, verifiable criteria that must be met for sign-off.', 3],
+            ['Assumptions', 'assumptions', 'What is assumed to be true? Platform readiness, client resource availability, access, etc.', 3],
           ] as [string, string, string, number][]).map(([label, field, placeholder, rows]) => (
             <div key={field}>
               <label className={LABEL_CLS}>{label}</label>
@@ -530,7 +528,7 @@ function SowTab({ eng, onChange }: { eng: PSEngagement; onChange: (field: string
           4 — Exclusions &amp; out of scope
         </h3>
         <div>
-          <label className={LABEL_CLS}>Out of Scope Items *</label>
+          <label className={LABEL_CLS}>Out of Scope Items</label>
           <textarea
             rows={4}
             value={eng.outOfScope}
@@ -544,256 +542,50 @@ function SowTab({ eng, onChange }: { eng: PSEngagement; onChange: (field: string
   );
 }
 
-// ── Scope Tab ─────────────────────────────────────────────────────────────────
-
-function ScopeTab({ phases, onUpdate }: { phases: Phase[]; onUpdate: (p: Phase[]) => void }) {
-  const [collapsed, setCollapsed] = useState<Record<number, boolean>>({});
-  const togglePhase = (pi: number) => setCollapsed(c => ({ ...c, [pi]: !c[pi] }));
-
-  const updateActivity = (pi: number, ai: number, field: string, value: string) => {
-    onUpdate(phases.map((p, pIdx) => ({
-      ...p,
-      activities: p.activities.map((a, aIdx) => (pIdx === pi && aIdx === ai ? { ...a, [field]: value } : a)),
-    })));
-  };
-
-  const allActs = phases.flatMap(p => p.activities);
-  const totalEffort = allActs.reduce((s, a) => s + parseFloat(a.effort || '0'), 0);
-  const totalDone = allActs.filter(a => a.status === 'Completed').length;
-  const totalActs = allActs.length;
-
-  const cellInput = 'w-full bg-transparent border border-transparent outline-none focus:bg-blue-50 focus:border-blue-200 hover:bg-slate-50 rounded px-1.5 py-0.5 text-xs text-slate-600 transition-colors';
-
-  return (
-    <div className="space-y-4">
-      {/* Summary */}
-      <div className="flex flex-wrap gap-6 text-sm text-slate-600 bg-slate-50 rounded-lg px-4 py-3 border border-slate-200">
-        <span>Total effort: <strong className="text-slate-800">{totalEffort} days</strong></span>
-        <span>Activities: <strong className="text-slate-800">{totalDone}/{totalActs} completed</strong></span>
-        <div className="flex-1 flex items-center gap-2 min-w-[120px]">
-          <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-            <div
-              className={cn('h-full rounded-full transition-all', totalDone === totalActs && totalActs > 0 ? 'bg-emerald-500' : 'bg-indigo-500')}
-              style={{ width: `${totalActs > 0 ? (totalDone / totalActs) * 100 : 0}%` }}
-            />
-          </div>
-          <span className="text-xs text-slate-400 w-8 text-right">{totalActs > 0 ? Math.round((totalDone / totalActs) * 100) : 0}%</span>
-        </div>
-      </div>
-
-      {/* Phases */}
-      {phases.map((phase, pi) => {
-        const phaseEffort = phase.activities.reduce((s, a) => s + parseFloat(a.effort || '0'), 0);
-        const phaseDone = phase.activities.filter(a => a.status === 'Completed').length;
-        const isCollapsed = !!collapsed[pi];
-
-        return (
-          <div key={pi} className="border border-slate-200 rounded-xl overflow-hidden">
-            <button
-              onClick={() => togglePhase(pi)}
-              className="w-full flex items-center justify-between px-4 py-3 bg-slate-50 hover:bg-slate-100 transition-colors text-left"
-            >
-              <div className="flex items-center gap-3">
-                {isCollapsed
-                  ? <ChevronRight className="w-4 h-4 text-slate-400 flex-shrink-0" />
-                  : <ChevronDown className="w-4 h-4 text-slate-400 flex-shrink-0" />}
-                <span className="text-sm font-semibold text-slate-700">{phase.name}</span>
-                <span className="text-xs text-slate-400 hidden sm:inline">{phaseDone}/{phase.activities.length} done · {phaseEffort} days</span>
-              </div>
-              <div className="flex gap-1.5 flex-shrink-0">
-                {[...new Set(phase.activities.map(a => a.status))].map(s => (
-                  <span key={s} className={cn('text-xs px-2 py-0.5 rounded-full hidden sm:inline', ACTIVITY_STATUS_STYLE[s] || 'bg-gray-100 text-gray-500')}>{s}</span>
-                ))}
-              </div>
-            </button>
-
-            {!isCollapsed && (
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs border-collapse">
-                  <thead>
-                    <tr className="border-t border-slate-200 bg-white">
-                      <th className="text-left py-2 px-3 font-semibold text-slate-500 w-10">#</th>
-                      <th className="text-left py-2 px-3 font-semibold text-slate-500 w-44">Activity</th>
-                      <th className="text-left py-2 px-3 font-semibold text-slate-500">Deliverable / description</th>
-                      <th className="text-left py-2 px-3 font-semibold text-slate-500 w-28">Owner</th>
-                      <th className="text-center py-2 px-3 font-semibold text-slate-500 w-20">Effort (days)</th>
-                      <th className="text-left py-2 px-3 font-semibold text-slate-500 w-24">Start date</th>
-                      <th className="text-left py-2 px-3 font-semibold text-slate-500 w-24">End date</th>
-                      <th className="text-left py-2 px-3 font-semibold text-slate-500 w-28">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {phase.activities.map((act, ai) => (
-                      <tr key={ai} className="border-t border-slate-100 hover:bg-blue-50/20">
-                        <td className="py-2 px-3 text-slate-400 font-mono">{act.num}</td>
-                        <td className="py-1.5 px-2 text-slate-700">{act.activity}</td>
-                        <td className="py-1.5 px-2">
-                          <input value={act.deliverable} onChange={e => updateActivity(pi, ai, 'deliverable', e.target.value)} className={cellInput} />
-                        </td>
-                        <td className="py-1.5 px-2">
-                          <input value={act.owner} onChange={e => updateActivity(pi, ai, 'owner', e.target.value)} className={cellInput} />
-                        </td>
-                        <td className="py-1.5 px-2 text-center">
-                          <input value={act.effort} onChange={e => updateActivity(pi, ai, 'effort', e.target.value)} className={cn(cellInput, 'text-center w-14 mx-auto block')} />
-                        </td>
-                        <td className="py-1.5 px-2">
-                          <input value={act.startDate} onChange={e => updateActivity(pi, ai, 'startDate', e.target.value)} placeholder="DD-MMM-YY" className={cellInput} />
-                        </td>
-                        <td className="py-1.5 px-2">
-                          <input value={act.endDate} onChange={e => updateActivity(pi, ai, 'endDate', e.target.value)} placeholder="DD-MMM-YY" className={cellInput} />
-                        </td>
-                        <td className="py-1.5 px-2">
-                          <select
-                            value={act.status}
-                            onChange={e => updateActivity(pi, ai, 'status', e.target.value)}
-                            className={cn('text-xs px-2 py-1 rounded-lg cursor-pointer font-medium w-full outline-none border border-transparent focus:border-indigo-300', ACTIVITY_STATUS_STYLE[act.status] || 'bg-gray-100 text-gray-500')}
-                          >
-                            {ACTIVITY_STATUSES.map(s => <option key={s}>{s}</option>)}
-                          </select>
-                        </td>
-                      </tr>
-                    ))}
-                    <tr className="border-t border-slate-200 bg-slate-50">
-                      <td colSpan={4} className="py-2 px-3 text-xs font-semibold text-slate-500 text-right">Phase total:</td>
-                      <td className="py-2 px-3 text-center text-xs font-bold text-slate-700">{phaseEffort}</td>
-                      <td colSpan={3} />
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        );
-      })}
-
-      <div className="flex justify-end pt-2">
-        <div className="bg-indigo-50 border border-indigo-200 rounded-xl px-6 py-3 text-sm">
-          <span className="text-indigo-600 font-semibold">Total engagement effort: </span>
-          <span className="text-indigo-900 font-bold">{totalEffort} days</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Sign-off Tab ──────────────────────────────────────────────────────────────
-
-function SignoffTab({ signoffs, onUpdate }: { signoffs: SignoffSection[]; onUpdate: (s: SignoffSection[]) => void }) {
-  const updateRow = (si: number, ri: number, field: string, value: string) => {
-    onUpdate(signoffs.map((section, sIdx) => ({
-      ...section,
-      rows: section.rows.map((row, rIdx) => (sIdx === si && rIdx === ri ? { ...row, [field]: value } : row)),
-    })));
-  };
-
-  const allRows = signoffs.flatMap(s => s.rows);
-  const signedCount = allRows.filter(r => r.confirmation.trim()).length;
-  const totalCount = allRows.length;
-
-  return (
-    <div className="space-y-6">
-      <p className="text-xs text-slate-500">
-        <span className={cn('font-semibold', signedCount === totalCount ? 'text-emerald-600' : 'text-slate-700')}>
-          {signedCount} of {totalCount}
-        </span> sign-offs recorded. All sign-offs must be completed before engagement close.
-      </p>
-
-      {signoffs.map((section, si) => (
-        <div key={si}>
-          <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3 pb-2 border-b border-gray-100">
-            {section.section}
-          </h3>
-          <div className="border border-slate-200 rounded-xl overflow-hidden">
-            <table className="w-full text-xs border-collapse">
-              <thead>
-                <tr className="bg-slate-50">
-                  <th className="text-left py-2.5 px-4 font-semibold text-slate-600 border-b border-slate-200">Sign-off item</th>
-                  <th className="text-left py-2.5 px-4 font-semibold text-slate-600 border-b border-slate-200 w-36">Signed by (role)</th>
-                  <th className="text-left py-2.5 px-4 font-semibold text-slate-600 border-b border-slate-200">Signature / confirmation</th>
-                  <th className="text-left py-2.5 px-4 font-semibold text-slate-600 border-b border-slate-200 w-28">Date</th>
-                </tr>
-              </thead>
-              <tbody>
-                {section.rows.map((row, ri) => (
-                  <tr key={ri} className={cn('border-b border-slate-100 last:border-0 transition-colors', row.confirmation.trim() ? 'bg-emerald-50/40' : '')}>
-                    <td className="py-2.5 px-4 text-slate-700">{row.item}</td>
-                    <td className="py-2.5 px-4 text-slate-500">{row.role}</td>
-                    <td className="py-1.5 px-3">
-                      <input
-                        value={row.confirmation}
-                        onChange={e => updateRow(si, ri, 'confirmation', e.target.value)}
-                        placeholder="Enter name or confirmation…"
-                        className="w-full bg-transparent border border-transparent outline-none focus:bg-white focus:border-indigo-300 hover:bg-white hover:border-gray-200 rounded px-2 py-1 text-slate-600 transition-colors"
-                      />
-                    </td>
-                    <td className="py-1.5 px-3">
-                      <input
-                        value={row.date}
-                        onChange={e => updateRow(si, ri, 'date', e.target.value)}
-                        placeholder="DD-MMM-YYYY"
-                        className="w-full bg-transparent border border-transparent outline-none focus:bg-white focus:border-indigo-300 hover:bg-white hover:border-gray-200 rounded px-2 py-1 text-slate-500 transition-colors"
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 // ── Detail view ───────────────────────────────────────────────────────────────
 
-function PSDetailView({ eng, onUpdate, onBack, onSave, saved, canEdit, onDelete }: {
+function PSDetailView({ eng, onUpdate, onBack, onSave, saved, hasUnsaved, canEdit, onDelete }: {
   eng: PSEngagement;
   onUpdate: (field: string, value: any) => void;
   onBack: () => void;
   onSave: () => void;
   saved: boolean;
+  hasUnsaved: boolean;
   canEdit: boolean;
   onDelete: () => void;
 }) {
-  const [activeTab, setActiveTab] = useState<'sow' | 'scope' | 'signoff'>('sow');
-
-  const totalActs = eng.phases.reduce((s, p) => s + p.activities.length, 0);
-  const doneActs = eng.phases.reduce((s, p) => s + p.activities.filter(a => a.status === 'Completed').length, 0);
-  const signedCount = eng.signoffs.flatMap(s => s.rows).filter(r => r.confirmation.trim()).length;
-  const totalSignoffs = eng.signoffs.flatMap(s => s.rows).length;
+  const [activeTab, setActiveTab] = useState<'sow'>('sow');
 
   const tabs = [
     { key: 'sow' as const, label: 'Statement of Work', icon: <FileText className="w-4 h-4" /> },
-    { key: 'scope' as const, label: 'Scope of Work', icon: <Layers className="w-4 h-4" />, badge: `${doneActs}/${totalActs}` },
-    { key: 'signoff' as const, label: 'Sign-off & Approvals', icon: <ClipboardCheck className="w-4 h-4" />, badge: `${signedCount}/${totalSignoffs}` },
   ];
 
   return (
     <div className="space-y-4 p-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
-          <button onClick={onBack} className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700 transition-colors">
+          <button
+            onClick={() => {
+              if (hasUnsaved && !confirm('You have unsaved changes. Leave without saving?')) return;
+              onBack();
+            }}
+            className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700 transition-colors"
+          >
             <ChevronLeft className="w-4 h-4" />
             All Engagements
           </button>
           <span className="text-slate-300">|</span>
           <div>
             <h1 className="text-xl font-bold text-slate-800">{eng.clientName}</h1>
-            <p className="text-xs text-slate-400 font-mono mt-0.5">{eng.sowRefId} · {eng.engagementType || 'Professional Services'}</p>
+            <p className="text-xs text-slate-400 font-mono mt-0.5">{eng.sowRefId} · Professional Services</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <span className={cn('text-xs px-3 py-1 rounded-full font-medium', SOW_STATUS_STYLE[eng.sowStatus] || 'bg-gray-100 text-gray-600')}>
-            {eng.sowStatus}
-          </span>
-          {eng.priority && (
-            <span className={cn('text-xs px-3 py-1 rounded-full font-medium', PRIORITY_STYLE[eng.priority] || 'bg-gray-100 text-gray-600')}>
-              {eng.priority}
-            </span>
-          )}
           {canEdit ? (
             <>
+              {hasUnsaved && !saved && (
+                <span className="text-xs text-amber-600 font-medium">Unsaved changes</span>
+              )}
               <button
                 onClick={() => { if (confirm(`Delete engagement for "${eng.clientName}"? This cannot be undone.`)) onDelete(); }}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-red-600 border border-red-200 hover:bg-red-50 transition-all"
@@ -804,7 +596,7 @@ function PSDetailView({ eng, onUpdate, onBack, onSave, saved, canEdit, onDelete 
                 onClick={onSave}
                 className={cn(
                   'flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-medium transition-all',
-                  saved ? 'bg-emerald-500 text-white' : 'bg-indigo-600 text-white hover:bg-indigo-700'
+                  saved ? 'bg-emerald-500 text-white' : hasUnsaved ? 'bg-indigo-700 text-white ring-2 ring-indigo-300 hover:bg-indigo-800' : 'bg-indigo-600 text-white hover:bg-indigo-700'
                 )}
               >
                 {saved ? '✓ Saved' : 'Save Changes'}
@@ -831,18 +623,11 @@ function PSDetailView({ eng, onUpdate, onBack, onSave, saved, canEdit, onDelete 
             >
               {tab.icon}
               {tab.label}
-              {tab.badge && (
-                <span className={cn('text-xs px-1.5 py-0.5 rounded-full font-semibold', activeTab === tab.key ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-500')}>
-                  {tab.badge}
-                </span>
-              )}
             </button>
           ))}
         </div>
         <div className="p-6">
           {activeTab === 'sow' && <SowTab eng={eng} onChange={onUpdate} />}
-          {activeTab === 'scope' && <ScopeTab phases={eng.phases} onUpdate={phases => onUpdate('phases', phases)} />}
-          {activeTab === 'signoff' && <SignoffTab signoffs={eng.signoffs} onUpdate={signoffs => onUpdate('signoffs', signoffs)} />}
         </div>
       </div>
     </div>
@@ -851,80 +636,126 @@ function PSDetailView({ eng, onUpdate, onBack, onSave, saved, canEdit, onDelete 
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 
-const LS_KEY = 'pmo_ps_v1';
-
-function loadEngagements(): PSEngagement[] {
-  try {
-    const raw = typeof window !== 'undefined' ? localStorage.getItem(LS_KEY) : null;
-    return raw ? JSON.parse(raw) : [];
-  } catch { return []; }
-}
-
 export default function ProfessionalServicesPage() {
   const { user } = useAuth();
+  const { showToast } = useToast();
   const isAdmin = user?.role === 'ADMIN';
+  const isViewer = user?.role === 'VIEWER';
   const canEditEngagement = (eng: PSEngagement) =>
-    isAdmin || (!!eng.createdBy && eng.createdBy === user?.name);
+    !isViewer && (isAdmin || (!!eng.createdBy && eng.createdBy === user?.name));
 
-  const [engagements, setEngagements] = useState<PSEngagement[]>(() => loadEngagements());
+  const queryClient = useQueryClient();
+  const { data: engagements = [], isLoading } = usePsEngagements();
+  const createMutation = useCreatePsEngagement();
+  const updateMutation = useUpdatePsEngagement();
+  const deleteMutation = useDeletePsEngagement();
+
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [localEdit, setLocalEdit] = useState<PSEngagement | null>(null);
   const [showNewModal, setShowNewModal] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [hasUnsaved, setHasUnsaved] = useState(false);
   const [searchFilter, setSearchFilter] = useState('');
   const [engTypeFilter, setEngTypeFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [priorityFilter, setPriorityFilter] = useState('');
   const [showFilters, setShowFilters] = useState(true);
+  const [listTab, setListTab] = useState<'active' | 'archive'>('active');
+  const [migrating, setMigrating] = useState(false);
 
-  const selected = engagements.find(e => e.id === selectedId) ?? null;
+  const localStorageCount = (() => {
+    try {
+      const raw = typeof window !== 'undefined' ? localStorage.getItem('pmo_ps_v1') : null;
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed.length : 0;
+    } catch { return 0; }
+  })();
+
+  const migrateFromLocalStorage = async () => {
+    setMigrating(true);
+    try {
+      const raw = localStorage.getItem('pmo_ps_v1');
+      const items: PSEngagement[] = raw ? JSON.parse(raw) : [];
+      for (const eng of items) {
+        await createMutation.mutateAsync(eng);
+      }
+      localStorage.removeItem('pmo_ps_v1');
+    } finally {
+      setMigrating(false);
+    }
+  };
+
+  const openEngagement = (id: string) => {
+    const eng = engagements.find(e => e.id === id);
+    setSelectedId(id);
+    setLocalEdit(eng ? { ...eng } : null);
+    setHasUnsaved(false);
+  };
 
   const filteredEngagements = engagements.filter(eng => {
     const s = searchFilter.toLowerCase();
     if (s && !eng.clientName.toLowerCase().includes(s) && !eng.sowRefId.toLowerCase().includes(s) && !eng.cfPsLead.toLowerCase().includes(s) && !eng.accountManager.toLowerCase().includes(s)) return false;
     if (engTypeFilter && eng.engagementType !== engTypeFilter) return false;
-    if (statusFilter && eng.sowStatus !== statusFilter) return false;
-    if (priorityFilter && eng.priority !== priorityFilter) return false;
     return true;
   });
 
-  const activeFilterCount = [searchFilter, engTypeFilter, statusFilter, priorityFilter].filter(Boolean).length;
-  const clearFilters = () => { setSearchFilter(''); setEngTypeFilter(''); setStatusFilter(''); setPriorityFilter(''); };
+  const isEngCompleted = (eng: PSEngagement) => {
+    const items = eng.lineItems || [];
+    return items.length > 0 && items.every((li: LineItem) => li.status === 'Completed');
+  };
+  const activeEngagements   = filteredEngagements.filter(eng => !isEngCompleted(eng));
+  const archivedEngagements = filteredEngagements.filter(eng =>  isEngCompleted(eng));
+  const displayEngagements  = listTab === 'archive' ? archivedEngagements : activeEngagements;
 
-  const addEngagement = (eng: PSEngagement) => {
-    const updated = [...engagements, eng];
-    setEngagements(updated);
-    localStorage.setItem(LS_KEY, JSON.stringify(updated));
+  const activeFilterCount = [searchFilter, engTypeFilter].filter(Boolean).length;
+  const clearFilters = () => { setSearchFilter(''); setEngTypeFilter(''); };
+
+  const addEngagement = async (eng: PSEngagement) => {
+    await createMutation.mutateAsync(eng);
+    queryClient.setQueryData<any[]>(['ps-engagements'], (old) =>
+      old ? [eng, ...old] : [eng]
+    );
+    setLocalEdit({ ...eng });
     setSelectedId(eng.id);
+    setHasUnsaved(false);
   };
 
   const updateEngagement = (field: string, value: any) => {
-    if (!selectedId) return;
-    setEngagements(prev => prev.map(e => e.id === selectedId ? { ...e, [field]: value } : e));
+    setLocalEdit(prev => prev ? { ...prev, [field]: value } : null);
+    setHasUnsaved(true);
   };
 
-  const handleSave = () => {
-    localStorage.setItem(LS_KEY, JSON.stringify(engagements));
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  const handleSave = async () => {
+    if (!localEdit) return;
+    try {
+      await updateMutation.mutateAsync({ id: localEdit.id, data: localEdit });
+      queryClient.setQueryData<any[]>(['ps-engagements'], (old) =>
+        old ? old.map(eng => eng.id === localEdit.id ? { ...localEdit } : eng) : old
+      );
+      setHasUnsaved(false);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (err: any) {
+      showToast('error', 'Save failed', err?.response?.data?.error || err?.message || 'Unknown error');
+    }
   };
 
-  const deleteEngagement = (id: string) => {
-    const updated = engagements.filter(e => e.id !== id);
-    setEngagements(updated);
-    localStorage.setItem(LS_KEY, JSON.stringify(updated));
+  const deleteEngagement = async (id: string) => {
+    await deleteMutation.mutateAsync(id);
     setSelectedId(null);
+    setLocalEdit(null);
+    setHasUnsaved(false);
   };
 
-  if (selected) {
+  if (selectedId && localEdit) {
     return (
       <PSDetailView
-        eng={selected}
+        eng={localEdit}
         onUpdate={updateEngagement}
-        onBack={() => setSelectedId(null)}
+        onBack={() => { setSelectedId(null); setLocalEdit(null); setHasUnsaved(false); }}
         onSave={handleSave}
         saved={saved}
-        canEdit={canEditEngagement(selected)}
-        onDelete={() => deleteEngagement(selected.id)}
+        hasUnsaved={hasUnsaved}
+        canEdit={canEditEngagement(localEdit)}
+        onDelete={() => deleteEngagement(localEdit.id)}
       />
     );
   }
@@ -936,16 +767,36 @@ export default function ProfessionalServicesPage() {
           <h1 className="text-xl font-bold text-slate-800">Professional Services</h1>
           <p className="text-sm text-slate-500 mt-0.5">SOW management, scope tracking, and sign-off register</p>
         </div>
-        <button
-          onClick={() => setShowNewModal(true)}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          New Engagement
-        </button>
+        {!isViewer && (
+          <button
+            onClick={() => setShowNewModal(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            New Engagement
+          </button>
+        )}
       </div>
 
-      {engagements.length === 0 ? (
+      {localStorageCount > 0 && (
+        <div className="flex items-center justify-between gap-4 bg-amber-50 border border-amber-200 rounded-xl px-5 py-3">
+          <p className="text-sm text-amber-800">
+            <span className="font-semibold">{localStorageCount} engagement{localStorageCount !== 1 ? 's' : ''} found in local browser storage</span> from before the database migration.
+            Click to import them so all users can see them.
+          </p>
+          <button
+            onClick={migrateFromLocalStorage}
+            disabled={migrating}
+            className="flex-shrink-0 px-4 py-1.5 rounded-lg bg-amber-600 text-white text-xs font-medium hover:bg-amber-700 disabled:opacity-50 transition-colors"
+          >
+            {migrating ? 'Importing…' : 'Import to database'}
+          </button>
+        </div>
+      )}
+
+      {isLoading ? (
+        <div className="flex items-center justify-center py-24 text-slate-400 text-sm">Loading engagements…</div>
+      ) : engagements.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-24 text-center">
           <div className="w-16 h-16 rounded-2xl bg-indigo-50 flex items-center justify-center mb-4">
             <Briefcase className="w-8 h-8 text-indigo-300" />
@@ -1017,44 +868,6 @@ export default function ProfessionalServicesPage() {
                       )}
                     </div>
                   </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">SOW Status</label>
-                    <div className="relative">
-                      <select
-                        value={statusFilter}
-                        onChange={e => setStatusFilter(e.target.value)}
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-400 bg-white appearance-none pr-8"
-                      >
-                        <option value="">All Statuses</option>
-                        {SOW_STATUSES.map(s => <option key={s}>{s}</option>)}
-                      </select>
-                      <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                      {statusFilter && (
-                        <button onClick={() => setStatusFilter('')} className="absolute right-7 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                          <X size={12} />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">Priority</label>
-                    <div className="relative">
-                      <select
-                        value={priorityFilter}
-                        onChange={e => setPriorityFilter(e.target.value)}
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-400 bg-white appearance-none pr-8"
-                      >
-                        <option value="">All Priorities</option>
-                        {PRIORITIES.map(p => <option key={p}>{p}</option>)}
-                      </select>
-                      <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                      {priorityFilter && (
-                        <button onClick={() => setPriorityFilter('')} className="absolute right-7 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                          <X size={12} />
-                        </button>
-                      )}
-                    </div>
-                  </div>
                 </div>
                 {activeFilterCount > 0 && (
                   <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-100">
@@ -1068,18 +881,6 @@ export default function ProfessionalServicesPage() {
                       <span className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
                         Type: {engTypeFilter}
                         <button onClick={() => setEngTypeFilter('')}><X size={10} /></button>
-                      </span>
-                    )}
-                    {statusFilter && (
-                      <span className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
-                        Status: {statusFilter}
-                        <button onClick={() => setStatusFilter('')}><X size={10} /></button>
-                      </span>
-                    )}
-                    {priorityFilter && (
-                      <span className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
-                        Priority: {priorityFilter}
-                        <button onClick={() => setPriorityFilter('')}><X size={10} /></button>
                       </span>
                     )}
                   </div>
@@ -1098,94 +899,137 @@ export default function ProfessionalServicesPage() {
             </div>
           ) : (
             <>
-              <p className="text-xs text-slate-500">
-                {filteredEngagements.length} engagement{filteredEngagements.length !== 1 ? 's' : ''}
-                {activeFilterCount > 0 ? ' matching filters' : ''}
-              </p>
-              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-slate-200 bg-slate-50">
-                      <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500">Client / SOW Ref</th>
-                      <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500">Engagement Type</th>
-                      <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500">PS Lead / AM</th>
-                      <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500">Dates</th>
-                      <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500">Priority</th>
-                      <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500">SOW Status</th>
-                      <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500">Progress</th>
-                      <th className="py-3 px-4 text-xs font-semibold text-slate-500"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredEngagements.map(eng => {
-                      const totalActs = eng.phases.reduce((s, p) => s + p.activities.length, 0);
-                      const doneActs = eng.phases.reduce((s, p) => s + p.activities.filter(a => a.status === 'Completed').length, 0);
-                      const pct = totalActs > 0 ? Math.round((doneActs / totalActs) * 100) : 0;
-                      return (
-                        <tr
-                          key={eng.id}
-                          onClick={() => setSelectedId(eng.id)}
-                          className="border-b border-slate-100 last:border-0 hover:bg-indigo-50/30 cursor-pointer transition-colors"
-                        >
-                          <td className="py-3 px-4">
-                            <p className="text-sm font-semibold text-slate-800">{eng.clientName}</p>
-                            <p className="text-xs text-slate-400 font-mono mt-0.5">{eng.sowRefId}</p>
-                          </td>
-                          <td className="py-3 px-4">
-                            <p className="text-sm text-slate-600">{eng.engagementType || '—'}</p>
-                            <div className="flex flex-wrap gap-1 mt-1">
-                              {eng.workloads.map(w => (
-                                <span key={w} className="text-xs px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600 font-medium">{w}</span>
-                              ))}
-                            </div>
-                          </td>
-                          <td className="py-3 px-4">
-                            {eng.cfPsLead && <p className="text-sm text-slate-600">{eng.cfPsLead}</p>}
-                            {eng.accountManager && <p className="text-xs text-slate-400 mt-0.5">{eng.accountManager}</p>}
-                          </td>
-                          <td className="py-3 px-4 text-sm text-slate-600 whitespace-nowrap">
-                            {eng.startDate || '—'} → {eng.endDate || '—'}
-                          </td>
-                          <td className="py-3 px-4">
-                            {eng.priority && (
-                              <span className={cn('text-xs px-2 py-0.5 rounded-full font-medium', PRIORITY_STYLE[eng.priority] || 'bg-gray-100 text-gray-500')}>
-                                {eng.priority}
-                              </span>
-                            )}
-                          </td>
-                          <td className="py-3 px-4">
-                            <span className={cn('text-xs px-2 py-0.5 rounded-full font-medium', SOW_STATUS_STYLE[eng.sowStatus] || 'bg-gray-100 text-gray-600')}>
-                              {eng.sowStatus}
-                            </span>
-                          </td>
-                          <td className="py-3 px-4">
-                            <div className="flex items-center gap-2 min-w-[80px]">
-                              <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                                <div
-                                  className={cn('h-full rounded-full', pct === 100 ? 'bg-emerald-500' : 'bg-indigo-500')}
-                                  style={{ width: `${pct}%` }}
-                                />
-                              </div>
-                              <span className="text-xs text-slate-400 w-8">{pct}%</span>
-                            </div>
-                          </td>
-                          <td className="py-3 px-4" onClick={e => e.stopPropagation()}>
-                            {canEditEngagement(eng) && (
-                              <button
-                                onClick={() => { if (confirm(`Delete engagement for "${eng.clientName}"? This cannot be undone.`)) deleteEngagement(eng.id); }}
-                                className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                                title="Delete engagement"
-                              >
-                                <Trash2 size={14} />
-                              </button>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+              {/* ── Tab bar ────────────────────────────────────────────────── */}
+              <div className="flex gap-1 border-b border-slate-200">
+                {([
+                  { key: 'active'  as const, label: 'Active',          count: activeEngagements.length   },
+                  { key: 'archive' as const, label: 'History Archive',  count: archivedEngagements.length },
+                ]).map(tab => (
+                  <button
+                    key={tab.key}
+                    onClick={() => setListTab(tab.key)}
+                    className={cn(
+                      'flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition -mb-px whitespace-nowrap',
+                      listTab === tab.key
+                        ? 'border-indigo-600 text-indigo-600'
+                        : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+                    )}
+                  >
+                    {tab.label}
+                    <span className={cn(
+                      'text-xs px-1.5 py-0.5 rounded-full font-semibold',
+                      listTab === tab.key ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-500'
+                    )}>
+                      {tab.count}
+                    </span>
+                  </button>
+                ))}
               </div>
+
+              {/* ── Tab content ────────────────────────────────────────────── */}
+              {displayEngagements.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <Briefcase className="w-10 h-10 text-slate-200 mb-3" />
+                  <p className="text-sm font-medium text-slate-500">
+                    {listTab === 'archive'
+                      ? 'No completed engagements — engagements move here once all line items are marked Completed'
+                      : 'No active engagements matching filters'}
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <p className="text-xs text-slate-500">
+                    {displayEngagements.length} engagement{displayEngagements.length !== 1 ? 's' : ''}
+                    {activeFilterCount > 0 ? ' matching filters' : ''}
+                  </p>
+                  <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b border-slate-200 bg-slate-50">
+                          <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500">Client / SOW Ref</th>
+                          <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500">Line Items</th>
+                          <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500">Progress</th>
+                          <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500">PS Lead / AM</th>
+                          <th className="text-left py-3 px-4 text-xs font-semibold text-slate-500">Engagement Dates</th>
+                          <th className="py-3 px-4 text-xs font-semibold text-slate-500"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {displayEngagements.map(eng => {
+                          const lineItems = eng.lineItems || [];
+                          const allCompleted = lineItems.length > 0 && lineItems.every((item: LineItem) => item.status === 'Completed');
+                          const progress = lineItems.length === 0 ? null : allCompleted ? 'Completed' : 'In Progress';
+
+                          return (
+                            <tr
+                              key={eng.id}
+                              onClick={() => openEngagement(eng.id)}
+                              className={cn(
+                                'border-b border-slate-100 last:border-0 cursor-pointer transition-colors',
+                                allCompleted ? 'hover:bg-emerald-50/40' : 'hover:bg-indigo-50/30'
+                              )}
+                            >
+                              <td className="py-3 px-4">
+                                <p className="text-sm font-semibold text-slate-800">{eng.clientName}</p>
+                                <p className="text-xs text-slate-400 font-mono mt-0.5">{eng.sowRefId}</p>
+                              </td>
+                              <td className="py-3 px-4">
+                                {lineItems.length > 0 ? (
+                                  <div className="flex flex-wrap gap-1">
+                                    {lineItems.map((item: LineItem) => (
+                                      <span key={item.id} className={cn(
+                                        'text-xs px-2 py-0.5 rounded-full font-medium border',
+                                        item.status === 'Completed'
+                                          ? 'bg-emerald-50 text-emerald-600 border-emerald-100'
+                                          : 'bg-indigo-50 text-indigo-600 border-indigo-100'
+                                      )}>
+                                        {item.name || '(unnamed)'}
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <span className="text-xs text-slate-400">—</span>
+                                )}
+                              </td>
+                              <td className="py-3 px-4">
+                                {progress ? (
+                                  <span className={cn(
+                                    'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold',
+                                    allCompleted ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'
+                                  )}>
+                                    {progress}
+                                  </span>
+                                ) : (
+                                  <span className="text-xs text-slate-400">—</span>
+                                )}
+                              </td>
+                              <td className="py-3 px-4">
+                                {eng.cfPsLead && <p className="text-sm text-slate-600">{eng.cfPsLead}</p>}
+                                {eng.accountManager && <p className="text-xs text-slate-400 mt-0.5">{eng.accountManager}</p>}
+                              </td>
+                              <td className="py-3 px-4">
+                                <p className="text-xs text-slate-400">Start <span className="text-slate-600 font-medium">{fmtDate(eng.startDate)}</span></p>
+                                <p className="text-xs text-slate-400 mt-0.5">End <span className="text-slate-600 font-medium">{fmtDate(eng.endDate)}</span></p>
+                              </td>
+                              <td className="py-3 px-4" onClick={e => e.stopPropagation()}>
+                                {canEditEngagement(eng) && (
+                                  <button
+                                    onClick={() => { if (confirm(`Delete engagement for "${eng.clientName}"? This cannot be undone.`)) deleteEngagement(eng.id); }}
+                                    className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                                    title="Delete engagement"
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
             </>
           )}
         </div>

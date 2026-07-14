@@ -7,92 +7,78 @@ import {
   ArrowLeft, Save, Loader2, CheckCircle, AlertCircle, Eye,
   FileDown, Download, ChevronDown, ChevronUp, Bold, Italic, Underline,
   List, ListOrdered, AlignLeft, AlignCenter, AlignRight, Link2, Image,
-  Table, Undo, Redo, Edit, MoreVertical,
+  Table, Undo, Redo,
 } from 'lucide-react';
 import { exportToPDF, exportToWord } from '@/utils/exportCaseStudy';
 import { useCaseStudyTemplate } from '@/hooks/useCaseStudyTemplate';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
+function formatRelativeTime(from: Date, now: Date): string {
+  const seconds = Math.max(0, Math.round((now.getTime() - from.getTime()) / 1000));
+  if (seconds < 5) return 'just now';
+  if (seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  return `${hours}h ago`;
+}
+
 // ── Legacy fallback sections (used only if hook returns nothing) ─────────────
 const FALLBACK_SECTIONS = [
   {
-    id: 'executive_summary',
-    title: 'Executive Summary',
-    description: 'Brief overview of the project and its outcomes',
-    placeholder: 'Provide a 2-3 paragraph summary of the project including the key objectives, approach and outcomes. Highlight the value delivered to the client.',
+    id: 'project_snapshot',
+    title: 'Project Snapshot',
+    description: 'One line per field — the quick facts of the migration',
+    placeholder: 'Industry:\nMigration (Source → Target):\nData Volume / Users:\nOutcome in one line:',
     required: true,
-    icon: '📄',
-  },
-  {
-    id: 'client_background',
-    title: 'Client Background',
-    description: 'Information about the client and their business',
-    placeholder: 'Describe the client\'s business, industry, size, and the context behind their need for this project.',
-    required: true,
-    icon: '👤',
+    icon: '🔵',
   },
   {
     id: 'challenge',
     title: 'Challenge',
-    description: 'The problems or challenges the client faced',
-    placeholder: 'Describe the specific challenges or pain points the client was experiencing before this project.',
+    description: 'Why the customer migrated — 2-3 bullets',
+    placeholder: '• Business pain (why migrate):\n• Technical blockers / constraints:\n• Success criteria:',
     required: true,
     icon: '⚠️',
   },
   {
     id: 'solution',
-    title: 'Solution',
-    description: 'The solution provided and how it addressed the challenges',
-    placeholder: 'Explain the solution that was implemented, why it was chosen, and how it addressed the client\'s challenges.',
+    title: 'Solution & Approach',
+    description: 'What CloudFuze did — 4-5 bullets max',
+    placeholder: '• Approach (Big Bang / Phased / Hybrid):\n• Workloads migrated:\n• Special handling (permissions, metadata, delta):',
     required: true,
     icon: '💡',
   },
   {
-    id: 'implementation_process',
-    title: 'Implementation Process',
-    description: 'Steps and approach followed during implementation',
-    placeholder: 'Describe the step-by-step process used to implement the solution, including key phases and milestones.',
-    required: false,
-    icon: '⚙️',
+    id: 'issues_resolutions',
+    title: 'Issues & Resolutions',
+    description: 'One block per issue — each block is a ready-made KB article',
+    placeholder: 'Issue 1:\n- Issue / error message:\n- Root cause:\n- Fix / workaround (steps):\n- How to prevent or detect early:',
+    required: true,
+    icon: '🛠️',
   },
   {
-    id: 'results_benefits',
-    title: 'Results & Benefits',
-    description: 'Key results achieved and benefits delivered to the client',
-    placeholder: 'Quantify the results achieved and describe the tangible benefits delivered to the client.',
+    id: 'results',
+    title: 'Results & Metrics',
+    description: 'Numbers only — no narrative',
+    placeholder: '• Data migrated & success rate:\n• Downtime:\n• Delivered on time? (delay + reason if not):\n• CSAT score:',
     required: true,
     icon: '📊',
   },
   {
-    id: 'what_went_well',
-    title: 'What Went Well',
-    description: 'Highlights, wins and positive outcomes from the project',
-    placeholder: 'List the things that went smoothly, standout achievements, team wins, client praise, and any moments you would repeat on future projects.',
+    id: 'lessons_kb',
+    title: 'Lessons & KB Takeaways',
+    description: 'Reusable knowledge for the next similar migration',
+    placeholder: '• Do again / avoid next time:\n• Pre-migration checks for similar projects:\n• Reusable steps, settings or scripts:',
     required: true,
-    icon: '✅',
-  },
-  {
-    id: 'issues_challenges',
-    title: 'Issues & Challenges',
-    description: 'Problems, obstacles and difficult moments encountered during the project',
-    placeholder: 'Describe the issues faced during the project, how they were handled, what impact they had, and what could have been done differently to avoid them.',
-    required: true,
-    icon: '⚠️',
-  },
-  {
-    id: 'lessons_learned',
-    title: 'Lessons Learned',
-    description: 'Key learnings from the project',
-    placeholder: 'Share insights, lessons learned, and best practices discovered during this project.',
-    required: false,
     icon: '📖',
   },
   {
     id: 'client_testimonial',
     title: 'Client Testimonial',
-    description: 'Quote or feedback from the client',
-    placeholder: '"[Insert client testimonial or feedback quote here]"\n\n— Client Name, Title, Company',
+    description: 'Optional quote or feedback from the client',
+    placeholder: '"[Client quote]"\n\n— Client Name, Title, Company',
     required: false,
     icon: '💬',
   },
@@ -312,6 +298,13 @@ export default function CaseStudyEditorPage() {
   const [isExporting, setIsExporting] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [saveError, setSaveError] = useState(false);
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    if (!lastSaved) return;
+    const interval = setInterval(() => setNow(new Date()), 5000);
+    return () => clearInterval(interval);
+  }, [lastSaved]);
 
   useEffect(() => {
     fetchCaseStudy();
@@ -385,7 +378,9 @@ export default function CaseStudyEditorPage() {
       const data = await response.json();
       if (data.success) {
         setCaseStudy(data.data);
-        setLastSaved(new Date());
+        const savedAt = new Date();
+        setLastSaved(savedAt);
+        setNow(savedAt);
       } else {
         setSaveError(true);
       }
@@ -488,7 +483,7 @@ export default function CaseStudyEditorPage() {
               ) : lastSaved ? (
                 <span className="text-xs text-green-600 flex items-center gap-1">
                   <span className="w-2 h-2 rounded-full bg-green-500 inline-block" />
-                  Last saved: a few seconds ago
+                  Last saved {formatRelativeTime(lastSaved, now)}
                 </span>
               ) : null}
             </div>
@@ -555,13 +550,7 @@ export default function CaseStudyEditorPage() {
 
           {/* Case Study Details */}
           <div className="bg-white rounded-xl border border-gray-200 p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-gray-900">Case Study Details</h3>
-              <button className="text-xs text-primary-600 hover:text-primary-700 flex items-center gap-1">
-                <Edit size={12} />
-                Edit
-              </button>
-            </div>
+            <h3 className="text-sm font-semibold text-gray-900 mb-3">Case Study Details</h3>
             <div className="space-y-2.5 text-sm">
               <div>
                 <span className="text-xs text-gray-500 block">Customer</span>
