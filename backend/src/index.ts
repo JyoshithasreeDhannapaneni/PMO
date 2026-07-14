@@ -51,6 +51,7 @@ import apiKeyRoutes from './routes/apiKeyRoutes';
 import clientReviewRoutes from './routes/clientReviewRoutes';
 import platformReviewRoutes from './routes/platformReviewRoutes';
 import dealDeskRoutes from './routes/dealDeskRoutes';
+import ticketingRoutes from './routes/ticketingRoutes';
 import { logger } from './utils/logger';
 import { authService } from './services/authService';
 import { templateService } from './services/templateService';
@@ -119,6 +120,7 @@ app.use('/api/hubspot', hubspotRoutes);
 app.use('/api/ps-engagements', psEngagementsRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/deal-desk', dealDeskRoutes);
+app.use('/api/ticketing', ticketingRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

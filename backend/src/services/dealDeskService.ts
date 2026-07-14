@@ -57,6 +57,19 @@ function parseDateString(s: string): string | null {
   return null;
 }
 
+function parseSenderFromField(fromField: string): { email: string | null; name: string | null } {
+  const match = fromField.match(/^(.+?)\s*<([^>]+)>$/);
+  if (match) return { name: match[1].trim() || null, email: match[2].trim() || null };
+  const trimmed = fromField.trim();
+  if (trimmed.includes('@')) return { name: null, email: trimmed };
+  return { name: null, email: null };
+}
+
+function extractMessageIdFromHeaders(headers: string): string | null {
+  const match = headers.match(/^Message-ID:\s*<([^>]+)>/im);
+  return match ? match[1] : null;
+}
+
 function stripHtml(html: string): string {
   return html
     .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
@@ -311,11 +324,136 @@ async function matchDeal(customerName: string | null, sowRef: string | null): Pr
 }
 
 export const dealDeskService = {
+  isSendGridMode(): boolean {
+    return process.env.SENDGRID_WEBHOOK_ENABLED === 'true';
+  },
+
   isConfigured(): boolean {
+    if (this.isSendGridMode()) return true;
     const t = process.env.MS_GRAPH_TENANT_ID || '';
     const c = process.env.MS_GRAPH_CLIENT_ID || '';
     const s = process.env.MS_GRAPH_CLIENT_SECRET || '';
     return !!(t && c && s && !t.startsWith('PASTE_') && !c.startsWith('PASTE_') && !s.startsWith('PASTE_'));
+  },
+
+  async processSendGridInbound(payload: {
+    from: string;
+    subject: string;
+    text: string;
+    html: string;
+    headers: string;
+    attachmentCount: number;
+    files: Express.Multer.File[];
+  }): Promise<{ processed: number; errors: number }> {
+    await ensureTables();
+    const { from, subject, text, html, headers, attachmentCount, files } = payload;
+    const { name: senderName, email: senderEmail } = parseSenderFromField(from);
+    const messageId = extractMessageIdFromHeaders(headers)
+      || `sg-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+    const existing = await query(
+      `SELECT id, (SELECT COUNT(*) FROM deal_desk_deals WHERE email_id = deal_desk_emails.id) AS deal_count
+       FROM deal_desk_emails WHERE message_id = $1`,
+      [messageId]
+    );
+
+    let emailDbId: string;
+    if (existing.rows.length > 0) {
+      const dealCount = parseInt(existing.rows[0].deal_count, 10);
+      if (dealCount > 0) {
+        logger.info(`Deal Desk [SendGrid]: duplicate message_id=${messageId} — skipping`);
+        return { processed: 0, errors: 0 };
+      }
+      emailDbId = existing.rows[0].id;
+    } else {
+      const bodyText = text || (html ? stripHtml(html) : '');
+      const insert = await query(
+        `INSERT INTO deal_desk_emails
+          (message_id, subject, sender_email, sender_name, received_at, has_attachments, processed, body_text)
+         VALUES ($1,$2,$3,$4,NOW(),$5,false,$6) RETURNING id`,
+        [messageId, subject || '(no subject)', senderEmail, senderName, attachmentCount > 0, bodyText.substring(0, 10000)]
+      );
+      emailDbId = insert.rows[0].id;
+    }
+
+    const bodyText = text || (html ? stripHtml(html) : '');
+    let processed = 0;
+    let errors = 0;
+    let emailHasAnyDeal = false;
+
+    for (const file of files) {
+      const name = file.originalname || 'attachment';
+      const mime = file.mimetype || '';
+      const nameLower = name.toLowerCase();
+      const isPdf = mime.includes('pdf') || nameLower.endsWith('.pdf');
+      const isDocx = mime.includes('docx') || mime.includes('word') || nameLower.endsWith('.docx');
+      if (!isPdf && !isDocx) continue;
+
+      try {
+        let extractedText = await extractTextFromBuffer(file.buffer, mime);
+        if (extractedText.trim().length < 20 && bodyText.trim().length > 20) {
+          extractedText = `[PDF encrypted or image-based — fields extracted from email body]\n\n${bodyText}`;
+        }
+
+        const fields: DealFields = extractedText.trim().length >= 20
+          ? extractDealFields(extractedText, subject || '')
+          : { customerName: null, sowRef: null, dealValue: null, dealStatus: 'Signed', signerName: null, signedAt: null, lineItems: [] };
+
+        const match = await matchDeal(fields.customerName, fields.sowRef);
+        await execute(
+          `INSERT INTO deal_desk_deals
+            (email_id, source_filename, customer_name, sow_ref, deal_value, deal_status,
+             signer_name, signed_at, line_items, matched_ps_id, matched_project_id,
+             match_type, match_confidence, extracted_text)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+          [
+            emailDbId, name,
+            fields.customerName, fields.sowRef, fields.dealValue, fields.dealStatus,
+            fields.signerName, fields.signedAt, JSON.stringify(fields.lineItems),
+            match.matchedPsId, match.matchedProjectId, match.matchType, match.matchConfidence,
+            extractedText.substring(0, 8000),
+          ]
+        );
+        processed++;
+        emailHasAnyDeal = true;
+        logger.info(`Deal Desk [SendGrid]: processed attachment "${name}" — customer="${fields.customerName}"`);
+      } catch (attErr: any) {
+        logger.error(`Deal Desk [SendGrid]: attachment error for ${name}: ${attErr?.message}`);
+        errors++;
+      }
+    }
+
+    if (!emailHasAnyDeal) {
+      const src = bodyText.trim().length > 20 ? bodyText : subject || '';
+      const bodyFields = src.length > 10
+        ? extractDealFields(src, subject || '')
+        : { customerName: null, sowRef: null, dealValue: null, dealStatus: 'Signed', signerName: null, signedAt: null, lineItems: [] };
+      const bodyMatch = (bodyFields.customerName || bodyFields.sowRef)
+        ? await matchDeal(bodyFields.customerName, bodyFields.sowRef)
+        : { matchedPsId: null, matchedProjectId: null, matchType: 'none', matchConfidence: 'none' };
+
+      await execute(
+        `INSERT INTO deal_desk_deals
+          (email_id, source_filename, customer_name, sow_ref, deal_value, deal_status,
+           signer_name, signed_at, line_items, extracted_text, match_type, match_confidence,
+           matched_ps_id, matched_project_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+        [
+          emailDbId,
+          `(email body — ${attachmentCount} attachment(s))`,
+          bodyFields.customerName, bodyFields.sowRef, bodyFields.dealValue, bodyFields.dealStatus,
+          bodyFields.signerName, bodyFields.signedAt, JSON.stringify(bodyFields.lineItems),
+          `[Extracted from email body]\n\n${src}`.substring(0, 8000),
+          bodyMatch.matchType, bodyMatch.matchConfidence,
+          bodyMatch.matchedPsId, bodyMatch.matchedProjectId,
+        ]
+      );
+      processed++;
+    }
+
+    await execute(`UPDATE deal_desk_emails SET processed = true WHERE id = $1`, [emailDbId]);
+    logger.info(`Deal Desk [SendGrid]: done — processed=${processed} errors=${errors}`);
+    return { processed, errors };
   },
 
   async processNewEmails(): Promise<{ processed: number; skipped: number; errors: number; found: number }> {
@@ -759,5 +897,526 @@ export const dealDeskService = {
       []
     );
     return res.rows[0];
+  },
+
+  async importMsGraphHistory(daysBack: number = 0): Promise<{
+    found: number; imported: number; skipped: number; errors: number;
+  }> {
+    const tenantId = process.env.MS_GRAPH_TENANT_ID || '';
+    const clientId = process.env.MS_GRAPH_CLIENT_ID || '';
+    const clientSecret = process.env.MS_GRAPH_CLIENT_SECRET || '';
+    if (!tenantId || !clientId || !clientSecret ||
+        tenantId.startsWith('PASTE_') || clientId.startsWith('PASTE_')) {
+      throw new Error('MS_GRAPH_TENANT_ID / MS_GRAPH_CLIENT_ID / MS_GRAPH_CLIENT_SECRET not set in backend/.env');
+    }
+
+    await ensureTables();
+
+    const token = await getAccessToken();
+    const mailbox = process.env.DEAL_DESK_EMAIL || 'dealdesk@zenop.ai';
+
+    // daysBack=0 means all time — no date filter
+    const dateFilter = daysBack > 0
+      ? (() => {
+          const d = new Date();
+          d.setDate(d.getDate() - daysBack);
+          return `&$filter=receivedDateTime ge ${d.toISOString()}`;
+        })()
+      : '';
+
+    let found = 0, imported = 0, skipped = 0, errors = 0;
+
+    // Read all folders including child folders (inbox, sent, custom folders, etc.)
+    const collectFolders = async (parentId?: string): Promise<{ id: string; displayName: string }[]> => {
+      const url = parentId
+        ? `https://graph.microsoft.com/v1.0/users/${mailbox}/mailFolders/${parentId}/childFolders?$top=50`
+        : `https://graph.microsoft.com/v1.0/users/${mailbox}/mailFolders?$top=50`;
+      const res = await axios.get(url, { headers: { Authorization: `Bearer ${token}` } });
+      const items: { id: string; displayName: string; childFolderCount: number }[] = res.data.value || [];
+      let all: { id: string; displayName: string }[] = [];
+      for (const f of items) {
+        all.push(f);
+        if (f.childFolderCount > 0) {
+          const children = await collectFolders(f.id);
+          all = all.concat(children);
+        }
+      }
+      return all;
+    };
+
+    const folders = await collectFolders();
+    logger.info(`MS Graph import: found ${folders.length} folders — dateFilter="${dateFilter || 'none (all time)'}"`);
+
+    for (const folder of folders) {
+      let nextLink: string | null = null;
+      let page = 0;
+
+      do {
+        let url: string;
+        if (nextLink) {
+          url = nextLink;
+        } else {
+          url = `https://graph.microsoft.com/v1.0/users/${mailbox}/mailFolders/${folder.id}/messages` +
+            `?$select=id,subject,from,receivedDateTime,hasAttachments${dateFilter}&$top=50`;
+        }
+
+        let res: any;
+        try {
+          res = await axios.get(url, { headers: { Authorization: `Bearer ${token}` } });
+        } catch (err: any) {
+          const status = err?.response?.status;
+          if (status === 400 || status === 501) break; // filter not supported on this folder — skip
+          throw new Error(`MS Graph folder "${folder.displayName}" error (${status}): ${JSON.stringify(err?.response?.data)}`);
+        }
+
+        const messages: any[] = res.data.value || [];
+        nextLink = res.data['@odata.nextLink'] || null;
+        found += messages.length;
+        page++;
+
+        logger.info(`MS Graph import: folder="${folder.displayName}" page=${page} messages=${messages.length}`);
+
+        for (const msg of messages) {
+          try {
+            const msgId: string = msg.id;
+            const existing = await query(
+              `SELECT id, (SELECT COUNT(*) FROM deal_desk_deals WHERE email_id = deal_desk_emails.id) AS deal_count
+               FROM deal_desk_emails WHERE message_id = $1`,
+              [msgId]
+            );
+            if (existing.rows.length > 0 && parseInt(existing.rows[0].deal_count, 10) > 0) {
+              skipped++;
+              continue;
+            }
+
+            // Fetch full message body
+            let emailBodyText = '';
+            try {
+              const bodyRes = await axios.get(
+                `https://graph.microsoft.com/v1.0/users/${mailbox}/messages/${msgId}?$select=body`,
+                { headers: { Authorization: `Bearer ${token}` } }
+              );
+              const content: string = bodyRes.data?.body?.content || '';
+              const type: string = bodyRes.data?.body?.contentType || 'text';
+              emailBodyText = (type === 'html' ? stripHtml(content) : content).substring(0, 10000);
+            } catch { /* body fetch failed — continue with subject only */ }
+
+            let emailDbId: string;
+            if (existing.rows.length > 0) {
+              emailDbId = existing.rows[0].id;
+            } else {
+              const emailRow = await query(
+                `INSERT INTO deal_desk_emails
+                  (message_id, subject, sender_email, sender_name, received_at, has_attachments, processed, body_text)
+                 VALUES ($1,$2,$3,$4,$5,$6,false,$7) RETURNING id`,
+                [
+                  msgId,
+                  msg.subject || '(no subject)',
+                  msg.from?.emailAddress?.address || null,
+                  msg.from?.emailAddress?.name || null,
+                  msg.receivedDateTime || null,
+                  msg.hasAttachments || false,
+                  emailBodyText,
+                ]
+              );
+              emailDbId = emailRow.rows[0].id;
+            }
+
+            let emailHasAnyDeal = false;
+
+            if (msg.hasAttachments) {
+              const attListRes = await axios.get(
+                `https://graph.microsoft.com/v1.0/users/${mailbox}/messages/${msgId}/attachments?$select=id,name,contentType,size`,
+                { headers: { Authorization: `Bearer ${token}` } }
+              );
+              const attMeta: any[] = attListRes.data.value || [];
+              const docAtts = attMeta.filter((a: any) => {
+                const mime = a.contentType || '';
+                const name = (a.name || '').toLowerCase();
+                return mime.includes('pdf') || name.endsWith('.pdf') ||
+                       mime.includes('docx') || mime.includes('word') || name.endsWith('.docx');
+              });
+
+              for (const attMeta of docAtts) {
+                try {
+                  const fullAtt = await axios.get(
+                    `https://graph.microsoft.com/v1.0/users/${mailbox}/messages/${msgId}/attachments/${attMeta.id}`,
+                    { headers: { Authorization: `Bearer ${token}` } }
+                  );
+                  const contentBytes: string = fullAtt.data.contentBytes || '';
+                  if (!contentBytes) continue;
+
+                  const buffer = Buffer.from(contentBytes, 'base64');
+                  let extractedText = await extractTextFromBuffer(buffer, attMeta.contentType || '');
+                  if (extractedText.trim().length < 20 && emailBodyText.trim().length > 20) {
+                    extractedText = `[PDF encrypted or image-based — fields extracted from email body]\n\n${emailBodyText}`;
+                  }
+
+                  const fields: DealFields = extractedText.trim().length >= 20
+                    ? extractDealFields(extractedText, msg.subject || '')
+                    : { customerName: null, sowRef: null, dealValue: null, dealStatus: 'Signed', signerName: null, signedAt: null, lineItems: [] };
+
+                  const match = await matchDeal(fields.customerName, fields.sowRef);
+                  await execute(
+                    `INSERT INTO deal_desk_deals
+                      (email_id, source_filename, customer_name, sow_ref, deal_value, deal_status,
+                       signer_name, signed_at, line_items, matched_ps_id, matched_project_id,
+                       match_type, match_confidence, extracted_text)
+                     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+                    [
+                      emailDbId, attMeta.name,
+                      fields.customerName, fields.sowRef, fields.dealValue, fields.dealStatus,
+                      fields.signerName, fields.signedAt, JSON.stringify(fields.lineItems),
+                      match.matchedPsId, match.matchedProjectId, match.matchType, match.matchConfidence,
+                      extractedText.substring(0, 8000),
+                    ]
+                  );
+                  emailHasAnyDeal = true;
+                  logger.info(`MS Graph import: processed "${attMeta.name}" from "${msg.subject}"`);
+                } catch (attErr: any) {
+                  logger.error(`MS Graph import: attachment error: ${attErr.message}`);
+                  errors++;
+                }
+              }
+            }
+
+            if (!emailHasAnyDeal) {
+              const src = emailBodyText.trim().length > 10 ? emailBodyText : (msg.subject || '');
+              const fields = extractDealFields(src, msg.subject || '');
+              const match = (fields.customerName || fields.sowRef)
+                ? await matchDeal(fields.customerName, fields.sowRef)
+                : { matchedPsId: null, matchedProjectId: null, matchType: 'none', matchConfidence: 'none' };
+
+              await execute(
+                `INSERT INTO deal_desk_deals
+                  (email_id, source_filename, customer_name, sow_ref, deal_value, deal_status,
+                   signer_name, signed_at, line_items, extracted_text, match_type, match_confidence,
+                   matched_ps_id, matched_project_id)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+                [
+                  emailDbId,
+                  '(email body)',
+                  fields.customerName, fields.sowRef, fields.dealValue, fields.dealStatus,
+                  fields.signerName, fields.signedAt, JSON.stringify(fields.lineItems),
+                  `[Extracted from email body]\n\n${src}`.substring(0, 8000),
+                  match.matchType, match.matchConfidence,
+                  match.matchedPsId, match.matchedProjectId,
+                ]
+              );
+            }
+
+            await execute('UPDATE deal_desk_emails SET processed = true WHERE id = $1', [emailDbId]);
+            imported++;
+          } catch (msgErr: any) {
+            logger.error(`MS Graph import: message error: ${msgErr.message}`);
+            errors++;
+          }
+        }
+      } while (nextLink); // paginate until all emails in folder are read
+    }
+
+    logger.info(`MS Graph import done: found=${found} imported=${imported} skipped=${skipped} errors=${errors}`);
+    return { found, imported, skipped, errors };
+  },
+
+  async importImapHistory(daysBack: number = 30): Promise<{
+    found: number; imported: number; skipped: number; errors: number;
+  }> {
+    const host = process.env.IMAP_HOST || '';
+    const port = parseInt(process.env.IMAP_PORT || '993', 10);
+    const user = process.env.IMAP_USER || '';
+    const password = process.env.IMAP_PASSWORD || '';
+
+    if (!host || !user || !password || password.startsWith('PASTE_')) {
+      throw new Error('IMAP credentials not set in backend/.env — add IMAP_HOST, IMAP_USER, IMAP_PASSWORD');
+    }
+
+    await ensureTables();
+
+    const { ImapFlow } = require('imapflow');
+    const { simpleParser } = require('mailparser');
+
+    const client = new ImapFlow({
+      host,
+      port,
+      secure: port === 993,
+      auth: { user, pass: password },
+      logger: false,
+    });
+
+    let found = 0, imported = 0, skipped = 0, errors = 0;
+
+    await client.connect();
+
+    const sinceDate = new Date();
+    sinceDate.setDate(sinceDate.getDate() - daysBack);
+
+    // List all selectable folders — search every folder, not just INBOX
+    const allMailboxes = await client.list();
+    const folderPaths: string[] = allMailboxes
+      .filter((mb: any) => !mb.flags?.has('\\Noselect'))
+      .map((mb: any) => mb.path as string);
+
+    logger.info(`IMAP import: scanning ${folderPaths.length} folders since ${sinceDate.toISOString().split('T')[0]}`);
+
+    try {
+      for (const folder of folderPaths) {
+        let lock: any;
+        try {
+          lock = await client.getMailboxLock(folder);
+        } catch {
+          continue;
+        }
+
+        try {
+          const uids: number[] = await client.search({ since: sinceDate }, { uid: true });
+          if (uids.length === 0) continue;
+
+          found += uids.length;
+          logger.info(`IMAP import: folder="${folder}" found ${uids.length} emails`);
+
+          for await (const msg of client.fetch(uids, { source: true }, { uid: true })) {
+            try {
+              const parsed = await simpleParser(msg.source);
+
+              const messageId: string = (parsed.messageId || `imap-uid-${msg.uid}`).replace(/[<>]/g, '');
+              const subject: string = parsed.subject || '(no subject)';
+              const senderEmail: string | null = parsed.from?.value?.[0]?.address || null;
+              const senderName: string | null = parsed.from?.value?.[0]?.name || null;
+              const receivedAt: string | null = parsed.date ? parsed.date.toISOString() : null;
+              const bodyText: string = parsed.text || (parsed.html ? stripHtml(parsed.html as string) : '');
+
+              const existing = await query(
+                'SELECT id, (SELECT COUNT(*) FROM deal_desk_deals WHERE email_id = deal_desk_emails.id) AS deal_count FROM deal_desk_emails WHERE message_id = $1',
+                [messageId]
+              );
+              if (existing.rows.length > 0 && parseInt(existing.rows[0].deal_count, 10) > 0) {
+                skipped++;
+                continue;
+              }
+
+              let emailDbId: string;
+              if (existing.rows.length > 0) {
+                emailDbId = existing.rows[0].id;
+              } else {
+                const emailRow = await query(
+                  `INSERT INTO deal_desk_emails
+                    (message_id, subject, sender_email, sender_name, received_at, has_attachments, processed, body_text)
+                   VALUES ($1,$2,$3,$4,$5,$6,false,$7) RETURNING id`,
+                  [
+                    messageId, subject, senderEmail, senderName, receivedAt,
+                    (parsed.attachments?.length || 0) > 0,
+                    bodyText.substring(0, 10000),
+                  ]
+                );
+                emailDbId = emailRow.rows[0].id;
+              }
+
+              const attachments: any[] = parsed.attachments || [];
+              const docAttachments = attachments.filter((a: any) => {
+                const mime = a.contentType || '';
+                const name = (a.filename || '').toLowerCase();
+                return mime.includes('pdf') || name.endsWith('.pdf') ||
+                       mime.includes('docx') || mime.includes('word') || name.endsWith('.docx');
+              });
+
+              let emailHasAnyDeal = false;
+
+              for (const att of docAttachments) {
+                try {
+                  const mime: string = att.contentType || '';
+                  const name: string = att.filename || 'attachment';
+                  let extractedText = await extractTextFromBuffer(att.content as Buffer, mime);
+
+                  if (extractedText.trim().length < 20 && bodyText.trim().length > 20) {
+                    extractedText = `[PDF encrypted or image-based — fields extracted from email body]\n\n${bodyText}`;
+                  }
+
+                  const fields: DealFields = extractedText.trim().length >= 20
+                    ? extractDealFields(extractedText, subject)
+                    : { customerName: null, sowRef: null, dealValue: null, dealStatus: 'Signed', signerName: null, signedAt: null, lineItems: [] };
+
+                  const match = await matchDeal(fields.customerName, fields.sowRef);
+                  await execute(
+                    `INSERT INTO deal_desk_deals
+                      (email_id, source_filename, customer_name, sow_ref, deal_value, deal_status,
+                       signer_name, signed_at, line_items, matched_ps_id, matched_project_id,
+                       match_type, match_confidence, extracted_text)
+                     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+                    [
+                      emailDbId, name,
+                      fields.customerName, fields.sowRef, fields.dealValue, fields.dealStatus,
+                      fields.signerName, fields.signedAt, JSON.stringify(fields.lineItems),
+                      match.matchedPsId, match.matchedProjectId, match.matchType, match.matchConfidence,
+                      extractedText.substring(0, 8000),
+                    ]
+                  );
+                  emailHasAnyDeal = true;
+                  logger.info(`IMAP import: processed attachment "${name}" from "${subject}"`);
+                } catch (attErr: any) {
+                  logger.error(`IMAP import: attachment error: ${attErr.message}`);
+                  errors++;
+                }
+              }
+
+              if (!emailHasAnyDeal) {
+                const src = bodyText.trim().length > 10 ? bodyText : subject;
+                const fields = extractDealFields(src, subject);
+                const match = (fields.customerName || fields.sowRef)
+                  ? await matchDeal(fields.customerName, fields.sowRef)
+                  : { matchedPsId: null, matchedProjectId: null, matchType: 'none', matchConfidence: 'none' };
+
+                await execute(
+                  `INSERT INTO deal_desk_deals
+                    (email_id, source_filename, customer_name, sow_ref, deal_value, deal_status,
+                     signer_name, signed_at, line_items, extracted_text, match_type, match_confidence,
+                     matched_ps_id, matched_project_id)
+                   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+                  [
+                    emailDbId,
+                    `(email body — ${attachments.length} attachment(s))`,
+                    fields.customerName, fields.sowRef, fields.dealValue, fields.dealStatus,
+                    fields.signerName, fields.signedAt, JSON.stringify(fields.lineItems),
+                    `[Extracted from email body]\n\n${src}`.substring(0, 8000),
+                    match.matchType, match.matchConfidence,
+                    match.matchedPsId, match.matchedProjectId,
+                  ]
+                );
+              }
+
+              await execute('UPDATE deal_desk_emails SET processed = true WHERE id = $1', [emailDbId]);
+              imported++;
+            } catch (msgErr: any) {
+              logger.error(`IMAP import: message error: ${msgErr.message}`);
+              errors++;
+            }
+          }
+        } finally {
+          lock.release();
+        }
+      }
+    } finally {
+      await client.logout();
+    }
+
+    logger.info(`IMAP import done: found=${found} imported=${imported} skipped=${skipped} errors=${errors}`);
+    return { found, imported, skipped, errors };
+  },
+
+  async importSendGridHistory(daysBack: number = 30): Promise<{
+    found: number; imported: number; skipped: number; errors: number;
+  }> {
+    const apiKey = process.env.SENDGRID_API_KEY || '';
+    if (!apiKey || apiKey.startsWith('PASTE_') || apiKey.startsWith('SG.PASTE')) {
+      throw new Error('SENDGRID_API_KEY not set in backend/.env — add it and restart the server');
+    }
+
+    await ensureTables();
+
+    const emailAddress = process.env.DEAL_DESK_EMAIL || 'dealdesk@zenop.ai';
+
+    // SendGrid Email Activity API FIQL query — filter by recipient only.
+    // Date range is auto-limited by the account's retention window (7–30 days depending on plan).
+    const sgQuery = `to_email="${emailAddress}"`;
+
+    let found = 0, imported = 0, skipped = 0, errors = 0;
+    let nextPageToken: string | undefined;
+
+    do {
+      const params: Record<string, string | number> = { query: sgQuery, limit: 1000 };
+      if (nextPageToken) params.next_page_token = nextPageToken;
+
+      let listRes: any;
+      try {
+        listRes = await axios.get('https://api.sendgrid.com/v3/messages', {
+          headers: { Authorization: `Bearer ${apiKey}` },
+          params,
+        });
+      } catch (axiosErr: any) {
+        const sgDetail = axiosErr?.response?.data
+          ? JSON.stringify(axiosErr.response.data)
+          : axiosErr?.message;
+        const status = axiosErr?.response?.status;
+        if (status === 403) {
+          throw new Error(`SendGrid returned 403 — your API key may lack Email Activity permission, or your plan does not include Email Activity API access. Detail: ${sgDetail}`);
+        }
+        throw new Error(`SendGrid API error (HTTP ${status}): ${sgDetail}`);
+      }
+
+      const messages: any[] = listRes.data.messages || [];
+      nextPageToken = listRes.data.next_page_token;
+      found += messages.length;
+
+      for (const msg of messages) {
+        try {
+          const msgId: string = msg.msg_id || '';
+          if (!msgId) { errors++; continue; }
+
+          const existing = await query('SELECT id FROM deal_desk_emails WHERE message_id = $1', [msgId]);
+          if (existing.rows.length > 0) { skipped++; continue; }
+
+          const subject: string = msg.subject || '(no subject)';
+          const senderEmail: string | null = msg.from_email || null;
+          const receivedAt: string | null = msg.last_event_time
+            ? new Date(msg.last_event_time).toISOString()
+            : null;
+
+          // Try fetching message detail for richer content
+          let bodyText = '';
+          try {
+            const detailRes = await axios.get(`https://api.sendgrid.com/v3/messages/${msgId}`, {
+              headers: { Authorization: `Bearer ${apiKey}` },
+            });
+            const raw: string = detailRes.data?.body || detailRes.data?.html_body || detailRes.data?.text_body || '';
+            bodyText = raw.includes('<') ? stripHtml(raw) : raw;
+          } catch {
+            // Detail endpoint may not be available on all plans — proceed with metadata only
+          }
+
+          const noteText = bodyText.trim().length > 20
+            ? bodyText
+            : `[Imported from SendGrid Email Activity — body not available on this plan]\nSubject: ${subject}`;
+
+          const emailRow = await query(
+            `INSERT INTO deal_desk_emails
+              (message_id, subject, sender_email, sender_name, received_at, has_attachments, processed, body_text)
+             VALUES ($1,$2,$3,$4,$5,false,false,$6) RETURNING id`,
+            [msgId, subject, senderEmail, null, receivedAt, noteText.substring(0, 10000)]
+          );
+          const emailDbId: string = emailRow.rows[0].id;
+
+          const srcText = bodyText.trim().length > 20 ? bodyText : '';
+          const fields = extractDealFields(srcText, subject);
+          const match = await matchDeal(fields.customerName, fields.sowRef);
+
+          await execute(
+            `INSERT INTO deal_desk_deals
+              (email_id, source_filename, customer_name, sow_ref, deal_value, deal_status,
+               signer_name, signed_at, line_items, extracted_text, match_type, match_confidence,
+               matched_ps_id, matched_project_id)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+            [
+              emailDbId,
+              '(SendGrid history import)',
+              fields.customerName, fields.sowRef, fields.dealValue, fields.dealStatus,
+              fields.signerName, fields.signedAt, JSON.stringify(fields.lineItems),
+              noteText.substring(0, 8000),
+              match.matchType, match.matchConfidence,
+              match.matchedPsId, match.matchedProjectId,
+            ]
+          );
+
+          await execute('UPDATE deal_desk_emails SET processed = true WHERE id = $1', [emailDbId]);
+          imported++;
+          logger.info(`SendGrid history: imported msg_id=${msgId} subject="${subject}"`);
+        } catch (err: any) {
+          logger.error(`SendGrid history: error for msg ${msg.msg_id}: ${err.message}`);
+          errors++;
+        }
+      }
+    } while (nextPageToken && found < 10000); // safety cap
+
+    logger.info(`SendGrid history import done: found=${found} imported=${imported} skipped=${skipped} errors=${errors}`);
+    return { found, imported, skipped, errors };
   },
 };
