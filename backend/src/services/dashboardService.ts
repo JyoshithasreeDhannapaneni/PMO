@@ -834,6 +834,101 @@ class DashboardService {
     );
   }
 
+  private _atRiskHistoryReady = false;
+  async ensureAtRiskHistoryTable() {
+    if (this._atRiskHistoryReady) return;
+    await execute(`CREATE TABLE IF NOT EXISTS at_risk_history (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      project_id UUID NOT NULL,
+      notes TEXT,
+      marked_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      resolved_at TIMESTAMP NULL
+    )`, []);
+    try { await execute(`CREATE INDEX IF NOT EXISTS idx_at_risk_hist_project ON at_risk_history(project_id)`, []); } catch (_) {}
+    this._atRiskHistoryReady = true;
+  }
+
+  async getAtRiskProjects(managerName?: string) {
+    await this.ensureAtRiskHistoryTable();
+    const { clause: aw, params: ap } = this.andManagerWhere(managerName);
+    const result = await query(
+      `SELECT id, name, customer_name, project_manager, account_manager, status, phase,
+              planned_end, delay_days, delay_status, migration_types,
+              is_at_risk, at_risk_notes, at_risk_marked_at, is_escalated
+       FROM projects
+       WHERE status NOT IN ('COMPLETED','CANCELLED')
+             AND archived_at IS NULL
+             AND is_at_risk = true ${aw}
+       ORDER BY at_risk_marked_at DESC`,
+      ap
+    );
+    const projects = result.rows.map((r: any) => ({
+      id: r.id,
+      name: r.name,
+      customerName: r.customer_name,
+      projectManager: r.project_manager,
+      accountManager: r.account_manager,
+      status: r.status,
+      phase: r.phase,
+      plannedEnd: r.planned_end,
+      expectedEnd: r.planned_end,
+      delayDays: r.delay_days,
+      delayStatus: r.delay_status,
+      migrationTypes: r.migration_types,
+      isAtRisk: !!r.is_at_risk,
+      atRiskNotes: r.at_risk_notes,
+      atRiskMarkedAt: r.at_risk_marked_at,
+      isEscalated: !!r.is_escalated,
+      atRiskHistory: [] as any[],
+    }));
+    if (projects.length > 0) {
+      const ids = projects.map((p) => p.id);
+      const histResult = await query(
+        `SELECT id, project_id, notes, marked_at, resolved_at
+         FROM at_risk_history WHERE project_id = ANY($1) ORDER BY marked_at DESC`,
+        [ids]
+      );
+      const histMap: Record<string, any[]> = {};
+      for (const h of histResult.rows) {
+        if (!histMap[h.project_id]) histMap[h.project_id] = [];
+        histMap[h.project_id].push({
+          id: h.id,
+          notes: h.notes,
+          markedAt: h.marked_at,
+          resolvedAt: h.resolved_at,
+        });
+      }
+      for (const p of projects) {
+        p.atRiskHistory = histMap[p.id] || [];
+      }
+    }
+    return projects;
+  }
+
+  async markAtRisk(projectId: string, notes?: string) {
+    await this.ensureAtRiskHistoryTable();
+    await execute(
+      `UPDATE projects SET is_at_risk = true, at_risk_notes = $1, at_risk_marked_at = NOW() WHERE id = $2`,
+      [notes || null, projectId]
+    );
+    await execute(
+      `INSERT INTO at_risk_history (project_id, notes, marked_at) VALUES ($1, $2, NOW())`,
+      [projectId, notes || null]
+    );
+  }
+
+  async unmarkAtRisk(projectId: string) {
+    await this.ensureAtRiskHistoryTable();
+    await execute(
+      `UPDATE at_risk_history SET resolved_at = NOW() WHERE project_id = $1 AND resolved_at IS NULL`,
+      [projectId]
+    );
+    await execute(
+      `UPDATE projects SET is_at_risk = false, at_risk_notes = NULL, at_risk_marked_at = NULL WHERE id = $1`,
+      [projectId]
+    );
+  }
+
   async getProjectsByMigrationType(type: string) {
     const CATEGORIES = ['Content Migration', 'Messaging', 'Email'];
     const isCategory = CATEGORIES.some(c => c.toLowerCase() === type.toLowerCase());

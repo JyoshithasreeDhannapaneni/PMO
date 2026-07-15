@@ -279,4 +279,23 @@ export const dashboardController = {
     await dashboardService.deleteEscalationDailyNote(projectId, noteId);
     res.json({ success: true, message: 'Note deleted' });
   }),
+
+  getAtRiskProjects: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const managerName = req.query.manager as string | undefined;
+    const data = await dashboardService.getAtRiskProjects(managerName);
+    res.json({ success: true, data });
+  }),
+
+  markAtRisk: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const { id } = req.params;
+    const { notes } = req.body;
+    await dashboardService.markAtRisk(id, notes);
+    res.json({ success: true, message: 'Project marked as at risk' });
+  }),
+
+  unmarkAtRisk: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const { id } = req.params;
+    await dashboardService.unmarkAtRisk(id);
+    res.json({ success: true, message: 'At risk flag removed' });
+  }),
 };

@@ -19,6 +19,7 @@ getAll: asyncHandler(async (req: Request, res: Response): Promise<void> => {
       accountManager: req.query.accountManager as string,
       migrationType: req.query.migrationType as string,
       projectType: req.query.projectType as string,
+      segment: req.query.segment as string,
       excludeStatus: req.query.excludeStatus as string,
     };
     const pagination: PaginationOptions = {

@@ -487,6 +487,52 @@ export function useDeescalateProject() {
   });
 }
 
+export function useAtRiskProjects(manager?: string) {
+  return useQuery({
+    queryKey: ['atRiskProjects', manager],
+    queryFn: () => authFetch(`${API_BASE}/api/dashboard/at-risk-projects${manager ? `?manager=${encodeURIComponent(manager)}` : ''}`),
+    staleTime: 0,
+    refetchInterval: 30_000,
+  });
+}
+
+export function useMarkAtRisk() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, notes }: { id: string; notes?: string }) => {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
+      return fetch(`${API_BASE}/api/dashboard/mark-at-risk/${id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ notes }),
+      }).then(r => r.json());
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['atRiskProjects'] });
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+  });
+}
+
+export function useUnmarkAtRisk() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
+      return fetch(`${API_BASE}/api/dashboard/unmark-at-risk/${id}`, {
+        method: 'POST',
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      }).then(r => r.json());
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['atRiskProjects'] });
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+  });
+}
+
 export function useArchivedEscalations(manager?: string) {
   return useQuery({
     queryKey: ['archivedEscalations', manager],
@@ -705,6 +751,38 @@ export function useNtaSpaces() {
   });
 }
 
+export function useNtaAssignees() {
+  return useQuery({
+    queryKey: ['ntaAssignees'],
+    queryFn: () => ntaFetch('/assignees'),
+    staleTime: 300_000,
+  });
+}
+
+export function useNtaReporters() {
+  return useQuery({
+    queryKey: ['ntaReporters'],
+    queryFn: () => ntaFetch('/reporters'),
+    staleTime: 300_000,
+  });
+}
+
+export function useNtaProjectManagers() {
+  return useQuery({
+    queryKey: ['ntaProjectManagers'],
+    queryFn: () => ntaFetch('/project-managers'),
+    staleTime: 300_000,
+  });
+}
+
+export function useNtaDepartments() {
+  return useQuery({
+    queryKey: ['ntaDepartments'],
+    queryFn: () => ntaFetch('/departments'),
+    staleTime: 300_000,
+  });
+}
+
 export function useNtaIssues(params: { page?: number; limit?: number; spaces?: string }) {
   return useQuery({
     queryKey: ['ntaIssues', params],
@@ -728,8 +806,11 @@ export interface NtaSearchFilters {
   customer?: string;
   assignee?: string;
   reporter?: string;
+  projectManager?: string;
   department?: string;
   spaces?: string;
+  createdFrom?: string;
+  createdTo?: string;
 }
 
 function useDebounce<T>(value: T, delay: number): T {
@@ -752,6 +833,29 @@ export function useNtaSearch(filters: NtaSearchFilters) {
       return ntaFetch(`/search?${qs}`);
     },
     enabled: hasFilter,
+    staleTime: 60_000,
+  });
+}
+
+export interface NtaTrendBucket {
+  key: string;
+  label: string;
+  total: number;
+  todo: number;
+  inProgress: number;
+  done: number;
+}
+
+export function useNtaTrends(params: NtaSearchFilters & { groupBy: 'week' | 'month'; enabled?: boolean }) {
+  const { groupBy, enabled, ...filters } = params;
+  return useQuery({
+    queryKey: ['ntaTrends', groupBy, filters],
+    queryFn: () => {
+      const qs = new URLSearchParams({ groupBy });
+      Object.entries(filters).forEach(([k, v]) => { if (v) qs.set(k, v); });
+      return ntaFetch(`/trends?${qs}`);
+    },
+    enabled: enabled ?? true,
     staleTime: 60_000,
   });
 }

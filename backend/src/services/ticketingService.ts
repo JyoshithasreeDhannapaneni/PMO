@@ -64,15 +64,115 @@ export interface SearchFilters {
   customer?: string;
   assignee?: string;
   reporter?: string;
+  projectManager?: string;
   department?: string;
   spaces?: string;
+  createdFrom?: string;
+  createdTo?: string;
 }
 
-function pmOf(t: any): string {
-  if (t.projectManager) return t.projectManager;
+export interface TrendBucket {
+  key: string;
+  label: string;
+  total: number;
+  todo: number;
+  inProgress: number;
+  done: number;
+}
+
+function isoWeekKey(d: Date): string {
+  const date = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  const day = (date.getUTCDay() + 6) % 7;
+  date.setUTCDate(date.getUTCDate() - day + 3);
+  const firstThursday = new Date(Date.UTC(date.getUTCFullYear(), 0, 4));
+  const week = 1 + Math.round(((date.getTime() - firstThursday.getTime()) / 86400000 - 3 + ((firstThursday.getUTCDay() + 6) % 7)) / 7);
+  return `${date.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
+}
+
+function weekLabel(isoKey: string): string {
+  const [yearStr, wkStr] = isoKey.split('-W');
+  const year = Number(yearStr), week = Number(wkStr);
+  const simple = new Date(Date.UTC(year, 0, 1 + (week - 1) * 7));
+  const dow = simple.getUTCDay();
+  const monday = new Date(simple);
+  monday.setUTCDate(simple.getUTCDate() + (dow <= 4 ? 1 - dow : 8 - dow));
+  const sunday = new Date(monday);
+  sunday.setUTCDate(monday.getUTCDate() + 6);
+  const fmt = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+  return `${fmt(monday)} – ${fmt(sunday)}`;
+}
+
+function monthLabel(monthKey: string): string {
+  const [year, month] = monthKey.split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' });
+}
+
+function reporterOf(t: any): string {
   if (t.reporter?.displayName) return t.reporter.displayName;
   const parts = [t.reporter?.firstName, t.reporter?.lastName].filter(Boolean);
   return parts.join(' ');
+}
+
+// Comma-separated = multi-select from a dropdown (exact match, OR'd).
+// A single value with no comma falls back to a substring match (free-text).
+function matchesPerson(value: string, filterValue: string): boolean {
+  const lc = (s: string) => (s || '').toLowerCase();
+  const v = lc(value);
+  if (filterValue.includes(',')) {
+    const wanted = filterValue.split(',').map((s) => lc(s.trim())).filter(Boolean);
+    return wanted.includes(v);
+  }
+  return v.includes(lc(filterValue));
+}
+
+function countByPerson(tickets: any[], nameOf: (t: any) => string): { name: string; count: number }[] {
+  const counts = new Map<string, number>();
+  for (const t of tickets) {
+    const name = nameOf(t);
+    if (!name) continue;
+    counts.set(name, (counts.get(name) || 0) + 1);
+  }
+  return Array.from(counts.entries())
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count);
+}
+
+// `createdFrom`/`createdTo` are expected as precise ISO instants (the caller
+// resolves the "day" in its own local timezone) — no UTC-day assumptions here.
+function matchesFilters(t: any, filters: SearchFilters): boolean {
+  const lc = (s: string) => (s || '').toLowerCase();
+  if (
+    filters.spaces &&
+    lc(t.spaceKey || '') !== lc(filters.spaces) &&
+    !lc(t.spaceName || '').includes(lc(filters.spaces))
+  )
+    return false;
+  if (filters.key && !lc(t.key).includes(lc(filters.key))) return false;
+  if (filters.summary && !lc(t.summary).includes(lc(filters.summary))) return false;
+  if (filters.status) {
+    const s = lc(filters.status);
+    const isCategory = s === 'todo' || s === 'in-progress' || s === 'done';
+    if (isCategory) {
+      if (lc(t.status?.category) !== s) return false;
+    } else if (lc(t.status?.name) !== s) {
+      return false;
+    }
+  }
+  if (filters.priority && lc(t.priority) !== lc(filters.priority)) return false;
+  if (filters.customer && !lc(t.customerName || t.clientName || '').includes(lc(filters.customer)))
+    return false;
+  if (filters.assignee && !matchesPerson(t.assignee?.displayName || t.assignee?.name || '', filters.assignee))
+    return false;
+  if (filters.reporter && !matchesPerson(reporterOf(t), filters.reporter)) return false;
+  if (filters.projectManager && !matchesPerson(t.projectManager || '', filters.projectManager)) return false;
+  if (filters.department && !matchesPerson(t.current_department || '', filters.department)) return false;
+  if (filters.createdFrom || filters.createdTo) {
+    const created = t.createdAt ? new Date(t.createdAt).getTime() : NaN;
+    if (isNaN(created)) return false;
+    if (filters.createdFrom && created < new Date(filters.createdFrom).getTime()) return false;
+    if (filters.createdTo && created > new Date(filters.createdTo).getTime()) return false;
+  }
+  return true;
 }
 
 // ─── Service ─────────────────────────────────────────────────────────────────
@@ -116,38 +216,69 @@ export const ticketingService = {
     cacheAge: number;
   }> {
     const all = await warmCache();
-    const lc = (s: string) => (s || '').toLowerCase();
-
-    const matches = all.filter((t) => {
-      if (
-        filters.spaces &&
-        lc(t.spaceKey || '') !== lc(filters.spaces) &&
-        !lc(t.spaceName || '').includes(lc(filters.spaces))
-      )
-        return false;
-      if (filters.key && !lc(t.key).includes(lc(filters.key))) return false;
-      if (filters.summary && !lc(t.summary).includes(lc(filters.summary))) return false;
-      if (filters.status && lc(t.status?.category) !== lc(filters.status)) return false;
-      if (filters.priority && lc(t.priority) !== lc(filters.priority)) return false;
-      if (
-        filters.customer &&
-        !lc(t.customerName || t.clientName || '').includes(lc(filters.customer))
-      )
-        return false;
-      if (
-        filters.assignee &&
-        !lc(t.assignee?.displayName || t.assignee?.name || '').includes(lc(filters.assignee))
-      )
-        return false;
-      if (filters.reporter && !lc(pmOf(t)).includes(lc(filters.reporter))) return false;
-      if (filters.department && !lc(t.current_department || '').includes(lc(filters.department)))
-        return false;
-      return true;
-    });
+    const matches = all.filter((t) => matchesFilters(t, filters));
 
     const cacheAge = _cache ? Math.round((Date.now() - _cache.at) / 1000) : 0;
     logger.info(`NTA search: ${matches.length} matches from ${all.length} cached`);
     return { tickets: matches, total: matches.length, cached: true, cacheAge };
+  },
+
+  async getTrends(params: SearchFilters & { groupBy: 'week' | 'month' }): Promise<{ buckets: TrendBucket[] }> {
+    const all = await warmCache();
+    const buckets = new Map<string, TrendBucket>();
+
+    for (const t of all) {
+      if (!matchesFilters(t, params)) continue;
+      if (!t.createdAt) continue;
+      const created = new Date(t.createdAt);
+      if (isNaN(created.getTime())) continue;
+
+      const key =
+        params.groupBy === 'week'
+          ? isoWeekKey(created)
+          : `${created.getUTCFullYear()}-${String(created.getUTCMonth() + 1).padStart(2, '0')}`;
+
+      if (!buckets.has(key)) {
+        buckets.set(key, {
+          key,
+          label: params.groupBy === 'week' ? weekLabel(key) : monthLabel(key),
+          total: 0,
+          todo: 0,
+          inProgress: 0,
+          done: 0,
+        });
+      }
+      const bucket = buckets.get(key)!;
+      bucket.total++;
+      const cat = t.status?.category;
+      if (cat === 'done') bucket.done++;
+      else if (cat === 'in-progress') bucket.inProgress++;
+      else bucket.todo++;
+    }
+
+    const sorted = Array.from(buckets.values()).sort((a, b) => (a.key < b.key ? -1 : 1));
+    logger.info(`NTA trends: groupBy=${params.groupBy} buckets=${sorted.length}`);
+    return { buckets: sorted };
+  },
+
+  async getAssignees(): Promise<{ name: string; count: number }[]> {
+    const all = await warmCache();
+    return countByPerson(all, (t) => t.assignee?.displayName || t.assignee?.name || '');
+  },
+
+  async getReporters(): Promise<{ name: string; count: number }[]> {
+    const all = await warmCache();
+    return countByPerson(all, reporterOf);
+  },
+
+  async getProjectManagers(): Promise<{ name: string; count: number }[]> {
+    const all = await warmCache();
+    return countByPerson(all, (t) => t.projectManager || '');
+  },
+
+  async getDepartments(): Promise<{ name: string; count: number }[]> {
+    const all = await warmCache();
+    return countByPerson(all, (t) => t.current_department || '');
   },
 
   async getTicketsForCustomers(customerNames: string[]): Promise<{

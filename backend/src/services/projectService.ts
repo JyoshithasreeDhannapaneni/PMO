@@ -27,6 +27,7 @@ export interface CreateProjectDTO {
   projectManager: string;
   accountManager: string;
   planType?: string;
+  segment?: string | null;
   plannedStart: Date | string;
   plannedEnd: Date | string;
   actualStart?: Date | string | null;
@@ -47,6 +48,8 @@ export interface CreateProjectDTO {
   isEscalated?: boolean | null;
   escalationPriority?: string | null;
   overageAmount?: number | null;
+  isAtRisk?: boolean | null;
+  atRiskNotes?: string | null;
   cloudAddingStart?: Date | string | null;
   cloudAddingEnd?: Date | string | null;
   pilotMigrationStart?: Date | string | null;
@@ -96,6 +99,7 @@ export interface ProjectFilters {
   accountManager?: string;
   migrationType?: string;
   projectType?: string;
+  segment?: string;
 }
 
 export interface PaginationOptions {
@@ -156,6 +160,7 @@ function mapProjectRow(row: any) {
     projectManager: row.project_manager,
     accountManager: row.account_manager,
     planType: row.plan_type,
+    segment: row.segment ?? null,
     plannedStart: row.planned_start,
     plannedEnd: row.planned_end,
     expectedEnd: expectedEnd ? expectedEnd.toISOString().split('T')[0] : null,
@@ -180,6 +185,9 @@ function mapProjectRow(row: any) {
     escalationPriority: row.escalation_priority ?? null,
     escalatedAt: row.escalated_at ?? null,
     escalationNotes: row.escalation_notes ?? null,
+    isAtRisk: !!row.is_at_risk,
+    atRiskNotes: row.at_risk_notes ?? null,
+    atRiskMarkedAt: row.at_risk_marked_at ?? null,
     overageAmount: row.overage_amount ?? null,
     extendedEndDate: row.extended_end_date ?? null,
     cloudAddingStart: row.cloud_adding_start ?? null,
@@ -303,6 +311,10 @@ class ProjectService {
     if (filters.projectType) {
       conditions.push(`project_type = $${params.length + 1}`);
       params.push(filters.projectType);
+    }
+    if (filters.segment) {
+      conditions.push(`segment = $${params.length + 1}`);
+      params.push(filters.segment);
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -454,6 +466,22 @@ class ProjectService {
         delayStatus,
       ]
     );
+
+    if (data.segment !== undefined) {
+      const safeSegment = data.segment && ['ENT', 'SMB'].includes(data.segment.toUpperCase())
+        ? data.segment.toUpperCase()
+        : null;
+      try { await execute(`UPDATE projects SET segment = $1 WHERE id = $2`, [safeSegment, projectId]); } catch {}
+    }
+
+    if (data.isAtRisk) {
+      try {
+        await execute(
+          `UPDATE projects SET is_at_risk = $1, at_risk_notes = $2, at_risk_marked_at = $3 WHERE id = $4`,
+          [true, data.atRiskNotes ?? null, new Date(), projectId]
+        );
+      } catch {}
+    }
 
     // Set new optional columns if they were provided (columns added via migration)
     if (data.numberOfServers != null || data.projectMemory != null) {
@@ -640,6 +668,12 @@ class ProjectService {
         ? data.planType.toUpperCase() : data.planType;
       updates.push(`plan_type = $${params.length + 1}`); params.push(sp);
     }
+    if (data.segment !== undefined) {
+      const safeSegment = data.segment && ['ENT', 'SMB'].includes(data.segment.toUpperCase())
+        ? data.segment.toUpperCase()
+        : null;
+      updates.push(`segment = $${params.length + 1}`); params.push(safeSegment);
+    }
     if (data.migrationTypes !== undefined) { updates.push(`migration_types = $${params.length + 1}`); params.push(data.migrationTypes); }
     if (data.sourcePlatform !== undefined) { updates.push(`source_platform = $${params.length + 1}`); params.push(data.sourcePlatform); }
     if (data.targetPlatform !== undefined) { updates.push(`target_platform = $${params.length + 1}`); params.push(data.targetPlatform); }
@@ -668,6 +702,11 @@ class ProjectService {
       updates.push(`escalation_priority = $${params.length + 1}`); params.push(data.isEscalated ? (data.escalationPriority || existing.escalation_priority || 'MEDIUM') : null);
       updates.push(`escalated_at = $${params.length + 1}`); params.push(data.isEscalated ? new Date() : null);
     }
+    if (data.isAtRisk !== undefined) {
+      updates.push(`is_at_risk = $${params.length + 1}`); params.push(!!data.isAtRisk);
+      updates.push(`at_risk_marked_at = $${params.length + 1}`); params.push(data.isAtRisk ? new Date() : null);
+    }
+    if (data.atRiskNotes !== undefined) { updates.push(`at_risk_notes = $${params.length + 1}`); params.push(data.atRiskNotes ?? null); }
     if (data.overageAmount !== undefined) { updates.push(`overage_amount = $${params.length + 1}`); params.push(data.overageAmount ?? null); }
     if (data.cloudAddingStart !== undefined) { updates.push(`cloud_adding_start = $${params.length + 1}`); params.push(data.cloudAddingStart ? new Date(data.cloudAddingStart) : null); }
     if (data.cloudAddingEnd !== undefined) { updates.push(`cloud_adding_end = $${params.length + 1}`); params.push(data.cloudAddingEnd ? new Date(data.cloudAddingEnd) : null); }

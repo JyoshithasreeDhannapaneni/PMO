@@ -4,7 +4,7 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
-import { useManagerGoalsWithStats, useEscalatedProjects, useNtaStats, useNtaSpaces, useNtaIssues, useNtaSearch, useNtaCustomerTickets, useJiraExcelStatus } from '@/hooks/useProjects';
+import { useManagerGoalsWithStats, useEscalatedProjects, useNtaStats, useNtaSpaces, useNtaIssues, useNtaSearch, useNtaTrends, useNtaAssignees, useNtaReporters, useNtaProjectManagers, useNtaDepartments, useNtaCustomerTickets, useJiraExcelStatus } from '@/hooks/useProjects';
 import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import {
@@ -13,10 +13,10 @@ import {
   ArrowLeft, ExternalLink, Upload, FileSpreadsheet, Trash2,
 } from 'lucide-react';
 import api from '@/services/api';
+import { SEGMENT_CONFIG, type Segment } from '@/lib/segments';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Segment = 'ENT' | 'SMB';
 type ActiveTab = 'ENT' | 'SMB' | 'OBSERVATIONS' | 'TICKETS';
 
 interface ManagerStat {
@@ -36,11 +36,6 @@ interface ManagerStat {
 }
 
 // ─── Config ───────────────────────────────────────────────────────────────────
-
-const SEGMENT_CONFIG: { label: Segment; managers: string[] }[] = [
-  { label: 'ENT', managers: ['Abhishek Sakala', 'Lakshmi Prasanna'] },
-  { label: 'SMB', managers: ['Ajay Singh', 'Abhishikth', 'Harika', 'Sravan', 'Raghu Yellani'] },
-];
 
 const NAMED_MANAGER_SET = new Set(SEGMENT_CONFIG.flatMap((s) => s.managers));
 
@@ -1079,11 +1074,110 @@ const STATUS_CAT_STYLE: Record<string, string> = {
   'done':        'bg-green-100 text-green-700',
 };
 
-function ticketPm(t: any): string {
-  if (t.projectManager) return t.projectManager;
-  if (t.reporter?.displayName) return t.reporter.displayName;
-  if (t.reporter?.firstName) return `${t.reporter.firstName} ${t.reporter.lastName || ''}`.trim();
-  return '—';
+// Multi-select dropdown for the Assignee/Reporter/Project Manager column filters
+// — replaces free-text entry so managers can pick one or several real people
+// off a real list instead of guessing spellings, to track tickets per-person.
+function PeopleMultiSelect({
+  options,
+  selected,
+  onChange,
+}: {
+  options: { name: string; count: number }[];
+  selected: string[];
+  onChange: (next: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const [coords, setCoords] = useState({ top: 0, left: 0, width: 240 });
+
+  useEffect(() => {
+    if (!open) return;
+    const updatePos = () => {
+      const r = btnRef.current?.getBoundingClientRect();
+      if (r) setCoords({ top: r.bottom + 4, left: r.left, width: Math.max(r.width, 240) });
+    };
+    updatePos();
+    window.addEventListener('scroll', updatePos, true);
+    window.addEventListener('resize', updatePos);
+    const onDocClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (btnRef.current && !btnRef.current.contains(target) && !target.closest('[data-assignee-panel]')) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => {
+      window.removeEventListener('scroll', updatePos, true);
+      window.removeEventListener('resize', updatePos);
+      document.removeEventListener('mousedown', onDocClick);
+    };
+  }, [open]);
+
+  const filtered = options.filter((o) => o.name.toLowerCase().includes(query.toLowerCase()));
+  const toggle = (name: string) =>
+    onChange(selected.includes(name) ? selected.filter((n) => n !== name) : [...selected, name]);
+
+  const label = selected.length === 0 ? 'All' : selected.length === 1 ? selected[0] : `${selected.length} selected`;
+
+  return (
+    <>
+      <button
+        type="button"
+        ref={btnRef}
+        onClick={() => setOpen((o) => !o)}
+        className="w-full mt-1 flex items-center justify-between gap-1 px-2 py-1 text-xs border border-gray-200 rounded-md bg-white hover:border-gray-300 focus:outline-none focus:ring-1 focus:ring-primary-400"
+      >
+        <span className={`truncate ${selected.length ? 'text-gray-800 font-medium' : 'text-gray-400'}`}>{label}</span>
+        <ChevronRight size={11} className={`flex-none text-gray-400 transition-transform ${open ? 'rotate-90' : ''}`} />
+      </button>
+      {open &&
+        createPortal(
+          <div
+            data-assignee-panel
+            className="fixed z-50 bg-white border border-gray-200 rounded-lg shadow-lg"
+            style={{ top: coords.top, left: coords.left, width: coords.width }}
+          >
+            <div className="p-2 border-b border-gray-100">
+              <input
+                autoFocus
+                placeholder="Search assignee…"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                className="w-full px-2 py-1 text-xs border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-primary-400"
+              />
+            </div>
+            <div className="max-h-56 overflow-y-auto py-1">
+              {filtered.length === 0 ? (
+                <p className="px-3 py-2 text-xs text-gray-400">No matches</p>
+              ) : (
+                filtered.map((o) => (
+                  <label key={o.name} className="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={selected.includes(o.name)}
+                      onChange={() => toggle(o.name)}
+                      className="accent-primary-600"
+                    />
+                    <span className="flex-1 truncate">{o.name}</span>
+                    <span className="text-gray-400">{o.count}</span>
+                  </label>
+                ))
+              )}
+            </div>
+            {selected.length > 0 && (
+              <div className="flex items-center justify-between px-3 py-2 border-t border-gray-100">
+                <button type="button" onClick={() => onChange([])} className="text-xs text-red-500 hover:text-red-700">
+                  Clear
+                </button>
+                <span className="text-xs text-gray-400">{selected.length} selected</span>
+              </div>
+            )}
+          </div>,
+          document.body
+        )}
+    </>
+  );
 }
 
 function TicketsView() {
@@ -1097,14 +1191,58 @@ function TicketsView() {
   const [fStatus,   setFStatus]   = useState('');
   const [fPriority, setFPriority] = useState('');
   const [fCustomer, setFCustomer] = useState('');
-  const [fAssignee, setFAssignee] = useState('');
-  const [fPm,       setFPm]       = useState('');
-  const [fDept,     setFDept]     = useState('');
+  const [assigneeSelection, setAssigneeSelection] = useState<string[]>([]);
+  const fAssignee = assigneeSelection.join(',');
+  const [reporterSelection, setReporterSelection] = useState<string[]>([]);
+  const fReporter = reporterSelection.join(',');
+  const [pmSelection, setPmSelection] = useState<string[]>([]);
+  const fProjectManager = pmSelection.join(',');
+  const [deptSelection, setDeptSelection] = useState<string[]>([]);
+  const fDept = deptSelection.join(',');
 
-  const hasAnyColFilter = !!(fKey || fSummary || fStatus || fPriority || fCustomer || fAssignee || fPm || fDept);
+  // Week / Month view + date range
+  const [groupView, setGroupView] = useState<'all' | 'week' | 'month'>('all');
+  const [createdFrom, setCreatedFrom] = useState('');
+  const [createdTo,   setCreatedTo]   = useState('');
+
+  // Board filter only works via the cached full-index search — the external
+  // ticketing API ignores a `spaces` query param on the paginated /issues endpoint.
+  const hasAnyColFilter = !!(fKey || fSummary || fStatus || fPriority || fCustomer || fAssignee || fReporter || fProjectManager || fDept || createdFrom || createdTo || spaceFilter);
+
+  // <input type="date"> gives a bare "YYYY-MM-DD" with no timezone. Parsing that
+  // directly as UTC (new Date("2026-07-07")) cuts the day off 5.5h early/late for
+  // IST users — a ticket created in the early hours of "the next day" locally can
+  // still fall inside that UTC window. Resolving the boundary in the browser's own
+  // local timezone first (then converting to ISO) keeps "July 7" meaning July 7 here.
+  const createdFromISO = createdFrom ? new Date(`${createdFrom}T00:00:00`).toISOString() : undefined;
+  const createdToISO = createdTo ? new Date(`${createdTo}T23:59:59.999`).toISOString() : undefined;
 
   const { data: statsData } = useNtaStats();
   const { data: spacesData } = useNtaSpaces();
+  const { data: assigneesData } = useNtaAssignees();
+  const assigneeOptions: { name: string; count: number }[] = assigneesData?.data || [];
+  const { data: reportersData } = useNtaReporters();
+  const reporterOptions: { name: string; count: number }[] = reportersData?.data || [];
+  const { data: pmsData } = useNtaProjectManagers();
+  const pmOptions: { name: string; count: number }[] = pmsData?.data || [];
+  const { data: deptsData } = useNtaDepartments();
+  const deptOptions: { name: string; count: number }[] = deptsData?.data || [];
+  const { data: trendsData, isLoading: trendsLoading } = useNtaTrends({
+    groupBy: groupView === 'month' ? 'month' : 'week',
+    createdFrom: createdFromISO,
+    createdTo: createdToISO,
+    spaces: spaceFilter || undefined,
+    reporter: fReporter || undefined,
+    projectManager: fProjectManager || undefined,
+    department: fDept || undefined,
+    status: fStatus || undefined,
+    priority: fPriority || undefined,
+    customer: fCustomer || undefined,
+    assignee: fAssignee || undefined,
+    key: fKey || undefined,
+    summary: fSummary || undefined,
+    enabled: groupView !== 'all',
+  });
 
   // Paginated mode (no column filters active)
   const { data: issuesData, isLoading: issuesLoading, isError: issuesError } = useNtaIssues({
@@ -1115,7 +1253,9 @@ function TicketsView() {
 
   // Global search mode (any column filter active — searches all tickets, backend-cached)
   const searchFilters = { key: fKey, summary: fSummary, status: fStatus, priority: fPriority,
-    customer: fCustomer, assignee: fAssignee, reporter: fPm, department: fDept, spaces: spaceFilter || undefined };
+    customer: fCustomer, assignee: fAssignee, reporter: fReporter, projectManager: fProjectManager,
+    department: fDept, spaces: spaceFilter || undefined,
+    createdFrom: createdFromISO, createdTo: createdToISO };
   const { data: searchData, isLoading: searchLoading, isFetching: searchFetching } = useNtaSearch(searchFilters);
 
   const stats  = statsData?.data  || statsData  || {};
@@ -1124,14 +1264,20 @@ function TicketsView() {
   const isLoading = hasAnyColFilter ? searchLoading : issuesLoading;
   const isError   = hasAnyColFilter ? false         : issuesError;
 
-  // In search mode use all matched tickets; in page mode use the page slice
+  // In search mode, paginate client-side over the full matched set (already
+  // fetched in one shot) — rendering thousands of rows at once made the tab
+  // feel frozen. In page mode, the server already returns just one page.
+  const byNewest = (a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+  const allMatches: any[] = (searchData?.data || []).slice().sort(byNewest);
   const displayTickets: any[] = hasAnyColFilter
-    ? (searchData?.data || [])
-    : (issuesData?.data || []);
+    ? allMatches.slice((page - 1) * LIMIT, page * LIMIT)
+    : (issuesData?.data || []).slice().sort(byNewest);
   const total: number = hasAnyColFilter
     ? (searchData?.total ?? 0)
     : (issuesData?.total ?? 0);
-  const totalPages: number = hasAnyColFilter ? 1 : (issuesData?.totalPages ?? 1);
+  const totalPages: number = hasAnyColFilter
+    ? Math.max(1, Math.ceil((searchData?.total ?? 0) / LIMIT))
+    : (issuesData?.totalPages ?? 1);
 
   const lc = (v: string) => (v || '').toLowerCase();
 
@@ -1149,7 +1295,8 @@ function TicketsView() {
 
   function clearFilters() {
     setFKey(''); setFSummary(''); setFStatus(''); setFPriority('');
-    setFCustomer(''); setFAssignee(''); setFPm(''); setFDept('');
+    setFCustomer(''); setAssigneeSelection([]); setReporterSelection([]); setPmSelection([]); setDeptSelection([]);
+    setCreatedFrom(''); setCreatedTo(''); setPage(1);
   }
 
   return (
@@ -1163,6 +1310,103 @@ function TicketsView() {
           </div>
         ))}
       </div>
+
+      {/* Week / Month view + date range */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="inline-flex bg-gray-50 border border-gray-200 rounded-lg p-0.5 gap-0.5">
+          {(['all', 'week', 'month'] as const).map((v) => (
+            <button
+              key={v}
+              onClick={() => setGroupView(v)}
+              className={`text-xs font-semibold px-3 py-1.5 rounded-md transition ${
+                groupView === v ? 'bg-primary-600 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'
+              }`}
+            >
+              {v === 'all' ? 'All' : v === 'week' ? 'Week-on-Week' : 'Month-on-Month'}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex items-center gap-2 text-xs text-gray-500">
+          <label>From</label>
+          <input
+            type="date"
+            value={createdFrom}
+            onChange={(e) => { setCreatedFrom(e.target.value); setPage(1); }}
+            className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary-300"
+          />
+          <span className="text-gray-300">→</span>
+          <label>To</label>
+          <input
+            type="date"
+            value={createdTo}
+            onChange={(e) => { setCreatedTo(e.target.value); setPage(1); }}
+            className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary-300"
+          />
+          {(createdFrom || createdTo) && (
+            <button
+              onClick={() => { setCreatedFrom(''); setCreatedTo(''); setPage(1); }}
+              className="text-red-500 hover:text-red-700 border border-red-200 rounded-lg px-2 py-1.5 hover:bg-red-50 transition"
+            >
+              Clear dates
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Week/Month trend chart */}
+      {groupView !== 'all' && (
+        <div className="bg-white rounded-2xl border border-gray-200 p-4">
+          {trendsLoading ? (
+            <div className="flex items-center justify-center py-10">
+              <Loader2 className="w-6 h-6 animate-spin text-primary-600" />
+            </div>
+          ) : (() => {
+            const buckets: any[] = trendsData?.data || [];
+            if (!buckets.length) {
+              return <div className="text-center py-10 text-sm text-gray-400">No tickets found for this range</div>;
+            }
+            const maxTotal = Math.max(...buckets.map((b) => b.total), 1);
+            // Fixed bar width + horizontal scroll — squeezing every bucket into the
+            // panel's width (as many as 60+ weeks with no date range set) crushed
+            // every label into an unreadable pile. A wide chart you scroll beats a
+            // narrow one you can't read.
+            const COL_W = groupView === 'month' ? 72 : 56;
+            return (
+              <div className="overflow-x-auto -mx-1 px-1 pb-1">
+                <div
+                  className="grid gap-2 items-end"
+                  style={{ gridTemplateColumns: `repeat(${buckets.length}, ${COL_W}px)`, height: 170, width: buckets.length * (COL_W + 8) }}
+                >
+                  {buckets.map((b) => {
+                    const stackHeight = Math.round((b.total / maxTotal) * 120);
+                    const donePct = b.total ? (b.done / b.total) * 100 : 0;
+                    const inProgPct = b.total ? (b.inProgress / b.total) * 100 : 0;
+                    const todoPct = b.total ? (b.todo / b.total) * 100 : 0;
+                    // Weekly labels are a full "Mon D – Mon D" range — too wide for a
+                    // 56px column. Show just the week's start date; full range is a title tooltip.
+                    const shortLabel = groupView === 'week' ? b.label.split(' – ')[0] : b.label;
+                    return (
+                      <div key={b.key} className="flex flex-col items-center justify-end h-full gap-1.5" title={b.label}>
+                        <p className="text-xs font-bold text-gray-700 whitespace-nowrap">{b.total.toLocaleString()}</p>
+                        <div
+                          className="w-full max-w-[36px] rounded-t-md rounded-b-sm overflow-hidden flex flex-col-reverse bg-gray-100"
+                          style={{ height: stackHeight }}
+                        >
+                          <div className="w-full bg-green-600" style={{ height: `${donePct}%` }} />
+                          <div className="w-full bg-blue-600" style={{ height: `${inProgPct}%` }} />
+                          <div className="w-full bg-gray-400" style={{ height: `${todoPct}%` }} />
+                        </div>
+                        <p className="text-[10px] text-gray-400 text-center leading-tight whitespace-nowrap">{shortLabel}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      )}
 
       {/* Board filter + controls */}
       <div className="flex flex-wrap gap-3 items-center">
@@ -1193,7 +1437,7 @@ function TicketsView() {
             <Loader2 size={12} className="animate-spin text-primary-400" />
           )}
           {hasAnyColFilter
-            ? `${total.toLocaleString()} match${total !== 1 ? 'es' : ''} across all tickets`
+            ? `${total.toLocaleString()} match${total !== 1 ? 'es' : ''} across all tickets · page ${page}/${totalPages}`
             : `${total.toLocaleString()} total · page ${page}/${totalPages}`
           }
         </span>
@@ -1232,8 +1476,10 @@ function TicketsView() {
                   <th className="px-3 py-2.5 text-left min-w-[100px]">Priority</th>
                   <th className="px-3 py-2.5 text-left min-w-[120px]">Customer</th>
                   <th className="px-3 py-2.5 text-left min-w-[130px]">Assignee</th>
-                  <th className="px-3 py-2.5 text-left min-w-[130px]">Reporter / PM</th>
+                  <th className="px-3 py-2.5 text-left min-w-[130px]">Reporter</th>
+                  <th className="px-3 py-2.5 text-left min-w-[140px]">Project Manager</th>
                   <th className="px-3 py-2.5 text-left min-w-[140px]">Department</th>
+                  <th className="px-3 py-2.5 text-left min-w-[130px]">Created</th>
                 </tr>
                 {/* Column filter row */}
                 <tr className="bg-gray-50 border-b border-gray-200">
@@ -1249,6 +1495,24 @@ function TicketsView() {
                       <option value="todo">To Do</option>
                       <option value="in-progress">In Progress</option>
                       <option value="done">Done</option>
+                      <optgroup label="Waiting / Pending">
+                        <option value="Waiting for L1">Waiting for L1</option>
+                        <option value="Waiting for L2">Waiting for L2</option>
+                        <option value="Waiting for L3">Waiting for L3</option>
+                        <option value="Pending with L1">Pending with L1</option>
+                        <option value="Pending with L2">Pending with L2</option>
+                        <option value="Pending with L3">Pending with L3</option>
+                        <option value="Pending with L2 Bug">Pending with L2 Bug</option>
+                        <option value="Pending with L3 Bug">Pending with L3 Bug</option>
+                        <option value="Pending with Infra">Pending with Infra</option>
+                        <option value="Pending with QA">Pending with QA</option>
+                        <option value="Pending with Migration">Pending with Migration</option>
+                        <option value="Pending with dev">Pending with Dev</option>
+                        <option value="Waiting for Migration Team">Waiting for Migration Team</option>
+                        <option value="Waiting for Dev">Waiting for Dev</option>
+                        <option value="Waiting for Customer">Waiting for Customer</option>
+                        <option value="Waiting for Pre-Sales">Waiting for Pre-Sales</option>
+                      </optgroup>
                     </select>
                   </th>
                   <th className="px-3 py-2 font-normal">
@@ -1264,20 +1528,42 @@ function TicketsView() {
                     <input className={inputCls} placeholder="Customer…" value={fCustomer} onChange={(e) => { setFCustomer(e.target.value); setPage(1); }} />
                   </th>
                   <th className="px-3 py-2 font-normal">
-                    <input className={inputCls} placeholder="Assignee…" value={fAssignee} onChange={(e) => { setFAssignee(e.target.value); setPage(1); }} />
+                    <PeopleMultiSelect
+                      options={assigneeOptions}
+                      selected={assigneeSelection}
+                      onChange={(next) => { setAssigneeSelection(next); setPage(1); }}
+                    />
                   </th>
                   <th className="px-3 py-2 font-normal">
-                    <input className={inputCls} placeholder="Reporter / PM…" value={fPm} onChange={(e) => { setFPm(e.target.value); setPage(1); }} />
+                    <PeopleMultiSelect
+                      options={reporterOptions}
+                      selected={reporterSelection}
+                      onChange={(next) => { setReporterSelection(next); setPage(1); }}
+                    />
                   </th>
                   <th className="px-3 py-2 font-normal">
-                    <input className={inputCls} placeholder="Department…" value={fDept} onChange={(e) => { setFDept(e.target.value); setPage(1); }} />
+                    <PeopleMultiSelect
+                      options={pmOptions}
+                      selected={pmSelection}
+                      onChange={(next) => { setPmSelection(next); setPage(1); }}
+                    />
+                  </th>
+                  <th className="px-3 py-2 font-normal">
+                    <PeopleMultiSelect
+                      options={deptOptions}
+                      selected={deptSelection}
+                      onChange={(next) => { setDeptSelection(next); setPage(1); }}
+                    />
+                  </th>
+                  <th className="px-3 py-2 font-normal">
+                    <input type="date" className={inputCls} value={createdFrom} onChange={(e) => { setCreatedFrom(e.target.value); setPage(1); }} title="Created from" />
                   </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {displayTickets.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="text-center py-10 text-gray-400 text-sm">
+                    <td colSpan={10} className="text-center py-10 text-gray-400 text-sm">
                       {hasAnyColFilter ? 'No tickets match your filters' : 'No tickets found'}
                     </td>
                   </tr>
@@ -1302,8 +1588,12 @@ function TicketsView() {
                       </td>
                       <td className="px-3 py-2.5 text-xs text-gray-600">{t.customerName || t.clientName || '—'}</td>
                       <td className="px-3 py-2.5 text-xs text-gray-600">{t.assignee?.displayName || t.assignee?.name || '—'}</td>
-                      <td className="px-3 py-2.5 text-xs text-gray-600 whitespace-nowrap">{ticketPm(t)}</td>
+                      <td className="px-3 py-2.5 text-xs text-gray-600 whitespace-nowrap">{t.reporter?.displayName || '—'}</td>
+                      <td className="px-3 py-2.5 text-xs text-gray-600 whitespace-nowrap">{t.projectManager || '—'}</td>
                       <td className="px-3 py-2.5 text-xs text-gray-500">{t.current_department || '—'}</td>
+                      <td className="px-3 py-2.5 text-xs text-gray-500 whitespace-nowrap">
+                        {t.createdAt ? new Date(t.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
+                      </td>
                     </tr>
                   );
                 })}
@@ -1313,8 +1603,8 @@ function TicketsView() {
         )}
       </div>
 
-      {/* Pagination — only shown when not in search mode */}
-      {!hasAnyColFilter && totalPages > 1 && (
+      {/* Pagination — server-paginated in normal mode, client-paginated over the matched set in search mode */}
+      {totalPages > 1 && (
         <div className="flex justify-center gap-2">
           <button
             disabled={page <= 1}

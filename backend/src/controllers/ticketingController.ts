@@ -3,6 +3,23 @@ import { ticketingService, SearchFilters } from '../services/ticketingService';
 import { asyncHandler } from '../middleware/errorHandler';
 import { logger } from '../utils/logger';
 
+function filtersFromQuery(req: Request): SearchFilters {
+  return {
+    key:        (req.query.key        as string) || undefined,
+    summary:    (req.query.summary    as string) || undefined,
+    status:     (req.query.status     as string) || undefined,
+    priority:   (req.query.priority   as string) || undefined,
+    customer:   (req.query.customer   as string) || undefined,
+    assignee:   (req.query.assignee   as string) || undefined,
+    reporter:   (req.query.reporter   as string) || undefined,
+    projectManager: (req.query.projectManager as string) || undefined,
+    department: (req.query.department as string) || undefined,
+    spaces:     (req.query.spaces     as string) || undefined,
+    createdFrom: (req.query.createdFrom as string) || undefined,
+    createdTo:   (req.query.createdTo   as string) || undefined,
+  };
+}
+
 export const ticketingController = {
   checkConfig: asyncHandler(async (_req: Request, res: Response): Promise<void> => {
     res.json({ success: true, data: { configured: ticketingService.isConfigured() } });
@@ -44,20 +61,59 @@ export const ticketingController = {
       res.status(503).json({ success: false, error: 'NTA_API_KEY not configured' });
       return;
     }
-    const filters: SearchFilters = {
-      key:        (req.query.key        as string) || undefined,
-      summary:    (req.query.summary    as string) || undefined,
-      status:     (req.query.status     as string) || undefined,
-      priority:   (req.query.priority   as string) || undefined,
-      customer:   (req.query.customer   as string) || undefined,
-      assignee:   (req.query.assignee   as string) || undefined,
-      reporter:   (req.query.reporter   as string) || undefined,
-      department: (req.query.department as string) || undefined,
-      spaces:     (req.query.spaces     as string) || undefined,
-    };
+    const filters = filtersFromQuery(req);
     logger.info(`NTA search: ${JSON.stringify(filters)}`);
     const result = await ticketingService.searchTickets(filters);
     res.json({ success: true, data: result.tickets, total: result.total, cached: result.cached, cacheAge: result.cacheAge });
+  }),
+
+  getAssignees: asyncHandler(async (_req: Request, res: Response): Promise<void> => {
+    if (!ticketingService.isConfigured()) {
+      res.status(503).json({ success: false, error: 'NTA_API_KEY not configured' });
+      return;
+    }
+    const data = await ticketingService.getAssignees();
+    res.json({ success: true, data });
+  }),
+
+  getReporters: asyncHandler(async (_req: Request, res: Response): Promise<void> => {
+    if (!ticketingService.isConfigured()) {
+      res.status(503).json({ success: false, error: 'NTA_API_KEY not configured' });
+      return;
+    }
+    const data = await ticketingService.getReporters();
+    res.json({ success: true, data });
+  }),
+
+  getProjectManagers: asyncHandler(async (_req: Request, res: Response): Promise<void> => {
+    if (!ticketingService.isConfigured()) {
+      res.status(503).json({ success: false, error: 'NTA_API_KEY not configured' });
+      return;
+    }
+    const data = await ticketingService.getProjectManagers();
+    res.json({ success: true, data });
+  }),
+
+  getDepartments: asyncHandler(async (_req: Request, res: Response): Promise<void> => {
+    if (!ticketingService.isConfigured()) {
+      res.status(503).json({ success: false, error: 'NTA_API_KEY not configured' });
+      return;
+    }
+    const data = await ticketingService.getDepartments();
+    res.json({ success: true, data });
+  }),
+
+  getTrends: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    if (!ticketingService.isConfigured()) {
+      res.status(503).json({ success: false, error: 'NTA_API_KEY not configured' });
+      return;
+    }
+    const groupBy = (req.query.groupBy as string) === 'month' ? 'month' : 'week';
+    const filters = filtersFromQuery(req);
+
+    logger.info(`NTA trends requested: groupBy=${groupBy} filters=${JSON.stringify(filters)}`);
+    const result = await ticketingService.getTrends({ groupBy, ...filters });
+    res.json({ success: true, data: result.buckets });
   }),
 
   getIssues: asyncHandler(async (req: Request, res: Response): Promise<void> => {
