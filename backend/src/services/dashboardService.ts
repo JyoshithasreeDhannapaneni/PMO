@@ -680,20 +680,36 @@ class DashboardService {
     this._overageHistoryReady = true;
   }
 
+  // Syncs extended_end_date and extended_start_date on the project row.
+  // extended_end_date = MAX across all history entries (prevents an older, shorter extension
+  // from overwriting a newer one that goes further).
+  // extended_start_date = the start date of whichever entry has the MAX extended_end_date.
+  // planned_end is intentionally NOT touched — it holds the original SOW end date.
+  private async syncProjectEffectiveDates(projectId: string): Promise<void> {
+    await execute(
+      `UPDATE projects
+       SET extended_end_date = (
+             SELECT MAX(oh.extended_end_date) FROM overage_history oh
+             WHERE oh.project_id = $1 AND oh.extended_end_date IS NOT NULL
+           ),
+           extended_start_date = (
+             SELECT oh.extended_start_date FROM overage_history oh
+             WHERE oh.project_id = $1 AND oh.extended_end_date IS NOT NULL
+             ORDER BY oh.extended_end_date DESC LIMIT 1
+           )
+       WHERE id = $1`,
+      [projectId]
+    );
+  }
+
   async markOverageProject(projectId: string, overageAmount?: number, notes?: string, extendedStartDate?: string, extendedEndDate?: string) {
     await this.ensureOverageHistoryTable();
-    const updates: string[] = [];
+    const updates: string[] = ['is_overaged = true'];
     const params: any[] = [];
-    updates.push(`is_overaged = true`);
     updates.push(`overage_amount = $${params.length + 1}`); params.push(overageAmount || null);
     updates.push(`overage_notes = $${params.length + 1}`); params.push(notes || null);
     if (extendedStartDate) { updates.push(`extended_start_date = $${params.length + 1}`); params.push(new Date(extendedStartDate)); }
-    if (extendedEndDate) {
-      updates.push(`extended_end_date = $${params.length + 1}`); params.push(new Date(extendedEndDate));
-      updates.push(`planned_end = $${params.length + 1}`); params.push(new Date(extendedEndDate));
-    }
     await execute(`UPDATE projects SET ${updates.join(', ')} WHERE id = $${params.length + 1}`, [...params, projectId]);
-    // Insert into overage_history so multiple overage events are tracked
     await execute(
       `INSERT INTO overage_history (project_id, overage_amount, notes, extended_start_date, extended_end_date)
        VALUES ($1, $2, $3, $4, $5)`,
@@ -705,6 +721,9 @@ class DashboardService {
         extendedEndDate ? new Date(extendedEndDate) : null,
       ]
     );
+    // Always sync project dates to MAX across all history — prevents a newer entry
+    // with an earlier date from overwriting a prior extension that went further.
+    await this.syncProjectEffectiveDates(projectId);
   }
 
   async updateOverageProject(projectId: string, overageAmount?: number, notes?: string, extendedStartDate?: string, extendedEndDate?: string) {
@@ -714,12 +733,7 @@ class DashboardService {
     updates.push(`overage_amount = $${params.length + 1}`); params.push(overageAmount || null);
     updates.push(`overage_notes = $${params.length + 1}`); params.push(notes || null);
     if (extendedStartDate) { updates.push(`extended_start_date = $${params.length + 1}`); params.push(new Date(extendedStartDate)); }
-    if (extendedEndDate) {
-      updates.push(`extended_end_date = $${params.length + 1}`); params.push(new Date(extendedEndDate));
-      updates.push(`planned_end = $${params.length + 1}`); params.push(new Date(extendedEndDate));
-    }
     await execute(`UPDATE projects SET ${updates.join(', ')} WHERE id = $${params.length + 1}`, [...params, projectId]);
-    // Patch the most recent history entry instead of inserting a new one
     await execute(
       `UPDATE overage_history SET
          overage_amount = $1, notes = $2,
@@ -735,6 +749,8 @@ class DashboardService {
         projectId,
       ]
     );
+    // Sync project dates to MAX across all history after patching the entry.
+    await this.syncProjectEffectiveDates(projectId);
   }
 
   async unmarkOverageProject(projectId: string) {

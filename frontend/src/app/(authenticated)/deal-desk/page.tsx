@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useDealDeskDeals, useDealDeskStats, useDealDeskConfig, useTriggerDealDeskPoll } from '@/hooks/useProjects';
+import { useDealDeskDeals, useDealDeskStats, useDealDeskConfig, useTriggerDealDeskPoll, useImportSendGridHistory } from '@/hooks/useProjects';
 import { RefreshCw, FileText, CheckCircle, AlertCircle, DollarSign, ChevronDown, ChevronRight } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -80,11 +80,16 @@ export default function DealDeskPage() {
   const [pollError, setPollError] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<{ ok?: boolean; error?: string; mailboxReachable?: boolean; mailboxError?: string; diagnostics?: Record<string, string | number | boolean> } | null>(null);
   const [testing, setTesting] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<{ found: number; imported: number; skipped: number; errors: number } | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importDays, setImportDays] = useState(0);
 
   const configQuery = useDealDeskConfig();
   const statsQuery = useDealDeskStats();
   const dealsQuery = useDealDeskDeals({ page, limit: 25, search, status: statusFilter, matchType: matchFilter });
   const triggerPoll = useTriggerDealDeskPoll();
+  const importHistory = useImportSendGridHistory();
 
   const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -106,6 +111,8 @@ export default function DealDeskPage() {
   }
 
   const isConfigured = configQuery.data?.data?.configured ?? false;
+  const configMode: string = configQuery.data?.data?.mode ?? 'none';
+  const isSendGridMode = configMode === 'sendgrid';
   const stats = statsQuery.data?.data;
   const deals: Deal[] = dealsQuery.data?.data || [];
   const total: number = dealsQuery.data?.total || 0;
@@ -146,6 +153,26 @@ export default function DealDeskPage() {
     }
   }
 
+  async function handleImport() {
+    setImporting(true);
+    setImportResult(null);
+    setImportError(null);
+    try {
+      const res = await importHistory.mutateAsync(importDays);
+      if (res.success) {
+        setImportResult(res.data);
+        dealsQuery.refetch();
+        statsQuery.refetch();
+      } else {
+        setImportError(res.error || 'Import failed');
+      }
+    } catch (e: any) {
+      setImportError(e.message || 'Import failed');
+    } finally {
+      setImporting(false);
+    }
+  }
+
   function toggleExpand(id: string) {
     setExpandedId(prev => prev === id ? null : id);
   }
@@ -160,14 +187,16 @@ export default function DealDeskPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={handleTestAuth}
-            disabled={testing || !isConfigured}
-            className="flex items-center gap-2 px-3 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            <CheckCircle size={15} className={testing ? 'animate-pulse text-blue-500' : 'text-gray-400'} />
-            {testing ? 'Testing…' : 'Test connection'}
-          </button>
+          {!isSendGridMode && (
+            <button
+              onClick={handleTestAuth}
+              disabled={testing || !isConfigured}
+              className="flex items-center gap-2 px-3 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              <CheckCircle size={15} className={testing ? 'animate-pulse text-blue-500' : 'text-gray-400'} />
+              {testing ? 'Testing…' : 'Test connection'}
+            </button>
+          )}
           <button
             onClick={handleReparse}
             disabled={reparsing}
@@ -177,26 +206,60 @@ export default function DealDeskPage() {
             <RefreshCw size={15} className={reparsing ? 'animate-spin' : ''} />
             {reparsing ? 'Reparsing…' : 'Reparse docs'}
           </button>
-          <button
-            onClick={handlePoll}
-            disabled={polling || !isConfigured}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            <RefreshCw size={16} className={polling ? 'animate-spin' : ''} />
-            {polling ? 'Checking inbox…' : 'Check inbox now'}
-          </button>
+          {isSendGridMode && (
+            <div className="flex items-center gap-1">
+              <select
+                value={importDays}
+                onChange={e => setImportDays(parseInt(e.target.value, 10))}
+                disabled={importing}
+                className="px-2 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 bg-white disabled:opacity-50"
+              >
+                <option value={0}>All time</option>
+                <option value={30}>Last 30 days</option>
+                <option value={90}>Last 90 days</option>
+                <option value={365}>Last 365 days</option>
+              </select>
+              <button
+                onClick={handleImport}
+                disabled={importing}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                title="Pull past emails from SendGrid Email Activity API and import into database"
+              >
+                <RefreshCw size={16} className={importing ? 'animate-spin' : ''} />
+                {importing ? 'Importing…' : 'Import history'}
+              </button>
+            </div>
+          )}
+          {!isSendGridMode && (
+            <button
+              onClick={handlePoll}
+              disabled={polling || !isConfigured}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              <RefreshCw size={16} className={polling ? 'animate-spin' : ''} />
+              {polling ? 'Checking inbox…' : 'Check inbox now'}
+            </button>
+          )}
         </div>
       </div>
 
-      {!isConfigured && (
+      {isSendGridMode ? (
+        <div className="flex items-start gap-3 p-4 bg-green-50 border border-green-200 rounded-xl text-sm text-green-800">
+          <CheckCircle size={18} className="mt-0.5 shrink-0 text-green-600" />
+          <div>
+            <p className="font-medium">SendGrid Inbound Parse active</p>
+            <p className="mt-0.5">Emails sent to <code className="bg-green-100 px-1 rounded">dealdesk@zenop.ai</code> are automatically delivered here via webhook. In SendGrid, set Inbound Parse → Hostname: <code className="bg-green-100 px-1 rounded">zenop.ai</code> → URL: <code className="bg-green-100 px-1 rounded">http://&lt;server&gt;:3001/api/deal-desk/inbound?secret=dd-sg-webhook-2024</code></p>
+          </div>
+        </div>
+      ) : !isConfigured ? (
         <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
           <AlertCircle size={18} className="mt-0.5 shrink-0" />
           <div>
-            <p className="font-medium">Microsoft Graph API not configured</p>
-            <p className="mt-0.5">Add <code className="bg-amber-100 px-1 rounded">MS_GRAPH_TENANT_ID</code>, <code className="bg-amber-100 px-1 rounded">MS_GRAPH_CLIENT_ID</code>, <code className="bg-amber-100 px-1 rounded">MS_GRAPH_CLIENT_SECRET</code>, and <code className="bg-amber-100 px-1 rounded">DEAL_DESK_EMAIL</code> to <code className="bg-amber-100 px-1 rounded">backend/.env</code> to enable email polling.</p>
+            <p className="font-medium">Email integration not configured</p>
+            <p className="mt-0.5">Set <code className="bg-amber-100 px-1 rounded">SENDGRID_WEBHOOK_ENABLED=true</code> in <code className="bg-amber-100 px-1 rounded">backend/.env</code> to use SendGrid Inbound Parse, or configure <code className="bg-amber-100 px-1 rounded">MS_GRAPH_TENANT_ID</code>, <code className="bg-amber-100 px-1 rounded">MS_GRAPH_CLIENT_ID</code>, and <code className="bg-amber-100 px-1 rounded">MS_GRAPH_CLIENT_SECRET</code> for Microsoft Graph polling.</p>
           </div>
         </div>
-      )}
+      ) : null}
 
       {testResult && (
         <div className={`p-4 rounded-xl border text-sm space-y-2 ${testResult.ok && testResult.mailboxReachable ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-800'}`}>
@@ -230,6 +293,39 @@ export default function DealDeskPage() {
         <div className="flex items-center gap-2 p-3 bg-purple-50 border border-purple-200 rounded-xl text-sm text-purple-800">
           <CheckCircle size={16} />
           Reparse complete — updated <strong>{reparseResult.updated}</strong> deal record{reparseResult.updated !== 1 ? 's' : ''} with re-extracted fields.
+        </div>
+      )}
+
+      {importError && (
+        <div className="flex items-start gap-3 p-4 bg-red-50 border border-red-200 rounded-xl text-sm text-red-800">
+          <AlertCircle size={18} className="mt-0.5 shrink-0" />
+          <div>
+            <p className="font-semibold">Import failed</p>
+            <p className="mt-1 font-mono text-xs break-all">{importError}</p>
+            {importError.includes('IMAP') && (
+              <p className="mt-2 text-xs">Add IMAP credentials to <code className="bg-red-100 px-1 rounded">backend/.env</code>: <code className="bg-red-100 px-1 rounded">IMAP_HOST</code>, <code className="bg-red-100 px-1 rounded">IMAP_USER</code>, <code className="bg-red-100 px-1 rounded">IMAP_PASSWORD</code>, then restart the backend.</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {importResult && (
+        <div className={`p-3 rounded-xl border text-sm ${importResult.imported === 0 ? 'bg-amber-50 border-amber-200 text-amber-800' : 'bg-green-50 border-green-200 text-green-800'}`}>
+          <div className="flex items-center gap-2">
+            <CheckCircle size={16} />
+            <span>
+              History import complete — found <strong>{importResult.found}</strong> email{importResult.found !== 1 ? 's' : ''} in mailbox,{' '}
+              <strong>{importResult.imported}</strong> newly imported,{' '}
+              <strong>{importResult.skipped}</strong> already in database
+              {importResult.errors > 0 && <>, <strong className="text-red-700">{importResult.errors}</strong> error{importResult.errors !== 1 ? 's' : ''}</>}
+            </span>
+          </div>
+          {importResult.found === 0 && (
+            <p className="mt-1 text-xs">No emails found in INBOX for the selected date range. Try a longer range (365 days) or check that IMAP access is enabled for the mailbox in Microsoft 365 admin.</p>
+          )}
+          {importResult.imported > 0 && (
+            <p className="mt-1 text-xs">Full email bodies and PDF/DOCX attachments were read directly from the mailbox. Use <strong>Reparse docs</strong> to re-extract fields if needed.</p>
+          )}
         </div>
       )}
 
