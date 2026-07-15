@@ -1119,7 +1119,8 @@ function TicketsView() {
   const { data: searchData, isLoading: searchLoading, isFetching: searchFetching } = useNtaSearch(searchFilters);
 
   const stats  = statsData?.data  || statsData  || {};
-  const spaces: any[] = spacesData?.data || spacesData || [];
+  const rawSpaces = spacesData?.data ?? spacesData;
+  const spaces: any[] = Array.isArray(rawSpaces) ? rawSpaces : [];
 
   const isLoading = hasAnyColFilter ? searchLoading : issuesLoading;
   const isError   = hasAnyColFilter ? false         : issuesError;
@@ -1218,8 +1219,13 @@ function TicketsView() {
             )}
           </div>
         ) : isError ? (
-          <div className="flex items-center gap-2 justify-center py-12 text-red-500 text-sm">
-            <AlertCircle size={16} /> Failed to load tickets
+          <div className="flex flex-col items-center justify-center py-14 gap-3">
+            <AlertCircle size={28} className="text-red-400" />
+            <p className="text-sm font-medium text-red-600">Neutara Ticketing is not responding</p>
+            <p className="text-xs text-gray-400 text-center max-w-sm">
+              The ticketing service at neutaraticketing.cftools.live is currently unreachable.
+              Check that the service is running and the API key is valid, then refresh the page.
+            </p>
           </div>
         ) : (
           <div className="overflow-x-auto">

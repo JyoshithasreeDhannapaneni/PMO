@@ -694,6 +694,7 @@ export function useNtaStats() {
     queryKey: ['ntaStats'],
     queryFn: () => ntaFetch('/stats'),
     staleTime: 60_000,
+    retry: 1,
   });
 }
 
@@ -702,6 +703,7 @@ export function useNtaSpaces() {
     queryKey: ['ntaSpaces'],
     queryFn: () => ntaFetch('/spaces'),
     staleTime: 300_000,
+    retry: 1,
   });
 }
 
@@ -717,6 +719,7 @@ export function useNtaIssues(params: { page?: number; limit?: number; spaces?: s
       return ntaFetch(`/issues?${qs}`);
     },
     staleTime: 30_000,
+    retry: 1,
   });
 }
 
