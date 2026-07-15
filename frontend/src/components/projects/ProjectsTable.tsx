@@ -913,14 +913,24 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
                   </div>
                 </td>
 
-                {/* Actual End - Editable */}
+                {/* Project End Date — shows extension deadline for overaged projects, actual end otherwise */}
                 <td className="px-4 py-3">
-                  <EditableDate
-                    projectId={project.id}
-                    field="actualEnd"
-                    value={project.actualEnd}
-                    {...dateEditProps}
-                  />
+                  {project.isOveraged && project.expectedEnd ? (
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-1 text-sm font-medium text-purple-700">
+                        <Calendar size={12} className="text-purple-400 flex-shrink-0" />
+                        {formatDate(project.expectedEnd)}
+                      </div>
+                      <span className="text-xs text-purple-400">Extended End</span>
+                    </div>
+                  ) : (
+                    <EditableDate
+                      projectId={project.id}
+                      field="actualEnd"
+                      value={project.actualEnd}
+                      {...dateEditProps}
+                    />
+                  )}
                 </td>
 
                 {/* Actions */}

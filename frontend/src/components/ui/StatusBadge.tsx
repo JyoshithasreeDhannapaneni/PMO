@@ -38,6 +38,7 @@ const delayColors: Record<string, string> = {
   NOT_DELAYED: 'bg-green-100 text-green-800 border-green-200',
   AT_RISK: 'bg-yellow-100 text-yellow-800 border-yellow-200',
   DELAYED: 'bg-red-100 text-red-800 border-red-200',
+  EXTENDED: 'bg-purple-100 text-purple-800 border-purple-200',
 };
 
 export function StatusBadge({ status, variant = 'status', className }: StatusBadgeProps) {

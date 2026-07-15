@@ -1,6 +1,7 @@
 'use client';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState, useEffect } from 'react';
 import { projectsApi, dashboardApi, statusReportsApi, managerGoalsApi, migrationTypeApi, pocProjectsApi, accountManagerApi, customerSuccessApi, hubspotApi, psEngagementsApi } from '@/services/api';
 import type { CreateProjectInput, UpdateProjectInput } from '@/types';
 
@@ -632,6 +633,23 @@ export function useTriggerDealDeskPoll() {
   });
 }
 
+export function useImportSendGridHistory() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (daysBack: number) => {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
+      return fetch(`${API_BASE}/api/deal-desk/import-history?daysBack=${daysBack}`, {
+        method: 'POST',
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      }).then(r => r.json());
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dealDeskDeals'] });
+      queryClient.invalidateQueries({ queryKey: ['dealDeskStats'] });
+    },
+  });
+}
+
 export function useUpdateDealMatch() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -649,5 +667,91 @@ export function useUpdateDealMatch() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['dealDeskDeals'] });
     },
+  });
+}
+
+// ─── NTA Ticketing ───────────────────────────────────────────────────────────
+
+function ntaFetch(path: string) {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
+  return fetch(`${API_BASE}/api/ticketing${path}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  }).then(r => r.json());
+}
+
+export function useNtaCustomerTickets(customerNames: string[]) {
+  const key = customerNames.slice().sort().join(',');
+  return useQuery({
+    queryKey: ['ntaCustomerTickets', key],
+    queryFn: () => ntaFetch(`/by-customers?customers=${encodeURIComponent(key)}`),
+    enabled: customerNames.length > 0,
+    staleTime: 120_000,
+  });
+}
+
+export function useNtaStats() {
+  return useQuery({
+    queryKey: ['ntaStats'],
+    queryFn: () => ntaFetch('/stats'),
+    staleTime: 60_000,
+  });
+}
+
+export function useNtaSpaces() {
+  return useQuery({
+    queryKey: ['ntaSpaces'],
+    queryFn: () => ntaFetch('/spaces'),
+    staleTime: 300_000,
+  });
+}
+
+export function useNtaIssues(params: { page?: number; limit?: number; spaces?: string }) {
+  return useQuery({
+    queryKey: ['ntaIssues', params],
+    queryFn: () => {
+      const qs = new URLSearchParams({
+        page: String(params.page || 1),
+        limit: String(params.limit || 50),
+        ...(params.spaces ? { spaces: params.spaces } : {}),
+      });
+      return ntaFetch(`/issues?${qs}`);
+    },
+    staleTime: 30_000,
+  });
+}
+
+export interface NtaSearchFilters {
+  key?: string;
+  summary?: string;
+  status?: string;
+  priority?: string;
+  customer?: string;
+  assignee?: string;
+  reporter?: string;
+  department?: string;
+  spaces?: string;
+}
+
+function useDebounce<T>(value: T, delay: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(t);
+  }, [value, delay]);
+  return debounced;
+}
+
+export function useNtaSearch(filters: NtaSearchFilters) {
+  const debounced = useDebounce(filters, 350);
+  const hasFilter = Object.values(debounced).some((v) => v && v.trim() !== '');
+  return useQuery({
+    queryKey: ['ntaSearch', debounced],
+    queryFn: () => {
+      const qs = new URLSearchParams();
+      Object.entries(debounced).forEach(([k, v]) => { if (v) qs.set(k, v); });
+      return ntaFetch(`/search?${qs}`);
+    },
+    enabled: hasFilter,
+    staleTime: 60_000,
   });
 }

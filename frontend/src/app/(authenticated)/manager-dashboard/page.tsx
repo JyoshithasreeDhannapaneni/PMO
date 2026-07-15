@@ -1,10 +1,10 @@
-'use client';
+﻿'use client';
 
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
-import { useManagerGoalsWithStats, useJiraSla, useJiraEngineers, useJiraExcelStatus, useJiraOAuthStatus, useEscalatedProjects } from '@/hooks/useProjects';
+import { useManagerGoalsWithStats, useEscalatedProjects, useNtaStats, useNtaSpaces, useNtaIssues, useNtaSearch, useNtaCustomerTickets, useJiraExcelStatus } from '@/hooks/useProjects';
 import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import {
@@ -17,7 +17,7 @@ import api from '@/services/api';
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Segment = 'ENT' | 'SMB';
-type ActiveTab = 'ENT' | 'SMB' | 'ENGINEERS' | 'OBSERVATIONS';
+type ActiveTab = 'ENT' | 'SMB' | 'OBSERVATIONS' | 'TICKETS';
 
 interface ManagerStat {
   manager: string;
@@ -33,15 +33,6 @@ interface ManagerStat {
   achievedPct: number;
   goalPct: number;
   variance: number;
-}
-
-// Future contract for Jira SLA — wired up when credentials are configured
-interface JiraSlaData {
-  ticketCount: number;
-  breachCount: number;
-  breachRate: number;
-  firstResponseBreaches: number;
-  resolutionBreaches: number;
 }
 
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -94,6 +85,42 @@ function sumStats(stats: ManagerStat[]) {
   return { total, onTime, delayed, atRisk, completed, active, inactive, pctOnTime, avgDelayDays };
 }
 
+// ─── NTA connectivity banner ─────────────────────────────────────────────────
+
+function NtaConnectBanner() {
+  const { data: statsData, isLoading, isError } = useNtaStats();
+
+  if (isLoading) return null;
+
+  if (isError || !statsData) {
+    return (
+      <div className="rounded-xl border border-red-200 bg-red-50 p-3 flex items-center gap-2">
+        <AlertCircle size={15} className="text-red-500 flex-shrink-0" />
+        <p className="text-sm text-red-800">
+          <span className="font-semibold">Neutara Ticketing — connection failed.</span>
+          <span className="text-red-600 ml-2 text-xs">Check NTA_API_KEY in backend/.env</span>
+        </p>
+      </div>
+    );
+  }
+
+  const stats = statsData?.data || statsData;
+  return (
+    <div className="rounded-xl border border-green-200 bg-green-50 p-3 flex items-center gap-2">
+      <CheckCircle size={15} className="text-green-600 flex-shrink-0" />
+      <p className="text-sm text-green-800">
+        <span className="font-semibold">Neutara Ticketing connected</span>
+        <span className="text-green-500 mx-2">·</span>
+        <span className="text-green-700">{(stats.totalTickets || 0).toLocaleString()} tickets</span>
+        <span className="text-green-500 mx-2">·</span>
+        <span className="text-green-700">{stats.totalBoards || 0} boards</span>
+        <span className="text-green-500 mx-2">·</span>
+        <span className="text-green-700">{stats.totalAgents || 0} agents</span>
+      </p>
+    </div>
+  );
+}
+
 // ─── Jira Excel upload banner ────────────────────────────────────────────────
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
@@ -108,7 +135,6 @@ function ExcelUploadBanner() {
   const invalidateAll = () => {
     queryClient.invalidateQueries({ queryKey: ['jira-excel-status'] });
     queryClient.invalidateQueries({ queryKey: ['jira-sla'] });
-    queryClient.invalidateQueries({ queryKey: ['jira-engineers'] });
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -148,7 +174,6 @@ function ExcelUploadBanner() {
   };
 
   if (isLoading) return null;
-
   const available = data?.available;
 
   return (
@@ -159,618 +184,156 @@ function ExcelUploadBanner() {
           <div>
             {available ? (
               <>
-                <p className="text-sm font-semibold text-green-800">
-                  Jira data loaded from Excel
-                </p>
+                <p className="text-sm font-semibold text-green-800">Jira data loaded from Excel</p>
                 <p className="text-xs text-green-700 mt-0.5">
                   <span className="font-medium">{data.filename}</span>
                   {' · '}{data.ticketCount} tickets
                   {' · '}Uploaded {new Date(data.uploadedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                 </p>
-                {data.columnMap && (
-                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
-                    {[
-                      { key: 'pm',       label: 'Project Manager' },
-                      { key: 'customer', label: 'Customer Name'   },
-                      { key: 'assignee', label: 'Assignee'        },
-                      { key: 'frSla',    label: 'FR SLA Breach'   },
-                      { key: 'resSla',   label: 'Resolution SLA Breach' },
-                    ].map(({ key, label }) => {
-                      const val = data.columnMap[key];
-                      const found = val && val !== 'NOT FOUND';
-                      return (
-                        <span key={key} className={`text-xs ${found ? 'text-green-700' : 'text-gray-400'}`}>
-                          {label}: <span className="font-medium">{found ? '✓' : '—'}</span>
-                        </span>
-                      );
-                    })}
-                  </div>
-                )}
               </>
             ) : (
               <>
                 <p className="text-sm font-semibold text-blue-800">Upload Jira Export (Excel)</p>
-                <p className="text-xs text-blue-600 mt-0.5">
-                  Export tickets from Jira using the Excel add-in or native export, then upload here to display SLA data.
-                </p>
-                <p className="text-xs text-blue-500 mt-1">
-                  Required columns: <span className="font-medium">Assignee, Project Manager</span> · Optional: Customer/Organization, Time to first response, Time to resolution
-                </p>
+                <p className="text-xs text-blue-600 mt-0.5">Export tickets from Jira, then upload here to display SLA data.</p>
               </>
             )}
-            {uploadError && (
-              <p className="text-xs text-red-600 mt-1 font-medium">{uploadError}</p>
-            )}
+            {uploadError && <p className="text-xs text-red-600 mt-1 font-medium">{uploadError}</p>}
           </div>
         </div>
-
         <div className="flex items-center gap-2 flex-shrink-0">
           {available && (
-            <button
-              onClick={handleClear}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-red-600 hover:text-red-700 border border-red-200 hover:border-red-300 rounded-lg transition"
-            >
-              <Trash2 size={13} />
-              Remove
+            <button onClick={handleClear} className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-red-600 hover:text-red-700 border border-red-200 hover:border-red-300 rounded-lg transition">
+              <Trash2 size={13} /> Remove
             </button>
           )}
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
             className={`flex items-center gap-1.5 px-4 py-2 text-sm font-semibold rounded-lg transition whitespace-nowrap
-              ${available
-                ? 'bg-white border border-green-300 text-green-700 hover:bg-green-50'
-                : 'bg-blue-600 text-white hover:bg-blue-700'
-              } disabled:opacity-60`}
+              ${available ? 'bg-white border border-green-300 text-green-700 hover:bg-green-50' : 'bg-blue-600 text-white hover:bg-blue-700'} disabled:opacity-60`}
           >
-            {uploading ? (
-              <><Loader2 size={14} className="animate-spin" /> Uploading…</>
-            ) : (
-              <><Upload size={14} /> {available ? 'Replace File' : 'Upload Excel'}</>
-            )}
+            {uploading ? <><Loader2 size={14} className="animate-spin" /> Uploading…</> : <><Upload size={14} /> {available ? 'Replace File' : 'Upload Excel'}</>}
           </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".xlsx,.xls,.csv"
-            className="hidden"
-            onChange={handleFileChange}
-          />
+          <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFileChange} />
         </div>
       </div>
     </div>
   );
 }
 
-// ─── Jira OAuth connection button ────────────────────────────────────────────
+// ─── NTA tickets section per manager ─────────────────────────────────────────
 
-function JiraOAuthBanner() {
-  const { data, isLoading, refetch } = useJiraOAuthStatus();
-  const queryClient = useQueryClient();
+function NtaManagerSection({ customerNames }: { customerNames: string[] }) {
+  const [expanded, setExpanded] = useState(false);
+  const { data, isLoading } = useNtaCustomerTickets(customerNames);
 
-  if (isLoading) return null;
+  const tickets: any[] = data?.data || [];
+  const total = data?.total ?? 0;
+  const truncated: boolean = data?.truncated ?? false;
+  const scanned: number = data?.scanned ?? 0;
 
-  const handleDisconnect = async () => {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
-    await fetch(`${API_BASE_URL}/api/jira/oauth/disconnect`, {
-      method: 'POST',
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
-    queryClient.invalidateQueries({ queryKey: ['jira-oauth-status'] });
-    queryClient.invalidateQueries({ queryKey: ['jira-sla'] });
-    queryClient.invalidateQueries({ queryKey: ['jira-engineers'] });
-    refetch();
-  };
-
-  // Connected
-  if (data?.connected) {
-    return (
-      <div className="rounded-xl border border-green-200 bg-green-50 p-3 flex items-center justify-between gap-4">
-        <div className="flex items-center gap-2">
-          <CheckCircle size={15} className="text-green-600 flex-shrink-0" />
-          <p className="text-sm text-green-800">
-            <span className="font-semibold">Jira connected via OAuth</span>
-            {data.connectedAs && <span className="text-green-600 ml-1">as {data.connectedAs}</span>}
-          </p>
-        </div>
-        <button onClick={handleDisconnect} className="text-xs text-red-500 hover:text-red-700 font-medium transition">
-          Disconnect
-        </button>
-      </div>
-    );
-  }
-
-  // Configured but not connected — show compact connect button
-  if (data?.configured) {
-    return (
-      <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-3 flex items-center justify-between gap-4">
-        <div className="flex items-center gap-2">
-          <ExternalLink size={15} className="text-indigo-500 flex-shrink-0" />
-          <p className="text-sm text-indigo-800">
-            Connect Jira via OAuth to pull live ticket data automatically.
-          </p>
-        </div>
-        <a
-          href={`${API_BASE_URL}/api/jira/oauth/connect`}
-          className="flex-shrink-0 px-3 py-1.5 bg-indigo-600 text-white text-xs font-semibold rounded-lg hover:bg-indigo-700 transition whitespace-nowrap"
-        >
-          Connect to Jira
-        </a>
-      </div>
-    );
-  }
-
-  // Not configured — show minimal hint
-  return (
-    <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 flex items-center gap-2">
-      <AlertCircle size={14} className="text-gray-400 flex-shrink-0" />
-      <p className="text-xs text-gray-500">
-        To connect Jira via OAuth, add <code className="bg-gray-100 px-1 rounded">JIRA_OAUTH_CLIENT_ID</code> &amp; <code className="bg-gray-100 px-1 rounded">JIRA_OAUTH_CLIENT_SECRET</code> to <code className="bg-gray-100 px-1 rounded">backend/.env</code> then restart.
-      </p>
-    </div>
-  );
-}
-
-// ─── JiraSlaSection ──────────────────────────────────────────────────────────
-
-interface TicketRow {
-  key: string;
-  summary: string;
-  assignee: string;
-  status: string;
-  frBreached: boolean;
-  resBreached: boolean;
-}
-
-interface JiraProject {
-  customerName: string;
-  totalTickets: number;
-  breachCount: number;
-  breachRate: number;
-  firstResponseBreaches: number;
-  resolutionBreaches: number;
-  tickets: TicketRow[];
-}
-
-function TicketModal({ title, tickets, jiraBaseUrl, onClose }: {
-  title: string;
-  tickets: TicketRow[];
-  jiraBaseUrl: string;
-  onClose: () => void;
-}) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
-  return createPortal(
-    <div
-      className="fixed inset-0 flex items-center justify-center bg-black/50 p-6"
-      style={{ zIndex: 9999 }}
-      onClick={onClose}
-    >
-      <div
-        className="bg-white rounded-2xl shadow-2xl flex flex-col"
-        style={{ width: '90vw', maxWidth: '1000px', height: '80vh' }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 flex-shrink-0">
-          <div>
-            <h2 className="text-base font-bold text-gray-800">{title}</h2>
-            <p className="text-xs text-gray-400 mt-0.5">{tickets.length} ticket{tickets.length !== 1 ? 's' : ''} · click any key to open in Jira</p>
-          </div>
-          <button onClick={onClose} className="p-2 rounded-xl hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors">
-            <X size={18} />
-          </button>
-        </div>
-
-        {/* Table */}
-        <div className="overflow-auto flex-1">
-          {tickets.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-2">
-              <AlertCircle size={28} />
-              <p className="text-sm">No tickets found.</p>
-            </div>
-          ) : (
-            <table className="w-full text-sm border-collapse">
-              <thead className="bg-gray-50 border-b border-gray-200" style={{ position: 'sticky', top: 0, zIndex: 1 }}>
-                <tr>
-                  <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 whitespace-nowrap w-32">Key</th>
-                  <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500">Summary</th>
-                  <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">Assignee</th>
-                  <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">Status</th>
-                  <th className="px-5 py-3 text-center text-xs font-semibold text-gray-500 whitespace-nowrap">FR SLA</th>
-                  <th className="px-5 py-3 text-center text-xs font-semibold text-gray-500 whitespace-nowrap">Resolution SLA</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {tickets.map((t, i) => (
-                  <tr key={t.key || `row-${i}`} className="hover:bg-blue-50/40 transition-colors">
-                    <td className="px-5 py-3 whitespace-nowrap">
-                      {t.key ? (
-                        <a
-                          href={`${jiraBaseUrl}/browse/${t.key}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="font-semibold text-primary-600 hover:text-primary-800 hover:underline inline-flex items-center gap-1.5"
-                        >
-                          {t.key}
-                          <ExternalLink size={12} className="text-primary-400 flex-shrink-0" />
-                        </a>
-                      ) : (
-                        <span className="text-gray-300 italic text-xs">—</span>
-                      )}
-                    </td>
-                    <td className="px-5 py-3 text-gray-700 max-w-sm" title={t.summary}>
-                      <span className="line-clamp-2">{t.summary || '—'}</span>
-                    </td>
-                    <td className="px-5 py-3 text-gray-600 whitespace-nowrap">{t.assignee || '—'}</td>
-                    <td className="px-5 py-3 whitespace-nowrap">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                        t.status?.toLowerCase() === 'closed' || t.status?.toLowerCase() === 'done' || t.status?.toLowerCase() === 'resolved'
-                          ? 'bg-green-100 text-green-700'
-                          : t.status?.toLowerCase() === 'open' || t.status?.toLowerCase() === 'to do'
-                          ? 'bg-gray-100 text-gray-600'
-                          : 'bg-blue-100 text-blue-700'
-                      }`}>
-                        {t.status || '—'}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3 text-center">
-                      {t.frBreached
-                        ? <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">Breached</span>
-                        : <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-600">OK</span>}
-                    </td>
-                    <td className="px-5 py-3 text-center">
-                      {t.resBreached
-                        ? <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">Breached</span>
-                        : <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-600">OK</span>}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </div>
-    </div>,
-    document.body
-  );
-}
-
-// ─── Retry-ticket detection ───────────────────────────────────────────────────
-
-function isRetryTicket(summary: string): boolean {
-  const lower = (summary || '').toLowerCase();
-  return lower.includes('retry') || lower.includes('conflict') || lower.includes('stuck');
-}
-
-// ─── Engineer ticket modal (two-panel: retry vs other) ────────────────────────
-
-function EngineerTicketModal({ title, tickets, jiraBaseUrl, onClose }: {
-  title: string;
-  tickets: TicketRow[];
-  jiraBaseUrl: string;
-  onClose: () => void;
-}) {
-  const [activeTab, setActiveTab] = useState<'retry' | 'other'>('retry');
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
-  const retryTickets = tickets.filter((t) => isRetryTicket(t.summary));
-  const otherTickets = tickets.filter((t) => !isRetryTicket(t.summary));
-  const visibleTickets = activeTab === 'retry' ? retryTickets : otherTickets;
-
-  return createPortal(
-    <div
-      className="fixed inset-0 flex items-center justify-center bg-black/50 p-6"
-      style={{ zIndex: 9999 }}
-      onClick={onClose}
-    >
-      <div
-        className="bg-white rounded-2xl shadow-2xl flex flex-col"
-        style={{ width: '72vw', maxWidth: '1000px', height: '82vh' }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 flex-shrink-0">
-          <div>
-            <h2 className="text-base font-bold text-gray-800">{title}</h2>
-            <p className="text-xs text-gray-400 mt-0.5">{tickets.length} ticket{tickets.length !== 1 ? 's' : ''} total</p>
-          </div>
-          <button onClick={onClose} className="p-2 rounded-xl hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors">
-            <X size={18} />
-          </button>
-        </div>
-
-        {/* Tabs */}
-        <div className="flex items-center gap-3 px-6 py-3 border-b border-gray-100 flex-shrink-0">
-          <button
-            onClick={() => setActiveTab('retry')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
-              activeTab === 'retry'
-                ? 'bg-orange-500 text-white shadow-sm'
-                : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
-            }`}
-          >
-            <FileSpreadsheet size={15} />
-            Retry Tickets
-            <span className={`px-1.5 py-0.5 rounded-full text-xs font-bold ${activeTab === 'retry' ? 'bg-white/25 text-white' : 'bg-gray-100 text-gray-600'}`}>
-              {retryTickets.length}
-            </span>
-          </button>
-          <button
-            onClick={() => setActiveTab('other')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
-              activeTab === 'other'
-                ? 'bg-blue-600 text-white shadow-sm'
-                : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
-            }`}
-          >
-            <FileSpreadsheet size={15} />
-            Other Tickets
-            <span className={`px-1.5 py-0.5 rounded-full text-xs font-bold ${activeTab === 'other' ? 'bg-white/25 text-white' : 'bg-gray-100 text-gray-600'}`}>
-              {otherTickets.length}
-            </span>
-          </button>
-        </div>
-
-        {/* Table */}
-        <div className="overflow-auto flex-1">
-          {visibleTickets.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-2">
-              <AlertCircle size={28} />
-              <p className="text-sm">No tickets in this section.</p>
-            </div>
-          ) : (
-            <table className="w-full text-sm border-collapse">
-              <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
-                <tr>
-                  <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 whitespace-nowrap w-32">Key</th>
-                  <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500">Summary</th>
-                  <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">Assignee</th>
-                  <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">Status</th>
-                  <th className="px-5 py-3 text-center text-xs font-semibold text-gray-500 whitespace-nowrap">FR SLA</th>
-                  <th className="px-5 py-3 text-center text-xs font-semibold text-gray-500 whitespace-nowrap">Resolution SLA</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {visibleTickets.map((t, i) => (
-                  <tr key={t.key || `row-${i}`} className="hover:bg-blue-50/40 transition-colors">
-                    <td className="px-5 py-3 whitespace-nowrap">
-                      {t.key ? (
-                        <a
-                          href={`${jiraBaseUrl}/browse/${t.key}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="font-semibold text-primary-600 hover:text-primary-800 hover:underline inline-flex items-center gap-1.5"
-                        >
-                          {t.key}
-                          <ExternalLink size={12} className="text-primary-400 flex-shrink-0" />
-                        </a>
-                      ) : (
-                        <span className="text-gray-300 italic text-xs">—</span>
-                      )}
-                    </td>
-                    <td className="px-5 py-3 text-gray-700 max-w-sm" title={t.summary}>
-                      <span className="line-clamp-2">{t.summary || '—'}</span>
-                    </td>
-                    <td className="px-5 py-3 text-gray-600 whitespace-nowrap">{t.assignee || '—'}</td>
-                    <td className="px-5 py-3 whitespace-nowrap">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                        t.status?.toLowerCase() === 'closed' || t.status?.toLowerCase() === 'done' || t.status?.toLowerCase() === 'resolved'
-                          ? 'bg-green-100 text-green-700'
-                          : t.status?.toLowerCase() === 'open' || t.status?.toLowerCase() === 'to do'
-                          ? 'bg-gray-100 text-gray-600'
-                          : 'bg-blue-100 text-blue-700'
-                      }`}>
-                        {t.status || '—'}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3 text-center">
-                      {t.frBreached
-                        ? <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">Breached</span>
-                        : <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-600">OK</span>}
-                    </td>
-                    <td className="px-5 py-3 text-center">
-                      {t.resBreached
-                        ? <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">Breached</span>
-                        : <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-600">OK</span>}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </div>
-    </div>,
-    document.body
-  );
-}
-
-function JiraSlaSection({ managerName }: { managerName: string }) {
-  const { data, isLoading, isError } = useJiraSla(managerName);
-
-  // Not configured yet
-  if (!isLoading && (!data?.configured || data?.configured === false)) {
-    return (
-      <div className="border border-dashed border-gray-200 rounded-xl p-4 bg-gray-50 flex items-start gap-3">
-        <Link2Off size={18} className="text-gray-400 flex-shrink-0 mt-0.5" />
-        <div>
-          <p className="text-sm font-medium text-gray-600">Jira SLA Tracking — No Data</p>
-          <p className="text-xs text-gray-400 mt-0.5">
-            Upload a Jira Excel export using the button above to view SLA data for this manager.
-          </p>
-        </div>
-      </div>
-    );
-  }
+  const open       = tickets.filter((t) => t.status?.category === 'todo').length;
+  const inProgress = tickets.filter((t) => t.status?.category === 'in-progress').length;
+  const done       = tickets.filter((t) => t.status?.category === 'done').length;
+  const highPri    = tickets.filter((t) => ['high','urgent'].includes((t.priority || '').toLowerCase())).length;
 
   if (isLoading) {
     return (
       <div className="border border-gray-100 rounded-xl p-4 flex items-center gap-3">
-        <Loader2 size={16} className="animate-spin text-primary-500 flex-shrink-0" />
-        <p className="text-sm text-gray-500">Loading Jira SLA data for last month…</p>
+        <Loader2 size={15} className="animate-spin text-primary-500 flex-shrink-0" />
+        <p className="text-sm text-gray-500">Loading tickets from Neutara…</p>
       </div>
     );
   }
 
-  if (isError || (data && !data.success)) {
-    const msg = data?.error || 'Failed to load Jira SLA data.';
+  if (!isLoading && customerNames.length === 0) {
     return (
-      <div className="border border-red-100 rounded-xl p-4 flex items-start gap-3 bg-red-50">
-        <AlertCircle size={16} className="text-red-400 flex-shrink-0 mt-0.5" />
+      <div className="border border-dashed border-gray-200 rounded-xl p-4 bg-gray-50 flex items-start gap-3">
+        <AlertCircle size={16} className="text-gray-400 flex-shrink-0 mt-0.5" />
+        <p className="text-sm text-gray-500">No projects found — Neutara ticket matching requires at least one active customer.</p>
+      </div>
+    );
+  }
+
+  if (!isLoading && total === 0) {
+    return (
+      <div className="border border-dashed border-gray-200 rounded-xl p-4 bg-gray-50 flex items-start gap-3">
+        <AlertCircle size={16} className="text-gray-400 flex-shrink-0 mt-0.5" />
         <div>
-          <p className="text-sm font-medium text-red-600">Jira API Error</p>
-          <p className="text-xs text-red-500 mt-0.5">{msg}</p>
+          <p className="text-sm font-medium text-gray-600">Neutara Tickets — No matches found</p>
+          <p className="text-xs text-gray-400 mt-0.5">Searched {scanned} tickets by customer name from this manager's projects.</p>
         </div>
       </div>
     );
   }
 
-  const jira = data?.data;
-  if (!jira || jira.projects.length === 0) {
-    return (
-      <div className="border border-gray-100 rounded-xl p-4 bg-gray-50 flex items-start gap-3">
-        <ExternalLink size={16} className="text-gray-400 flex-shrink-0 mt-0.5" />
-        <div>
-          <p className="text-sm font-medium text-gray-600">Jira SLA — {jira?.period?.startDate} to {jira?.period?.endDate}</p>
-          <p className="text-xs text-gray-400 mt-0.5">
-            {jira?.hint
-              ? jira.hint
-              : 'No tickets found for this manager in this period.'}
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  const projects: JiraProject[] = jira.projects;
-  const brColor = jira.overallBreachRate > 20 ? 'text-red-700' : jira.overallBreachRate > 10 ? 'text-yellow-700' : 'text-green-700';
-  const brBg    = jira.overallBreachRate > 20 ? 'bg-red-50'    : jira.overallBreachRate > 10 ? 'bg-yellow-50'    : 'bg-green-50';
-  const jiraBaseUrl: string = (data as any)?.jiraBaseUrl || 'https://cf2020.atlassian.net';
-
-  return (
-    <JiraSlaContent jira={jira} projects={projects} brColor={brColor} brBg={brBg} jiraBaseUrl={jiraBaseUrl} />
-  );
-}
-
-function JiraSlaContent({ jira, projects, brColor, brBg, jiraBaseUrl }: {
-  jira: any; projects: JiraProject[]; brColor: string; brBg: string; jiraBaseUrl: string;
-}) {
-  const [tableOpen, setTableOpen] = useState(false);
-  const [ticketModal, setTicketModal] = useState<{ title: string; tickets: TicketRow[] } | null>(null);
-
-  function openModal(title: string, tickets: TicketRow[]) {
-    setTicketModal({ title, tickets });
-  }
+  const sorted = [...tickets].sort((a, b) => {
+    const order: Record<string,number> = { urgent: 0, high: 1, medium: 2, low: 3 };
+    return (order[(a.priority||'low').toLowerCase()] ?? 3) - (order[(b.priority||'low').toLowerCase()] ?? 3);
+  });
 
   return (
     <div className="space-y-3">
-      {/* 3 summary KPI cards */}
-      <div className="grid grid-cols-3 gap-3">
-        <div className="bg-blue-50 rounded-xl p-4 flex items-center gap-3 border border-white">
-          <FileSpreadsheet size={20} className="text-blue-600" />
-          <div>
-            <p className="text-2xl font-bold text-blue-700">{jira.totalTickets}</p>
-            <p className="text-xs text-gray-500 mt-0.5">Total Tickets</p>
+      {/* KPI cards */}
+      <div className="grid grid-cols-5 gap-3">
+        {[
+          { label: 'Total',       value: total,      bg: 'bg-gray-50',    text: 'text-gray-700'   },
+          { label: 'Open',        value: open,       bg: 'bg-sky-50',     text: 'text-sky-700'    },
+          { label: 'In Progress', value: inProgress, bg: 'bg-blue-50',    text: 'text-blue-700'   },
+          { label: 'Done',        value: done,       bg: 'bg-green-50',   text: 'text-green-700'  },
+          { label: 'High / Urgent', value: highPri,  bg: 'bg-red-50',     text: 'text-red-700'    },
+        ].map((k) => (
+          <div key={k.label} className={`${k.bg} rounded-xl px-3 py-2.5`}>
+            <p className={`text-xl font-bold ${k.text}`}>{k.value}</p>
+            <p className="text-xs text-gray-500 mt-0.5">{k.label}</p>
           </div>
-        </div>
-        <div className={`${jira.totalBreaches > 0 ? 'bg-red-50' : 'bg-green-50'} rounded-xl p-4 flex items-center gap-3 border border-white`}>
-          <AlertCircle size={20} className={jira.totalBreaches > 0 ? 'text-red-600' : 'text-green-600'} />
-          <div>
-            <p className={`text-2xl font-bold ${jira.totalBreaches > 0 ? 'text-red-700' : 'text-green-700'}`}>{jira.totalBreaches}</p>
-            <p className="text-xs text-gray-500 mt-0.5">Breaches</p>
-          </div>
-        </div>
-        <div className={`${brBg} rounded-xl p-4 flex items-center gap-3 border border-white`}>
-          <AlertCircle size={20} className={brColor} />
-          <div>
-            <p className={`text-2xl font-bold ${brColor}`}>{jira.overallBreachRate}%</p>
-            <p className="text-xs text-gray-500 mt-0.5">Breach Rate</p>
-          </div>
-        </div>
+        ))}
       </div>
 
-      {/* Collapsible ticket breakdown */}
-      <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+      {/* Expandable ticket table */}
+      <div className="border border-gray-200 rounded-xl overflow-hidden">
         <button
-          onClick={() => setTableOpen((o) => !o)}
-          className="w-full px-5 py-3 flex items-center gap-3 bg-gray-50 hover:bg-gray-100 transition-colors text-left"
+          className="w-full flex items-center justify-between px-4 py-2.5 bg-gray-50 hover:bg-gray-100 transition text-left"
+          onClick={() => setExpanded((v) => !v)}
         >
-          <h3 className="text-sm font-semibold text-gray-700 flex-shrink-0">Ticket Breakdown by Customer</h3>
-          <span className="text-xs text-gray-400">{projects.length} customers</span>
-          <ChevronRight
-            size={15}
-            className={`ml-auto text-gray-400 transition-transform duration-200 ${tableOpen ? 'rotate-90' : ''}`}
-          />
+          <span className="text-sm font-medium text-gray-700">
+            Neutara Tickets ({total})
+            {truncated && <span className="ml-2 text-xs text-amber-600 font-normal">· scanned first {scanned} tickets</span>}
+          </span>
+          <ChevronRight size={15} className={`text-gray-400 transition-transform ${expanded ? 'rotate-90' : ''}`} />
         </button>
 
-        {tableOpen && (
+        {expanded && (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  {['Customer / Project', 'Total Tickets', 'FR Breaches', 'Resolution Breaches', 'Total Breaches', 'Breach Rate'].map((h) => (
-                    <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">{h}</th>
-                  ))}
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="bg-[#1b4f72] text-white text-xs font-semibold">
+                  <th className="px-3 py-2 text-left">Key</th>
+                  <th className="px-3 py-2 text-left">Summary</th>
+                  <th className="px-3 py-2 text-left">Status</th>
+                  <th className="px-3 py-2 text-left">Priority</th>
+                  <th className="px-3 py-2 text-left">Customer</th>
+                  <th className="px-3 py-2 text-left">Assignee</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {projects.map((p) => {
-                  const rate = p.breachRate;
-                  const rateColor = rate > 20 ? 'text-red-600' : rate > 10 ? 'text-yellow-600' : 'text-green-600';
-                  const tickets: TicketRow[] = p.tickets ?? [];
+                {sorted.map((t) => {
+                  const cat = (t.status?.category || 'todo').toLowerCase();
+                  const pri = (t.priority || 'low').toLowerCase();
+                  const catCls: Record<string,string> = { todo: 'bg-gray-100 text-gray-600', 'in-progress': 'bg-blue-100 text-blue-700', done: 'bg-green-100 text-green-700' };
+                  const priCls: Record<string,string> = { urgent: 'bg-red-100 text-red-700', high: 'bg-orange-100 text-orange-700', medium: 'bg-yellow-100 text-yellow-700', low: 'bg-gray-100 text-gray-500' };
                   return (
-                    <tr key={p.customerName} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-4 py-2.5 font-medium text-gray-900">{p.customerName}</td>
-                      <td
-                        className="px-4 py-2.5 text-center font-semibold text-gray-700 cursor-pointer hover:text-primary-600 hover:bg-blue-50 transition-colors"
-                        title="Click to view tickets"
-                        onClick={() => openModal(`All Tickets — ${p.customerName}`, tickets)}
-                      >
-                        {p.totalTickets}
+                    <tr key={t.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-3 py-2 font-mono text-primary-700 whitespace-nowrap">{t.key}</td>
+                      <td className="px-3 py-2 max-w-[200px]"><p className="truncate" title={t.summary}>{t.summary}</p></td>
+                      <td className="px-3 py-2">
+                        <span className={`px-1.5 py-0.5 rounded-full text-xs font-medium ${catCls[cat] || 'bg-gray-100 text-gray-600'}`}>{t.status?.name || cat}</span>
                       </td>
-                      <td
-                        className="px-4 py-2.5 text-center cursor-pointer hover:bg-red-50 transition-colors"
-                        title="Click to view FR breached tickets"
-                        onClick={() => openModal(`FR Breaches — ${p.customerName}`, tickets.filter((t) => t.frBreached))}
-                      >
-                        <span className={`font-semibold ${p.firstResponseBreaches > 0 ? 'text-red-600' : 'text-gray-400'}`}>{p.firstResponseBreaches}</span>
+                      <td className="px-3 py-2">
+                        <span className={`px-1.5 py-0.5 rounded-full text-xs font-medium capitalize ${priCls[pri] || 'bg-gray-100 text-gray-500'}`}>{pri}</span>
                       </td>
-                      <td
-                        className="px-4 py-2.5 text-center cursor-pointer hover:bg-red-50 transition-colors"
-                        title="Click to view resolution breached tickets"
-                        onClick={() => openModal(`Resolution Breaches — ${p.customerName}`, tickets.filter((t) => t.resBreached))}
-                      >
-                        <span className={`font-semibold ${p.resolutionBreaches > 0 ? 'text-red-600' : 'text-gray-400'}`}>{p.resolutionBreaches}</span>
-                      </td>
-                      <td
-                        className="px-4 py-2.5 text-center cursor-pointer hover:bg-red-50 transition-colors"
-                        title="Click to view all breached tickets"
-                        onClick={() => openModal(`Total Breaches — ${p.customerName}`, tickets.filter((t) => t.frBreached || t.resBreached))}
-                      >
-                        <span className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold ${p.breachCount > 0 ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>{p.breachCount}</span>
-                      </td>
-                      <td
-                        className="px-4 py-2.5 cursor-pointer hover:bg-red-50 transition-colors"
-                        title="Click to view all breached tickets"
-                        onClick={() => openModal(`Breached Tickets — ${p.customerName} (${rate}%)`, tickets.filter((t) => t.frBreached || t.resBreached))}
-                      >
-                        <div className="flex items-center gap-2">
-                          <div className="flex-1 bg-gray-100 rounded-full h-1.5 min-w-[50px]">
-                            <div className={`h-1.5 rounded-full ${rate > 20 ? 'bg-red-400' : rate > 10 ? 'bg-yellow-400' : 'bg-green-400'}`} style={{ width: `${Math.min(rate, 100)}%` }} />
-                          </div>
-                          <span className={`text-xs font-semibold w-9 text-right ${rateColor}`}>{rate}%</span>
-                        </div>
-                      </td>
+                      <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{t.customerName || t.clientName || '—'}</td>
+                      <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{t.assignee?.displayName || t.assignee?.name || '—'}</td>
                     </tr>
                   );
                 })}
@@ -779,15 +342,6 @@ function JiraSlaContent({ jira, projects, brColor, brBg, jiraBaseUrl }: {
           </div>
         )}
       </div>
-
-      {ticketModal && (
-        <TicketModal
-          title={ticketModal.title}
-          tickets={ticketModal.tickets}
-          jiraBaseUrl={jiraBaseUrl}
-          onClose={() => setTicketModal(null)}
-        />
-      )}
     </div>
   );
 }
@@ -1097,8 +651,15 @@ function ManagerDetailView({
         )}
       </div>
 
-      {/* Jira SLA section — outside and below Active Projects */}
-      {!isOthers && <JiraSlaSection managerName={stat.manager} />}
+      {/* NTA tickets for this manager */}
+      {!isOthers && (
+        <NtaManagerSection
+          customerNames={Array.from(new Set(
+            projects.map((p: any) => p.customerName).filter(Boolean)
+          ))}
+        />
+      )}
+
     </div>
   );
 }
@@ -1203,20 +764,6 @@ export default function ManagerDashboardPage() {
   const activeSegment = activeTab as Segment;
   const queryClient = useQueryClient();
 
-  // Handle OAuth callback redirect (?jira_oauth=success or error)
-  useState(() => {
-    if (typeof window === 'undefined') return;
-    const params = new URLSearchParams(window.location.search);
-    const oauthResult = params.get('jira_oauth');
-    if (oauthResult) {
-      queryClient.invalidateQueries({ queryKey: ['jira-oauth-status'] });
-      queryClient.invalidateQueries({ queryKey: ['jira-sla'] });
-      queryClient.invalidateQueries({ queryKey: ['jira-engineers'] });
-      // Clean up URL
-      window.history.replaceState({}, '', window.location.pathname);
-    }
-  });
-
   const { data: statsData, isLoading: statsLoading } = useManagerGoalsWithStats();
   const allStats: ManagerStat[] = useMemo(() => {
     const raw: any[] = statsData?.data ?? [];
@@ -1298,10 +845,10 @@ export default function ManagerDashboardPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-gray-200 overflow-x-auto">
-        {(['ENT', 'SMB', 'ENGINEERS', 'OBSERVATIONS'] as ActiveTab[]).map((tab) => {
+        {(['ENT', 'SMB', 'OBSERVATIONS', 'TICKETS'] as ActiveTab[]).map((tab) => {
           const labels: Record<ActiveTab, string> = {
-            ENT: 'ENT', SMB: 'SMB', ENGINEERS: 'Engineers',
-            OBSERVATIONS: 'Observations',
+            ENT: 'ENT', SMB: 'SMB',
+            OBSERVATIONS: 'Observations', TICKETS: 'Tickets',
           };
           return (
             <button
@@ -1319,20 +866,20 @@ export default function ManagerDashboardPage() {
         })}
       </div>
 
-      {/* Jira data banners — Excel upload + OAuth connect */}
+      {/* Banners */}
       <div className="space-y-2">
         <ExcelUploadBanner />
-        <JiraOAuthBanner />
+        <NtaConnectBanner />
       </div>
-
-      {/* Engineers tab */}
-      {activeTab === 'ENGINEERS' && <EngineersView />}
 
       {/* Observations tab */}
       {activeTab === 'OBSERVATIONS' && <ObservationsView />}
 
+      {/* Tickets tab */}
+      {activeTab === 'TICKETS' && <TicketsView />}
+
       {/* Manager stats table (ENT / SMB) */}
-      {activeTab !== 'ENGINEERS' && activeTab !== 'OBSERVATIONS' && (
+      {activeTab !== 'OBSERVATIONS' && activeTab !== 'TICKETS' && (
         <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
           {statsLoading ? (
             <div className="flex justify-center py-16">
@@ -1380,176 +927,6 @@ export default function ManagerDashboardPage() {
   );
 }
 
-// ─── Engineers tab view ───────────────────────────────────────────────────────
-
-function EngineersView() {
-  const { data, isLoading, isError } = useJiraEngineers();
-  const [ticketModal, setTicketModal] = useState<{ title: string; tickets: TicketRow[] } | null>(null);
-
-  if (!isLoading && (!data?.configured || data?.configured === false)) {
-    return (
-      <div className="border border-dashed border-gray-200 rounded-xl p-6 bg-gray-50 flex items-start gap-3">
-        <Link2Off size={18} className="text-gray-400 flex-shrink-0 mt-0.5" />
-        <div>
-          <p className="text-sm font-medium text-gray-600">Jira Not Connected</p>
-          <p className="text-xs text-gray-400 mt-0.5">
-            Upload a Jira Excel export to enable this view.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-16 gap-3">
-        <Loader2 size={20} className="animate-spin text-primary-500" />
-        <p className="text-sm text-gray-500">Loading engineer ticket stats…</p>
-      </div>
-    );
-  }
-
-  if (isError || (data && !data.success)) {
-    return (
-      <div className="border border-red-100 rounded-xl p-4 bg-red-50 flex items-start gap-3">
-        <AlertCircle size={16} className="text-red-400 flex-shrink-0 mt-0.5" />
-        <div>
-          <p className="text-sm font-medium text-red-600">Jira API Error</p>
-          <p className="text-xs text-red-500 mt-0.5">{data?.error || 'Failed to load engineer stats.'}</p>
-        </div>
-      </div>
-    );
-  }
-
-  const result = data?.data;
-  if (!result) return null;
-
-  const jiraBaseUrl: string = (data as any)?.jiraBaseUrl || 'https://cf2020.atlassian.net';
-  const { engineers, totalTickets, totalBreached } = result;
-  const overallRate = totalTickets > 0 ? ((totalBreached / totalTickets) * 100).toFixed(1) : '0.0';
-  const rateNum = Number(overallRate);
-
-  const engineerRows = (engineers as any[]).filter((e) => !NAMED_MANAGER_SET.has(e.engineerName));
-  const allTickets: TicketRow[] = engineerRows.flatMap((e: any) => e.tickets ?? []);
-  const allBreached: TicketRow[] = allTickets.filter((t) => t.frBreached || t.resBreached);
-
-  return (
-    <div className="space-y-4">
-      {/* KPI cards */}
-      <div className="grid grid-cols-3 gap-3">
-        <button
-          className="bg-blue-50 rounded-xl p-4 flex items-center gap-3 border border-white hover:bg-blue-100 transition-colors text-left"
-          onClick={() => setTicketModal({ title: 'All Tickets — Engineers', tickets: allTickets })}
-        >
-          <FileSpreadsheet size={20} className="text-blue-600 flex-shrink-0" />
-          <div>
-            <p className="text-2xl font-bold text-blue-700">{totalTickets}</p>
-            <p className="text-xs text-gray-500 mt-0.5">Total Tickets</p>
-          </div>
-        </button>
-        <button
-          className={`${totalBreached > 0 ? 'bg-red-50 hover:bg-red-100' : 'bg-green-50 hover:bg-green-100'} rounded-xl p-4 flex items-center gap-3 border border-white transition-colors text-left`}
-          onClick={() => setTicketModal({ title: 'Breached Tickets — Engineers', tickets: allBreached })}
-        >
-          <AlertCircle size={20} className={totalBreached > 0 ? 'text-red-600' : 'text-green-600'} />
-          <div>
-            <p className={`text-2xl font-bold ${totalBreached > 0 ? 'text-red-700' : 'text-green-700'}`}>{totalBreached}</p>
-            <p className="text-xs text-gray-500 mt-0.5">Breached</p>
-          </div>
-        </button>
-        <button
-          className={`${rateNum > 20 ? 'bg-red-50 hover:bg-red-100' : rateNum > 10 ? 'bg-yellow-50 hover:bg-yellow-100' : 'bg-green-50 hover:bg-green-100'} rounded-xl p-4 flex items-center gap-3 border border-white transition-colors text-left`}
-          onClick={() => setTicketModal({ title: 'Breached Tickets — Overall', tickets: allBreached })}
-        >
-          <AlertCircle size={20} className={rateNum > 20 ? 'text-red-600' : rateNum > 10 ? 'text-yellow-600' : 'text-green-600'} />
-          <div>
-            <p className={`text-2xl font-bold ${rateNum > 20 ? 'text-red-700' : rateNum > 10 ? 'text-yellow-700' : 'text-green-700'}`}>{overallRate}%</p>
-            <p className="text-xs text-gray-500 mt-0.5">Overall Breach Rate</p>
-          </div>
-        </button>
-      </div>
-
-      {/* Engineers table */}
-      <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-        <table className="w-full">
-          <thead>
-            <tr className="bg-[#1b4f72] text-white text-xs font-semibold">
-              <th className="px-5 py-3 text-left">Engineer</th>
-              <th className="px-5 py-3 text-center">Total Tickets</th>
-              <th className="px-5 py-3 text-center">Breached Tickets</th>
-              <th className="px-5 py-3 text-left min-w-[160px]">Breach Rate</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {engineerRows.length === 0 && (
-              <tr>
-                <td colSpan={4} className="px-5 py-10 text-center text-sm text-gray-400">
-                  No engineer tickets found for this period.
-                </td>
-              </tr>
-            )}
-            {engineerRows.map((e: any) => {
-              const rate = e.breachRate as number;
-              const rateColor = rate > 20 ? 'text-red-600' : rate > 10 ? 'text-yellow-600' : 'text-green-600';
-              const barColor  = rate > 20 ? 'bg-red-400' : rate > 10 ? 'bg-yellow-400' : 'bg-green-400';
-              const eTickets: TicketRow[] = e.tickets ?? [];
-              const eBreached: TicketRow[] = eTickets.filter((t: TicketRow) => t.frBreached || t.resBreached);
-              return (
-                <tr key={e.engineerName} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-5 py-3.5">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-xs font-bold text-indigo-700 flex-shrink-0">
-                        {toInitials(e.engineerName)}
-                      </div>
-                      <span className="font-medium text-gray-900 text-sm">{e.engineerName}</span>
-                    </div>
-                  </td>
-                  <td
-                    className="px-5 py-3.5 text-center cursor-pointer hover:bg-blue-50 transition-colors"
-                    title="Click to view tickets"
-                    onClick={() => setTicketModal({ title: `All Tickets — ${e.engineerName}`, tickets: eTickets })}
-                  >
-                    <span className="font-semibold text-gray-800 hover:text-primary-600">{e.totalTickets}</span>
-                  </td>
-                  <td
-                    className="px-5 py-3.5 text-center cursor-pointer hover:bg-red-50 transition-colors"
-                    title="Click to view breached tickets"
-                    onClick={() => setTicketModal({ title: `Breached Tickets — ${e.engineerName}`, tickets: eBreached })}
-                  >
-                    <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full text-sm font-bold ${e.breachedTickets > 0 ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
-                      {e.breachedTickets}
-                    </span>
-                  </td>
-                  <td
-                    className="px-5 py-3.5 cursor-pointer hover:bg-red-50 transition-colors"
-                    title="Click to view breached tickets"
-                    onClick={() => setTicketModal({ title: `Breached Tickets — ${e.engineerName} (${rate}%)`, tickets: eBreached })}
-                  >
-                    <div className="flex items-center gap-2">
-                      <div className="flex-1 bg-gray-100 rounded-full h-2 min-w-[80px]">
-                        <div className={`h-2 rounded-full ${barColor}`} style={{ width: `${Math.min(rate, 100)}%` }} />
-                      </div>
-                      <span className={`text-sm font-semibold w-10 text-right ${rateColor}`}>{rate}%</span>
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      {ticketModal && (
-        <EngineerTicketModal
-          title={ticketModal.title}
-          tickets={ticketModal.tickets}
-          jiraBaseUrl={jiraBaseUrl}
-          onClose={() => setTicketModal(null)}
-        />
-      )}
-    </div>
-  );
-}
 
 // ─── Observations tab ─────────────────────────────────────────────────────────
 
@@ -1686,6 +1063,279 @@ const OBS_ICONS: Record<string, string> = {
   'Improper Handoff': '🔀',
   'Premature Closure Request': '⛔',
 };
+
+// ─── Tickets View (NTA) ───────────────────────────────────────────────────────
+
+const PRIORITY_STYLE: Record<string, string> = {
+  urgent: 'bg-red-100 text-red-700',
+  high:   'bg-orange-100 text-orange-700',
+  medium: 'bg-yellow-100 text-yellow-700',
+  low:    'bg-gray-100 text-gray-500',
+};
+
+const STATUS_CAT_STYLE: Record<string, string> = {
+  'todo':        'bg-gray-100 text-gray-600',
+  'in-progress': 'bg-blue-100 text-blue-700',
+  'done':        'bg-green-100 text-green-700',
+};
+
+function ticketPm(t: any): string {
+  if (t.projectManager) return t.projectManager;
+  if (t.reporter?.displayName) return t.reporter.displayName;
+  if (t.reporter?.firstName) return `${t.reporter.firstName} ${t.reporter.lastName || ''}`.trim();
+  return '—';
+}
+
+function TicketsView() {
+  const [spaceFilter, setSpaceFilter] = useState('');
+  const [page, setPage] = useState(1);
+  const LIMIT = 50;
+
+  // Column filters
+  const [fKey,      setFKey]      = useState('');
+  const [fSummary,  setFSummary]  = useState('');
+  const [fStatus,   setFStatus]   = useState('');
+  const [fPriority, setFPriority] = useState('');
+  const [fCustomer, setFCustomer] = useState('');
+  const [fAssignee, setFAssignee] = useState('');
+  const [fPm,       setFPm]       = useState('');
+  const [fDept,     setFDept]     = useState('');
+
+  const hasAnyColFilter = !!(fKey || fSummary || fStatus || fPriority || fCustomer || fAssignee || fPm || fDept);
+
+  const { data: statsData } = useNtaStats();
+  const { data: spacesData } = useNtaSpaces();
+
+  // Paginated mode (no column filters active)
+  const { data: issuesData, isLoading: issuesLoading, isError: issuesError } = useNtaIssues({
+    page,
+    limit: LIMIT,
+    spaces: spaceFilter || undefined,
+  });
+
+  // Global search mode (any column filter active — searches all tickets, backend-cached)
+  const searchFilters = { key: fKey, summary: fSummary, status: fStatus, priority: fPriority,
+    customer: fCustomer, assignee: fAssignee, reporter: fPm, department: fDept, spaces: spaceFilter || undefined };
+  const { data: searchData, isLoading: searchLoading, isFetching: searchFetching } = useNtaSearch(searchFilters);
+
+  const stats  = statsData?.data  || statsData  || {};
+  const spaces: any[] = spacesData?.data || spacesData || [];
+
+  const isLoading = hasAnyColFilter ? searchLoading : issuesLoading;
+  const isError   = hasAnyColFilter ? false         : issuesError;
+
+  // In search mode use all matched tickets; in page mode use the page slice
+  const displayTickets: any[] = hasAnyColFilter
+    ? (searchData?.data || [])
+    : (issuesData?.data || []);
+  const total: number = hasAnyColFilter
+    ? (searchData?.total ?? 0)
+    : (issuesData?.total ?? 0);
+  const totalPages: number = hasAnyColFilter ? 1 : (issuesData?.totalPages ?? 1);
+
+  const lc = (v: string) => (v || '').toLowerCase();
+
+  const kpis = [
+    { label: 'Total Tickets', value: stats.totalTickets ?? '—',                                                                                   bg: 'bg-gray-50',   text: 'text-gray-700'   },
+    { label: 'Open',          value: displayTickets.filter((t) => t.status?.category === 'todo').length,                                          bg: 'bg-sky-50',    text: 'text-sky-700'    },
+    { label: 'In Progress',   value: displayTickets.filter((t) => t.status?.category === 'in-progress').length,                                   bg: 'bg-blue-50',   text: 'text-blue-700'   },
+    { label: 'Done',          value: displayTickets.filter((t) => t.status?.category === 'done').length,                                          bg: 'bg-green-50',  text: 'text-green-700'  },
+    { label: 'High / Urgent', value: displayTickets.filter((t) => ['high','urgent'].includes(lc(t.priority))).length,                             bg: 'bg-red-50',    text: 'text-red-700'    },
+    { label: 'Total Boards',  value: stats.totalBoards ?? spaces.length,                                                                          bg: 'bg-purple-50', text: 'text-purple-700' },
+  ];
+
+  const inputCls = 'w-full mt-1 px-2 py-1 text-xs border border-gray-200 rounded-md text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-primary-400 bg-white font-normal';
+  const selectCls = inputCls + ' cursor-pointer';
+
+  function clearFilters() {
+    setFKey(''); setFSummary(''); setFStatus(''); setFPriority('');
+    setFCustomer(''); setFAssignee(''); setFPm(''); setFDept('');
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* KPI cards */}
+      <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
+        {kpis.map((k) => (
+          <div key={k.label} className={`${k.bg} rounded-xl px-4 py-3`}>
+            <p className={`text-2xl font-bold ${k.text}`}>{typeof k.value === 'number' ? k.value.toLocaleString() : k.value}</p>
+            <p className="text-xs text-gray-500 mt-0.5">{k.label}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Board filter + controls */}
+      <div className="flex flex-wrap gap-3 items-center">
+        <div className="flex items-center gap-2">
+          <label className="text-xs text-gray-500 whitespace-nowrap">Board:</label>
+          <select
+            value={spaceFilter}
+            onChange={(e) => { setSpaceFilter(e.target.value); setPage(1); }}
+            className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary-300"
+          >
+            <option value="">All Boards</option>
+            {spaces.map((s: any) => (
+              <option key={s.key || s.id} value={s.key || s.name}>{s.name}</option>
+            ))}
+          </select>
+        </div>
+
+        {hasAnyColFilter && (
+          <button onClick={clearFilters}
+            className="text-xs text-red-500 hover:text-red-700 border border-red-200 rounded-lg px-3 py-1.5 hover:bg-red-50 transition"
+          >
+            Clear filters
+          </button>
+        )}
+
+        <span className="text-xs text-gray-400 ml-auto flex items-center gap-1.5">
+          {hasAnyColFilter && searchFetching && !searchLoading && (
+            <Loader2 size={12} className="animate-spin text-primary-400" />
+          )}
+          {hasAnyColFilter
+            ? `${total.toLocaleString()} match${total !== 1 ? 'es' : ''} across all tickets`
+            : `${total.toLocaleString()} total · page ${page}/${totalPages}`
+          }
+        </span>
+      </div>
+
+      {/* Search mode notice */}
+      {hasAnyColFilter && (
+        <div className="flex items-center gap-2 text-xs text-blue-700 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
+          <span className="font-medium">Searching all tickets</span>
+          <span className="text-blue-500">·</span>
+          <span>Results load from a full index of all {(stats.totalTickets || 0).toLocaleString()} tickets (cached for 10 min). First search may take a few seconds.</span>
+        </div>
+      )}
+
+      {/* Table */}
+      <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+        {isLoading ? (
+          <div className="flex flex-col items-center justify-center py-16 gap-3">
+            <Loader2 className="w-7 h-7 animate-spin text-primary-600" />
+            {hasAnyColFilter && (
+              <p className="text-sm text-gray-500">Building search index… this takes a few seconds on first use.</p>
+            )}
+          </div>
+        ) : isError ? (
+          <div className="flex items-center gap-2 justify-center py-12 text-red-500 text-sm">
+            <AlertCircle size={16} /> Failed to load tickets
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-[#1b4f72] text-white text-xs font-semibold">
+                  <th className="px-3 py-2.5 text-left min-w-[80px]">Key</th>
+                  <th className="px-3 py-2.5 text-left min-w-[220px]">Summary</th>
+                  <th className="px-3 py-2.5 text-left min-w-[110px]">Status</th>
+                  <th className="px-3 py-2.5 text-left min-w-[100px]">Priority</th>
+                  <th className="px-3 py-2.5 text-left min-w-[120px]">Customer</th>
+                  <th className="px-3 py-2.5 text-left min-w-[130px]">Assignee</th>
+                  <th className="px-3 py-2.5 text-left min-w-[130px]">Reporter / PM</th>
+                  <th className="px-3 py-2.5 text-left min-w-[140px]">Department</th>
+                </tr>
+                {/* Column filter row */}
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  <th className="px-3 py-2 font-normal">
+                    <input className={inputCls} placeholder="Key…" value={fKey} onChange={(e) => { setFKey(e.target.value); setPage(1); }} />
+                  </th>
+                  <th className="px-3 py-2 font-normal">
+                    <input className={inputCls} placeholder="Search summary…" value={fSummary} onChange={(e) => { setFSummary(e.target.value); setPage(1); }} />
+                  </th>
+                  <th className="px-3 py-2 font-normal">
+                    <select className={selectCls} value={fStatus} onChange={(e) => { setFStatus(e.target.value); setPage(1); }}>
+                      <option value="">All</option>
+                      <option value="todo">To Do</option>
+                      <option value="in-progress">In Progress</option>
+                      <option value="done">Done</option>
+                    </select>
+                  </th>
+                  <th className="px-3 py-2 font-normal">
+                    <select className={selectCls} value={fPriority} onChange={(e) => { setFPriority(e.target.value); setPage(1); }}>
+                      <option value="">All</option>
+                      <option value="urgent">Urgent</option>
+                      <option value="high">High</option>
+                      <option value="medium">Medium</option>
+                      <option value="low">Low</option>
+                    </select>
+                  </th>
+                  <th className="px-3 py-2 font-normal">
+                    <input className={inputCls} placeholder="Customer…" value={fCustomer} onChange={(e) => { setFCustomer(e.target.value); setPage(1); }} />
+                  </th>
+                  <th className="px-3 py-2 font-normal">
+                    <input className={inputCls} placeholder="Assignee…" value={fAssignee} onChange={(e) => { setFAssignee(e.target.value); setPage(1); }} />
+                  </th>
+                  <th className="px-3 py-2 font-normal">
+                    <input className={inputCls} placeholder="Reporter / PM…" value={fPm} onChange={(e) => { setFPm(e.target.value); setPage(1); }} />
+                  </th>
+                  <th className="px-3 py-2 font-normal">
+                    <input className={inputCls} placeholder="Department…" value={fDept} onChange={(e) => { setFDept(e.target.value); setPage(1); }} />
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {displayTickets.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="text-center py-10 text-gray-400 text-sm">
+                      {hasAnyColFilter ? 'No tickets match your filters' : 'No tickets found'}
+                    </td>
+                  </tr>
+                ) : displayTickets.map((t: any) => {
+                  const cat = lc(t.status?.category || 'todo');
+                  const pri = lc(t.priority || 'low');
+                  return (
+                    <tr key={t.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-3 py-2.5 font-mono text-xs text-primary-700 whitespace-nowrap">{t.key}</td>
+                      <td className="px-3 py-2.5 max-w-xs">
+                        <p className="truncate text-sm text-gray-800" title={t.summary}>{t.summary}</p>
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${STATUS_CAT_STYLE[cat] || 'bg-gray-100 text-gray-600'}`}>
+                          {t.status?.name || cat}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full capitalize ${PRIORITY_STYLE[pri] || 'bg-gray-100 text-gray-500'}`}>
+                          {pri}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2.5 text-xs text-gray-600">{t.customerName || t.clientName || '—'}</td>
+                      <td className="px-3 py-2.5 text-xs text-gray-600">{t.assignee?.displayName || t.assignee?.name || '—'}</td>
+                      <td className="px-3 py-2.5 text-xs text-gray-600 whitespace-nowrap">{ticketPm(t)}</td>
+                      <td className="px-3 py-2.5 text-xs text-gray-500">{t.current_department || '—'}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Pagination — only shown when not in search mode */}
+      {!hasAnyColFilter && totalPages > 1 && (
+        <div className="flex justify-center gap-2">
+          <button
+            disabled={page <= 1}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            className="px-4 py-1.5 text-sm border border-gray-200 rounded-lg disabled:opacity-40 hover:bg-gray-50"
+          >
+            Previous
+          </button>
+          <span className="px-3 py-1.5 text-sm text-gray-600">{page} / {totalPages}</span>
+          <button
+            disabled={page >= totalPages}
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            className="px-4 py-1.5 text-sm border border-gray-200 rounded-lg disabled:opacity-40 hover:bg-gray-50"
+          >
+            Next
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function ObservationsView() {
   const [expanded, setExpanded] = useState<number | null>(null);
