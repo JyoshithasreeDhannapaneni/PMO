@@ -5,7 +5,7 @@ function client(): AxiosInstance {
   return axios.create({
     baseURL: process.env.NTA_API_URL || 'https://neutaraticketing.cftools.live/api',
     headers: { Authorization: `Bearer ${process.env.NTA_API_KEY || ''}` },
-    timeout: 15000,
+    timeout: 10000,
   });
 }
 
