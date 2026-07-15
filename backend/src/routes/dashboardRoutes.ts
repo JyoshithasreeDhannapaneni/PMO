@@ -84,4 +84,13 @@ router.post('/escalation-daily-notes/:projectId', dashboardController.addEscalat
 // DELETE /api/dashboard/escalation-daily-notes/:projectId/:noteId - Delete a daily note
 router.delete('/escalation-daily-notes/:projectId/:noteId', dashboardController.deleteEscalationDailyNote);
 
+// GET /api/dashboard/at-risk-projects - Projects manually flagged at risk
+router.get('/at-risk-projects', dashboardController.getAtRiskProjects);
+
+// POST /api/dashboard/mark-at-risk/:id - Mark a project as at risk (adds a history entry)
+router.post('/mark-at-risk/:id', dashboardController.markAtRisk);
+
+// POST /api/dashboard/unmark-at-risk/:id - Remove the at risk flag from a project
+router.post('/unmark-at-risk/:id', dashboardController.unmarkAtRisk);
+
 export default router;
