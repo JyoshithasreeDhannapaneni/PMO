@@ -186,6 +186,18 @@ async function runMigrations() {
   if (!await columnExists('projects', 'escalation_notes')) {
     try { await execute(`ALTER TABLE projects ADD COLUMN escalation_notes TEXT DEFAULT NULL`); } catch {}
   }
+  // Manually-flagged "at risk" — separate from the auto-computed delayStatus
+  // (deadline within 7 days), so a PM can flag a project early even when the
+  // date math hasn't caught up yet, mirroring how is_escalated already works.
+  if (!await columnExists('projects', 'is_at_risk')) {
+    try { await execute(`ALTER TABLE projects ADD COLUMN is_at_risk BOOLEAN NOT NULL DEFAULT false`); } catch {}
+  }
+  if (!await columnExists('projects', 'at_risk_notes')) {
+    try { await execute(`ALTER TABLE projects ADD COLUMN at_risk_notes TEXT DEFAULT NULL`); } catch {}
+  }
+  if (!await columnExists('projects', 'at_risk_marked_at')) {
+    try { await execute(`ALTER TABLE projects ADD COLUMN at_risk_marked_at TIMESTAMP DEFAULT NULL`); } catch {}
+  }
   if (!await columnExists('projects', 'is_overaged')) {
     try { await execute(`ALTER TABLE projects ADD COLUMN is_overaged BOOLEAN NOT NULL DEFAULT false`); } catch {}
   }
@@ -235,6 +247,11 @@ async function runMigrations() {
     await execute(`ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check`);
     await execute(`ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('ADMIN','PROJECT_MANAGER','VIEWER','PRE_SALES','ACCOUNT_MANAGER'))`);
   } catch {}
+
+  // Segment (ENT/SMB) — set directly per project rather than inferred from PM name
+  if (!await columnExists('projects', 'segment')) {
+    try { await execute(`ALTER TABLE projects ADD COLUMN segment VARCHAR(10) DEFAULT NULL`); } catch {}
+  }
 
   // POC project support
   if (!await columnExists('projects', 'project_type')) {

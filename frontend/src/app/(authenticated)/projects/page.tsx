@@ -26,6 +26,7 @@ import {
   FlaskConical,
 } from 'lucide-react';
 import Link from 'next/link';
+import { projectSegment, type Segment } from '@/lib/segments';
 
 interface FilterState {
   status: string;
@@ -63,6 +64,7 @@ export default function ProjectsPage() {
   const [showFilters, setShowFilters] = useState(true);
   const [showRefreshToast, setShowRefreshToast] = useState(false);
   const [activeTab, setActiveTab] = useState<'migration' | 'poc'>('migration');
+  const [segmentTab, setSegmentTab] = useState<Segment | 'ALL'>('ALL');
 
   // Update URL when filters change (preserve hideCompleted)
   useEffect(() => {
@@ -128,8 +130,18 @@ export default function ProjectsPage() {
   const pocProjects = allProjects.filter((p: any) => p.projectType === 'POC' && p.phase !== 'COMPLETED');
   const tabProjects = activeTab === 'poc' ? pocProjects : migrationProjects;
 
+  // ENT/SMB sub-split — uses each project's own `segment` field when set
+  // (via the project form); falls back to the Manager Dashboard's PM-name
+  // mapping only for legacy projects that predate the field.
+  const entCount = tabProjects.filter((p: any) => projectSegment(p) === 'ENT').length;
+  const smbCount = tabProjects.filter((p: any) => projectSegment(p) === 'SMB').length;
+  const unsegmentedCount = tabProjects.length - entCount - smbCount;
+  const segmentProjects = segmentTab === 'ALL'
+    ? tabProjects
+    : tabProjects.filter((p: any) => projectSegment(p) === segmentTab);
+
   const exportToCSV = () => {
-    if (!tabProjects.length) return;
+    if (!segmentProjects.length) return;
 
     const fmt = (d: string | null | undefined) =>
       d ? new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' }) : '';
@@ -183,7 +195,7 @@ export default function ProjectsPage() {
       'Project End',
     ];
 
-    const rows = tabProjects.map((p: any) => [
+    const rows = segmentProjects.map((p: any) => [
       p.name ?? '',
       p.customerName ?? '',
       p.projectManager ?? '',
@@ -414,11 +426,11 @@ export default function ProjectsPage() {
             variant="outline"
             size="sm"
             onClick={exportToCSV}
-            disabled={!tabProjects.length}
+            disabled={!segmentProjects.length}
             className="hidden sm:flex"
           >
             <Download size={16} className="mr-1" />
-            Export CSV ({tabProjects.length})
+            Export CSV ({segmentProjects.length})
           </Button>
           {!isViewer && (
             <Link href="/projects/new">
@@ -692,9 +704,37 @@ export default function ProjectsPage() {
               ))}
             </div>
 
+            {/* Segment sub-tabs — ENT/SMB split by project manager, mirroring the Reviews page */}
+            <div className="flex-shrink-0 flex items-center gap-2 px-4 py-2.5 border-b border-gray-200 bg-white">
+              {([
+                { key: 'ALL' as const, label: 'All',   count: tabProjects.length,  style: 'bg-gray-100 text-gray-700 border-gray-300' },
+                { key: 'ENT' as const, label: 'Enterprise', count: entCount, style: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
+                { key: 'SMB' as const, label: 'SMB',   count: smbCount, style: 'bg-cyan-50 text-cyan-700 border-cyan-200' },
+              ]).map((seg) => {
+                const active = segmentTab === seg.key;
+                return (
+                  <button
+                    key={seg.key}
+                    onClick={() => setSegmentTab(seg.key)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
+                      active ? seg.style + ' ring-1 ring-offset-0' : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
+                    }`}
+                  >
+                    {seg.label}
+                    <span className={`text-xs px-1.5 py-0.5 rounded-full ${active ? 'bg-white/60' : 'bg-gray-100'}`}>{seg.count}</span>
+                  </button>
+                );
+              })}
+              {unsegmentedCount > 0 && (
+                <span className="text-xs text-amber-600 ml-1">
+                  {unsegmentedCount} project{unsegmentedCount !== 1 ? 's' : ''} not mapped to ENT/SMB — shown under "All" only
+                </span>
+              )}
+            </div>
+
             {/* Table content */}
             <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
-              {tabProjects.length === 0 ? (
+              {segmentProjects.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full py-16">
                   <div className="w-16 h-16 mb-4 rounded-full bg-gray-100 flex items-center justify-center">
                     {activeTab === 'poc'
@@ -702,11 +742,13 @@ export default function ProjectsPage() {
                       : <FolderKanban size={32} className="text-gray-400" />}
                   </div>
                   <p className="text-gray-600 font-medium">
-                    {activeTab === 'poc' ? 'No POC projects found' : 'No migration projects found'}
+                    {segmentTab === 'ALL'
+                      ? (activeTab === 'poc' ? 'No POC projects found' : 'No migration projects found')
+                      : `No ${segmentTab} projects found`}
                   </p>
                 </div>
               ) : (
-                <ProjectsTable projects={tabProjects} onDelete={handleDelete} />
+                <ProjectsTable projects={segmentProjects} onDelete={handleDelete} />
               )}
             </div>
           </div>
