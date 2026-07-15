@@ -20,6 +20,7 @@ const baseSchema = z.object({
   projectManager: z.string().min(1, 'Project manager is required'),
   accountManager: z.string().min(1, 'Account manager is required'),
   planType: z.string().min(1, 'Plan type is required'),
+  segment: z.string().optional(),
   plannedStart: z.string().min(1, 'SOW start date is required'),
   plannedEnd: z.string().min(1, 'SOW end date is required'),
   actualStart: z.string().optional(),
@@ -124,6 +125,7 @@ export function ProjectForm({ project, onSubmit, isLoading, defaultManagerName }
       projectManager: project.projectManager,
       accountManager: project.accountManager,
       planType: project.planType,
+      segment: project.segment || '',
       plannedStart: project.plannedStart.split('T')[0],
       plannedEnd: project.plannedEnd.split('T')[0],
       actualStart: project.actualStart?.split('T')[0] || '',
@@ -142,6 +144,7 @@ export function ProjectForm({ project, onSubmit, isLoading, defaultManagerName }
       overageAmount: (project as any).overageAmount || '',
     } : {
       planType: defaultPlanType,
+      segment: '',
       phase: defaultPhase,
       status: 'ACTIVE',
       projectManager: defaultManagerName || '',
@@ -184,6 +187,11 @@ export function ProjectForm({ project, onSubmit, isLoading, defaultManagerName }
   const toggleMigrationType = (id: string) => { setSelectedMigrationTypes((p) => p.includes(id) ? p.filter((t) => t !== id) : [...p, id]); setMigrationTypeError(''); };
 
   const planOptions = planTypes.filter((p) => p.code).map((p) => ({ value: p.code, label: p.name }));
+  const segmentOptions = [
+    { value: '', label: 'Not set' },
+    { value: 'ENT', label: 'Enterprise (ENT)' },
+    { value: 'SMB', label: 'SMB' },
+  ];
   const toPhaseCode = (name: string) => name.toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '');
   const phaseOptions = [...phases]
     .sort((a, b) => a.order - b.order)
@@ -238,6 +246,7 @@ export function ProjectForm({ project, onSubmit, isLoading, defaultManagerName }
       projectManager: data.projectManager,
       accountManager: data.accountManager,
       planType: data.planType as any,
+      segment: (data.segment || null) as any,
       plannedStart: data.plannedStart,
       plannedEnd: data.plannedEnd,
       actualStart: data.actualStart || undefined,
@@ -333,8 +342,9 @@ export function ProjectForm({ project, onSubmit, isLoading, defaultManagerName }
                 {errors.accountManager && <p className="mt-1 text-xs text-red-600">{errors.accountManager.message}</p>}
               </div>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
               <Select label="Plan Type *" options={planOptions} {...register('planType')} error={errors.planType?.message} />
+              <Select label="Segment" options={segmentOptions} {...register('segment')} error={errors.segment?.message} />
               <Select label="Status *" options={statusOptions} {...register('status')} error={errors.status?.message} />
               <Select label="Current Phase *" options={phaseOptions} {...register('phase')} error={errors.phase?.message} />
             </div>

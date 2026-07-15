@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useMemo } from 'react';
-import { useEscalatedProjects, useEscalateProject, useDeescalateProject, useProjects, useEscalationDailyNotes, useAddEscalationDailyNote, useDeleteEscalationDailyNote } from '@/hooks/useProjects';
+import { useState, useMemo, Fragment } from 'react';
+import { useEscalatedProjects, useEscalateProject, useDeescalateProject, useProjects, useUpdateProject, useEscalationDailyNotes, useAddEscalationDailyNote, useDeleteEscalationDailyNote, useAtRiskProjects, useMarkAtRisk, useUnmarkAtRisk } from '@/hooks/useProjects';
 import { useAuth } from '@/context/AuthContext';
 import { Card } from '@/components/ui/Card';
 import Link from 'next/link';
@@ -38,8 +38,21 @@ export default function EscalationProjectsPage() {
 
   const escalateProject = useEscalateProject();
   const deescalateProject = useDeescalateProject();
+  const updateProject = useUpdateProject();
+
+  const { data: atRiskData, refetch: refetchAtRisk } = useAtRiskProjects(undefined);
+  const atRiskProjectsRaw: any[] = atRiskData?.data || [];
+  const markAtRisk = useMarkAtRisk();
+  const unmarkAtRisk = useUnmarkAtRisk();
 
   const [kpiFilter, setKpiFilter] = useState<'' | 'active' | 'critical'>('');
+
+  // Escalated vs At Risk — At Risk surfaces projects flagged AT_RISK by the
+  // delay calculator that haven't been formally escalated yet, so managers
+  // can catch them early and escalate in one click instead of waiting for
+  // them to slip into DELAYED.
+  const [pageTab, setPageTab] = useState<'escalated' | 'atRisk'>('escalated');
+  const [atRiskSearch, setAtRiskSearch] = useState('');
 
   const [search, setSearch] = useState('');
   const [prioritySel, setPrioritySel] = useState('');
@@ -56,6 +69,14 @@ export default function EscalationProjectsPage() {
   // Searchable project combobox state
   const [projectSearch, setProjectSearch] = useState('');
   const [showProjectDropdown, setShowProjectDropdown] = useState(false);
+
+  // Add At Risk Modal state
+  const [showAtRiskModal, setShowAtRiskModal] = useState(false);
+  const [atRiskForm, setAtRiskForm] = useState({ projectId: '', notes: '' });
+  const [savingAtRisk, setSavingAtRisk] = useState(false);
+  const [atRiskModalError, setAtRiskModalError] = useState('');
+  const [atRiskProjectSearch, setAtRiskProjectSearch] = useState('');
+  const [showAtRiskProjectDropdown, setShowAtRiskProjectDropdown] = useState(false);
 
   // Stats (use deduped — computed after deduped is defined below, so use escalated for now and re-derive)
   const total = escalated.length;
@@ -167,6 +188,95 @@ export default function EscalationProjectsPage() {
   // Show all non-completed/non-cancelled projects for escalation
   const nonEscalated = allProjects.filter((p: any) => p.status !== 'COMPLETED' && p.status !== 'CANCELLED');
 
+  // At Risk — only projects manually marked via "Add At Risk". Escalation and
+  // at-risk are independent flags, so a project can appear here even if it's
+  // also escalated. Sourced from a dedicated endpoint (like Escalated) so each
+  // project carries its full atRiskHistory timeline.
+  const atRiskProjects = atRiskProjectsRaw;
+
+  const atRiskFiltered = useMemo(() => {
+    const q = atRiskSearch.toLowerCase();
+    if (!q) return atRiskProjects;
+    return atRiskProjects.filter((p: any) =>
+      p.name?.toLowerCase().includes(q) ||
+      p.customerName?.toLowerCase().includes(q) ||
+      p.projectManager?.toLowerCase().includes(q)
+    );
+  }, [atRiskProjects, atRiskSearch]);
+
+  const [escalatingId, setEscalatingId] = useState<string | null>(null);
+  async function handleEscalateFromAtRisk(p: any) {
+    setEscalatingId(p.id);
+    try {
+      await escalateProject.mutateAsync({ id: p.id, priority: 'MEDIUM', notes: 'Escalated from At Risk view' });
+      refetch();
+      refetchAtRisk();
+    } finally {
+      setEscalatingId(null);
+    }
+  }
+
+  async function handleAddAtRisk() {
+    if (!atRiskForm.projectId) { setAtRiskModalError('Please select a project'); return; }
+    setAtRiskModalError('');
+    setSavingAtRisk(true);
+    try {
+      await markAtRisk.mutateAsync({ id: atRiskForm.projectId, notes: atRiskForm.notes || undefined });
+      setShowAtRiskModal(false);
+      setAtRiskForm({ projectId: '', notes: '' });
+      setAtRiskProjectSearch('');
+      refetchAtRisk();
+    } catch {
+      setAtRiskModalError('Failed to mark project as at risk. Please try again.');
+    } finally {
+      setSavingAtRisk(false);
+    }
+  }
+
+  const [removingAtRiskId, setRemovingAtRiskId] = useState<string | null>(null);
+  async function handleRemoveAtRisk(p: any) {
+    setRemovingAtRiskId(p.id);
+    try {
+      await unmarkAtRisk.mutateAsync(p.id);
+      refetchAtRisk();
+    } finally {
+      setRemovingAtRiskId(null);
+    }
+  }
+
+  // Inline-editable deadline (plannedEnd) on the At Risk table
+  const [editingDeadlineId, setEditingDeadlineId] = useState<string | null>(null);
+  const [deadlineInput, setDeadlineInput] = useState('');
+  const [savingDeadlineId, setSavingDeadlineId] = useState<string | null>(null);
+  async function handleSaveDeadline(p: any) {
+    if (!deadlineInput) { setEditingDeadlineId(null); return; }
+    setSavingDeadlineId(p.id);
+    try {
+      await updateProject.mutateAsync({ id: p.id, data: { plannedEnd: deadlineInput } });
+      refetchAtRisk();
+    } finally {
+      setSavingDeadlineId(null);
+      setEditingDeadlineId(null);
+    }
+  }
+
+  // Inline-editable notes on the At Risk table — saving appends a new entry
+  // to the at-risk history timeline (via markAtRisk) rather than silently
+  // overwriting the previous note.
+  const [editingNotesId, setEditingNotesId] = useState<string | null>(null);
+  const [notesInput, setNotesInput] = useState('');
+  const [savingNotesId, setSavingNotesId] = useState<string | null>(null);
+  async function handleSaveNotes(p: any) {
+    setSavingNotesId(p.id);
+    try {
+      await markAtRisk.mutateAsync({ id: p.id, notes: notesInput || undefined });
+      refetchAtRisk();
+    } finally {
+      setSavingNotesId(null);
+      setEditingNotesId(null);
+    }
+  }
+
   async function handleAddEscalation() {
     if (!form.projectId) { setModalError('Please select a project'); return; }
     setModalError('');
@@ -229,31 +339,264 @@ export default function EscalationProjectsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* Header — title and actions follow whichever tab is active, so the
+          page doesn't keep saying "Escalated Projects" while you're looking
+          at At Risk */}
       <div className="flex items-center justify-between">
         <div>
           <nav className="text-xs text-gray-500 mb-1 flex items-center gap-1">
             <Link href="/" className="hover:text-primary-600">Dashboard</Link>
             <span>/</span>
-            <span className="text-gray-700">Escalated Projects</span>
+            <span className="text-gray-700">{pageTab === 'atRisk' ? 'At Risk Projects' : 'Escalated Projects'}</span>
           </nav>
-          <h1 className="text-2xl font-bold text-gray-900">Escalated Projects</h1>
+          <h1 className="text-2xl font-bold text-gray-900">{pageTab === 'atRisk' ? 'At Risk Projects' : 'Escalated Projects'}</h1>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={() => refetch()} className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
             <RotateCcw size={14} /> Refresh
           </button>
-          <button onClick={downloadCSV} className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-            <Download size={14} /> Export
-          </button>
-          {!isViewer && (
-            <button onClick={() => setShowModal(true)} className="flex items-center gap-1.5 px-3 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">
-              <Plus size={14} /> Add Escalation
-            </button>
+          {pageTab === 'escalated' ? (
+            <>
+              <button onClick={downloadCSV} className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+                <Download size={14} /> Export
+              </button>
+              {!isViewer && (
+                <button onClick={() => setShowModal(true)} className="flex items-center gap-1.5 px-3 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">
+                  <Plus size={14} /> Add Escalation
+                </button>
+              )}
+            </>
+          ) : (
+            !isViewer && (
+              <button onClick={() => setShowAtRiskModal(true)} className="flex items-center gap-1.5 px-3 py-2 text-sm bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors">
+                <Plus size={14} /> Add At Risk
+              </button>
+            )
           )}
         </div>
       </div>
 
+      {/* Page tabs — Escalated vs At Risk */}
+      <div className="flex border-b border-gray-200 gap-4">
+        <button
+          onClick={() => setPageTab('escalated')}
+          className={`flex items-center gap-1.5 pb-2 text-sm font-medium border-b-2 transition-colors ${
+            pageTab === 'escalated' ? 'border-red-500 text-red-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          <Siren size={14} /> Escalated
+          <span className={`text-xs px-1.5 py-0.5 rounded-full ${pageTab === 'escalated' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-500'}`}>{total}</span>
+        </button>
+        <button
+          onClick={() => setPageTab('atRisk')}
+          className={`flex items-center gap-1.5 pb-2 text-sm font-medium border-b-2 transition-colors ${
+            pageTab === 'atRisk' ? 'border-amber-500 text-amber-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          <AlertTriangle size={14} /> At Risk
+          <span className={`text-xs px-1.5 py-0.5 rounded-full ${pageTab === 'atRisk' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-500'}`}>{atRiskProjects.length}</span>
+        </button>
+      </div>
+
+      {pageTab === 'atRisk' ? (
+        <>
+          <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-700">
+            <AlertTriangle size={15} />
+            Projects whose deadline is within the next 7 days and aren't delayed yet — catch these before they become escalations.
+          </div>
+
+          <Card>
+            <div className="relative max-w-sm mb-4">
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                value={atRiskSearch}
+                onChange={(e) => setAtRiskSearch(e.target.value)}
+                placeholder="Search project, customer, manager..."
+                className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-900"
+              />
+            </div>
+
+            {atRiskFiltered.length === 0 ? (
+              <div className="flex flex-col items-center py-12 text-gray-400 gap-2">
+                <AlertTriangle size={32} />
+                <p>No at-risk projects{atRiskSearch ? ' match your search' : ' right now'}</p>
+                {!isViewer && !atRiskSearch && (
+                  <button onClick={() => setShowAtRiskModal(true)} className="mt-2 flex items-center gap-1.5 px-4 py-2 text-sm bg-amber-500 text-white rounded-lg hover:bg-amber-600">
+                    <Plus size={14} /> Add At Risk
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-amber-50/60">
+                    <tr>
+                      <th className="py-3 px-4 w-8"></th>
+                      {['Project Name', 'Project Manager', 'Status', 'Phase', 'Deadline', 'Notes', 'Action'].map((h) => (
+                        <th key={h} className={`py-3 px-4 text-xs font-semibold text-gray-500 ${h === 'Project Name' ? 'text-left' : 'text-center'}`}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {atRiskFiltered.map((p: any) => {
+                      const isExpanded = expandedRows.has(p.id);
+                      return (
+                      <Fragment key={p.id}>
+                      <tr className="hover:bg-gray-50 cursor-pointer" onClick={() => toggleRow(p.id)}>
+                        <td className="py-3 px-4 text-center">
+                          <ChevronDown size={14} className={`text-gray-400 transition-transform mx-auto ${isExpanded ? 'rotate-180' : ''}`} />
+                        </td>
+                        <td className="py-3 px-4">
+                          <Link href={`/projects/${p.id}`} onClick={(e) => e.stopPropagation()} className="font-medium text-primary-600 hover:underline">{p.name}</Link>
+                          <div className="text-xs text-gray-400">{p.customerName}</div>
+                        </td>
+                        <td className="py-3 px-4 text-center text-gray-700">{p.projectManager || '—'}</td>
+                        <td className="py-3 px-4 text-center"><StatusBadge status={p.status} variant="status" /></td>
+                        <td className="py-3 px-4 text-center"><StatusBadge status={p.phase} variant="phase" /></td>
+                        <td className="py-3 px-4 text-center text-gray-500 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                          {editingDeadlineId === p.id ? (
+                            <div className="flex items-center justify-center gap-1">
+                              <input
+                                type="date"
+                                autoFocus
+                                value={deadlineInput}
+                                onChange={(e) => setDeadlineInput(e.target.value)}
+                                className="px-2 py-1 text-xs border border-gray-300 rounded-lg bg-white text-gray-900"
+                              />
+                              <button
+                                onClick={() => handleSaveDeadline(p)}
+                                disabled={savingDeadlineId === p.id}
+                                className="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50"
+                              >
+                                {savingDeadlineId === p.id ? <Loader2 size={11} className="animate-spin" /> : <CheckCircle2 size={12} />}
+                              </button>
+                              <button
+                                onClick={() => setEditingDeadlineId(null)}
+                                className="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-gray-100 text-gray-500 hover:bg-gray-200"
+                              >
+                                <X size={12} />
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                setEditingDeadlineId(p.id);
+                                setDeadlineInput(p.expectedEnd ? new Date(p.expectedEnd).toISOString().split('T')[0] : '');
+                              }}
+                              className="hover:underline hover:text-amber-600"
+                              title="Click to edit deadline"
+                            >
+                              {p.expectedEnd ? format(new Date(p.expectedEnd), 'MMM d, yyyy') : '— set deadline'}
+                            </button>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 text-center text-gray-500 max-w-[220px]" onClick={(e) => e.stopPropagation()}>
+                          {editingNotesId === p.id ? (
+                            <div className="flex items-center justify-center gap-1">
+                              <input
+                                type="text"
+                                autoFocus
+                                value={notesInput}
+                                onChange={(e) => setNotesInput(e.target.value)}
+                                placeholder="Add a note..."
+                                className="w-full px-2 py-1 text-xs border border-gray-300 rounded-lg bg-white text-gray-900"
+                              />
+                              <button
+                                onClick={() => handleSaveNotes(p)}
+                                disabled={savingNotesId === p.id}
+                                className="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50 flex-shrink-0"
+                              >
+                                {savingNotesId === p.id ? <Loader2 size={11} className="animate-spin" /> : <CheckCircle2 size={12} />}
+                              </button>
+                              <button
+                                onClick={() => setEditingNotesId(null)}
+                                className="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-gray-100 text-gray-500 hover:bg-gray-200 flex-shrink-0"
+                              >
+                                <X size={12} />
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => { setEditingNotesId(p.id); setNotesInput(p.atRiskNotes || ''); }}
+                              className="truncate max-w-[220px] hover:underline hover:text-amber-600"
+                              title={p.atRiskNotes || 'Click to add a note'}
+                            >
+                              {p.atRiskNotes || '— add note'}
+                            </button>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 text-center" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center justify-center gap-1.5">
+                            {!isViewer && (
+                              <button
+                                onClick={() => handleEscalateFromAtRisk(p)}
+                                disabled={escalatingId === p.id}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors"
+                              >
+                                {escalatingId === p.id ? <Loader2 size={12} className="animate-spin" /> : <Siren size={12} />}
+                                Escalate
+                              </button>
+                            )}
+                            {!isViewer && p.isAtRisk && (
+                              <button
+                                onClick={() => handleRemoveAtRisk(p)}
+                                disabled={removingAtRiskId === p.id}
+                                title="Remove manual At Risk flag"
+                                className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 text-gray-500 hover:bg-gray-200 disabled:opacity-50 transition-colors"
+                              >
+                                {removingAtRiskId === p.id ? <Loader2 size={12} className="animate-spin" /> : <X size={12} />}
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                      {isExpanded && (
+                        <tr>
+                          <td colSpan={8} className="bg-amber-50/30 px-6 py-4">
+                            <div className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 mb-2">
+                              <History size={13} />
+                              At Risk History ({(p.atRiskHistory?.length || 0) > 0 ? p.atRiskHistory.length : '1'} event{(p.atRiskHistory?.length || 0) !== 1 ? 's' : ''})
+                            </div>
+                            {p.atRiskHistory && p.atRiskHistory.length > 0 ? (
+                              <ul className="space-y-3">
+                                {p.atRiskHistory.map((h: any, idx: number) => (
+                                  <li key={h.id} className="flex gap-3">
+                                    <div className="flex flex-col items-center">
+                                      <span className={`w-2.5 h-2.5 rounded-full mt-1 ${h.resolvedAt ? 'bg-gray-300' : 'bg-amber-500'}`} />
+                                      {idx < p.atRiskHistory.length - 1 && <span className="w-px flex-1 bg-gray-200 min-h-[12px]" />}
+                                    </div>
+                                    <div className="pb-1">
+                                      <div className="text-xs text-gray-500">
+                                        Marked at risk {h.markedAt ? format(new Date(h.markedAt), 'MMM d, yyyy h:mm a') : '—'}
+                                        {h.resolvedAt && (
+                                          <span className="text-gray-400"> · resolved {format(new Date(h.resolvedAt), 'MMM d, yyyy h:mm a')}</span>
+                                        )}
+                                      </div>
+                                      {h.notes && <div className="text-sm text-gray-700 mt-0.5">{h.notes}</div>}
+                                    </div>
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <div className="text-sm text-gray-500">
+                                Marked at risk {p.atRiskMarkedAt ? format(new Date(p.atRiskMarkedAt), 'MMM d, yyyy h:mm a') : '—'}
+                                {p.atRiskNotes && <div className="text-gray-700 mt-0.5">{p.atRiskNotes}</div>}
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      )}
+                      </Fragment>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
+        </>
+      ) : (
+      <>
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
         <button
@@ -579,6 +922,8 @@ export default function EscalationProjectsPage() {
         <AlertCircle size={15} />
         Escalation projects are those that have been delayed, breached SLA, or escalated by customers.
       </div>
+      </>
+      )}
 
       {/* Add Escalation Modal */}
       {showModal && (
@@ -710,6 +1055,115 @@ export default function EscalationProjectsPage() {
           </div>
         </div>
       )}
+
+      {/* Add At Risk Modal */}
+      {showAtRiskModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <AlertTriangle size={18} className="text-amber-500" /> Add At Risk
+              </h2>
+              <button onClick={() => { setShowAtRiskModal(false); setAtRiskModalError(''); setAtRiskProjectSearch(''); setShowAtRiskProjectDropdown(false); }} className="text-gray-400 hover:text-gray-600">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="relative">
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-sm font-medium text-gray-700">Project <span className="text-red-500">*</span></label>
+                  <Link
+                    href="/projects/new?atRisk=1"
+                    onClick={() => setShowAtRiskModal(false)}
+                    className="text-xs text-amber-600 hover:text-amber-700 hover:underline"
+                  >
+                    Don't see it? Create a new project
+                  </Link>
+                </div>
+                <input
+                  type="text"
+                  value={atRiskProjectSearch}
+                  onChange={(e) => {
+                    setAtRiskProjectSearch(e.target.value);
+                    setAtRiskForm({ ...atRiskForm, projectId: '' });
+                    setShowAtRiskProjectDropdown(true);
+                  }}
+                  onFocus={() => setShowAtRiskProjectDropdown(true)}
+                  placeholder="Type to search a project..."
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-900"
+                  autoComplete="off"
+                />
+                {showAtRiskProjectDropdown && (
+                  <div className="absolute z-10 w-full mt-1 max-h-48 overflow-y-auto bg-white border border-gray-300 rounded-lg shadow-lg">
+                    {allProjects
+                      .filter((p: any) =>
+                        !atRiskProjectSearch ||
+                        p.name?.toLowerCase().includes(atRiskProjectSearch.toLowerCase()) ||
+                        p.customerName?.toLowerCase().includes(atRiskProjectSearch.toLowerCase())
+                      )
+                      .slice(0, 20)
+                      .map((p: any) => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onMouseDown={() => {
+                            setAtRiskForm({ ...atRiskForm, projectId: p.id });
+                            setAtRiskProjectSearch(`${p.name} — ${p.customerName}`);
+                            setShowAtRiskProjectDropdown(false);
+                          }}
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 text-gray-900"
+                        >
+                          <span className="font-medium">{p.name}</span>
+                          <span className="text-gray-400 ml-1 text-xs">— {p.customerName}</span>
+                        </button>
+                      ))}
+                    {allProjects.filter((p: any) =>
+                      !atRiskProjectSearch ||
+                      p.name?.toLowerCase().includes(atRiskProjectSearch.toLowerCase()) ||
+                      p.customerName?.toLowerCase().includes(atRiskProjectSearch.toLowerCase())
+                    ).length === 0 && (
+                      <div className="px-3 py-2 text-sm text-gray-400">No matching projects found</div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Notes (optional)</label>
+                <textarea
+                  value={atRiskForm.notes}
+                  onChange={(e) => setAtRiskForm({ ...atRiskForm, notes: e.target.value })}
+                  rows={3}
+                  placeholder="Why is this project at risk?"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-900 resize-none"
+                />
+              </div>
+
+              {atRiskModalError && (
+                <p className="text-sm text-red-600 flex items-center gap-1"><AlertCircle size={13} /> {atRiskModalError}</p>
+              )}
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => { setShowAtRiskModal(false); setAtRiskModalError(''); setAtRiskProjectSearch(''); setShowAtRiskProjectDropdown(false); }}
+                className="flex-1 px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAddAtRisk}
+                disabled={savingAtRisk}
+                className="flex-1 px-4 py-2 text-sm bg-amber-500 text-white rounded-lg hover:bg-amber-600 disabled:opacity-60 transition-colors font-medium"
+              >
+                {savingAtRisk ? 'Saving…' : 'Add At Risk'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Escalation History Modal */}
       {historyProject && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => setHistoryProject(null)}>

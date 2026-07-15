@@ -18,6 +18,13 @@ export type ProjectPhase =
   | 'COMPLETED';
 export type ProjectStatus = 'ACTIVE' | 'INACTIVE' | 'ON_HOLD' | 'COMPLETED' | 'CANCELLED';
 export type DelayStatus = 'NOT_DELAYED' | 'AT_RISK' | 'DELAYED' | 'EXTENDED';
+
+export interface AtRiskHistoryItem {
+  id: string;
+  notes: string | null;
+  markedAt: string;
+  resolvedAt: string | null;
+}
 export type PhaseStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'SKIPPED';
 export type CaseStudyStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'PUBLISHED';
 
@@ -28,6 +35,7 @@ export interface Project {
   projectManager: string;
   accountManager: string;
   planType: PlanType;
+  segment?: 'ENT' | 'SMB' | null;
   plannedStart: string;
   plannedEnd: string;
   actualStart: string | null;
@@ -51,6 +59,10 @@ export interface Project {
   escalationPriority?: string | null;
   escalatedAt?: string | null;
   escalationNotes?: string | null;
+  isAtRisk?: boolean;
+  atRiskNotes?: string | null;
+  atRiskMarkedAt?: string | null;
+  atRiskHistory?: AtRiskHistoryItem[];
   overageAmount?: number | null;
   extendedEndDate?: string | null;
   cloudAddingStart?: string | null;
@@ -270,6 +282,7 @@ export interface CreateProjectInput {
   projectManager: string;
   accountManager: string;
   planType: PlanType;
+  segment?: 'ENT' | 'SMB' | null;
   plannedStart: string;
   plannedEnd: string;
   actualStart?: string;
@@ -290,6 +303,8 @@ export interface CreateProjectInput {
   isOveraged?: boolean;
   isEscalated?: boolean;
   escalationPriority?: string;
+  isAtRisk?: boolean;
+  atRiskNotes?: string | null;
   overageAmount?: number;
 }
 
