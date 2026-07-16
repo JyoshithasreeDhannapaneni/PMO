@@ -75,6 +75,7 @@ services:
       args:
         # Baked into the browser bundle at build time — must be the public URL
         NEXT_PUBLIC_API_URL: https://${SERVER_IP:-localhost}
+        NEXT_PUBLIC_HOTJAR_ID: ${NEXT_PUBLIC_HOTJAR_ID:-}
     container_name: pmo-frontend
     environment:
       # Used by Next.js server-side rewrites to reach backend on internal network
