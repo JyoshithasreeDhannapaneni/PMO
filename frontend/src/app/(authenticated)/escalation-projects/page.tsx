@@ -9,7 +9,7 @@ import {
   Siren, AlertTriangle, Search,
   RotateCcw, Download, ChevronLeft, ChevronRight,
   Plus, X, AlertCircle, TrendingUp, ChevronDown, History, Calendar, Trash2, CheckCircle2,
-  BookOpen, Send, Loader2,
+  BookOpen, Send, Loader2, Pencil,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { StatusBadge } from '@/components/ui/StatusBadge';
@@ -337,6 +337,39 @@ export default function EscalationProjectsPage() {
     a.click();
   }
 
+  function downloadAtRiskCSV() {
+    const headers = ['Project Name', 'Customer', 'Project Manager', 'Account Manager', 'Status', 'Phase', 'Deadline', 'Notes', 'Marked At Risk', 'Resolved'];
+    const rows: any[][] = [];
+    for (const p of atRiskFiltered) {
+      if (p.atRiskHistory && p.atRiskHistory.length > 0) {
+        for (const h of p.atRiskHistory) {
+          rows.push([
+            p.name, p.customerName, p.projectManager, p.accountManager || '',
+            p.status, p.phase,
+            p.expectedEnd ? format(new Date(p.expectedEnd), 'yyyy-MM-dd') : '',
+            h.notes || '',
+            h.markedAt ? format(new Date(h.markedAt), 'yyyy-MM-dd HH:mm') : '',
+            h.resolvedAt ? format(new Date(h.resolvedAt), 'yyyy-MM-dd HH:mm') : '',
+          ]);
+        }
+      } else {
+        rows.push([
+          p.name, p.customerName, p.projectManager, p.accountManager || '',
+          p.status, p.phase,
+          p.expectedEnd ? format(new Date(p.expectedEnd), 'yyyy-MM-dd') : '',
+          p.atRiskNotes || '',
+          p.atRiskMarkedAt ? format(new Date(p.atRiskMarkedAt), 'yyyy-MM-dd HH:mm') : '',
+          '',
+        ]);
+      }
+    }
+    const csv = [headers, ...rows].map((r) => r.map((v: any) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    a.download = 'at-risk-projects.csv';
+    a.click();
+  }
+
   return (
     <div className="space-y-6">
       {/* Header — title and actions follow whichever tab is active, so the
@@ -367,11 +400,16 @@ export default function EscalationProjectsPage() {
               )}
             </>
           ) : (
-            !isViewer && (
-              <button onClick={() => setShowAtRiskModal(true)} className="flex items-center gap-1.5 px-3 py-2 text-sm bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors">
-                <Plus size={14} /> Add At Risk
+            <>
+              <button onClick={downloadAtRiskCSV} className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+                <Download size={14} /> Export
               </button>
-            )
+              {!isViewer && (
+                <button onClick={() => setShowAtRiskModal(true)} className="flex items-center gap-1.5 px-3 py-2 text-sm bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors">
+                  <Plus size={14} /> Add At Risk
+                </button>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -518,15 +556,27 @@ export default function EscalationProjectsPage() {
                           ) : (
                             <button
                               onClick={() => { setEditingNotesId(p.id); setNotesInput(p.atRiskNotes || ''); }}
-                              className="truncate max-w-[220px] hover:underline hover:text-amber-600"
+                              className={
+                                p.atRiskNotes
+                                  ? 'group inline-flex items-center gap-1.5 max-w-[220px] px-2 py-1 rounded-lg hover:bg-amber-50 transition-colors'
+                                  : 'group inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-dashed border-gray-300 text-gray-400 hover:border-amber-400 hover:text-amber-600 hover:bg-amber-50 transition-colors'
+                              }
                               title={p.atRiskNotes || 'Click to add a note'}
                             >
-                              {p.atRiskNotes || '— add note'}
+                              <Pencil size={11} className={p.atRiskNotes ? 'flex-shrink-0 text-gray-400 group-hover:text-amber-500' : 'flex-shrink-0'} />
+                              <span className={p.atRiskNotes ? 'truncate' : ''}>{p.atRiskNotes || 'Add note'}</span>
                             </button>
                           )}
                         </td>
                         <td className="py-3 px-4 text-center" onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              onClick={() => { setDailyNotesProject(p); setNewDailyNote(''); setDailyNoteDate(new Date().toISOString().split('T')[0]); }}
+                              title="Daily tracking notes"
+                              className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 text-teal-600 hover:bg-teal-100 transition-colors"
+                            >
+                              <BookOpen size={14} />
+                            </button>
                             {!isViewer && (
                               <button
                                 onClick={() => handleEscalateFromAtRisk(p)}
