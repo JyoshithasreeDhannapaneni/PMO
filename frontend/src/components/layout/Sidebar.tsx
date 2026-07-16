@@ -9,7 +9,7 @@ import { useSettings } from '@/context/SettingsContext';
 import {
   LayoutDashboard, FolderKanban, AlertTriangle, FileText,
   Settings, Layers, BarChart2, ChevronDown,
-  ChevronRight, LogOut, DollarSign, Siren, Menu, X, Archive,
+  ChevronRight, LogOut, DollarSign, Siren, Menu, PanelLeftClose, PanelLeftOpen, Archive,
   FlaskConical, Building2, HeartHandshake, BookOpen, Briefcase, Bell,
   LayoutGrid, Star,
 } from 'lucide-react';
@@ -59,24 +59,32 @@ export function Sidebar() {
   const sidebarContent = (
     <div className="flex flex-col h-full">
       {/* Logo */}
-      <div className="flex items-center h-16 pl-1 pr-3 gap-2 border-b border-blue-100">
-        <button
-          onClick={() => { setCollapsed((c) => !c); setMobileOpen(false); }}
-          className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-all flex-shrink-0"
-          title={collapsed ? 'Expand' : 'Collapse'}
-        >
-          {collapsed ? <Menu size={20} /> : <X size={20} />}
-        </button>
-        {!collapsed && (
-          <Link href="/" className="flex items-center gap-2.5 overflow-hidden">
-            <Image src="/cloudfuze-logo.png" alt="CloudFuze" width={32} height={32} priority className="object-contain flex-shrink-0" />
-            <span className="text-sm font-bold text-slate-800 truncate">{companyName}</span>
-          </Link>
-        )}
-        {collapsed && (
-          <Link href="/" className="w-8 h-8 flex items-center justify-center mx-auto">
-            <Image src="/cloudfuze-logo.png" alt="CloudFuze" width={32} height={32} priority className="object-contain" />
-          </Link>
+      <div className={cn(
+        'flex items-center h-20 pl-3 pr-3 gap-2 border-b border-blue-100',
+        collapsed ? 'justify-center' : 'justify-between'
+      )}>
+        {collapsed ? (
+          <button
+            onClick={() => setCollapsed((c) => !c)}
+            className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-all flex-shrink-0"
+            title="Expand"
+          >
+            <PanelLeftOpen size={20} />
+          </button>
+        ) : (
+          <>
+            <Link href="/" className="flex items-center gap-2.5 overflow-hidden">
+              <Image src="/cloudfuze-logo.png" alt="CloudFuze" width={52} height={52} priority className="object-contain flex-shrink-0" />
+              <span className="text-sm font-bold text-slate-800 truncate">{companyName}</span>
+            </Link>
+            <button
+              onClick={() => setCollapsed((c) => !c)}
+              className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-all flex-shrink-0"
+              title="Collapse"
+            >
+              <PanelLeftClose size={20} />
+            </button>
+          </>
         )}
       </div>
 
@@ -198,7 +206,10 @@ export function Sidebar() {
       {/* Mobile overlay */}
       {mobileOpen && (
         <div className="md:hidden fixed inset-0 z-50 flex">
-          <aside className="w-60 flex flex-col sidebar-3d animate-fadeInLeft">
+          <aside className={cn(
+            'flex flex-col sidebar-3d animate-fadeInLeft transition-all duration-300',
+            collapsed ? 'w-16' : 'w-60'
+          )}>
             {sidebarContent}
           </aside>
           <div className="flex-1 bg-slate-900/40 backdrop-blur-sm" onClick={() => setMobileOpen(false)} />
