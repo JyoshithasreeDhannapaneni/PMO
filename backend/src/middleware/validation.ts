@@ -35,8 +35,8 @@ export const createProjectSchema = z.object({
   body: z.object({
     name: z.string().min(1, 'Project name is required').max(255),
     customerName: z.string().min(1, 'Customer name is required').max(255),
-    projectManager: z.string().min(1, 'Project manager is required').max(255),
-    accountManager: z.string().min(1, 'Account manager is required').max(255),
+    projectManager: z.string().max(255).optional().default(''),
+    accountManager: z.string().max(255).optional().default(''),
     planType: z.string().max(50).optional().nullable(),
     plannedStart: dateString,
     plannedEnd: dateString,
@@ -57,6 +57,14 @@ export const createProjectSchema = z.object({
     isEscalated: z.boolean().optional().nullable(),
     escalationPriority: z.enum(['LOW', 'MEDIUM', 'HIGH']).optional().nullable(),
     overageAmount: z.union([z.number(), z.string().transform(v => v === "" ? null : Number(v))]).optional().nullable(),
+    // POC-specific fields — passed through to the service
+    projectType: z.string().max(20).optional(),
+    segment: z.string().max(10).optional().nullable(),
+    customerContact: z.string().max(255).optional().nullable(),
+    pocDataVolume: z.string().max(255).optional().nullable(),
+    pocPreSalesOwner: z.string().max(255).optional().nullable(),
+    pocSuccessCriteria: z.string().optional().nullable(),
+    pocDeadline: z.string().optional().nullable(),
   }),
 });
 
@@ -86,7 +94,7 @@ export const updateProjectSchema = z.object({
     phase: z.string().max(50).optional().nullable(),
     status: z.enum(['ACTIVE', 'INACTIVE', 'ON_HOLD', 'COMPLETED', 'CANCELLED']).optional(),
     delayStatus: z.enum(['NOT_DELAYED', 'AT_RISK', 'DELAYED']).optional(),
-    delayHappened: z.enum(['CUSTOMER_DELAY', 'INTERNAL_DELAY']).optional().nullable(),
+    delayHappened: z.union([z.enum(['CUSTOMER_DELAY', 'INTERNAL_DELAY']), z.literal('').transform(() => null)]).optional().nullable(),
     isOveraged: z.boolean().optional().nullable(),
     isEscalated: z.boolean().optional().nullable(),
     escalationPriority: z.enum(['LOW', 'MEDIUM', 'HIGH']).optional().nullable(),

@@ -246,7 +246,17 @@ export function useHubspotSignals() {
   return useQuery({
     queryKey: ['hubspot-signals'],
     queryFn: () => hubspotApi.getSignals(),
-    staleTime: 5 * 60_000,
+    staleTime: 14 * 60_000,
+    retry: 1,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useHubspotInsights() {
+  return useQuery({
+    queryKey: ['hubspot-insights'],
+    queryFn: () => hubspotApi.getInsights(),
+    staleTime: 14 * 60_000,
     retry: 1,
     refetchOnWindowFocus: false,
   });
@@ -718,11 +728,42 @@ export function useUpdateDealMatch() {
 
 // ─── NTA Ticketing ───────────────────────────────────────────────────────────
 
+let _ntaOfflineUntil = 0;
+const NTA_FRONTEND_COOLDOWN = 60_000;
+
 function ntaFetch(path: string) {
+  if (Date.now() < _ntaOfflineUntil) {
+    return Promise.reject(new Error('NTA service offline'));
+  }
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
   return fetch(`${API_BASE}/api/ticketing${path}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
-  }).then(r => r.json());
+  }).then(async r => {
+    if (r.status === 503) {
+      _ntaOfflineUntil = Date.now() + NTA_FRONTEND_COOLDOWN;
+    }
+    return r.json();
+  });
+}
+
+const NTA_QUERY_OPTS = { retry: 0, refetchOnWindowFocus: false, refetchOnMount: false } as const;
+
+export function useNtaSyncStatus() {
+  return useQuery({
+    queryKey: ['ntaSyncStatus'],
+    queryFn: () => ntaFetch('/sync'),
+    staleTime: 30_000,
+    refetchInterval: 30_000,
+    ...NTA_QUERY_OPTS,
+  });
+}
+
+export function triggerNtaSync(): Promise<any> {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
+  return fetch(`${API_BASE}/api/ticketing/sync`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  }).then((r) => r.json());
 }
 
 export function useNtaCustomerTickets(customerNames: string[]) {
@@ -732,6 +773,7 @@ export function useNtaCustomerTickets(customerNames: string[]) {
     queryFn: () => ntaFetch(`/by-customers?customers=${encodeURIComponent(key)}`),
     enabled: customerNames.length > 0,
     staleTime: 120_000,
+    ...NTA_QUERY_OPTS,
   });
 }
 
@@ -740,7 +782,7 @@ export function useNtaStats() {
     queryKey: ['ntaStats'],
     queryFn: () => ntaFetch('/stats'),
     staleTime: 60_000,
-    retry: 1,
+    ...NTA_QUERY_OPTS,
   });
 }
 
@@ -749,7 +791,7 @@ export function useNtaSpaces() {
     queryKey: ['ntaSpaces'],
     queryFn: () => ntaFetch('/spaces'),
     staleTime: 300_000,
-    retry: 1,
+    ...NTA_QUERY_OPTS,
   });
 }
 
@@ -758,6 +800,7 @@ export function useNtaAssignees() {
     queryKey: ['ntaAssignees'],
     queryFn: () => ntaFetch('/assignees'),
     staleTime: 300_000,
+    ...NTA_QUERY_OPTS,
   });
 }
 
@@ -766,6 +809,7 @@ export function useNtaReporters() {
     queryKey: ['ntaReporters'],
     queryFn: () => ntaFetch('/reporters'),
     staleTime: 300_000,
+    ...NTA_QUERY_OPTS,
   });
 }
 
@@ -774,6 +818,7 @@ export function useNtaProjectManagers() {
     queryKey: ['ntaProjectManagers'],
     queryFn: () => ntaFetch('/project-managers'),
     staleTime: 300_000,
+    ...NTA_QUERY_OPTS,
   });
 }
 
@@ -782,6 +827,7 @@ export function useNtaDepartments() {
     queryKey: ['ntaDepartments'],
     queryFn: () => ntaFetch('/departments'),
     staleTime: 300_000,
+    ...NTA_QUERY_OPTS,
   });
 }
 
@@ -797,7 +843,7 @@ export function useNtaIssues(params: { page?: number; limit?: number; spaces?: s
       return ntaFetch(`/issues?${qs}`);
     },
     staleTime: 30_000,
-    retry: 1,
+    ...NTA_QUERY_OPTS,
   });
 }
 

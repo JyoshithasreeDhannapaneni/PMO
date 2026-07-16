@@ -6,11 +6,12 @@ import type { ReactNode } from 'react';
 import { Card } from '@/components/ui/Card';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
-import { useCustomerSuccess, useUpdateCustomerSuccess, useHubspotSignals } from '@/hooks/useProjects';
+import { useCustomerSuccess, useUpdateCustomerSuccess, useHubspotSignals, useHubspotInsights } from '@/hooks/useProjects';
 import type {
   CustomerSuccessEntry, CfProductSignal, CfSignalLevel,
   SignalItem, RenewalDueItem, CustomerSuccessPageData,
   HubspotCustomerDeals, HubspotDeal, HubspotDealCategory, HubspotSignalsData,
+  HubspotInsight,
 } from '@/types';
 import {
   HeartHandshake, Loader2, AlertTriangle, User, X, Search,
@@ -90,11 +91,40 @@ const CATEGORY_LABELS: Record<HubspotDealCategory, string> = {
   other:        'Other',
 };
 
+// ── AI Insight helpers ────────────────────────────────────────────────────
+const INSIGHT_TYPE_CFG: Record<HubspotInsight['type'], { bg: string; text: string; dot: string; label: string }> = {
+  opportunity: { bg: 'bg-blue-50',   text: 'text-blue-700',   dot: 'bg-blue-400',   label: 'Opportunity' },
+  interest:    { bg: 'bg-purple-50', text: 'text-purple-700', dot: 'bg-purple-400', label: 'Interest'     },
+  renewal:     { bg: 'bg-amber-50',  text: 'text-amber-700',  dot: 'bg-amber-400',  label: 'Renewal'      },
+  action:      { bg: 'bg-red-50',    text: 'text-red-700',    dot: 'bg-red-400',    label: 'Action'       },
+  risk:        { bg: 'bg-orange-50', text: 'text-orange-700', dot: 'bg-orange-400', label: 'Risk'         },
+};
+
+const INSIGHT_PRIORITY_DOT: Record<HubspotInsight['priority'], string> = {
+  high:   'bg-red-400',
+  medium: 'bg-amber-400',
+  low:    'bg-green-400',
+};
+
+function InsightBadge({ insight }: { insight: HubspotInsight }) {
+  const cfg = INSIGHT_TYPE_CFG[insight.type];
+  return (
+    <div className={`${cfg.bg} rounded-lg px-3 py-2 flex gap-2.5 items-start`}>
+      <div className={`mt-1.5 w-2 h-2 rounded-full flex-shrink-0 ${INSIGHT_PRIORITY_DOT[insight.priority]}`} />
+      <div className="min-w-0">
+        <p className={`text-xs font-semibold leading-tight ${cfg.text}`}>{insight.title}</p>
+        <p className="text-[11px] text-gray-500 mt-0.5 leading-snug">{insight.detail}</p>
+      </div>
+    </div>
+  );
+}
+
 function GrowthCard({
-  account, hubspot, canEdit, onEdit,
+  account, hubspot, insights, canEdit, onEdit,
 }: {
   account: CustomerSuccessEntry;
   hubspot?: HubspotCustomerDeals | null;
+  insights?: HubspotInsight[];
   canEdit: boolean;
   onEdit: () => void;
 }) {
@@ -238,6 +268,18 @@ function GrowthCard({
             <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">PMO Product Signals</p>
             {pmoSignals.map(p => (
               <ProductInterestRow key={p.label} label={p.label} signal={p.signal} />
+            ))}
+          </div>
+        )}
+
+        {/* AI Insights from HubSpot deal patterns */}
+        {insights && insights.length > 0 && (
+          <div className="pt-2 border-t border-gray-100 space-y-1.5">
+            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1">
+              <Zap className="w-3 h-3 text-indigo-400" /> AI Insights
+            </p>
+            {insights.slice(0, 4).map((ins, i) => (
+              <InsightBadge key={i} insight={ins} />
             ))}
           </div>
         )}
@@ -803,6 +845,9 @@ export default function CustomerSuccessPage() {
   const { data: hubspotResponse } = useHubspotSignals();
   const hubspotData = (hubspotResponse?.data ?? null) as HubspotSignalsData | null;
 
+  const { data: insightsResponse } = useHubspotInsights();
+  const insightsMap = (insightsResponse?.data?.insights ?? {}) as Record<string, HubspotInsight[]>;
+
   function hubspotFor(projectName: string, customerName?: string): HubspotCustomerDeals | null {
     if (!hubspotData?.configured) return null;
     const customers = hubspotData.customers;
@@ -852,6 +897,20 @@ export default function CustomerSuccessPage() {
     }
 
     return null;
+  }
+
+  // Find insights for a project by matching on the same key used by the backend
+  function insightsFor(projectName: string, customerName?: string): HubspotInsight[] {
+    for (const name of [projectName, customerName].filter(Boolean) as string[]) {
+      const pmoKey = normalizeCustomerKey(name);
+      if (!pmoKey || pmoKey.length < 3) continue;
+      if (insightsMap[pmoKey]) return insightsMap[pmoKey];
+      for (const [hsKey, ins] of Object.entries(insightsMap)) {
+        const ratio = Math.max(hsKey.length, pmoKey.length) / Math.min(hsKey.length, pmoKey.length);
+        if (ratio <= 3.0 && (hsKey.includes(pmoKey) || pmoKey.includes(hsKey))) return ins;
+      }
+    }
+    return [];
   }
 
   const pageData = (data?.data ?? null) as CustomerSuccessPageData | null;
@@ -993,45 +1052,30 @@ export default function CustomerSuccessPage() {
         </div>
       </div>
 
-      {hubspotData && !hubspotData.configured && (
-        <div className="flex items-center gap-3 p-3 bg-orange-50 border border-orange-200 rounded-xl text-xs text-orange-700">
-          <Zap className="w-3.5 h-3.5 flex-shrink-0" />
-          <span>
-            <strong>HubSpot not connected</strong> — add <code className="font-mono">HUBSPOT_ACCESS_TOKEN</code> to
-            backend/.env, then restart the backend server to show live upsell &amp; cross-sell deals.
-          </span>
-        </div>
-      )}
-      {hubspotData && hubspotData.configured && hubspotData.error && (
-        <div className="flex items-center gap-3 p-3 bg-yellow-50 border border-yellow-200 rounded-xl text-xs text-yellow-800">
-          <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
-          <span>
-            <strong>HubSpot connected but data fetch failed</strong> — {hubspotData.error}
-          </span>
-        </div>
-      )}
-      {hubspotData?.configured && hubspotData.diagnostics?.companyFetchFailed && (
-        <div className="flex items-start gap-3 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800">
-          <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-          <span>
-            <strong>HubSpot company names could not be fetched</strong> — the private app token may be missing the
-            {' '}<code className="font-mono">crm.objects.companies.read</code> scope. Deals are still indexed by deal
-            name as a fallback ({hubspotData.diagnostics.dealsKeyedByDealName} deals), but company-name matching
-            won{"'"}t work. In HubSpot → Settings → Private Apps → your app → Scopes, add{' '}
-            <code className="font-mono">crm.objects.companies.read</code> and regenerate the token.
-          </span>
-        </div>
-      )}
-      {hubspotData?.configured && !hubspotData.error && !hubspotData.diagnostics?.companyFetchFailed &&
-       hubspotData.diagnostics && hubspotData.diagnostics.totalDeals > 0 &&
-       hubspotData.diagnostics.companyIdsFound === 0 && (
-        <div className="flex items-start gap-3 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800">
-          <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-          <span>
-            <strong>HubSpot deals have no company associations</strong> — {hubspotData.diagnostics.totalDeals} deals
-            were fetched but none are linked to a company in HubSpot. Open each deal in HubSpot and add the company
-            association, or deals will be matched by deal name only.
-          </span>
+      {/* HubSpot status — compact single line */}
+      {hubspotData && (
+        <div className="flex items-center gap-2">
+          {hubspotData.configured && !hubspotData.error ? (
+            <>
+              <span className="text-[11px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full font-medium flex items-center gap-1">
+                <Zap className="w-3 h-3" /> HubSpot live
+              </span>
+              {hubspotData.fetchedAt && (
+                <span className="text-[11px] text-gray-400">
+                  · {hubspotData.diagnostics?.totalDeals ?? 0} deals · refreshes every 15 min
+                  · last: {new Date(hubspotData.fetchedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              )}
+            </>
+          ) : hubspotData.configured && hubspotData.error ? (
+            <span className="text-[11px] bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full font-medium flex items-center gap-1">
+              <AlertTriangle className="w-3 h-3" /> HubSpot: {hubspotData.error.split('—')[0].trim()}
+            </span>
+          ) : (
+            <span className="text-[11px] text-gray-400 flex items-center gap-1">
+              <Zap className="w-3 h-3" /> HubSpot not connected
+            </span>
+          )}
         </div>
       )}
 
@@ -1340,6 +1384,7 @@ export default function CustomerSuccessPage() {
                   key={account.projectId}
                   account={account}
                   hubspot={hubspotFor(account.projectName, account.customerName)}
+                  insights={insightsFor(account.projectName, account.customerName)}
                   canEdit={canEdit}
                   onEdit={() => setEditingAccount(account)}
                 />

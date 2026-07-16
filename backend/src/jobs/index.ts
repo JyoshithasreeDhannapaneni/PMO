@@ -1,6 +1,7 @@
 import cron from 'node-cron';
 import { logger } from '../utils/logger';
 import { projectService } from '../services/projectService';
+import { ntaSyncService, isNtaConfigured } from '../services/ntaSyncService';
 
 /**
  * Initialize all cron jobs
@@ -45,8 +46,20 @@ export function initializeCronJobs(): void {
     }
   });
 
+  // NTA ticket sync — every 5 minutes
+  cron.schedule('*/5 * * * *', async () => {
+    if (!isNtaConfigured()) return;
+    try {
+      const result = await ntaSyncService.syncFromNta();
+      logger.info(`NTA sync: ${result.synced} upserted, ${result.total} total`);
+    } catch (error) {
+      logger.error(`NTA sync job failed: ${(error as Error).message}`);
+    }
+  });
+
   logger.info('Cron jobs scheduled:');
   logger.info('  - Delay check: Daily at 6:00 AM');
   logger.info('  - Server alerts: Daily at 8:00 AM');
   logger.info('  - Deal Desk email poll: Every 15 minutes');
+  logger.info('  - NTA ticket sync: Every 5 minutes');
 }

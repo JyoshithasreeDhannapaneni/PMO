@@ -471,3 +471,14 @@ export interface HubspotSignalsData {
     dealsKeyedByDealName: number;
   };
 }
+
+export type HubspotInsightType = 'interest' | 'opportunity' | 'risk' | 'renewal' | 'action';
+export type HubspotInsightPriority = 'high' | 'medium' | 'low';
+
+export interface HubspotInsight {
+  type: HubspotInsightType;
+  priority: HubspotInsightPriority;
+  product?: CfProductTag;
+  title: string;
+  detail: string;
+}

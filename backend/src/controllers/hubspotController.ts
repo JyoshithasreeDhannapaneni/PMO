@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import axios from 'axios';
 import { asyncHandler } from '../middleware/errorHandler';
-import { isHubspotConfigured, getDealsByCustomer } from '../services/hubspotService';
+import { isHubspotConfigured, getDealsByCustomer, generateInsights } from '../services/hubspotService';
 import { logger } from '../utils/logger';
 
 export const hubspotController = {
@@ -32,6 +32,22 @@ export const hubspotController = {
         },
       });
     }
+  }),
+
+  // Returns AI-style insights per customer derived from their deal patterns
+  getInsights: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    if (!isHubspotConfigured()) {
+      res.json({ success: true, data: {} });
+      return;
+    }
+    const forceRefresh = req.query.refresh === 'true';
+    const signalData = await getDealsByCustomer(forceRefresh);
+    const insights: Record<string, ReturnType<typeof generateInsights>> = {};
+    for (const [key, customer] of Object.entries(signalData.customers)) {
+      const customerInsights = generateInsights(customer);
+      if (customerInsights.length > 0) insights[key] = customerInsights;
+    }
+    res.json({ success: true, data: { fetchedAt: signalData.fetchedAt, insights } });
   }),
 
   // Returns all company keys and deal names currently indexed — for diagnosing match failures

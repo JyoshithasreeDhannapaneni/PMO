@@ -521,7 +521,7 @@ export const customerSuccessApi = {
   },
 };
 
-// HubSpot API — upsell / cross-sell deal signals
+// HubSpot API — upsell / cross-sell deal signals + AI insights
 export const hubspotApi = {
   getSignals: async (refresh?: boolean) => {
     const { data } = await api.get('/hubspot/signals', { params: refresh ? { refresh: 'true' } : undefined });
@@ -529,6 +529,10 @@ export const hubspotApi = {
   },
   getStatus: async () => {
     const { data } = await api.get('/hubspot/status');
+    return data;
+  },
+  getInsights: async () => {
+    const { data } = await api.get('/hubspot/insights');
     return data;
   },
 };

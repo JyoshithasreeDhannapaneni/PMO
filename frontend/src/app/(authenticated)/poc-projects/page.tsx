@@ -708,7 +708,6 @@ function PhaseStepperView({ project: p, canEdit }: { project: Project; canEdit: 
   const [editingPhaseNum, setEditingPhaseNum] = useState<number | null>(null);
   const [editingOverview, setEditingOverview] = useState(false);
   const [overviewForm, setOverviewForm] = useState({
-    projectManager:   p.projectManager || '',
     pocPreSalesOwner: (p as any).pocPreSalesOwner || '',
     accountManager:   p.accountManager || '',
     plannedStart:     p.plannedStart   ? String(p.plannedStart).substring(0, 10) : '',
@@ -808,7 +807,6 @@ function PhaseStepperView({ project: p, canEdit }: { project: Project; canEdit: 
 
   function openOverviewEdit() {
     setOverviewForm({
-      projectManager:   p.projectManager || '',
       pocPreSalesOwner: (p as any).pocPreSalesOwner || '',
       accountManager:   p.accountManager || '',
       plannedStart:     p.plannedStart   ? String(p.plannedStart).substring(0, 10) : '',
@@ -823,7 +821,6 @@ function PhaseStepperView({ project: p, canEdit }: { project: Project; canEdit: 
       await updatePoc.mutateAsync({
         id: p.id,
         data: {
-          projectManager:   overviewForm.projectManager   || undefined,
           pocPreSalesOwner: overviewForm.pocPreSalesOwner || null,
           accountManager:   overviewForm.accountManager   || undefined,
           plannedStart:     overviewForm.plannedStart     || undefined,
@@ -884,16 +881,6 @@ function PhaseStepperView({ project: p, canEdit }: { project: Project; canEdit: 
           <div className="space-y-3">
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               <div className="space-y-1">
-                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Project Manager</p>
-                <select value={overviewForm.projectManager} onChange={e => setOF('projectManager', e.target.value)} className={inp}>
-                  <option value="">— Select —</option>
-                  {userNames.map(name => <option key={name} value={name}>{name}</option>)}
-                  {overviewForm.projectManager && !userNames.includes(overviewForm.projectManager) && (
-                    <option value={overviewForm.projectManager}>{overviewForm.projectManager}</option>
-                  )}
-                </select>
-              </div>
-              <div className="space-y-1">
                 <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Pre-Sales</p>
                 <select value={overviewForm.pocPreSalesOwner} onChange={e => setOF('pocPreSalesOwner', e.target.value)} className={inp}>
                   <option value="">— Select —</option>
@@ -940,11 +927,7 @@ function PhaseStepperView({ project: p, canEdit }: { project: Project; canEdit: 
           </div>
         ) : (
           <div className="flex items-start gap-2">
-            <div className="grid grid-cols-3 md:grid-cols-6 gap-3 flex-1">
-              <div>
-                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Project Manager</p>
-                <p className="text-gray-700">{dash(p.projectManager)}</p>
-              </div>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3 flex-1">
               <div>
                 <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Pre-Sales</p>
                 <p className="text-gray-700">{dash((p as any).pocPreSalesOwner)}</p>
@@ -1168,18 +1151,21 @@ function PocRow({ project: p, canEdit, expandedId, setExpandedId, isDeleteConfir
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-semibold text-gray-900 capitalize">{p.customerName}</span>
+            <span className="font-semibold text-gray-900 capitalize">{p.name}</span>
             {isFlagged && <span className="inline-flex" title="POC exceeds 30 days"><AlertTriangle className="w-3.5 h-3.5 text-red-500" /></span>}
           </div>
           <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+            <span className="text-xs text-gray-500">{p.customerName}</span>
+            {workloads.length > 0 && <span className="text-gray-300 text-xs">·</span>}
             {workloads.map(w => <span key={w} className="text-xs px-1.5 py-0.5 bg-purple-50 text-purple-700 rounded-full">{w}</span>)}
           </div>
         </div>
 
-        <div className="hidden md:flex flex-col text-xs text-gray-500 shrink-0">
-          <span className="flex items-center gap-1"><FlaskConical className="w-3 h-3 text-blue-400" />{p.projectManager || '—'}</span>
-          {p.accountManager && <span className="flex items-center gap-1"><User className="w-3 h-3 text-gray-400" />{p.accountManager}</span>}
-        </div>
+        {p.accountManager && (
+          <div className="hidden md:flex text-xs text-gray-500 shrink-0">
+            <span className="flex items-center gap-1"><User className="w-3 h-3 text-gray-400" />{p.accountManager}</span>
+          </div>
+        )}
 
         {/* Phase progress dots */}
         <div className="hidden sm:flex items-center gap-1 shrink-0">
@@ -1328,6 +1314,7 @@ export default function PocProjectsPage() {
         ...newForm,
         migrationTypes: migrationTypesStr,
         pocDataVolume:  newForm.pocDataVolume || null,
+        projectManager: newForm.projectManager || newForm.pocPreSalesOwner || '',
       } as any);
       showToast('success', 'POC created');
       closeModal();
