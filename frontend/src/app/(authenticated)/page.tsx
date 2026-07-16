@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useDashboard, useWeeklyReport, useManagerStats, useProjectsByMigrationType, useOveragedProjects, useEscalatedProjects, useProjects } from '@/hooks/useProjects';
 import { useSettings } from '@/context/SettingsContext';
 import { useAuth } from '@/context/AuthContext';
@@ -9,140 +9,14 @@ import { Card } from '@/components/ui/Card';
 import Link from 'next/link';
 import {
   Loader2, FolderKanban, PlayCircle, CheckCircle, PauseCircle,
-  AlertTriangle, AlertCircle, Clock, Activity, BarChart3, FileText,
+  AlertTriangle, AlertCircle, Clock, Activity, FileText,
   RefreshCw, ChevronRight, Plus, User, Users, Calendar,
-  Zap, TrendingUp, X, Download, CalendarDays, UserCheck, MinusCircle,
-  MessageSquare, Send, Bell, Filter,
+  TrendingUp, X, Download, CalendarDays, UserCheck, MinusCircle, Filter,
 } from 'lucide-react';
 import { formatDistanceToNow, format } from 'date-fns';
 
 type ViewMode = 'my' | 'overall';
 
-/* ── AI Chat ─────────────────────────────────────────────────────── */
-const QUICK_REPLIES = [
-  'How many projects are there?',
-  'Show delayed projects',
-  'Show cancelled projects',
-  'Which projects were added this week?',
-  'Project combinations',
-  'Help',
-];
-
-interface ChatDashboardData {
-  stats: any;
-  projectsByStatus: any[];
-  delaySummary: any;
-  migrationTypeStats: any;
-  recentActivity: any[];
-  upcomingDeadlines: any[];
-}
-
-function buildBotReply(text: string, data?: ChatDashboardData): string {
-  if (!data) return "Loading project data… please try again in a moment.";
-  const lower = text.toLowerCase();
-  const { stats, delaySummary, migrationTypeStats } = data;
-
-  if (lower.includes('help')) {
-    return `I can answer questions about:\n• Total / active / completed projects\n• Delayed or at-risk projects\n• Cancelled / decommissioned projects\n• Newly added projects this week\n• Migration type combinations (Email, Content, Messaging)\n• Portfolio health\n\nJust ask!`;
-  }
-  if (lower.includes('how many') || (lower.includes('total') && lower.includes('project'))) {
-    return `There are currently **${stats.totalProjects}** projects in total:\n• ${stats.activeProjects} Active\n• ${stats.completedProjects} Completed\n• ${stats.onHoldProjects} On Hold\n• ${stats.delayedProjects} Delayed`;
-  }
-  if (lower.includes('delay') || lower.includes('overdue')) {
-    const top = delaySummary?.topDelayed?.slice(0, 5) || [];
-    if (top.length === 0) return `No delayed projects right now — all ${stats.activeProjects} active projects are on track!`;
-    const list = top.map((p: any) => `• ${p.name} (+${p.delayDays}d) — ${p.customerName}`).join('\n');
-    return `**${stats.delayedProjects} delayed project${stats.delayedProjects !== 1 ? 's' : ''}** found:\n${list}`;
-  }
-  if (lower.includes('cancel')) {
-    return `There are currently projects with CANCELLED status. Check the Projects page filtered by status=CANCELLED for the full list. Total cancelled: included in ${stats.totalProjects} total.`;
-  }
-  if (lower.includes('decommission')) {
-    return `Decommissioned projects appear as CANCELLED or COMPLETED in the system. Go to Projects → filter by Status to see the full breakdown.`;
-  }
-  if (lower.includes('added') || lower.includes('new') || lower.includes('this week')) {
-    return `To see projects added this week, open the **Weekly Report** (button in the header) → "Newly Added" tab. It shows projects created in the last 7 days with manager and migration type details.`;
-  }
-  if (lower.includes('combination') || lower.includes('combo')) {
-    const types = migrationTypeStats?.byType?.filter((s: any) => s.total > 0) || [];
-    if (types.length === 0) return `No migration type data available yet.`;
-    const list = types.map((t: any) => `• ${t.type}: ${t.total} projects (${t.active} active, ${t.completed} done)`).join('\n');
-    return `**Migration type breakdown:**\n${list}\n\nClick any type on the dashboard to see individual projects.`;
-  }
-  if (lower.includes('health') || lower.includes('portfolio')) {
-    const health = stats.totalProjects > 0 ? Math.round(((stats.totalProjects - stats.delayedProjects - stats.atRiskProjects) / stats.totalProjects) * 100) : 100;
-    return `**Portfolio Health: ${health}%**\n• ${stats.atRiskProjects} at risk\n• ${stats.delayedProjects} delayed\n• ${stats.activeProjects} on track\n\nCompletion rate: ${stats.totalProjects > 0 ? Math.round((stats.completedProjects / stats.totalProjects) * 100) : 0}%`;
-  }
-  if (lower.includes('manager') || lower.includes('who')) {
-    return `Go to the **Manager Goals & Variance** table on the dashboard to see per-manager stats. The dashboard shows completion rates and variance for each manager.`;
-  }
-  if (lower.includes('email') || lower.includes('content') || lower.includes('messaging')) {
-    const type = lower.includes('email') ? 'EMAIL' : lower.includes('content') ? 'CONTENT' : 'MESSAGING';
-    const stat = migrationTypeStats?.byType?.find((s: any) => s.type === type);
-    if (!stat) return `No ${type.toLowerCase()} migration projects found.`;
-    return `**${type} migrations:** ${stat.total} projects\n• ${stat.active} Active\n• ${stat.completed} Completed\n• ${stat.delayed} Delayed\n• ${stat.overaged} Overaged\n\nClick the ${type.toLowerCase()} card on the dashboard to see individual projects.`;
-  }
-  return `I found **${stats.totalProjects} projects** in your portfolio. Try asking:\n• "Show delayed projects"\n• "How many projects are active?"\n• "Project combinations"\n• "Portfolio health"`;
-}
-
-function AiChatPanel({ onClose, userName, dashData }: { onClose: () => void; userName: string; dashData?: ChatDashboardData }) {
-  const [messages, setMessages] = useState([
-    { from: 'bot', text: `Hi ${userName}! I have live access to your project data. Ask me anything about your projects, delays, migrations, or weekly activity.` },
-  ]);
-  const [input, setInput] = useState('');
-  const bottomRef = useRef<HTMLDivElement>(null);
-
-  const sendMessage = (text: string) => {
-    if (!text.trim()) return;
-    const reply = buildBotReply(text, dashData);
-    setMessages((p) => [...p, { from: 'user', text }, { from: 'bot', text: reply }]);
-    setInput('');
-  };
-
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
-
-  return (
-    <div className="fixed bottom-6 right-6 z-40 w-80 bg-white rounded-2xl shadow-2xl border border-blue-100 flex flex-col overflow-hidden" style={{ maxHeight: 500 }}>
-      <div className="flex items-center justify-between px-4 py-3 bg-primary-600 text-white">
-        <div className="flex items-center gap-2">
-          <MessageSquare size={16} />
-          <span className="text-sm font-semibold">AI Chat Assistant</span>
-          <span className="text-xs bg-white/20 px-1.5 py-0.5 rounded-full">Live Data</span>
-        </div>
-        <button onClick={onClose} className="p-1 rounded hover:bg-primary-700 transition-colors"><X size={14} /></button>
-      </div>
-      <div className="flex-1 overflow-y-auto p-3 space-y-2" style={{ minHeight: 200 }}>
-        {messages.map((m, i) => (
-          <div key={i} className={`flex ${m.from === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[90%] px-3 py-2 rounded-xl text-xs whitespace-pre-line ${m.from === 'user' ? 'bg-primary-600 text-white rounded-br-none' : 'bg-blue-50 text-slate-800 rounded-bl-none'}`}>
-              {m.text.replace(/\*\*(.*?)\*\*/g, '$1')}
-            </div>
-          </div>
-        ))}
-        <div ref={bottomRef} />
-      </div>
-      <div className="px-3 pb-2 flex flex-wrap gap-1">
-        {QUICK_REPLIES.map((q) => (
-          <button key={q} onClick={() => sendMessage(q)} className="text-xs px-2 py-1 rounded-full bg-blue-50 text-slate-600 hover:bg-primary-50 hover:text-primary-700 transition-colors">
-            {q}
-          </button>
-        ))}
-      </div>
-      <div className="flex items-center gap-2 px-3 py-2 border-t border-blue-50">
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && sendMessage(input)}
-          placeholder="Ask about your projects..."
-          className="flex-1 text-xs px-2 py-1.5 rounded-lg border border-blue-100 bg-white text-gray-800 focus:outline-none focus:ring-1 focus:ring-primary-500"
-        />
-        <button onClick={() => sendMessage(input)} className="p-1.5 rounded-lg bg-primary-600 text-white hover:bg-primary-700 transition-colors">
-          <Send size={13} />
-        </button>
-      </div>
-    </div>
-  );
-}
 
 /* ── Portfolio Status Donut ─────────────────────────────────────── */
 function DonutChart({ segments }: { segments: { label: string; value: number; color: string }[] }) {
@@ -359,8 +233,6 @@ export default function DashboardPage() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showWeeklyReport, setShowWeeklyReport] = useState(false);
   const [weeklyTab, setWeeklyTab] = useState<'summary' | 'added' | 'closed' | 'changes'>('summary');
-  const [showChat, setShowChat] = useState(false);
-  const [showNotifications, setShowNotifications] = useState(false);
   const [selectedMigrationType, setSelectedMigrationType] = useState<string | null>(null);
   const [showOveragedPanel, setShowOveragedPanel] = useState(false);
   const [showEscalatedPanel, setShowEscalatedPanel] = useState(false);
@@ -446,7 +318,6 @@ export default function DashboardPage() {
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
-      if (params.get('chatbot') === 'open') setShowChat(true);
       if (params.get('report') === 'weekly') setShowWeeklyReport(true);
     }
   }, []);
@@ -959,263 +830,273 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* ── Main 3-column grid ─────────────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+      {/* ── Migration Type Overview ────────────────────────────────────── */}
+      <Card>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-base font-semibold text-gray-900">Migration Type Overview</h2>
+          <Link href="/projects" className="text-primary-600 hover:text-primary-700 text-sm font-medium flex items-center gap-1">View All <ChevronRight size={14} /></Link>
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          {categoryStats.map((stat: any) => {
+            const palettes: Record<string, { cardCls: string; textCls: string }> = {
+              'Content Migration': { cardCls: 'bg-blue-50 border-blue-200',     textCls: 'text-blue-700' },
+              'Messaging':         { cardCls: 'bg-green-50 border-green-200',   textCls: 'text-green-700' },
+              'Email':             { cardCls: 'bg-purple-50 border-purple-200', textCls: 'text-purple-700' },
+            };
+            const palette = palettes[stat.type] || palettes['Content Migration'];
+            return (
+              <button key={stat.type} onClick={() => setSelectedMigrationType(stat.type)}
+                className={`p-4 rounded-xl border ${palette.cardCls} hover:opacity-90 transition-opacity text-left w-full cursor-pointer`}>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-xl">{stat.icon || '📦'}</span>
+                  <span className={`text-sm font-semibold ${palette.textCls}`}>{stat.name}</span>
+                </div>
+                <div className="text-3xl font-bold text-gray-900 mb-2">{stat.total}</div>
+                <div className="grid grid-cols-2 gap-1 text-xs">
+                  <span className="flex items-center gap-1 text-gray-600"><span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />{stat.active} Active</span>
+                  <span className="flex items-center gap-1 text-gray-600"><span className="w-1.5 h-1.5 rounded-full bg-blue-500 inline-block" />{stat.completed} Done</span>
+                  <span className="flex items-center gap-1 text-gray-600"><span className="w-1.5 h-1.5 rounded-full bg-orange-500 inline-block" />{stat.overaged} Overaged</span>
+                  <span className="flex items-center gap-1 text-gray-600"><span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block" />{stat.delayed} Delayed</span>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </Card>
 
-        {/* LEFT: Migration + Charts */}
-        <div className="lg:col-span-2 space-y-5">
+      {/* ── Recent Projects (live, sorted by last updated) ─────────────── */}
+      <Card>
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="text-base font-semibold text-gray-900">Recent Projects</h2>
+            <p className="text-xs text-gray-400 mt-0.5">Most recently updated — live data</p>
+          </div>
+          <Link href="/projects" className="text-primary-600 hover:text-primary-700 text-sm font-medium flex items-center gap-1">View All <ChevronRight size={14} /></Link>
+        </div>
+        <div className="overflow-x-auto rounded-xl border border-blue-100">
+          <table className="w-full text-sm">
+            <thead className="bg-blue-50/60">
+              <tr>
+                {['Project Name', 'Customer', 'Manager', 'Migration Type', 'Phase', 'Status', 'Delay'].map((h) => (
+                  <th key={h} className={`py-2.5 px-3 font-medium text-gray-500 text-xs ${h === 'Project Name' ? 'text-left' : 'text-center'}`}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {[...allProjectsList]
+                .sort((a: any, b: any) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+                .slice(0, 10)
+                .map((p: any) => (
+                  <tr key={p.id} className="border-t border-blue-50 hover:bg-blue-50/50 cursor-pointer"
+                    onClick={() => { window.location.href = `/projects/${p.id}`; }}>
+                    <td className="py-2.5 px-3">
+                      <p className="font-medium text-gray-900 max-w-[180px] truncate">{p.name}</p>
+                    </td>
+                    <td className="text-center py-2.5 px-3 text-xs text-gray-500">
+                      <span className="truncate block max-w-[100px] mx-auto">{p.customerName || '—'}</span>
+                    </td>
+                    <td className="text-center py-2.5 px-3 text-xs text-gray-600">{p.projectManager || '—'}</td>
+                    <td className="text-center py-2.5 px-3 text-xs text-gray-500">
+                      {p.migrationTypes ? p.migrationTypes.split(',')[0].trim() : '—'}
+                    </td>
+                    <td className="text-center py-2.5 px-3 text-xs text-gray-500">{p.phase?.replace(/_/g, ' ') || '—'}</td>
+                    <td className="text-center py-2.5 px-3">
+                      <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${
+                        p.status === 'ACTIVE'    ? 'bg-green-100 text-green-700' :
+                        p.status === 'COMPLETED' ? 'bg-blue-100 text-blue-700' :
+                        p.status === 'ON_HOLD'   ? 'bg-yellow-100 text-yellow-700' :
+                        'bg-red-100 text-red-700'
+                      }`}>{p.status}</span>
+                    </td>
+                    <td className="text-center py-2.5 px-3">
+                      {p.delayDays > 0
+                        ? <span className="text-xs font-semibold text-red-600">+{p.delayDays}d</span>
+                        : <span className="text-xs text-green-600">On Track</span>
+                      }
+                    </td>
+                  </tr>
+                ))}
+              {allProjectsList.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="py-12 text-center text-gray-400">
+                    <FolderKanban size={32} className="mx-auto mb-2 opacity-30" />
+                    <p className="text-sm">No projects found</p>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Card>
 
-          {/* Migration Type Overview */}
+      {/* ── Two-col: Portfolio Health + Delayed Projects ───────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+
+        {/* Portfolio Health */}
+        {dash.showCharts && (
           <Card>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-base font-semibold text-gray-900">Migration Type Overview</h2>
-              <Link href="/projects" className="text-primary-600 hover:text-primary-700 text-sm font-medium flex items-center gap-1">View All <ChevronRight size={14} /></Link>
+              <h3 className="text-sm font-semibold text-gray-900">Portfolio Health</h3>
+              <Link href="/projects" className="text-xs text-primary-600 hover:text-primary-700 font-medium flex items-center gap-0.5">View Details <ChevronRight size={12} /></Link>
             </div>
-            <div className="space-y-4">
-                {/* 3 Category Cards */}
-                <div className="grid grid-cols-3 gap-3">
-                  {categoryStats.map((stat: any) => {
-                    const palettes: Record<string, { cardCls: string; textCls: string; bgBtn: string }> = {
-                      'Content Migration': { cardCls: 'bg-blue-50 border-blue-200',   textCls: 'text-blue-700',   bgBtn: 'bg-blue-600' },
-                      'Messaging':         { cardCls: 'bg-green-50 border-green-200', textCls: 'text-green-700', bgBtn: 'bg-green-600' },
-                      'Email':             { cardCls: 'bg-purple-50 border-purple-200', textCls: 'text-purple-700', bgBtn: 'bg-purple-600' },
-                    };
-                    const palette = palettes[stat.type] || palettes['Content Migration'];
-                    const emoji = stat.icon || '📦';
-                    return (
-                      <button key={stat.type} onClick={() => setSelectedMigrationType(stat.type)}
-                        className={`p-4 rounded-xl border ${palette.cardCls} hover:opacity-90 transition-opacity text-left w-full cursor-pointer`}>
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="text-xl">{emoji}</span>
-                          <span className={`text-sm font-semibold ${palette.textCls}`}>{stat.name}</span>
-                        </div>
-                        <div className="text-3xl font-bold text-gray-900 mb-2">{stat.total}</div>
-                        <div className="grid grid-cols-2 gap-1 text-xs">
-                          <span className="flex items-center gap-1 text-gray-600"><span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />{stat.active} Active</span>
-                          <span className="flex items-center gap-1 text-gray-600"><span className="w-1.5 h-1.5 rounded-full bg-blue-500 inline-block" />{stat.completed} Done</span>
-                          <span className="flex items-center gap-1 text-gray-600"><span className="w-1.5 h-1.5 rounded-full bg-orange-500 inline-block" />{stat.overaged} Overaged</span>
-                          <span className="flex items-center gap-1 text-gray-600"><span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block" />{stat.delayed} Delayed</span>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-                {/* Summary Table */}
-                <div className="overflow-x-auto rounded-xl border border-blue-100">
-                  <table className="w-full text-sm">
-                    <thead className="bg-blue-50/60">
-                      <tr>
-                        {['Category', 'Total', 'Active', 'Completed', 'On Hold', 'At Risk'].map((h) => (
-                          <th key={h} className={`py-2 px-3 font-medium text-gray-500 ${h === 'Category' ? 'text-left' : 'text-center'}`}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {categoryStats.map((stat: any) => (
-                        <tr key={stat.type} className="border-t border-blue-50 hover:bg-blue-50/50 cursor-pointer" onClick={() => setSelectedMigrationType(stat.type)}>
-                          <td className="py-2 px-3 font-medium text-gray-800 flex items-center gap-1.5">{stat.icon} {stat.name}</td>
-                          <td className="text-center py-2 px-3 font-bold">{stat.total}</td>
-                          <td className="text-center py-2 px-3"><span className="inline-flex items-center justify-center min-w-[22px] h-5 px-1 rounded-full bg-green-100 text-green-700 text-xs font-semibold">{stat.active}</span></td>
-                          <td className="text-center py-2 px-3"><span className="inline-flex items-center justify-center min-w-[22px] h-5 px-1 rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">{stat.completed}</span></td>
-                          <td className="text-center py-2 px-3"><span className="inline-flex items-center justify-center min-w-[22px] h-5 px-1 rounded-full bg-yellow-100 text-yellow-700 text-xs font-semibold">{stat.inactive}</span></td>
-                          <td className="text-center py-2 px-3"><span className={`inline-flex items-center justify-center min-w-[22px] h-5 px-1 rounded-full text-xs font-semibold ${stat.atRisk > 0 ? 'bg-red-100 text-red-700' : 'bg-blue-50 text-gray-400'}`}>{stat.atRisk}</span></td>
-                        </tr>
-                      ))}
-                      <tr className="border-t-2 border-blue-200 bg-gray-50 font-semibold">
-                        <td className="py-2 px-3 text-gray-700">TOTAL</td>
-                        <td className="text-center py-2 px-3">{allProjectsList.length}</td>
-                        <td className="text-center py-2 px-3 text-green-700">{allProjectsList.filter((p: any) => p.status === 'ACTIVE').length}</td>
-                        <td className="text-center py-2 px-3 text-blue-700">{allProjectsList.filter((p: any) => p.status === 'COMPLETED').length}</td>
-                        <td className="text-center py-2 px-3 text-yellow-700">{allProjectsList.filter((p: any) => p.status === 'ON_HOLD').length}</td>
-                        <td className="text-center py-2 px-3 text-red-700">{allProjectsList.filter((p: any) => p.delayStatus === 'AT_RISK').length}</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-          </Card>
-
-          {/* Portfolio Status + Projects by Phase */}
-          {dash.showCharts && (
-            <div className="grid grid-cols-2 gap-4">
-              <Card>
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sm font-semibold text-gray-900">Portfolio Status</h3>
-                  <Link href="/projects" className="text-xs text-primary-600 hover:text-primary-700 font-medium flex items-center gap-0.5">View Details <ChevronRight size={12} /></Link>
-                </div>
-                <DonutChart segments={[
-                  { label: 'On Track', value: Math.max(0, stats.activeProjects - stats.delayedProjects - stats.atRiskProjects), color: '#22c55e' },
-                  { label: 'At Risk',  value: stats.atRiskProjects, color: '#f97316' },
-                  { label: 'Delayed',  value: stats.delayedProjects, color: '#ef4444' },
-                  { label: 'On Hold',  value: stats.onHoldProjects, color: '#eab308' },
-                  { label: 'Completed', value: stats.completedProjects, color: '#3b82f6' },
-                ].filter((s) => s.value > 0)} />
-              </Card>
-              <Card>
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sm font-semibold text-gray-900">Projects by Phase</h3>
-                  <Link href="/projects" className="text-xs text-primary-600 hover:text-primary-700 font-medium flex items-center gap-0.5">View Details <ChevronRight size={12} /></Link>
-                </div>
-                <BarChart bars={(projectsByPhase as any[] || []).filter((p) => p.count > 0).map((p: any) => {
-                  const colors: Record<string, string> = { KICKOFF: '#a855f7', CLOUD_ADDING: '#3b82f6', PILOT_MIGRATION: '#f59e0b', ONETIME_MIGRATION: '#10b981', DELTA: '#ef4444', FINAL_VALIDATION: '#6366f1', COMPLETED: '#10b981' };
-                  return { label: p.phase?.charAt(0) + p.phase?.slice(1).toLowerCase(), value: p.count, color: colors[p.phase] || '#6b7280' };
-                })} />
-              </Card>
-            </div>
-          )}
-
-          {/* Projects by Status */}
-          {dash.showCharts && (
-            <Card>
-              <h3 className="text-sm font-semibold text-gray-900 mb-4">Projects by Status</h3>
-              <div className="space-y-3">
-                {(() => {
-                  const grandTotal = stats.activeProjects + stats.completedProjects + stats.onHoldProjects;
-                  return [
-                    { label: 'Active',    value: stats.activeProjects,    sub: stats.delayedProjects > 0 || stats.atRiskProjects > 0 ? `${stats.delayedProjects} delayed · ${stats.atRiskProjects} at risk` : 'On track', iconColor: 'text-green-600', barColor: 'bg-green-500', icon: PlayCircle },
-                    { label: 'Completed', value: stats.completedProjects, sub: null, iconColor: 'text-blue-600',  barColor: 'bg-blue-500',  icon: CheckCircle },
-                    { label: 'On Hold',   value: stats.onHoldProjects,    sub: null, iconColor: 'text-yellow-600', barColor: 'bg-yellow-500', icon: PauseCircle },
-                  ].map((item) => (
-                    <div key={item.label} className="flex items-center justify-between gap-2">
-                      <div className="flex flex-col w-28 flex-shrink-0">
-                        <div className="flex items-center gap-1.5">
-                          <item.icon size={14} className={item.iconColor} />
-                          <span className="text-sm text-gray-700">{item.label}</span>
-                        </div>
-                        {item.sub && <span className="text-[10px] text-gray-400 pl-5">{item.sub}</span>}
-                      </div>
-                      <div className="flex items-center gap-2 flex-1">
-                        <div className="flex-1 bg-blue-100 rounded-full h-2">
-                          <div className={`${item.barColor} h-2 rounded-full transition-all`} style={{ width: `${grandTotal > 0 ? (item.value / grandTotal) * 100 : 0}%` }} />
-                        </div>
-                        <span className="text-sm font-semibold text-gray-900 w-6 text-right">{item.value}</span>
-                      </div>
+            <DonutChart segments={[
+              { label: 'On Track',  value: Math.max(0, stats.activeProjects - stats.delayedProjects - stats.atRiskProjects), color: '#22c55e' },
+              { label: 'At Risk',   value: stats.atRiskProjects,   color: '#f97316' },
+              { label: 'Delayed',   value: stats.delayedProjects,  color: '#ef4444' },
+              { label: 'On Hold',   value: stats.onHoldProjects,   color: '#eab308' },
+              { label: 'Completed', value: stats.completedProjects, color: '#3b82f6' },
+            ].filter((s) => s.value > 0)} />
+            <div className="mt-4 space-y-2 border-t border-blue-50 pt-3">
+              {(() => {
+                const grandTotal = stats.activeProjects + stats.completedProjects + stats.onHoldProjects;
+                return [
+                  { label: 'Active',    value: stats.activeProjects,    sub: `${stats.delayedProjects} delayed · ${stats.atRiskProjects} at risk`, iconColor: 'text-green-600', barColor: 'bg-green-500', icon: PlayCircle },
+                  { label: 'Completed', value: stats.completedProjects, sub: null, iconColor: 'text-blue-600',  barColor: 'bg-blue-500',  icon: CheckCircle },
+                  { label: 'On Hold',   value: stats.onHoldProjects,    sub: null, iconColor: 'text-yellow-600', barColor: 'bg-yellow-500', icon: PauseCircle },
+                ].map((item) => (
+                  <div key={item.label} className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 w-24 flex-shrink-0">
+                      <item.icon size={13} className={item.iconColor} />
+                      <span className="text-xs text-gray-700">{item.label}</span>
                     </div>
-                  ));
-                })()}
-              </div>
-            </Card>
-          )}
-
-          {/* Manager Performance */}
-          {managers.length > 0 && (
-            <Card>
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                  <Users size={16} className="text-primary-600" /> Manager Performance
-                </h3>
-                {isAdmin && (
-                  <Link href="/manager-dashboard" className="text-xs text-primary-600 hover:text-primary-700 font-medium flex items-center gap-0.5">
-                    View Details <ChevronRight size={12} />
-                  </Link>
-                )}
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-blue-50/60">
-                    <tr>
-                      {['Project Manager', 'Total', 'Active', 'Completed', 'Delayed', 'Completion'].map((h) => (
-                        <th key={h} className={`py-2 px-3 font-medium text-gray-500 ${h === 'Project Manager' ? 'text-left' : 'text-center'}`}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {managers.map((m: any) => (
-                      <tr key={m.manager} className="border-t border-blue-50 hover:bg-blue-50/50">
-                        <td className="py-2.5 px-3">
-                          <div className="flex items-center gap-2">
-                            <div className="w-7 h-7 rounded-full bg-primary-100 flex items-center justify-center text-xs font-bold text-primary-700 flex-shrink-0">
-                              {m.manager.charAt(0).toUpperCase()}
-                            </div>
-                            <span className="font-medium text-gray-800">{m.manager}</span>
-                          </div>
-                        </td>
-                        <td className="text-center py-2.5 px-3 font-semibold text-gray-700">{m.total}</td>
-                        <td className="text-center py-2.5 px-3">
-                          <span className="inline-flex items-center justify-center min-w-[22px] h-5 px-1.5 rounded-full bg-green-100 text-green-700 text-xs font-semibold">{m.active}</span>
-                        </td>
-                        <td className="text-center py-2.5 px-3">
-                          <span className="inline-flex items-center justify-center min-w-[22px] h-5 px-1.5 rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">{m.completed}</span>
-                        </td>
-                        <td className="text-center py-2.5 px-3">
-                          <span className={`inline-flex items-center justify-center min-w-[22px] h-5 px-1.5 rounded-full text-xs font-semibold ${m.delayed > 0 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-400'}`}>{m.delayed}</span>
-                        </td>
-                        <td className="py-2.5 px-3">
-                          <div className="flex items-center gap-2 justify-center">
-                            <div className="flex-1 max-w-[80px] bg-gray-100 rounded-full h-2">
-                              <div
-                                className={`h-2 rounded-full transition-all ${m.achievedPct >= 80 ? 'bg-green-500' : m.achievedPct >= 50 ? 'bg-yellow-400' : 'bg-red-400'}`}
-                                style={{ width: `${m.achievedPct}%` }}
-                              />
-                            </div>
-                            <span className={`font-semibold text-xs w-8 text-right ${m.achievedPct >= 80 ? 'text-green-700' : m.achievedPct >= 50 ? 'text-yellow-700' : 'text-red-700'}`}>
-                              {m.achievedPct}%
-                            </span>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </Card>
-          )}
-        </div>
-
-        {/* RIGHT: Sidebar widgets */}
-        <div className="space-y-4">
-
-          {/* Weekly Report Widget */}
-          <Card className="border-primary-200">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-gray-900">Weekly Report</h3>
-              <button onClick={() => { setShowWeeklyReport(true); setWeeklyTab('summary'); }} className="text-xs text-primary-600 hover:text-primary-700 font-medium flex items-center gap-0.5">
-                View All <ChevronRight size={12} />
-              </button>
-            </div>
-            <p className="text-xs text-gray-500 mb-3 flex items-center gap-1">
-              <CalendarDays size={11} />
-              {weeklyData?.data ? `${format(new Date(weeklyData.data.weekRange.start), 'MMM d')} – ${format(new Date(weeklyData.data.weekRange.end), 'MMM d, yyyy')}` : 'Last 7 days'}
-            </p>
-            <div className="space-y-2">
-              {[
-                { label: 'Newly Added', value: weeklyData?.data?.summary.newlyAdded ?? '—', icon: Plus, color: 'text-green-600' },
-                { label: 'Closed / Decommissioned', value: weeklyData?.data?.summary.closedDecommissioned ?? '—', icon: MinusCircle, color: 'text-red-500' },
-                { label: 'Changes by Managers', value: weeklyData?.data?.summary.changesByManagers ?? '—', icon: UserCheck, color: 'text-blue-600' },
-              ].map((item) => (
-                <div key={item.label} className="flex items-center justify-between py-1.5 border-b border-blue-50 last:border-0">
-                  <div className="flex items-center gap-2 text-xs text-gray-700">
-                    <item.icon size={13} className={item.color} /> {item.label}
+                    <div className="flex-1 bg-blue-100 rounded-full h-2">
+                      <div className={`${item.barColor} h-2 rounded-full transition-all`}
+                        style={{ width: `${grandTotal > 0 ? (item.value / grandTotal) * 100 : 0}%` }} />
+                    </div>
+                    <span className="text-xs font-semibold text-gray-900 w-5 text-right">{item.value}</span>
                   </div>
-                  <span className={`text-sm font-bold ${item.color}`}>{item.value}</span>
-                </div>
-              ))}
+                ));
+              })()}
             </div>
-            <button onClick={() => { setShowWeeklyReport(true); setWeeklyTab('summary'); }}
-              className="mt-3 w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-primary-600 text-white rounded-lg text-xs font-medium hover:bg-primary-700 transition-colors">
-              <FileText size={12} /> View Report
-            </button>
           </Card>
+        )}
 
-          {/* Upcoming Deadlines */}
+        {/* Delayed Projects */}
+        {dash.showDelayedProjects && (
+          <Card className={delaySummary?.topDelayed?.length > 0 ? 'border-red-200 bg-red-50' : ''}>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-gray-900">Delayed Projects</h3>
+              {delaySummary?.topDelayed?.length > 0 && (
+                <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-semibold rounded-full">Action Required</span>
+              )}
+            </div>
+            <div className="space-y-2 max-h-56 overflow-y-auto">
+              {delaySummary?.topDelayed?.length > 0 ? delaySummary.topDelayed.map((project: any) => (
+                <Link key={project.id} href={`/projects/${project.id}`}
+                  className="flex items-center justify-between p-2.5 rounded-lg bg-white border border-red-200 hover:border-red-400 transition-all">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium text-gray-900 truncate">{project.name}</p>
+                    <p className="text-xs text-gray-500 truncate">{project.customerName}</p>
+                  </div>
+                  <div className="flex flex-col items-end gap-0.5 flex-shrink-0 ml-2">
+                    <span className="text-sm font-bold text-red-600">+{project.delayDays}d</span>
+                    <span className="text-[10px] text-gray-400">{project.projectManager}</span>
+                  </div>
+                </Link>
+              )) : (
+                <div className="text-center py-8 text-green-600">
+                  <CheckCircle size={28} className="mx-auto mb-1" />
+                  <p className="text-xs font-medium">All projects on track!</p>
+                </div>
+              )}
+            </div>
+            {delaySummary?.topDelayed?.length > 0 && (
+              <Link href="/projects?delayStatus=DELAYED" className="mt-2 text-xs text-red-600 font-medium flex items-center justify-end gap-0.5 hover:underline">
+                View All Delayed <ChevronRight size={12} />
+              </Link>
+            )}
+          </Card>
+        )}
+      </div>
+
+      {/* ── Two-col: Manager Performance + (Deadlines + Notifications) ─── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+
+        {/* Manager Performance */}
+        {managers.length > 0 && (
+          <Card>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                <Users size={16} className="text-primary-600" /> Manager Performance
+              </h3>
+              {isAdmin && (
+                <Link href="/manager-dashboard" className="text-xs text-primary-600 hover:text-primary-700 font-medium flex items-center gap-0.5">
+                  View Details <ChevronRight size={12} />
+                </Link>
+              )}
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-blue-50/60">
+                  <tr>
+                    {['Project Manager', 'Total', 'Active', 'Completed', 'Delayed', 'Completion'].map((h) => (
+                      <th key={h} className={`py-2 px-3 font-medium text-gray-500 text-xs ${h === 'Project Manager' ? 'text-left' : 'text-center'}`}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {managers.map((m: any) => (
+                    <tr key={m.manager} className="border-t border-blue-50 hover:bg-blue-50/50">
+                      <td className="py-2.5 px-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-full bg-primary-100 flex items-center justify-center text-xs font-bold text-primary-700 flex-shrink-0">
+                            {m.manager.charAt(0).toUpperCase()}
+                          </div>
+                          <span className="font-medium text-gray-800 text-xs">{m.manager}</span>
+                        </div>
+                      </td>
+                      <td className="text-center py-2.5 px-3 font-semibold text-gray-700 text-xs">{m.total}</td>
+                      <td className="text-center py-2.5 px-3">
+                        <span className="inline-flex items-center justify-center min-w-[22px] h-5 px-1.5 rounded-full bg-green-100 text-green-700 text-xs font-semibold">{m.active}</span>
+                      </td>
+                      <td className="text-center py-2.5 px-3">
+                        <span className="inline-flex items-center justify-center min-w-[22px] h-5 px-1.5 rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">{m.completed}</span>
+                      </td>
+                      <td className="text-center py-2.5 px-3">
+                        <span className={`inline-flex items-center justify-center min-w-[22px] h-5 px-1.5 rounded-full text-xs font-semibold ${m.delayed > 0 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-400'}`}>{m.delayed}</span>
+                      </td>
+                      <td className="py-2.5 px-3">
+                        <div className="flex items-center gap-2 justify-center">
+                          <div className="flex-1 max-w-[70px] bg-gray-100 rounded-full h-1.5">
+                            <div className={`h-1.5 rounded-full transition-all ${m.achievedPct >= 80 ? 'bg-green-500' : m.achievedPct >= 50 ? 'bg-yellow-400' : 'bg-red-400'}`}
+                              style={{ width: `${m.achievedPct}%` }} />
+                          </div>
+                          <span className={`font-semibold text-xs ${m.achievedPct >= 80 ? 'text-green-700' : m.achievedPct >= 50 ? 'text-yellow-700' : 'text-red-700'}`}>
+                            {m.achievedPct}%
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        )}
+
+        {/* Upcoming Deadlines + Notifications stacked */}
+        <div className="space-y-4">
           {dash.showUpcomingDeadlines && (
             <Card>
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-semibold text-gray-900">Upcoming Deadlines</h3>
                 <Link href="/projects" className="text-xs text-primary-600 hover:text-primary-700 font-medium flex items-center gap-0.5">View All <ChevronRight size={12} /></Link>
               </div>
-              <div className="space-y-2 max-h-52 overflow-y-auto">
+              <div className="space-y-2 max-h-44 overflow-y-auto">
                 {upcomingDeadlines?.length > 0 ? upcomingDeadlines.slice(0, 5).map((project: any) => (
                   <Link key={project.id} href={`/projects/${project.id}`}
                     className="flex items-center justify-between p-2.5 rounded-lg border border-gray-100 hover:border-primary-300 hover:bg-primary-50 transition-all">
-                    <p className="text-xs font-medium text-gray-900 truncate flex-1 pr-2">{project.name}</p>
-                    <span className={`text-xs font-semibold flex-shrink-0 px-2 py-0.5 rounded ${new Date(project.deadline) < new Date(Date.now() + 3 * 86400000) ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'}`}>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-gray-900 truncate">{project.name}</p>
+                      <p className="text-[10px] text-gray-400">{project.projectManager}</p>
+                    </div>
+                    <span className={`text-xs font-semibold flex-shrink-0 px-2 py-0.5 rounded ml-2 ${new Date(project.deadline) < new Date(Date.now() + 3 * 86400000) ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'}`}>
                       {format(new Date(project.deadline), 'MMM d')}
                     </span>
                   </Link>
                 )) : (
                   <div className="text-center py-5 text-gray-400">
-                    <Calendar size={24} className="mx-auto mb-1 opacity-40" />
+                    <Calendar size={22} className="mx-auto mb-1 opacity-40" />
                     <p className="text-xs">No upcoming deadlines</p>
                   </div>
                 )}
@@ -1223,88 +1104,6 @@ export default function DashboardPage() {
             </Card>
           )}
 
-          {/* Delayed Projects */}
-          {dash.showDelayedProjects && (
-            <Card className={delaySummary?.topDelayed?.length > 0 ? 'border-red-200 bg-red-50' : ''}>
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-semibold text-gray-900">Delayed Projects</h3>
-                {delaySummary?.topDelayed?.length > 0 && (
-                  <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-semibold rounded-full">Action Required</span>
-                )}
-              </div>
-              <div className="space-y-2 max-h-48 overflow-y-auto">
-                {delaySummary?.topDelayed?.length > 0 ? delaySummary.topDelayed.map((project: any) => (
-                  <Link key={project.id} href={`/projects/${project.id}`}
-                    className="flex items-center justify-between p-2.5 rounded-lg bg-white border border-red-200 hover:border-red-400 transition-all">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium text-gray-900 truncate">{project.name}</p>
-                      <p className="text-xs text-gray-500 truncate">{project.customerName}</p>
-                    </div>
-                    <span className="text-sm font-bold text-red-600 ml-2">+{project.delayDays}d</span>
-                  </Link>
-                )) : (
-                  <div className="text-center py-4 text-green-600">
-                    <CheckCircle size={24} className="mx-auto mb-1" />
-                    <p className="text-xs font-medium">All projects on track!</p>
-                  </div>
-                )}
-              </div>
-              {delaySummary?.topDelayed?.length > 0 && (
-                <Link href="/projects?delayStatus=DELAYED" className="mt-2 text-xs text-red-600 font-medium flex items-center justify-end gap-0.5 hover:underline">
-                  View All Delayed <ChevronRight size={12} />
-                </Link>
-              )}
-            </Card>
-          )}
-
-          {/* Notifications widget */}
-          <Card>
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-1.5">
-                <Bell size={14} className="text-primary-600" /> Notifications
-              </h3>
-              <Link href="/notifications" className="text-xs text-primary-600 hover:text-primary-700 font-medium">Mark all as read</Link>
-            </div>
-            <div className="space-y-2">
-              {recentActivity?.length > 0 ? recentActivity.slice(0, 4).map((activity: any, i: number) => (
-                <div key={i} className="flex items-start gap-2 p-2 rounded-lg bg-gray-50">
-                  <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 bg-blue-100">
-                    <Zap size={10} className="text-blue-500" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs text-gray-700 truncate">{activity.message}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">{formatDistanceToNow(new Date(activity.timestamp), { addSuffix: true })}</p>
-                  </div>
-                </div>
-              )) : (
-                <div className="text-center py-4 text-gray-400">
-                  <Bell size={24} className="mx-auto mb-1 opacity-30" />
-                  <p className="text-xs">No recent notifications</p>
-                </div>
-              )}
-            </div>
-            <Link href="/notifications" className="mt-3 text-xs text-primary-600 font-medium flex items-center justify-center gap-0.5 hover:underline">
-              View all notifications <ChevronRight size={12} />
-            </Link>
-          </Card>
-
-          {/* Quick Actions */}
-          <Card>
-            <h3 className="text-sm font-semibold text-gray-900 mb-3">Quick Actions</h3>
-            <div className="grid grid-cols-2 gap-2">
-              {!isViewer && (
-                <Link href="/projects/new" className="flex items-center gap-2 p-2.5 rounded-lg bg-primary-50 text-primary-700 hover:bg-primary-100 transition-colors">
-                  <Plus size={14} /><span className="text-xs font-medium">New Project</span>
-                </Link>
-              )}
-              <Link href="/projects" className="flex items-center gap-2 p-2.5 rounded-lg bg-slate-50 text-slate-700 hover:bg-blue-50 transition-colors">
-                <FolderKanban size={14} /><span className="text-xs font-medium">All Projects</span>
-              </Link>
-              <Link href="/case-studies" className="flex items-center gap-2 p-2.5 rounded-lg bg-slate-50 text-slate-700 hover:bg-blue-50 transition-colors">
-                <FileText size={14} /><span className="text-xs font-medium">Case Studies</span>
-              </Link>
-            </div>
-          </Card>
         </div>
       </div>
 
@@ -1617,30 +1416,6 @@ export default function DashboardPage() {
         <MigrationTypeModal type={selectedMigrationType} onClose={() => setSelectedMigrationType(null)} />
       )}
 
-      {/* ── AI Chat Assistant ───────────────────────────────────────── */}
-      {showChat && (
-        <AiChatPanel
-          onClose={() => setShowChat(false)}
-          userName={user?.name || 'Administrator'}
-          dashData={data?.data ? {
-            stats: data.data.stats,
-            projectsByStatus: data.data.projectsByStatus as any[],
-            delaySummary: data.data.delaySummary,
-            migrationTypeStats: data.data.migrationTypeStats,
-            recentActivity: data.data.recentActivity as any[],
-            upcomingDeadlines: data.data.upcomingDeadlines as any[],
-          } : undefined}
-        />
-      )}
-
-      {/* Floating Chat Button (when chat closed) */}
-      {!showChat && (
-        <button onClick={() => setShowChat(true)}
-          className="fixed bottom-6 right-6 z-40 w-12 h-12 bg-primary-600 text-white rounded-full shadow-lg hover:bg-primary-700 transition-all hover:scale-110 flex items-center justify-center"
-          title="Open AI Chat Assistant">
-          <MessageSquare size={20} />
-        </button>
-      )}
     </div>
   );
 }

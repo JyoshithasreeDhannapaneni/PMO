@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { StatusBadge } from '@/components/ui/StatusBadge';
+import { projectSegment, type Segment } from '@/lib/segments';
 
 const PRIORITY_COLORS: Record<string, string> = {
   HIGH: 'bg-red-100 text-red-700',
@@ -57,6 +58,8 @@ export default function EscalationProjectsPage() {
   const [search, setSearch] = useState('');
   const [prioritySel, setPrioritySel] = useState('');
   const [typeSel, setTypeSel] = useState('');
+  const [escSegmentTab, setEscSegmentTab] = useState<Segment | 'ALL'>('ALL');
+  const [atRiskSegmentTab, setAtRiskSegmentTab] = useState<Segment | 'ALL'>('ALL');
   const [page, setPage] = useState(1);
   const PER_PAGE = 10;
 
@@ -182,8 +185,12 @@ export default function EscalationProjectsPage() {
     });
   }, [deduped, search, prioritySel, typeSel, kpiFilter]);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
-  const paged = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
+  const escEntCount = filtered.filter((p: any) => projectSegment(p) === 'ENT').length;
+  const escSmbCount = filtered.filter((p: any) => projectSegment(p) === 'SMB').length;
+  const escSegmentFiltered = escSegmentTab === 'ALL' ? filtered : filtered.filter((p: any) => projectSegment(p) === escSegmentTab);
+
+  const totalPages = Math.max(1, Math.ceil(escSegmentFiltered.length / PER_PAGE));
+  const paged = escSegmentFiltered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
 
   // Show all non-completed/non-cancelled projects for escalation
   const nonEscalated = allProjects.filter((p: any) => p.status !== 'COMPLETED' && p.status !== 'CANCELLED');
@@ -203,6 +210,10 @@ export default function EscalationProjectsPage() {
       p.projectManager?.toLowerCase().includes(q)
     );
   }, [atRiskProjects, atRiskSearch]);
+
+  const atRiskEntCount = atRiskFiltered.filter((p: any) => projectSegment(p) === 'ENT').length;
+  const atRiskSmbCount = atRiskFiltered.filter((p: any) => projectSegment(p) === 'SMB').length;
+  const atRiskSegmentFiltered = atRiskSegmentTab === 'ALL' ? atRiskFiltered : atRiskFiltered.filter((p: any) => projectSegment(p) === atRiskSegmentTab);
 
   const [escalatingId, setEscalatingId] = useState<string | null>(null);
   async function handleEscalateFromAtRisk(p: any) {
@@ -454,11 +465,36 @@ export default function EscalationProjectsPage() {
               />
             </div>
 
-            {atRiskFiltered.length === 0 ? (
+            <div className="flex items-end border-b border-gray-200 bg-gray-50 px-2 pt-2 mb-3">
+              {([
+                { key: 'ALL' as const, label: 'All', count: atRiskFiltered.length },
+                { key: 'ENT' as const, label: 'Enterprise', count: atRiskEntCount },
+                { key: 'SMB' as const, label: 'SMB', count: atRiskSmbCount },
+              ]).map(tab => (
+                <button
+                  key={tab.key}
+                  onClick={() => setAtRiskSegmentTab(tab.key)}
+                  className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                    atRiskSegmentTab === tab.key
+                      ? 'border-indigo-600 text-indigo-700 bg-white rounded-t-lg'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  {tab.label}
+                  <span className={`text-xs px-1.5 py-0.5 rounded-full font-semibold ${
+                    atRiskSegmentTab === tab.key ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-200 text-gray-500'
+                  }`}>
+                    {tab.count}
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            {atRiskSegmentFiltered.length === 0 ? (
               <div className="flex flex-col items-center py-12 text-gray-400 gap-2">
                 <AlertTriangle size={32} />
-                <p>No at-risk projects{atRiskSearch ? ' match your search' : ' right now'}</p>
-                {!isViewer && !atRiskSearch && (
+                <p>No at-risk projects{atRiskSearch ? ' match your search' : atRiskSegmentTab !== 'ALL' ? ` in ${atRiskSegmentTab}` : ' right now'}</p>
+                {!isViewer && !atRiskSearch && atRiskSegmentTab === 'ALL' && (
                   <button onClick={() => setShowAtRiskModal(true)} className="mt-2 flex items-center gap-1.5 px-4 py-2 text-sm bg-amber-500 text-white rounded-lg hover:bg-amber-600">
                     <Plus size={14} /> Add At Risk
                   </button>
@@ -476,7 +512,7 @@ export default function EscalationProjectsPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {atRiskFiltered.map((p: any) => {
+                    {atRiskSegmentFiltered.map((p: any) => {
                       const isExpanded = expandedRows.has(p.id);
                       return (
                       <Fragment key={p.id}>
@@ -751,6 +787,30 @@ export default function EscalationProjectsPage() {
           </div>
         ) : (
           <>
+            <div className="flex items-end border-b border-gray-200 bg-gray-50 px-4 pt-3">
+              {([
+                { key: 'ALL' as const, label: 'All', count: filtered.length },
+                { key: 'ENT' as const, label: 'Enterprise', count: escEntCount },
+                { key: 'SMB' as const, label: 'SMB', count: escSmbCount },
+              ]).map(tab => (
+                <button
+                  key={tab.key}
+                  onClick={() => { setEscSegmentTab(tab.key); setPage(1); }}
+                  className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                    escSegmentTab === tab.key
+                      ? 'border-indigo-600 text-indigo-700 bg-white rounded-t-lg'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  {tab.label}
+                  <span className={`text-xs px-1.5 py-0.5 rounded-full font-semibold ${
+                    escSegmentTab === tab.key ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-200 text-gray-500'
+                  }`}>
+                    {tab.count}
+                  </span>
+                </button>
+              ))}
+            </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-blue-50/60">
@@ -946,7 +1006,7 @@ export default function EscalationProjectsPage() {
             {/* Pagination */}
             <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">
               <p className="text-xs text-gray-500">
-                Showing {(page - 1) * PER_PAGE + 1}–{Math.min(page * PER_PAGE, filtered.length)} of {filtered.length} entries
+                Showing {(page - 1) * PER_PAGE + 1}–{Math.min(page * PER_PAGE, escSegmentFiltered.length)} of {escSegmentFiltered.length} entries
               </p>
               <div className="flex items-center gap-1">
                 <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="p-1 rounded text-gray-500 disabled:opacity-40 hover:bg-gray-100">
