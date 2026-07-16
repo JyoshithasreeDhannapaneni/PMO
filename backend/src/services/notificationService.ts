@@ -5,7 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 
 type NotificationType = 'DELAY_DETECTED' | 'PROJECT_COMPLETED' | 'CASE_STUDY_REMINDER' | 'PHASE_COMPLETED' | 'GENERAL';
 
-interface Project {
+export interface Project {
   id: string;
   name: string;
   customerName: string;
@@ -18,7 +18,7 @@ interface Project {
 }
 
 /** Look up real email addresses for the project managers/account managers by name. */
-async function resolveRecipients(project: Project): Promise<string[]> {
+export async function resolveRecipients(project: Project): Promise<string[]> {
   try {
     const names = [project.projectManager, project.accountManager].filter(Boolean);
     if (names.length === 0) return [];
