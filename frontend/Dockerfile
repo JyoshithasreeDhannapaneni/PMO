@@ -15,6 +15,9 @@ COPY . .
 ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 
+ARG NEXT_PUBLIC_HOTJAR_ID
+ENV NEXT_PUBLIC_HOTJAR_ID=$NEXT_PUBLIC_HOTJAR_ID
+
 RUN npm run build
 
 # ── Stage 2: Production ──────────────────────────────────────────────────────
