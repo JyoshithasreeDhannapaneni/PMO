@@ -8,5 +8,7 @@ router.put('/:projectId/:type/:phase',            migrationChecklistController.s
 router.post('/:projectId/:type/:phase/submit',    migrationChecklistController.submit);
 router.post('/:projectId/:type/:phase/verify',    migrationChecklistController.verify);
 router.post('/:projectId/finalize',               migrationChecklistController.finalize);
+router.post('/:projectId/images',                 migrationChecklistController.uploadImage);
+router.delete('/images/:filename',                migrationChecklistController.deleteImage);
 
 export default router;

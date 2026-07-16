@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { useProjects } from '@/hooks/useProjects';
@@ -37,7 +37,7 @@ interface ChecklistRecord {
   projectId: string;
   migrationType: string;
   phase: string;
-  checklistData: Record<string, { items: Record<string, boolean>; notes: string }>;
+  checklistData: Record<string, { items: Record<string, boolean>; notes: string; images?: string[] }>;
   status: ChecklistStatus;
   submittedBy?: string;
   submittedAt?: string;
@@ -582,7 +582,9 @@ export default function MigrationValidationPage() {
   const [checklists, setChecklists] = useState<ChecklistRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [localData, setLocalData] = useState<Record<string, { items: Record<string, boolean>; notes: string }>>({});
+  const [localData, setLocalData] = useState<Record<string, { items: Record<string, boolean>; notes: string; images?: string[] }>>({});
+  const [uploadingSectionId, setUploadingSectionId] = useState<string | null>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
   const [pmNotes, setPmNotes] = useState('');
   const [showPmPanel, setShowPmPanel] = useState(false);
   const [searchFilter, setSearchFilter] = useState('');
@@ -770,6 +772,66 @@ export default function MigrationValidationPage() {
       ...prev,
       [sectionId]: { ...prev[sectionId], notes },
     }));
+  };
+
+  const triggerImageUpload = (sectionId: string) => {
+    if (currentRecord?.status === 'pm_verified') return;
+    setUploadingSectionId(sectionId);
+    imageInputRef.current?.click();
+  };
+
+  const handleImageFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !uploadingSectionId || !selectedProjectId) return;
+    e.target.value = '';
+
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const base64 = (reader.result as string).split(',')[1];
+      const token = localStorage.getItem('token');
+      try {
+        const res = await fetch(`${API_BASE}/migration-checklists/${selectedProjectId}/images`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+          body: JSON.stringify({ fileName: file.name, fileData: base64, mimeType: file.type }),
+        });
+        const json = await res.json();
+        if (json.success && json.url) {
+          const sectionId = uploadingSectionId;
+          setLocalData((prev) => ({
+            ...prev,
+            [sectionId]: {
+              ...prev[sectionId],
+              images: [...(prev[sectionId]?.images || []), json.url],
+            },
+          }));
+        } else {
+          showToast('error', 'Image upload failed');
+        }
+      } catch {
+        showToast('error', 'Image upload failed');
+      }
+      setUploadingSectionId(null);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const removeImage = async (sectionId: string, url: string) => {
+    setLocalData((prev) => ({
+      ...prev,
+      [sectionId]: {
+        ...prev[sectionId],
+        images: (prev[sectionId]?.images || []).filter((u) => u !== url),
+      },
+    }));
+    const filename = url.split('/').pop();
+    if (filename) {
+      const token = localStorage.getItem('token');
+      fetch(`${API_BASE}/migration-checklists/images/${filename}`, {
+        method: 'DELETE',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      }).catch(() => {});
+    }
   };
 
   const handleSave = async () => {
@@ -990,6 +1052,13 @@ export default function MigrationValidationPage() {
 
   return (
     <div className="min-h-screen bg-slate-50">
+      <input
+        ref={imageInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleImageFileSelected}
+      />
       {/* Header */}
       <div className="bg-white border-b border-slate-200 px-6 py-4">
         <div className="flex items-center gap-3">
@@ -1407,7 +1476,7 @@ export default function MigrationValidationPage() {
 
           {/* Checklist sections */}
           {currentSections.map((section) => {
-            const sectionData = localData[section.id] || { items: {}, notes: '' };
+            const sectionData = localData[section.id] || { items: {}, notes: '', images: [] as string[] };
             const sectionChecked = section.items.filter((i) => sectionData.items[i.id]).length;
 
             return (
@@ -1477,7 +1546,7 @@ export default function MigrationValidationPage() {
                   </div>
 
                   {section.hasNotes && (
-                    <div>
+                    <div className="space-y-2">
                       <label className="block text-xs font-medium text-slate-500 mb-1">Notes / Remarks</label>
                       <textarea
                         value={sectionData.notes}
@@ -1487,6 +1556,38 @@ export default function MigrationValidationPage() {
                         placeholder="Add any relevant notes, observations, or exceptions..."
                         className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none bg-white disabled:bg-slate-50 disabled:text-slate-500"
                       />
+                      {/* Image attachments */}
+                      {!isReadOnly && (
+                        <button
+                          onClick={() => triggerImageUpload(section.id)}
+                          disabled={uploadingSectionId === section.id}
+                          className="flex items-center gap-1.5 text-xs text-indigo-600 hover:text-indigo-800 disabled:opacity-50 transition-colors"
+                        >
+                          <FolderOpen className="w-3.5 h-3.5" />
+                          {uploadingSectionId === section.id ? 'Uploading…' : 'Attach Image'}
+                        </button>
+                      )}
+                      {(sectionData.images || []).length > 0 && (
+                        <div className="flex flex-wrap gap-2 mt-1">
+                          {(sectionData.images || []).map((url) => (
+                            <div key={url} className="relative group">
+                              <img
+                                src={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}${url}`}
+                                alt="attachment"
+                                className="w-20 h-20 object-cover rounded-lg border border-slate-200"
+                              />
+                              {!isReadOnly && (
+                                <button
+                                  onClick={() => removeImage(section.id, url)}
+                                  className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-red-500 text-white rounded-full text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                >
+                                  <X className="w-2.5 h-2.5" />
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

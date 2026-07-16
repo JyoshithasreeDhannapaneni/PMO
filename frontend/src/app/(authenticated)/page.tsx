@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { useDashboard, useWeeklyReport, useManagerStats, useProjectsByMigrationType, useUpsertManagerGoal, useOveragedProjects, useEscalatedProjects, useProjects } from '@/hooks/useProjects';
+import { useDashboard, useWeeklyReport, useManagerStats, useProjectsByMigrationType, useOveragedProjects, useEscalatedProjects, useProjects } from '@/hooks/useProjects';
 import { useSettings } from '@/context/SettingsContext';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
@@ -10,9 +10,9 @@ import Link from 'next/link';
 import {
   Loader2, FolderKanban, PlayCircle, CheckCircle, PauseCircle,
   AlertTriangle, AlertCircle, Clock, Activity, BarChart3, FileText,
-  RefreshCw, ChevronRight, Plus, User, Users, Calendar, Target,
+  RefreshCw, ChevronRight, Plus, User, Users, Calendar,
   Zap, TrendingUp, X, Download, CalendarDays, UserCheck, MinusCircle,
-  MessageSquare, Send, TrendingDown, Bell, Mail, Settings, Filter,
+  MessageSquare, Send, Bell, Filter,
 } from 'lucide-react';
 import { formatDistanceToNow, format } from 'date-fns';
 
@@ -310,74 +310,6 @@ function MigrationTypeModal({ type, onClose }: { type: string; onClose: () => vo
   );
 }
 
-/* ── Add Manager Goal Modal ─────────────────────────────────────── */
-function AddManagerGoalModal({ managers, onClose }: { managers: string[]; onClose: () => void }) {
-  const { showToast } = useToast();
-  const upsertGoal = useUpsertManagerGoal();
-  const [managerName, setManagerName] = useState('');
-  const [customManager, setCustomManager] = useState('');
-  const [goalPct, setGoalPct] = useState(80);
-
-  const finalManager = managerName === '__custom__' ? customManager : managerName;
-
-  const handleSave = async () => {
-    if (!finalManager) return;
-    try {
-      await upsertGoal.mutateAsync({ managerName: finalManager, goalPct });
-      showToast('success', 'Manager goal saved!', `Goal set to ${goalPct}% for ${finalManager}`);
-      onClose();
-    } catch {
-      showToast('error', 'Failed to save manager goal');
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between p-5 border-b border-blue-100">
-          <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-            <Target size={18} className="text-primary-600" /> Add Manager Goal
-          </h2>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-blue-50"><X size={17} className="text-gray-500" /></button>
-        </div>
-        <div className="p-5 space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Manager</label>
-            <select value={managerName} onChange={(e) => setManagerName(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500">
-              <option value="">Select a manager...</option>
-              {managers.map((m) => <option key={m} value={m}>{m}</option>)}
-              <option value="__custom__">+ Enter custom name</option>
-            </select>
-          </div>
-          {managerName === '__custom__' && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Manager Name</label>
-              <input type="text" value={customManager} onChange={(e) => setCustomManager(e.target.value)}
-                placeholder="Enter manager name..."
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500" />
-            </div>
-          )}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Goal Percentage: <span className="text-primary-600 font-bold">{goalPct}%</span>
-            </label>
-            <input type="range" min={0} max={100} step={5} value={goalPct} onChange={(e) => setGoalPct(Number(e.target.value))} className="w-full accent-primary-600" />
-            <div className="flex justify-between text-xs text-gray-400 mt-0.5"><span>0%</span><span>50%</span><span>100%</span></div>
-          </div>
-          <div className="flex gap-3 pt-2">
-            <button onClick={onClose} className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-blue-50/50 transition-colors">Cancel</button>
-            <button onClick={handleSave} disabled={!finalManager || upsertGoal.isPending}
-              className="flex-1 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm hover:bg-primary-700 transition-colors disabled:opacity-50">
-              {upsertGoal.isPending ? 'Saving...' : 'Save Goal'}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 /* ── Main Dashboard ─────────────────────────────────────────────── */
 function downloadProjectsCSV(projects: any[], filename: string) {
   const headers = [
@@ -433,7 +365,6 @@ export default function DashboardPage() {
   const [showOveragedPanel, setShowOveragedPanel] = useState(false);
   const [showEscalatedPanel, setShowEscalatedPanel] = useState(false);
   const [escalatingId, setEscalatingId] = useState<string | null>(null);
-  const [showManagerGoalModal, setShowManagerGoalModal] = useState(false);
   const [reportStartDate, setReportStartDate] = useState('');
   const [reportEndDate, setReportEndDate] = useState('');
   const [showDownloadMenu, setShowDownloadMenu] = useState(false);
@@ -563,7 +494,7 @@ export default function DashboardPage() {
             <button onClick={() => setViewMode('overall')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${viewMode === 'overall' ? 'bg-white text-blue-700 shadow-sm border border-blue-200' : 'text-slate-500 hover:text-blue-600'}`}>
               <Users size={13} />
-              {isManager ? 'Overview' : 'Overall View'}
+              Overall View
             </button>
           </div>
           <span className={`hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ${
@@ -574,11 +505,7 @@ export default function DashboardPage() {
                 : 'bg-purple-100 text-purple-700'
           }`}>
             {viewMode === 'my' ? <User size={10} /> : <Users size={10} />}
-            {viewMode === 'my'
-              ? 'My projects only'
-              : isManager
-                ? 'My overview'
-                : 'All managers'}
+            {viewMode === 'my' ? 'My projects only' : 'All managers'}
           </span>
           <span className="text-xs text-gray-400 hidden md:block">Updated {format(new Date(), 'MMM d · h:mm a')}</span>
           <button onClick={handleRefresh} className={`p-2 rounded-lg bg-white border border-blue-200 hover:bg-blue-50 transition-all ${isRefreshing ? 'animate-spin' : ''}`}>
@@ -1044,8 +971,7 @@ export default function DashboardPage() {
               <h2 className="text-base font-semibold text-gray-900">Migration Type Overview</h2>
               <Link href="/projects" className="text-primary-600 hover:text-primary-700 text-sm font-medium flex items-center gap-1">View All <ChevronRight size={14} /></Link>
             </div>
-            {categoryStats.length ? (
-              <div className="space-y-4">
+            <div className="space-y-4">
                 {/* 3 Category Cards */}
                 <div className="grid grid-cols-3 gap-3">
                   {categoryStats.map((stat: any) => {
@@ -1107,12 +1033,6 @@ export default function DashboardPage() {
                   </table>
                 </div>
               </div>
-            ) : (
-              <div className="text-center py-10 text-gray-400">
-                <FolderKanban size={40} className="mx-auto mb-3 opacity-40" />
-                <p className="text-sm">{viewMode === 'my' ? 'No projects assigned to you yet.' : 'No migration data available.'}</p>
-              </div>
-            )}
           </Card>
 
           {/* Portfolio Status + Projects by Phase */}
@@ -1177,22 +1097,24 @@ export default function DashboardPage() {
             </Card>
           )}
 
-          {/* Manager Goals & Variance */}
+          {/* Manager Performance */}
           {managers.length > 0 && (
             <Card>
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                  <Users size={16} className="text-primary-600" /> Manager Goals &amp; Variance
+                  <Users size={16} className="text-primary-600" /> Manager Performance
                 </h3>
                 {isAdmin && (
-                  <button onClick={() => setShowManagerGoalModal(true)} className="text-xs text-primary-600 hover:text-primary-700 font-medium flex items-center gap-0.5">+ Add Manager Goal <ChevronRight size={12} /></button>
+                  <Link href="/manager-dashboard" className="text-xs text-primary-600 hover:text-primary-700 font-medium flex items-center gap-0.5">
+                    View Details <ChevronRight size={12} />
+                  </Link>
                 )}
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-blue-50/60">
                     <tr>
-                      {['Project Manager', 'Gantt Review Progress', 'Closed Projects'].map((h) => (
+                      {['Project Manager', 'Total', 'Active', 'Completed', 'Delayed', 'Completion'].map((h) => (
                         <th key={h} className={`py-2 px-3 font-medium text-gray-500 ${h === 'Project Manager' ? 'text-left' : 'text-center'}`}>{h}</th>
                       ))}
                     </tr>
@@ -1208,18 +1130,28 @@ export default function DashboardPage() {
                             <span className="font-medium text-gray-800">{m.manager}</span>
                           </div>
                         </td>
-                        <td className="py-2.5 px-3">
-                          <div className="flex items-center gap-2 justify-center">
-                            <div className="flex-1 max-w-[120px] bg-blue-100 rounded-full h-2.5">
-                              <div className="bg-primary-500 h-2.5 rounded-full transition-all" style={{ width: `${m.achievedPct}%` }} />
-                            </div>
-                            <span className="font-semibold text-gray-900 text-xs w-10 text-right">{m.achievedPct}%</span>
-                          </div>
+                        <td className="text-center py-2.5 px-3 font-semibold text-gray-700">{m.total}</td>
+                        <td className="text-center py-2.5 px-3">
+                          <span className="inline-flex items-center justify-center min-w-[22px] h-5 px-1.5 rounded-full bg-green-100 text-green-700 text-xs font-semibold">{m.active}</span>
                         </td>
                         <td className="text-center py-2.5 px-3">
-                          <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-green-100 text-green-700 font-bold text-sm">
-                            {m.completed}
-                          </span>
+                          <span className="inline-flex items-center justify-center min-w-[22px] h-5 px-1.5 rounded-full bg-blue-100 text-blue-700 text-xs font-semibold">{m.completed}</span>
+                        </td>
+                        <td className="text-center py-2.5 px-3">
+                          <span className={`inline-flex items-center justify-center min-w-[22px] h-5 px-1.5 rounded-full text-xs font-semibold ${m.delayed > 0 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-400'}`}>{m.delayed}</span>
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <div className="flex items-center gap-2 justify-center">
+                            <div className="flex-1 max-w-[80px] bg-gray-100 rounded-full h-2">
+                              <div
+                                className={`h-2 rounded-full transition-all ${m.achievedPct >= 80 ? 'bg-green-500' : m.achievedPct >= 50 ? 'bg-yellow-400' : 'bg-red-400'}`}
+                                style={{ width: `${m.achievedPct}%` }}
+                              />
+                            </div>
+                            <span className={`font-semibold text-xs w-8 text-right ${m.achievedPct >= 80 ? 'text-green-700' : m.achievedPct >= 50 ? 'text-yellow-700' : 'text-red-700'}`}>
+                              {m.achievedPct}%
+                            </span>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -1336,8 +1268,8 @@ export default function DashboardPage() {
             <div className="space-y-2">
               {recentActivity?.length > 0 ? recentActivity.slice(0, 4).map((activity: any, i: number) => (
                 <div key={i} className="flex items-start gap-2 p-2 rounded-lg bg-gray-50">
-                  <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${i === 0 ? 'bg-green-100' : i === 1 ? 'bg-orange-100' : i === 2 ? 'bg-red-100' : 'bg-blue-100'}`}>
-                    {i === 0 ? <Plus size={10} className="text-green-600" /> : i === 1 ? <AlertTriangle size={10} className="text-orange-500" /> : i === 2 ? <Mail size={10} className="text-red-500" /> : <Zap size={10} className="text-blue-500" />}
+                  <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 bg-blue-100">
+                    <Zap size={10} className="text-blue-500" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-xs text-gray-700 truncate">{activity.message}</p>
@@ -1371,12 +1303,6 @@ export default function DashboardPage() {
               <Link href="/case-studies" className="flex items-center gap-2 p-2.5 rounded-lg bg-slate-50 text-slate-700 hover:bg-blue-50 transition-colors">
                 <FileText size={14} /><span className="text-xs font-medium">Case Studies</span>
               </Link>
-              <Link href="/settings?tab=notifications" className="flex items-center gap-2 p-2.5 rounded-lg bg-slate-50 text-slate-700 hover:bg-blue-50 transition-colors">
-                <Mail size={14} /><span className="text-xs font-medium">SMTP Settings</span>
-              </Link>
-              <button onClick={() => setShowChat(true)} className="col-span-2 flex items-center justify-center gap-2 p-2.5 rounded-lg bg-green-50 text-green-700 hover:bg-green-100 transition-colors">
-                <MessageSquare size={14} /><span className="text-xs font-medium">Open AI Chat Assistant</span>
-              </button>
             </div>
           </Card>
         </div>
@@ -1689,14 +1615,6 @@ export default function DashboardPage() {
       {/* ── Migration Type Modal ───────────────────────────────────── */}
       {selectedMigrationType && (
         <MigrationTypeModal type={selectedMigrationType} onClose={() => setSelectedMigrationType(null)} />
-      )}
-
-      {/* ── Add Manager Goal Modal (admin only) ───────────────────── */}
-      {showManagerGoalModal && isAdmin && (
-        <AddManagerGoalModal
-          managers={managers.map((m: any) => m.manager)}
-          onClose={() => setShowManagerGoalModal(false)}
-        />
       )}
 
       {/* ── AI Chat Assistant ───────────────────────────────────────── */}

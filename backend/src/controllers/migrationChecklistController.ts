@@ -3,6 +3,8 @@ import { asyncHandler } from '../middleware/errorHandler';
 import { query, execute } from '../config/database';
 import { authService } from '../services/authService';
 import { v4 as uuidv4 } from 'uuid';
+import * as fs from 'fs';
+import * as path from 'path';
 
 async function getUser(req: Request) {
   const token = req.headers.authorization?.replace('Bearer ', '');
@@ -172,6 +174,28 @@ export const migrationChecklistController = {
     await execute(`UPDATE projects SET phase='FINAL_VALIDATION' WHERE id=$1`, [projectId]);
 
     res.json({ success: true, message: 'Project moved to Final Validation.' });
+  }),
+  // POST /api/migration-checklists/:projectId/images
+  uploadImage: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const { fileName, fileData, mimeType } = req.body;
+    if (!fileData || !fileName) {
+      res.status(400).json({ success: false, error: 'fileName and fileData are required' });
+      return;
+    }
+    const uploadsDir = path.join(process.cwd(), 'uploads', 'checklist-images');
+    fs.mkdirSync(uploadsDir, { recursive: true });
+    const ext = path.extname(fileName) || '.png';
+    const savedName = `${uuidv4()}${ext}`;
+    fs.writeFileSync(path.join(uploadsDir, savedName), Buffer.from(fileData, 'base64'));
+    res.json({ success: true, url: `/uploads/checklist-images/${savedName}` });
+  }),
+
+  // DELETE /api/migration-checklists/images/:filename
+  deleteImage: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const { filename } = req.params;
+    const filePath = path.join(process.cwd(), 'uploads', 'checklist-images', path.basename(filename));
+    try { fs.unlinkSync(filePath); } catch {}
+    res.json({ success: true });
   }),
 };
 

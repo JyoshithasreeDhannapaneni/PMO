@@ -44,6 +44,7 @@ import serverAlertRoutes from './routes/serverAlertRoutes';
 import templateCombinationRoutes from './routes/templateCombinationRoutes';
 import jiraRoutes from './routes/jiraRoutes';
 import hubspotRoutes from './routes/hubspotRoutes';
+import { isHubspotConfigured, getDealsByCustomer } from './services/hubspotService';
 import psEngagementsRoutes from './routes/psEngagementsRoutes';
 import externalRoutes from './routes/externalRoutes';
 import aiRoutes from './routes/aiRoutes';
@@ -52,6 +53,7 @@ import clientReviewRoutes from './routes/clientReviewRoutes';
 import platformReviewRoutes from './routes/platformReviewRoutes';
 import dealDeskRoutes from './routes/dealDeskRoutes';
 import ticketingRoutes from './routes/ticketingRoutes';
+import { ntaSyncService, isNtaConfigured } from './services/ntaSyncService';
 import { logger } from './utils/logger';
 import { authService } from './services/authService';
 import { templateService } from './services/templateService';
@@ -591,6 +593,40 @@ async function runMigrations() {
     await execute(`CREATE INDEX IF NOT EXISTS idx_deal_desk_emails_msg ON deal_desk_emails(message_id)`);
   } catch {}
 
+  // HubSpot snapshot cache — singleton row; survives backend restarts
+  await execute(`CREATE TABLE IF NOT EXISTS hubspot_cache (
+    singleton   BOOLEAN PRIMARY KEY DEFAULT TRUE,
+    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    data        JSONB NOT NULL DEFAULT '{}',
+    updated_at  TIMESTAMPTZ DEFAULT NOW()
+  )`);
+
+  // NTA ticket cache table — all reads come from here, synced every 5 minutes
+  await execute(`CREATE TABLE IF NOT EXISTS nta_tickets (
+    key          VARCHAR(100) PRIMARY KEY,
+    summary      TEXT,
+    status_name  VARCHAR(100),
+    status_category VARCHAR(50),
+    priority     VARCHAR(100),
+    assignee_name VARCHAR(255),
+    reporter_name VARCHAR(255),
+    customer_name VARCHAR(255),
+    department   VARCHAR(255),
+    project_manager VARCHAR(255),
+    space_key    VARCHAR(100),
+    space_name   VARCHAR(255),
+    created_at   TIMESTAMP,
+    updated_at   TIMESTAMP,
+    raw          JSONB NOT NULL DEFAULT '{}',
+    synced_at    TIMESTAMP DEFAULT NOW()
+  )`);
+  try { await execute(`CREATE INDEX IF NOT EXISTS idx_nta_assignee  ON nta_tickets(assignee_name)`); } catch {}
+  try { await execute(`CREATE INDEX IF NOT EXISTS idx_nta_customer  ON nta_tickets(customer_name)`); } catch {}
+  try { await execute(`CREATE INDEX IF NOT EXISTS idx_nta_pm        ON nta_tickets(project_manager)`); } catch {}
+  try { await execute(`CREATE INDEX IF NOT EXISTS idx_nta_space     ON nta_tickets(space_key)`); } catch {}
+  try { await execute(`CREATE INDEX IF NOT EXISTS idx_nta_created   ON nta_tickets(created_at)`); } catch {}
+  try { await execute(`CREATE INDEX IF NOT EXISTS idx_nta_status_cat ON nta_tickets(status_category)`); } catch {}
+
 }
 
 // Start server
@@ -636,6 +672,27 @@ app.listen(PORT, async () => {
   if (process.env.ENABLE_CRON_JOBS === 'true') {
     initializeCronJobs();
     logger.info('⏰ Cron jobs initialized');
+  }
+
+  if (isNtaConfigured()) {
+    ntaSyncService.getDbCount().then((count) => {
+      logger.info(`NTA tickets DB: ${count} tickets stored. Use POST /api/ticketing/sync to sync manually.`);
+    }).catch(() => {});
+  }
+
+  // HubSpot background refresh — pull once on startup then every 15 minutes
+  if (isHubspotConfigured()) {
+    getDealsByCustomer(true).then(() => {
+      logger.info('✅ HubSpot initial data loaded');
+    }).catch((err) => logger.warn('[HubSpot] Initial fetch failed:', err));
+
+    // node-cron is already a project dependency (used by initializeCronJobs)
+    import('node-cron').then((cron) => {
+      cron.default.schedule('*/15 * * * *', () => {
+        getDealsByCustomer(true).catch((err) => logger.warn('[HubSpot] Cron refresh failed:', err));
+      });
+      logger.info('⏰ HubSpot: auto-refresh every 15 minutes');
+    }).catch(() => {});
   }
 });
 

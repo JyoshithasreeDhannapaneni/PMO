@@ -37,7 +37,6 @@ const allNavigation = [
     children: [
       { name: 'Weekly Reports',  href: '/reports/weekly' },
       { name: 'Monthly Reports', href: '/reports/monthly' },
-      { name: 'Audit Dashboard', href: '/reports/audit' },
     ],
   },
 ];

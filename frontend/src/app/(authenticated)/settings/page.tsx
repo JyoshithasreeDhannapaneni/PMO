@@ -19,16 +19,13 @@ import {
   ChevronUp,
   Bell,
   Users,
-  Palette,
   Database,
   Link as LinkIcon,
   Shield,
-  Workflow,
   LayoutDashboard,
   FolderKanban,
   Mail,
   Clock,
-  Download,
   Upload,
   Eye,
   EyeOff,
@@ -49,26 +46,12 @@ import {
   AlertTriangle,
   Shuffle
 } from 'lucide-react';
-import { exportToPDF, exportToWord } from '@/utils/exportCaseStudy';
-import { authApi, templatesApi, projectsApi, apiKeyApi } from '@/services/api';
+import { authApi, projectsApi, apiKeyApi } from '@/services/api';
 import { useAuth } from '@/context/AuthContext';
 import { useSettings } from '@/context/SettingsContext';
 import { formatDistanceToNow } from 'date-fns';
 
 // Types
-interface TemplateSection {
-  id: string;
-  title: string;
-  description: string;
-  placeholder: string;
-  required: boolean;
-}
-
-interface CaseStudyTemplate {
-  name: string;
-  sections: TemplateSection[];
-}
-
 interface PlanType {
   id: string;
   name: string;
@@ -123,14 +106,6 @@ interface TeamMember {
   role: string;
 }
 
-interface AutomationRule {
-  id: string;
-  name: string;
-  trigger: string;
-  action: string;
-  enabled: boolean;
-}
-
 interface MigrationType {
   id: string;
   name: string;
@@ -155,21 +130,6 @@ interface TargetPlatform {
 }
 
 // Default values - Migration Case Study Template
-// Customer, PM/AM, platforms and dates auto-fill from the linked project —
-// sections only capture what the tracker doesn't already know.
-const defaultTemplate: CaseStudyTemplate = {
-  name: 'Closed Project — Migration Case Study',
-  sections: [
-    { id: '1', title: '1. Project Snapshot', description: 'One line per field — the quick facts of the migration', placeholder: 'Industry:\nMigration (Source → Target):\nData Volume / Users:\nOutcome in one line:', required: true },
-    { id: '2', title: '2. Challenge', description: 'Why the customer migrated — 2-3 bullets', placeholder: '- Business pain (why migrate):\n- Technical blockers / constraints:\n- Success criteria:', required: true },
-    { id: '3', title: '3. Solution & Approach', description: 'What CloudFuze did — 4-5 bullets max', placeholder: '- Approach (Big Bang / Phased / Hybrid):\n- Workloads migrated:\n- Special handling (permissions, metadata, delta):', required: true },
-    { id: '4', title: '4. Issues & Resolutions', description: 'One block per issue — each block is a ready-made KB article', placeholder: 'Issue 1:\n- Issue / error message:\n- Root cause:\n- Fix / workaround (steps):\n- How to prevent or detect early:', required: true },
-    { id: '5', title: '5. Results & Metrics', description: 'Numbers only — no narrative', placeholder: '- Data migrated & success rate:\n- Downtime:\n- Delivered on time? (delay + reason if not):\n- CSAT score:', required: true },
-    { id: '6', title: '6. Lessons & KB Takeaways', description: 'Reusable knowledge for the next similar migration', placeholder: '- Do again / avoid next time:\n- Pre-migration checks for similar projects:\n- Reusable steps, settings or scripts:', required: true },
-    { id: '7', title: '7. Client Testimonial', description: 'Optional quote or feedback from the client', placeholder: '"[Client quote]"\n\n— Client Name, Title, Company', required: false },
-  ],
-};
-
 const defaultPlanTypes: PlanType[] = [
   { id: '1', name: 'Bronze', color: '#CD7F32', slaHours: 72 },
   { id: '2', name: 'Silver', color: '#C0C0C0', slaHours: 48 },
@@ -219,12 +179,6 @@ const defaultBrandingSettings: BrandingSettings = {
 const defaultTeamMembers: TeamMember[] = [
   { id: '1', name: 'John Smith', email: 'john.smith@company.com', role: 'Project Manager' },
   { id: '2', name: 'Sarah Johnson', email: 'sarah.j@company.com', role: 'Account Manager' },
-];
-
-const defaultAutomationRules: AutomationRule[] = [
-  { id: '1', name: 'Auto Delay Detection', trigger: 'Daily at 6:00 AM', action: 'Update delay status for all active projects', enabled: true },
-  { id: '2', name: 'Case Study Reminder', trigger: 'Weekly on Monday', action: 'Send reminder for completed projects without case study', enabled: true },
-  { id: '3', name: 'Phase Completion Alert', trigger: 'On phase completion', action: 'Notify project manager and stakeholders', enabled: false },
 ];
 
 const defaultMigrationTypes: MigrationType[] = [
@@ -335,24 +289,19 @@ const defaultTargetPlatforms: TargetPlatform[] = [
 
 // Tab configuration
 const tabs = [
-  { id: 'templates', name: 'Project Templates', icon: Workflow },
   { id: 'migration', name: 'Migration Types', icon: Database },
   { id: 'project', name: 'Project Configuration', icon: FolderKanban },
   { id: 'notifications', name: 'Notifications', icon: Bell },
   { id: 'team', name: 'Team Management', icon: Users },
   { id: 'dashboard', name: 'Dashboard', icon: LayoutDashboard },
-  { id: 'automation', name: 'Automation', icon: Workflow },
   { id: 'integrations', name: 'Integrations', icon: LinkIcon },
-  { id: 'data', name: 'Data & Export', icon: Database },
-  { id: 'branding', name: 'Branding', icon: Palette },
-  { id: 'audit', name: 'Audit & Compliance', icon: Shield },
 ];
 
 export default function SettingsPage() {
   const { settings: ctxSettings, updateSettings } = useSettings();
   const { user: settingsUser } = useAuth();
   const isViewer = settingsUser?.role === 'VIEWER';
-  const [activeTab, setActiveTab] = useState('templates');
+  const [activeTab, setActiveTab] = useState('migration');
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const API_KEY_SCOPES = [
@@ -401,7 +350,6 @@ export default function SettingsPage() {
   };
 
   // State for all settings — initialised from context (which already read localStorage)
-  const [template, setTemplate] = useState<CaseStudyTemplate>(defaultTemplate);
   const [planTypes, setPlanTypes] = useState<PlanType[]>(ctxSettings.planTypes.length ? ctxSettings.planTypes as any : defaultPlanTypes);
   const [phases, setPhases] = useState<ProjectPhase[]>(ctxSettings.phases.length ? ctxSettings.phases as any : defaultPhases);
   const [migrationTypes, setMigrationTypes] = useState<MigrationType[]>(ctxSettings.migrationTypes.length ? ctxSettings.migrationTypes as any : defaultMigrationTypes);
@@ -412,7 +360,6 @@ export default function SettingsPage() {
   const [dashboardSettings, setDashboardSettings] = useState<DashboardSettings>({ ...defaultDashboardSettings, ...ctxSettings.dashboardSettings });
   const [brandingSettings, setBrandingSettings] = useState<BrandingSettings>({ ...defaultBrandingSettings, ...ctxSettings.brandingSettings });
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>(defaultTeamMembers);
-  const [automationRules, setAutomationRules] = useState<AutomationRule[]>(defaultAutomationRules);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['1']));
   const [selectedMigType, setSelectedMigType] = useState<string | null>(null);
   const { data: allProjectsData } = useProjects({ limit: 500 });
@@ -426,15 +373,6 @@ export default function SettingsPage() {
     fromEmail: 'noreply@company.com',
   });
 
-  // Audit Settings
-  const [auditSettings, setAuditSettings] = useState({
-    enableLogging: true,
-    logRetentionDays: 90,
-    trackProjectChanges: true,
-    trackUserActions: true,
-    trackExports: true,
-  });
-
   // Integration Settings
   const [integrationSettings, setIntegrationSettings] = useState({
     microsoftEnabled: false,
@@ -443,9 +381,6 @@ export default function SettingsPage() {
     teamsEnabled: false,
     calendarSync: false,
   });
-
-  // Branding logo
-  const [companyLogo, setCompanyLogo] = useState<string | null>(null);
 
   // Notification test email state
   const [testEmailStatus, setTestEmailStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
@@ -488,13 +423,6 @@ export default function SettingsPage() {
   const [showAddNotifModal, setShowAddNotifModal] = useState(false);
   const [newNotif, setNewNotif] = useState({ label: '', desc: '', icon: '🔔', trigger: 'project.status.changed' });
 
-  // Automation rule add modal state (hoisted — cannot use useState inside render function)
-  const [showAddAutomationRule, setShowAddAutomationRule] = useState(false);
-  const [newAutomationRule, setNewAutomationRule] = useState({ name: '', trigger: 'daily', action: 'send_email', actionDetail: '' });
-
-  // Data export state
-  const [exportStatus, setExportStatus] = useState<{ projects: string; reports: string }>({ projects: '', reports: '' });
-
   // Load all settings from localStorage once on mount
   useEffect(() => {
     try {
@@ -513,15 +441,9 @@ export default function SettingsPage() {
         if (parsed.alertThresholds) setAlertThresholds((p) => ({ ...p, ...parsed.alertThresholds }));
         if (parsed.dashboardSettings) setDashboardSettings((p) => ({ ...p, ...parsed.dashboardSettings }));
         if (parsed.brandingSettings) setBrandingSettings((p) => ({ ...p, ...parsed.brandingSettings }));
-        if (parsed.template) setTemplate(parsed.template);
         if (parsed.teamMembers) setTeamMembers(parsed.teamMembers);
-        if (parsed.automationRules) setAutomationRules(parsed.automationRules);
         if (parsed.smtpSettings) setSmtpSettings(parsed.smtpSettings);
-        if (parsed.auditSettings) setAuditSettings(parsed.auditSettings);
         if (parsed.integrationSettings) setIntegrationSettings(parsed.integrationSettings);
-        if (parsed.templateUploads) setTemplateUploads(parsed.templateUploads);
-        if (parsed.combinationDocs) setCombinationDocs(parsed.combinationDocs);
-        if (parsed.companyLogo) setCompanyLogo(parsed.companyLogo);
         if (parsed.testEmailRecipient) setTestEmailRecipient(parsed.testEmailRecipient);
         if (parsed.notifTypeConfigs) setNotifTypeConfigs((p) => ({ ...p, ...parsed.notifTypeConfigs }));
         if (parsed.customNotifTypes) setCustomNotifTypes(parsed.customNotifTypes);
@@ -567,15 +489,9 @@ export default function SettingsPage() {
         dashboardSettings,
         brandingSettings,
         // extras (not tracked by context)
-        template,
         teamMembers,
-        automationRules,
         smtpSettings,
-        auditSettings,
         integrationSettings,
-        templateUploads,
-        combinationDocs,
-        companyLogo,
         testEmailRecipient,
         notifTypeConfigs,
         customNotifTypes,
@@ -625,29 +541,6 @@ export default function SettingsPage() {
       newExpanded.add(id);
     }
     setExpandedSections(newExpanded);
-  };
-
-  // Template section handlers
-  const addTemplateSection = () => {
-    const newSection: TemplateSection = {
-      id: Date.now().toString(),
-      title: 'New Section',
-      description: '',
-      placeholder: '',
-      required: false,
-    };
-    setTemplate({ ...template, sections: [...template.sections, newSection] });
-  };
-
-  const removeTemplateSection = (id: string) => {
-    setTemplate({ ...template, sections: template.sections.filter((s) => s.id !== id) });
-  };
-
-  const updateTemplateSection = (id: string, field: keyof TemplateSection, value: string | boolean) => {
-    setTemplate({
-      ...template,
-      sections: template.sections.map((s) => (s.id === id ? { ...s, [field]: value } : s)),
-    });
   };
 
   // Plan type handlers
@@ -702,288 +595,7 @@ export default function SettingsPage() {
     setTeamMembers(teamMembers.map((m) => (m.id === id ? { ...m, [field]: value } : m)));
   };
 
-  // Automation rule handlers
-  const toggleAutomationRule = (id: string) => {
-    setAutomationRules(automationRules.map((r) => (r.id === id ? { ...r, enabled: !r.enabled } : r)));
-  };
 
-  // Case Study Template Import/Export handlers
-  const [isExportingTemplate, setIsExportingTemplate] = useState(false);
-  const fileInputRef = useState<HTMLInputElement | null>(null);
-
-  const handleExportTemplate = (format: 'json' | 'pdf' | 'word') => {
-    setIsExportingTemplate(true);
-    try {
-      if (format === 'json') {
-        const dataStr = JSON.stringify(template, null, 2);
-        const blob = new Blob([dataStr], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `case-study-template-${Date.now()}.json`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-        setSaveMessage('Template exported as JSON successfully!');
-      } else if (format === 'pdf') {
-        const sampleContent: { [key: string]: string } = {};
-        template.sections.forEach(s => {
-          sampleContent[s.id] = s.placeholder || `[${s.title} content goes here]`;
-        });
-        exportToPDF({
-          title: template.name,
-          projectName: 'Template Preview',
-          customerName: 'Sample Customer',
-          projectManager: 'Project Manager',
-          sections: template.sections,
-          sectionContent: sampleContent,
-        });
-        setSaveMessage('Template exported as PDF successfully!');
-      } else if (format === 'word') {
-        const sampleContent: { [key: string]: string } = {};
-        template.sections.forEach(s => {
-          sampleContent[s.id] = s.placeholder || `[${s.title} content goes here]`;
-        });
-        exportToWord({
-          title: template.name,
-          projectName: 'Template Preview',
-          customerName: 'Sample Customer',
-          projectManager: 'Project Manager',
-          sections: template.sections,
-          sectionContent: sampleContent,
-        });
-        setSaveMessage('Template exported as Word successfully!');
-      }
-    } catch (error) {
-      console.error('Export failed:', error);
-      setSaveMessage('Failed to export template');
-    } finally {
-      setIsExportingTemplate(false);
-      setTimeout(() => setSaveMessage(null), 3000);
-    }
-  };
-
-  const handleImportTemplate = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    const fileName = file.name.toLowerCase();
-    const fileExtension = fileName.split('.').pop() || '';
-
-    const reader = new FileReader();
-    
-    reader.onload = (e) => {
-      try {
-        const content = e.target?.result;
-        
-        if (fileExtension === 'json') {
-          const imported = JSON.parse(content as string);
-          if (imported.name && imported.sections && Array.isArray(imported.sections)) {
-            setTemplate(imported);
-            setSaveMessage('Template imported from JSON successfully!');
-          } else {
-            setSaveMessage('Invalid JSON template format');
-          }
-        } else if (fileExtension === 'txt') {
-          const lines = (content as string).split('\n').filter(line => line.trim());
-          const sections = lines.map((line, index) => ({
-            id: (index + 1).toString(),
-            title: line.trim(),
-            description: '',
-            placeholder: `Enter ${line.trim().toLowerCase()} content here...`,
-            required: index < 3,
-          }));
-          setTemplate({
-            name: `Imported Template - ${new Date().toLocaleDateString()}`,
-            sections,
-          });
-          setSaveMessage('Template imported from text file successfully!');
-        } else if (fileExtension === 'csv') {
-          const lines = (content as string).split('\n').filter(line => line.trim());
-          const sections = lines.slice(1).map((line, index) => {
-            const parts = line.split(',').map(p => p.trim().replace(/^"|"$/g, ''));
-            return {
-              id: (index + 1).toString(),
-              title: parts[0] || `Section ${index + 1}`,
-              description: parts[1] || '',
-              placeholder: parts[2] || '',
-              required: parts[3]?.toLowerCase() === 'true' || parts[3] === '1',
-            };
-          });
-          setTemplate({
-            name: `Imported Template - ${new Date().toLocaleDateString()}`,
-            sections,
-          });
-          setSaveMessage('Template imported from CSV successfully!');
-        } else if (['pdf', 'doc', 'docx'].includes(fileExtension)) {
-          setSaveMessage(`File "${file.name}" uploaded. Note: PDF/Word content extraction requires manual review. The file has been stored for reference.`);
-        } else {
-          const textContent = content as string;
-          if (textContent && textContent.length > 0) {
-            const lines = textContent.split('\n').filter(line => line.trim());
-            if (lines.length > 0) {
-              const sections = lines.slice(0, 10).map((line, index) => ({
-                id: (index + 1).toString(),
-                title: line.trim().substring(0, 100),
-                description: '',
-                placeholder: '',
-                required: false,
-              }));
-              setTemplate({
-                name: `Imported from ${file.name}`,
-                sections,
-              });
-              setSaveMessage(`Template created from ${fileExtension.toUpperCase()} file successfully!`);
-            }
-          } else {
-            setSaveMessage('Could not extract content from file');
-          }
-        }
-      } catch (error) {
-        console.error('Import failed:', error);
-        setSaveMessage(`Failed to import file: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      }
-      setTimeout(() => setSaveMessage(null), 5000);
-    };
-
-    reader.onerror = () => {
-      setSaveMessage('Failed to read file');
-      setTimeout(() => setSaveMessage(null), 3000);
-    };
-
-    if (['pdf', 'doc', 'docx'].includes(fileExtension)) {
-      reader.readAsArrayBuffer(file);
-    } else {
-      reader.readAsText(file);
-    }
-    
-    event.target.value = '';
-  };
-
-  // Render functions for each tab
-  const renderCaseStudyTab = () => (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-lg font-semibold text-gray-900">Case Study Template</h3>
-          <p className="text-sm text-gray-500">Customize the structure for case studies</p>
-        </div>
-        <Button variant="outline" size="sm" onClick={() => setTemplate(defaultTemplate)}>
-          <RotateCcw size={16} className="mr-1" /> Reset
-        </Button>
-      </div>
-
-      {/* Import/Export Section */}
-      <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
-        <h4 className="text-sm font-semibold text-gray-700 mb-3">Import / Export Template</h4>
-        <div className="flex flex-wrap gap-3">
-          {/* Import */}
-          <div className="flex items-center gap-2">
-            <input
-              type="file"
-              accept=".json,.txt,.csv,.pdf,.doc,.docx,.xml"
-              onChange={handleImportTemplate}
-              className="hidden"
-              id="template-import"
-            />
-            <label
-              htmlFor="template-import"
-              className="inline-flex items-center gap-2 px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 cursor-pointer transition-colors"
-            >
-              <FileUp size={16} />
-              Import File
-            </label>
-            <span className="text-xs text-gray-400">(JSON, TXT, CSV, PDF, Word)</span>
-          </div>
-
-          {/* Export Options */}
-          <div className="flex items-center gap-2 border-l border-gray-300 pl-3">
-            <span className="text-sm text-gray-500">Export as:</span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handleExportTemplate('json')}
-              disabled={isExportingTemplate}
-            >
-              {isExportingTemplate ? <Loader2 size={14} className="mr-1 animate-spin" /> : <FileDown size={14} className="mr-1" />}
-              JSON
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handleExportTemplate('pdf')}
-              disabled={isExportingTemplate}
-            >
-              {isExportingTemplate ? <Loader2 size={14} className="mr-1 animate-spin" /> : <FileDown size={14} className="mr-1" />}
-              PDF
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handleExportTemplate('word')}
-              disabled={isExportingTemplate}
-            >
-              {isExportingTemplate ? <Loader2 size={14} className="mr-1 animate-spin" /> : <FileDown size={14} className="mr-1" />}
-              Word
-            </Button>
-          </div>
-        </div>
-        <p className="mt-2 text-xs text-gray-500">
-          Import templates from various formats (JSON, TXT, CSV, PDF, Word) or export the current template for backup or sharing.
-        </p>
-      </div>
-
-      <Input
-        label="Template Name"
-        value={template.name}
-        onChange={(e) => setTemplate({ ...template, name: e.target.value })}
-      />
-
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h4 className="text-sm font-medium text-gray-700">Sections ({template.sections.length})</h4>
-        </div>
-
-        {template.sections.map((section) => (
-          <div key={section.id} className="border border-gray-200 rounded-lg overflow-hidden">
-            <div
-              className="flex items-center gap-3 p-3 bg-gray-50 cursor-pointer hover:bg-gray-100"
-              onClick={() => toggleSection(section.id)}
-            >
-              <GripVertical className="text-gray-400" size={16} />
-              <div className="flex-1">
-                <span className="font-medium text-gray-900">{section.title}</span>
-                {section.required && (
-                  <span className="ml-2 px-1.5 py-0.5 text-xs bg-red-100 text-red-700 rounded">Required</span>
-                )}
-              </div>
-              <button onClick={(e) => { e.stopPropagation(); removeTemplateSection(section.id); }} className="p-1 text-red-400 hover:text-red-600">
-                <Trash2 size={16} />
-              </button>
-              {expandedSections.has(section.id) ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-            </div>
-
-            {expandedSections.has(section.id) && (
-              <div className="p-4 space-y-4 border-t border-gray-200">
-                <Input label="Title" value={section.title} onChange={(e) => updateTemplateSection(section.id, 'title', e.target.value)} />
-                <Input label="Description" value={section.description} onChange={(e) => updateTemplateSection(section.id, 'description', e.target.value)} />
-                <Textarea label="Placeholder" value={section.placeholder} onChange={(e) => updateTemplateSection(section.id, 'placeholder', e.target.value)} rows={2} />
-                <label className="flex items-center gap-2">
-                  <input type="checkbox" checked={section.required} onChange={(e) => updateTemplateSection(section.id, 'required', e.target.checked)} className="w-4 h-4 text-primary-600 rounded" />
-                  <span className="text-sm text-gray-700">Required field</span>
-                </label>
-              </div>
-            )}
-          </div>
-        ))}
-
-        <button onClick={addTemplateSection} className="w-full p-3 border-2 border-dashed border-gray-300 rounded-lg text-gray-500 hover:border-primary-400 hover:text-primary-600 flex items-center justify-center gap-2">
-          <Plus size={18} /> Add Section
-        </button>
-      </div>
-    </div>
-  );
 
   const renderProjectConfigTab = () => (
     <div className="space-y-8">
@@ -1967,143 +1579,6 @@ export default function SettingsPage() {
     </div>
   );
 
-  const renderAutomationTab = () => {
-    const AUTOMATION_TRIGGERS = [
-      { value: 'daily', label: 'Daily (scheduled)' },
-      { value: 'weekly', label: 'Weekly (scheduled)' },
-      { value: 'monthly', label: 'Monthly (scheduled)' },
-      { value: 'project.created', label: 'When project is created' },
-      { value: 'project.status.changed', label: 'When project status changes' },
-      { value: 'project.completed', label: 'When project is completed/cancelled' },
-      { value: 'project.delayed', label: 'When project becomes delayed' },
-      { value: 'project.escalated', label: 'When project is escalated' },
-      { value: 'project.overage', label: 'When project is marked overage' },
-      { value: 'phase.changed', label: 'When project phase changes' },
-      { value: 'case_study.pending', label: 'When case study is pending' },
-    ];
-    const AUTOMATION_ACTIONS = [
-      { value: 'send_email', label: 'Send email notification' },
-      { value: 'update_delay_status', label: 'Update delay status for all projects' },
-      { value: 'create_notification', label: 'Create in-app notification' },
-      { value: 'flag_risk', label: 'Flag project as at-risk' },
-      { value: 'remind_case_study', label: 'Send case study reminder' },
-      { value: 'escalate_project', label: 'Auto-escalate overdue projects' },
-      { value: 'notify_manager', label: 'Notify project manager' },
-      { value: 'export_report', label: 'Generate and export report' },
-    ];
-    const showAddRule = showAddAutomationRule;
-    const setShowAddRule = setShowAddAutomationRule;
-    const newRule = newAutomationRule;
-    const setNewRule = setNewAutomationRule;
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-1">Automation Rules</h3>
-            <p className="text-sm text-gray-500">Configure automated tasks and workflows that trigger across the entire application</p>
-          </div>
-          <button
-            onClick={() => setShowAddRule(true)}
-            className="flex items-center gap-1.5 px-3 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors"
-          >
-            <Plus size={14} /> New Rule
-          </button>
-        </div>
-
-        <div className="space-y-3">
-          {automationRules.map((rule) => (
-            <div key={rule.id} className={`p-4 border rounded-xl ${rule.enabled ? 'border-green-200 bg-green-50' : 'border-gray-200'}`}>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${rule.enabled ? 'bg-green-100' : 'bg-gray-100'}`}>
-                    <Workflow className={rule.enabled ? 'text-green-600' : 'text-gray-400'} size={20} />
-                  </div>
-                  <div>
-                    <p className="font-medium text-gray-900">{rule.name}</p>
-                    <p className="text-xs text-gray-500 flex items-center gap-1">
-                      <Clock size={10} /> {rule.trigger}
-                      <span className="mx-1 text-gray-300">→</span>
-                      <span className="text-primary-600">{rule.action}</span>
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input type="checkbox" checked={rule.enabled} onChange={() => toggleAutomationRule(rule.id)} className="sr-only peer" />
-                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
-                  </label>
-                  {/* Only allow deleting custom rules (id starts with 'custom_') */}
-                  {String(rule.id).startsWith('custom_') && (
-                    <button onClick={() => setAutomationRules(automationRules.filter((r) => r.id !== rule.id))} className="p-1.5 rounded hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"><X size={14} /></button>
-                  )}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Add Rule Modal */}
-        {showAddRule && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setShowAddRule(false)}>
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
-              <div className="flex items-center justify-between p-5 border-b border-gray-200">
-                <h2 className="text-base font-bold text-gray-900 flex items-center gap-2"><Workflow size={16} className="text-primary-600" /> New Automation Rule</h2>
-                <button onClick={() => setShowAddRule(false)} className="p-1.5 rounded-lg hover:bg-gray-100"><X size={16} className="text-gray-500" /></button>
-              </div>
-              <div className="p-5 space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Rule Name</label>
-                  <input type="text" value={newRule.name} onChange={(e) => setNewRule({ ...newRule, name: e.target.value })} placeholder="e.g. Auto-notify on project delay" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Trigger</label>
-                  <select value={newRule.trigger} onChange={(e) => setNewRule({ ...newRule, trigger: e.target.value })} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400">
-                    {AUTOMATION_TRIGGERS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Action</label>
-                  <select value={newRule.action} onChange={(e) => setNewRule({ ...newRule, action: e.target.value })} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400">
-                    {AUTOMATION_ACTIONS.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Action Detail (optional)</label>
-                  <input type="text" value={newRule.actionDetail} onChange={(e) => setNewRule({ ...newRule, actionDetail: e.target.value })} placeholder="e.g. recipient email or additional config" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400" />
-                </div>
-                <div className="p-3 bg-blue-50 rounded-lg text-xs text-blue-700">
-                  <strong>App-wide effect:</strong> When enabled, this rule is evaluated on every matching event across all projects, managers, and reports in the application.
-                </div>
-                <div className="flex gap-3 pt-2">
-                  <button onClick={() => setShowAddRule(false)} className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50">Cancel</button>
-                  <button
-                    disabled={!newRule.name.trim()}
-                    onClick={() => {
-                      const id = `custom_${Date.now()}`;
-                      const actionLabel = AUTOMATION_ACTIONS.find((a) => a.value === newRule.action)?.label || newRule.action;
-                      const triggerLabel = AUTOMATION_TRIGGERS.find((t) => t.value === newRule.trigger)?.label || newRule.trigger;
-                      setAutomationRules([...automationRules, {
-                        id,
-                        name: newRule.name,
-                        trigger: triggerLabel,
-                        action: newRule.actionDetail ? `${actionLabel}: ${newRule.actionDetail}` : actionLabel,
-                        enabled: true,
-                      }]);
-                      setNewRule({ name: '', trigger: 'daily', action: 'send_email', actionDetail: '' });
-                      setShowAddRule(false);
-                    }}
-                    className="flex-1 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50"
-                  >
-                    Create Rule
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  };
 
   const renderIntegrationsTab = () => (
     <div className="space-y-6">
@@ -2191,396 +1666,6 @@ export default function SettingsPage() {
     </div>
   );
 
-  const renderDataTab = () => {
-    const handleExportProjects = async () => {
-      setExportStatus((p) => ({ ...p, projects: 'loading' }));
-      try {
-        const res = await projectsApi.getAll({ limit: 1000 });
-        const projects = res.data || [];
-        const fmtDate = (d: any) => d ? new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
-        const fmtStatus = (s: string) => {
-          if (!s) return '';
-          if (s === 'ACTIVE') return 'Active';
-          if (s === 'INACTIVE' || s === 'COMPLETED' || s === 'ON_HOLD' || s === 'CANCELLED') return 'Inactive';
-          return s.charAt(0) + s.slice(1).toLowerCase().replace(/_/g, ' ');
-        };
-        const headers = [
-          'Project Name',
-          'Project Manager',
-          'Account Manager',
-          'SOW Start Date',
-          'SOW End Date',
-          'Project Type (Migration)',
-          'Plan Type',
-          'Active / Inactive',
-          'Overages (Estimated Cost)',
-          'Actual Cost',
-          'Status',
-          'Phase',
-          'Delay Status',
-          'Source Platform',
-          'Target Platform',
-        ];
-        const rows = projects.map((p: any) => [
-          p.name || '',
-          p.projectManager || '',
-          p.accountManager || '',
-          fmtDate(p.plannedStart),
-          fmtDate(p.plannedEnd),
-          p.migrationTypes || '',
-          p.planType || '',
-          fmtStatus(p.status),
-          p.estimatedCost || '',
-          p.actualCost || '',
-          p.status || '',
-          p.phase || '',
-          p.delayStatus || '',
-          p.sourcePlatform || '',
-          p.targetPlatform || '',
-        ]);
-        const csv = [headers, ...rows].map((r) => r.map((v: any) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
-        // BOM so Excel opens UTF-8 correctly
-        const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `projects-export-${new Date().toISOString().slice(0, 10)}.csv`;
-        a.click();
-        URL.revokeObjectURL(url);
-        setExportStatus((p) => ({ ...p, projects: 'done' }));
-        setTimeout(() => setExportStatus((p) => ({ ...p, projects: '' })), 3000);
-      } catch {
-        setExportStatus((p) => ({ ...p, projects: 'error' }));
-        setTimeout(() => setExportStatus((p) => ({ ...p, projects: '' })), 3000);
-      }
-    };
-
-    const handleExportSettings = () => {
-      try {
-        const data = localStorage.getItem('pmoSettings') || '{}';
-        const blob = new Blob([data], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `pmo-settings-${new Date().toISOString().slice(0, 10)}.json`;
-        a.click();
-        URL.revokeObjectURL(url);
-        setExportStatus((p) => ({ ...p, reports: 'done' }));
-        setTimeout(() => setExportStatus((p) => ({ ...p, reports: '' })), 3000);
-      } catch {
-        setExportStatus((p) => ({ ...p, reports: 'error' }));
-      }
-    };
-
-    return (
-      <div className="space-y-6">
-        {/* Export Data */}
-        <div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-1">Export Data</h3>
-          <p className="text-sm text-gray-500 mb-4">Download your data for backup or external reporting.</p>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Export Projects */}
-            <button
-              onClick={handleExportProjects}
-              disabled={exportStatus.projects === 'loading'}
-              className="p-5 border-2 border-gray-200 rounded-xl text-center hover:border-primary-400 hover:bg-primary-50 transition-all group disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              {exportStatus.projects === 'loading'
-                ? <Loader2 className="mx-auto text-primary-600 mb-3 animate-spin" size={32} />
-                : exportStatus.projects === 'done'
-                  ? <CheckCircle className="mx-auto text-green-500 mb-3" size={32} />
-                  : exportStatus.projects === 'error'
-                    ? <AlertCircle className="mx-auto text-red-500 mb-3" size={32} />
-                    : <Download className="mx-auto text-primary-600 mb-3 group-hover:scale-110 transition-transform" size={32} />
-              }
-              <p className="font-semibold text-gray-900">Export Projects</p>
-              <p className="text-xs text-gray-500 mt-1">All projects as CSV</p>
-              {exportStatus.projects === 'done' && <p className="text-xs text-green-600 mt-1 font-medium">Downloaded!</p>}
-              {exportStatus.projects === 'error' && <p className="text-xs text-red-600 mt-1">Export failed</p>}
-            </button>
-
-            {/* Export Settings/Config */}
-            <button
-              onClick={handleExportSettings}
-              className="p-5 border-2 border-gray-200 rounded-xl text-center hover:border-primary-400 hover:bg-primary-50 transition-all group"
-            >
-              {exportStatus.reports === 'done'
-                ? <CheckCircle className="mx-auto text-green-500 mb-3" size={32} />
-                : <FileDown className="mx-auto text-primary-600 mb-3 group-hover:scale-110 transition-transform" size={32} />
-              }
-              <p className="font-semibold text-gray-900">Export Configuration</p>
-              <p className="text-xs text-gray-500 mt-1">All settings as JSON</p>
-              {exportStatus.reports === 'done' && <p className="text-xs text-green-600 mt-1 font-medium">Downloaded!</p>}
-            </button>
-
-            {/* Export Migration Types */}
-            <button
-              onClick={() => {
-                const data = JSON.stringify({ migrationTypes, sourcePlatforms, targetPlatforms }, null, 2);
-                const blob = new Blob([data], { type: 'application/json' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `migration-config-${new Date().toISOString().slice(0, 10)}.json`;
-                a.click();
-                URL.revokeObjectURL(url);
-              }}
-              className="p-5 border-2 border-gray-200 rounded-xl text-center hover:border-primary-400 hover:bg-primary-50 transition-all group"
-            >
-              <FileText className="mx-auto text-primary-600 mb-3 group-hover:scale-110 transition-transform" size={32} />
-              <p className="font-semibold text-gray-900">Export Migration Config</p>
-              <p className="text-xs text-gray-500 mt-1">Migration types & platforms</p>
-            </button>
-          </div>
-        </div>
-
-        {/* Import Data */}
-        <div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-1">Import Data</h3>
-          <p className="text-sm text-gray-500 mb-4">Restore settings or import configuration from a JSON file.</p>
-          <div className="p-6 border-2 border-dashed border-gray-300 rounded-xl text-center hover:border-primary-400 transition-colors">
-            <Upload className="mx-auto text-gray-400 mb-3" size={36} />
-            <p className="font-semibold text-gray-900 mb-1">Import Configuration</p>
-            <p className="text-sm text-gray-500 mb-4">Upload a previously exported settings JSON file</p>
-            <input
-              type="file"
-              accept=".json"
-              id="settings-import"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
-                const reader = new FileReader();
-                reader.onload = (ev) => {
-                  try {
-                    const parsed = JSON.parse(ev.target?.result as string);
-                    const existing = JSON.parse(localStorage.getItem('pmoSettings') || '{}');
-                    localStorage.setItem('pmoSettings', JSON.stringify({ ...existing, ...parsed }));
-                    alert('Configuration imported successfully! Refresh the page to apply all settings.');
-                  } catch {
-                    alert('Invalid JSON file. Please upload a valid configuration export.');
-                  }
-                };
-                reader.readAsText(file);
-                e.target.value = '';
-              }}
-            />
-            <label htmlFor="settings-import">
-              <span className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 cursor-pointer transition-colors">
-                <FileUp size={16} /> Select JSON File
-              </span>
-            </label>
-          </div>
-        </div>
-
-        {/* Data Retention */}
-        <div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Data Retention</h3>
-          <div className="space-y-4">
-            <Select
-              label="Archive completed projects after"
-              value="365"
-              onChange={() => {}}
-              options={[
-                { value: '90', label: '90 days' },
-                { value: '180', label: '180 days' },
-                { value: '365', label: '1 year' },
-                { value: 'never', label: 'Never' },
-              ]}
-            />
-            <Select
-              label="Delete archived data after"
-              value="never"
-              onChange={() => {}}
-              options={[
-                { value: '365', label: '1 year' },
-                { value: '730', label: '2 years' },
-                { value: '1825', label: '5 years' },
-                { value: 'never', label: 'Never' },
-              ]}
-            />
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  const renderBrandingTab = () => (
-    <div className="space-y-6">
-      {/* Company Identity */}
-      <div>
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Company Identity</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="space-y-4">
-            <Input
-              label="Company Name"
-              value={brandingSettings.companyName}
-              onChange={(e) => setBrandingSettings({ ...brandingSettings, companyName: e.target.value })}
-              placeholder="e.g. CloudFuze"
-            />
-            <p className="text-xs text-gray-400">This name appears in the sidebar and page titles.</p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Company Logo</label>
-            <div className="flex items-center gap-4">
-              <div className="w-20 h-20 bg-gray-100 rounded-xl flex items-center justify-center overflow-hidden border border-gray-200">
-                {companyLogo
-                  ? <img src={companyLogo} alt="Logo" className="w-full h-full object-contain" />
-                  : <FolderKanban className="text-gray-400" size={36} />
-                }
-              </div>
-              <div className="flex flex-col gap-2">
-                <input
-                  type="file"
-                  accept="image/*"
-                  id="logo-upload"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (!file) return;
-                    const reader = new FileReader();
-                    reader.onload = (ev) => {
-                      const dataUrl = ev.target?.result as string;
-                      setCompanyLogo(dataUrl);
-                    };
-                    reader.readAsDataURL(file);
-                  }}
-                />
-                <label htmlFor="logo-upload">
-                  <span className="inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 cursor-pointer transition-colors">
-                    <Upload size={14} /> Upload Logo
-                  </span>
-                </label>
-                {companyLogo && (
-                  <button
-                    onClick={() => setCompanyLogo(null)}
-                    className="text-xs text-red-500 hover:text-red-700 text-left"
-                  >
-                    Remove logo
-                  </button>
-                )}
-                <p className="text-xs text-gray-400">PNG, JPG, SVG up to 2MB</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Preview */}
-      <div>
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Preview</h3>
-        <div className="p-4 border border-gray-200 rounded-xl bg-gray-50 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-primary-600 flex items-center justify-center">
-            {companyLogo
-              ? <img src={companyLogo} alt="Logo" className="w-8 h-8 object-contain rounded" />
-              : <FolderKanban className="text-white" size={20} />
-            }
-          </div>
-          <span className="text-lg font-bold text-gray-900">{brandingSettings.companyName || 'PMO Tracker'}</span>
-        </div>
-      </div>
-
-      {/* Theme Mode */}
-      <div>
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Theme Mode</h3>
-        <div className="flex gap-4">
-          {([['light', 'Light Mode'], ['dark', 'Dark Mode']] as const).map(([val, label]) => (
-            <label
-              key={val}
-              className={`flex-1 p-4 border-2 rounded-xl cursor-pointer text-center transition-all ${
-                brandingSettings.theme === val ? 'border-primary-500 bg-primary-50' : 'border-gray-200 hover:border-gray-300'
-              }`}
-            >
-              <input
-                type="radio"
-                name="theme"
-                value={val}
-                checked={brandingSettings.theme === val}
-                onChange={() => setBrandingSettings((prev) => ({ ...prev, theme: val }))}
-                className="sr-only"
-              />
-              <div className="mb-2">
-                {val === 'light' && <Eye className="mx-auto text-yellow-500" size={28} />}
-                {val === 'dark' && <EyeOff className="mx-auto text-gray-700" size={28} />}
-              </div>
-              <p className="font-medium text-gray-900">{label}</p>
-              {brandingSettings.theme === val && (
-                <span className="inline-flex items-center gap-1 mt-1 text-xs text-primary-600 font-medium">
-                  <Check size={12} /> Active
-                </span>
-              )}
-            </label>
-          ))}
-        </div>
-        <p className="mt-2 text-xs text-gray-400">Theme is applied immediately when you click. Save to persist.</p>
-      </div>
-    </div>
-  );
-
-  const renderAuditTab = () => (
-    <div className="space-y-6">
-      <div>
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Audit Logging</h3>
-        <div className="space-y-3">
-          {[
-            { key: 'enableLogging', label: 'Enable Activity Logging', desc: 'Track all user actions and system events' },
-            { key: 'trackProjectChanges', label: 'Track Project Changes', desc: 'Log all modifications to projects' },
-            { key: 'trackUserActions', label: 'Track User Actions', desc: 'Log login, logout, and user activities' },
-            { key: 'trackExports', label: 'Track Data Exports', desc: 'Log all data export operations' },
-          ].map((item) => (
-            <label key={item.key} className="flex items-center justify-between p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50">
-              <div>
-                <p className="font-medium text-gray-900">{item.label}</p>
-                <p className="text-sm text-gray-500">{item.desc}</p>
-              </div>
-              <input
-                type="checkbox"
-                checked={auditSettings[item.key as keyof typeof auditSettings] as boolean}
-                onChange={(e) => setAuditSettings({ ...auditSettings, [item.key]: e.target.checked })}
-                className="w-5 h-5 text-primary-600 rounded"
-              />
-            </label>
-          ))}
-        </div>
-      </div>
-
-      <div>
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Log Retention</h3>
-        <Select
-          label="Keep audit logs for"
-          value={String(auditSettings.logRetentionDays)}
-          onChange={(e) => setAuditSettings({ ...auditSettings, logRetentionDays: parseInt(e.target.value) })}
-          options={[
-            { value: '30', label: '30 days' },
-            { value: '60', label: '60 days' },
-            { value: '90', label: '90 days' },
-            { value: '180', label: '180 days' },
-            { value: '365', label: '1 year' },
-          ]}
-        />
-      </div>
-
-      <div>
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Compliance</h3>
-        <div className="p-4 border border-gray-200 rounded-lg bg-gray-50">
-          <div className="flex items-center gap-3 mb-3">
-            <Shield className="text-green-600" size={24} />
-            <div>
-              <p className="font-medium text-gray-900">GDPR Compliance Mode</p>
-              <p className="text-sm text-gray-500">Enable data protection features for EU compliance</p>
-            </div>
-          </div>
-          <div className="space-y-2 text-sm text-gray-600">
-            <p>• Data export on user request</p>
-            <p>• Right to be forgotten (data deletion)</p>
-            <p>• Consent management</p>
-            <p>• Data processing records</p>
-          </div>
-          <Button variant="outline" className="mt-4">Enable GDPR Mode</Button>
-        </div>
-      </div>
-    </div>
-  );
 
   const renderMigrationTab = () => {
     const allProjects: any[] = allProjectsData?.data || [];
@@ -3077,588 +2162,15 @@ export default function SettingsPage() {
   );
   };
 
-  // ── Template Editor State ───────────────────────────────────────
-  const [dbTemplates, setDbTemplates] = useState<any[]>([]);
-  const [templatesLoading, setTemplatesLoading] = useState(false);
-  const [templatesError, setTemplatesError] = useState<string | null>(null);
-  const [templateActionMsg, setTemplateActionMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [expandedTemplate, setExpandedTemplate] = useState<string | null>(null);
-  const [expandedPhases, setExpandedPhases] = useState<Set<string>>(new Set());
-  const [editingPhase, setEditingPhase] = useState<string | null>(null);
-  const [editingTask, setEditingTask] = useState<string | null>(null);
-  const [showNewTemplate, setShowNewTemplate] = useState(false);
-  const [newTemplateForm, setNewTemplateForm] = useState({ name: '', code: '', description: '' });
-  const [newPhaseForm, setNewPhaseForm] = useState<{ [templateId: string]: boolean }>({});
-  const [newTaskForm, setNewTaskForm] = useState<{ [phaseId: string]: boolean }>({});
-  const [templateSaving, setTemplateSaving] = useState(false);
-  const [templateUploads, setTemplateUploads] = useState<Record<string, { id: string; name: string; size: string; type: string; uploadedAt: string }[]>>({});
-  const [templateSubTab, setTemplateSubTab] = useState<'content' | 'messaging' | 'email'>('content');
-  const [selectedCombination, setSelectedCombination] = useState<string | null>(null);
-  const [combinationDocs, setCombinationDocs] = useState<Record<string, { id: string; name: string; size: string; ext: string; docType: string; uploadedAt: string }[]>>({});
-
-  const TEMPLATE_COLORS: Record<string, { border: string; bg: string; icon: string; text: string }> = {
-    CONTENT: { border: 'border-blue-200', bg: 'bg-blue-50', icon: '📁', text: 'text-blue-700' },
-    EMAIL: { border: 'border-green-200', bg: 'bg-green-50', icon: '📧', text: 'text-green-700' },
-    MESSAGING: { border: 'border-purple-200', bg: 'bg-purple-50', icon: '💬', text: 'text-purple-700' },
-    IDENTITY: { border: 'border-yellow-200', bg: 'bg-yellow-50', icon: '👤', text: 'text-yellow-700' },
-    APPLICATION: { border: 'border-red-200', bg: 'bg-red-50', icon: '🖥️', text: 'text-red-700' },
-    DATABASE: { border: 'border-indigo-200', bg: 'bg-indigo-50', icon: '🗄️', text: 'text-indigo-700' },
-  };
-  const getTemplateColor = (code: string) => TEMPLATE_COLORS[code] || { border: 'border-gray-200', bg: 'bg-gray-50', icon: '📋', text: 'text-gray-700' };
-
-  const [allProjects, setAllProjects] = useState<any[]>([]);
-
-  const fetchTemplates = useCallback(async () => {
-    setTemplatesLoading(true);
-    setTemplatesError(null);
-    try {
-      const res = await templatesApi.getAll();
-      if (res.success) setDbTemplates(res.data);
-    } catch (err: any) {
-      setTemplatesError(err?.response?.data?.error?.message || 'Failed to load templates');
-    } finally {
-      setTemplatesLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (activeTab === 'templates') {
-      fetchTemplates();
-      projectsApi.getAll({ limit: 1000 }).then((r: any) => setAllProjects(r.data || [])).catch(() => {});
-    }
-  }, [activeTab, fetchTemplates]);
-
-  const showTplMsg = (type: 'success' | 'error', text: string) => {
-    setTemplateActionMsg({ type, text });
-    setTimeout(() => setTemplateActionMsg(null), 3000);
-  };
-
-  const handleCreateTemplate = async () => {
-    if (!newTemplateForm.name || !newTemplateForm.code) {
-      showTplMsg('error', 'Name and code are required'); return;
-    }
-    setTemplateSaving(true);
-    try {
-      await templatesApi.create({
-        name: newTemplateForm.name,
-        code: newTemplateForm.code.toUpperCase(),
-        description: newTemplateForm.description,
-        phases: [],
-      });
-      showTplMsg('success', 'Template created');
-      setNewTemplateForm({ name: '', code: '', description: '' });
-      setShowNewTemplate(false);
-      fetchTemplates();
-    } catch (err: any) {
-      showTplMsg('error', err?.response?.data?.error?.message || 'Failed to create template');
-    } finally {
-      setTemplateSaving(false);
-    }
-  };
-
-  const handleDeleteTemplate = async (id: string) => {
-    if (!window.confirm('Delete this template and all its phases/tasks?')) return;
-    try {
-      await templatesApi.delete(id);
-      showTplMsg('success', 'Template deleted');
-      fetchTemplates();
-    } catch (err: any) {
-      showTplMsg('error', err?.response?.data?.error?.message || 'Failed to delete');
-    }
-  };
-
-  const handleAddPhase = async (templateId: string, name: string, duration: number) => {
-    const template = dbTemplates.find(t => t.id === templateId);
-    const nextOrder = template?.phases?.length || 0;
-    try {
-      await templatesApi.addPhase(templateId, { name, orderIndex: nextOrder, defaultDuration: duration });
-      showTplMsg('success', 'Phase added');
-      fetchTemplates();
-    } catch (err: any) {
-      showTplMsg('error', err?.response?.data?.error?.message || 'Failed to add phase');
-    }
-  };
-
-  const handleUpdatePhase = async (phaseId: string, updates: any) => {
-    try {
-      await templatesApi.updatePhase(phaseId, updates);
-      showTplMsg('success', 'Phase updated');
-      setEditingPhase(null);
-      fetchTemplates();
-    } catch (err: any) {
-      showTplMsg('error', err?.response?.data?.error?.message || 'Failed to update phase');
-    }
-  };
-
-  const handleDeletePhase = async (phaseId: string) => {
-    if (!window.confirm('Delete this phase and all its tasks?')) return;
-    try {
-      await templatesApi.deletePhase(phaseId);
-      showTplMsg('success', 'Phase deleted');
-      fetchTemplates();
-    } catch (err: any) {
-      showTplMsg('error', err?.response?.data?.error?.message || 'Failed');
-    }
-  };
-
-  const handleAddTask = async (phaseId: string, name: string, duration: number, isMilestone: boolean) => {
-    const phase = dbTemplates.flatMap((t: any) => t.phases).find((p: any) => p.id === phaseId);
-    const nextOrder = phase?.tasks?.length || 0;
-    try {
-      await templatesApi.addTask(phaseId, { name, orderIndex: nextOrder, defaultDuration: duration, isMilestone });
-      showTplMsg('success', 'Task added');
-      fetchTemplates();
-    } catch (err: any) {
-      showTplMsg('error', err?.response?.data?.error?.message || 'Failed to add task');
-    }
-  };
-
-  const handleUpdateTask = async (taskId: string, updates: any) => {
-    try {
-      await templatesApi.updateTask(taskId, updates);
-      showTplMsg('success', 'Task updated');
-      setEditingTask(null);
-      fetchTemplates();
-    } catch (err: any) {
-      showTplMsg('error', err?.response?.data?.error?.message || 'Failed');
-    }
-  };
-
-  const handleDeleteTask = async (taskId: string) => {
-    try {
-      await templatesApi.deleteTask(taskId);
-      showTplMsg('success', 'Task removed');
-      fetchTemplates();
-    } catch (err: any) {
-      showTplMsg('error', err?.response?.data?.error?.message || 'Failed');
-    }
-  };
-
-  const togglePhaseExpand = (phaseId: string) => {
-    const next = new Set(expandedPhases);
-    next.has(phaseId) ? next.delete(phaseId) : next.add(phaseId);
-    setExpandedPhases(next);
-  };
-
-  const renderTemplatesTab = () => (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h3 className="text-lg font-semibold text-gray-900">Project Templates</h3>
-          <p className="text-sm text-gray-500">
-            Define phases and tasks for each migration type. Projects auto-generate from these templates.
-          </p>
-        </div>
-        <Button variant="primary" size="sm" onClick={() => setShowNewTemplate(true)}>
-          <Plus size={16} className="mr-1.5" /> New Template
-        </Button>
-      </div>
-
-      {/* Status */}
-      {templateActionMsg && (
-        <div className={`flex items-center gap-2 px-4 py-3 rounded-lg text-sm font-medium ${
-          templateActionMsg.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'
-        }`}>
-          {templateActionMsg.type === 'success' ? <CheckCircle size={16} /> : <AlertCircle size={16} />}
-          {templateActionMsg.text}
-        </div>
-      )}
-
-      {/* Create Template Form */}
-      {showNewTemplate && (
-        <div className="border-2 border-primary-200 bg-primary-50/30 rounded-xl p-5 space-y-4">
-          <div className="flex items-center justify-between">
-            <h4 className="font-semibold text-gray-900">Create New Template</h4>
-            <button onClick={() => setShowNewTemplate(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Input label="Template Name *" placeholder="e.g. Database Migration" value={newTemplateForm.name} onChange={(e) => setNewTemplateForm({ ...newTemplateForm, name: e.target.value })} />
-            <Input label="Code *" placeholder="e.g. DATABASE" value={newTemplateForm.code} onChange={(e) => setNewTemplateForm({ ...newTemplateForm, code: e.target.value.toUpperCase() })} />
-            <Input label="Description" placeholder="Brief description" value={newTemplateForm.description} onChange={(e) => setNewTemplateForm({ ...newTemplateForm, description: e.target.value })} />
-          </div>
-          <div className="flex gap-2">
-            <Button variant="primary" size="sm" onClick={handleCreateTemplate} disabled={templateSaving}>
-              {templateSaving ? <Loader2 size={16} className="animate-spin mr-1" /> : <Plus size={16} className="mr-1" />} Create
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => setShowNewTemplate(false)}>Cancel</Button>
-          </div>
-        </div>
-      )}
-
-      {/* Loading */}
-      {templatesLoading && dbTemplates.length === 0 && (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="w-6 h-6 animate-spin text-primary-600 mr-2" />
-          <span className="text-sm text-gray-500">Loading templates...</span>
-        </div>
-      )}
-
-      {/* Error */}
-      {templatesError && (
-        <div className="text-center py-8">
-          <p className="text-red-600 text-sm">{templatesError}</p>
-          <button onClick={fetchTemplates} className="mt-2 text-primary-600 text-sm hover:underline">Retry</button>
-        </div>
-      )}
-
-      {/* Template Cards */}
-      {dbTemplates.map((tpl) => {
-        const color = getTemplateColor(tpl.code);
-        const totalTasks = tpl.phases?.reduce((sum: number, p: any) => sum + (p.tasks?.length || 0), 0) || 0;
-        const totalMilestones = tpl.phases?.reduce((sum: number, p: any) => sum + (p.tasks?.filter((t: any) => t.isMilestone).length || 0), 0) || 0;
-        const isExpanded = expandedTemplate === tpl.id;
-
-        return (
-          <div key={tpl.id} className={`border rounded-xl overflow-hidden transition-all ${isExpanded ? 'border-primary-300 shadow-md' : 'border-gray-200'}`}>
-            {/* Template Header */}
-            <div
-              className={`flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50 transition-colors ${isExpanded ? 'bg-gray-50 border-b border-gray-200' : ''}`}
-              onClick={() => setExpandedTemplate(isExpanded ? null : tpl.id)}
-            >
-              <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-xl ${color.bg} border ${color.border}`}>
-                  {color.icon}
-                </div>
-                <div>
-                  <h4 className="font-semibold text-gray-900">{tpl.name}</h4>
-                  <div className="flex items-center gap-3 mt-0.5">
-                    <span className={`text-xs font-mono font-semibold px-2 py-0.5 rounded ${color.bg} ${color.text} border ${color.border}`}>{tpl.code}</span>
-                    <span className="text-xs text-gray-500">{tpl.phases?.length || 0} phases</span>
-                    <span className="text-xs text-gray-500">{totalTasks} tasks</span>
-                    {totalMilestones > 0 && <span className="text-xs text-yellow-600">{totalMilestones} milestones</span>}
-                  </div>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={(e) => { e.stopPropagation(); handleDeleteTemplate(tpl.id); }}
-                  className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                  title="Delete template"
-                >
-                  <Trash2 size={16} />
-                </button>
-                {isExpanded ? <ChevronUp size={20} className="text-gray-400" /> : <ChevronDown size={20} className="text-gray-400" />}
-              </div>
-            </div>
-
-            {/* Expanded: Phases & Tasks */}
-            {isExpanded && (
-              <div className="p-4 space-y-3">
-                {tpl.description && <p className="text-sm text-gray-500 mb-3">{tpl.description}</p>}
-
-                {/* Projects using this template */}
-                {(() => {
-                  const matchedProjects = allProjects.filter((p: any) => {
-                    // Primary: project was explicitly assigned this template
-                    if (p.templateId === tpl.id) return true;
-                    // Secondary: migration type code matches
-                    const types = (p.migrationTypes || '').toUpperCase().split(',').map((s: string) => s.trim()).filter(Boolean);
-                    return types.includes(tpl.code.toUpperCase());
-                  });
-                  if (matchedProjects.length === 0) return null;
-                  return (
-                    <div className="mb-2 p-3 bg-blue-50 border border-blue-100 rounded-lg">
-                      <p className="text-xs font-semibold text-blue-700 mb-2 flex items-center gap-1">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="14" x="2" y="7" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
-                        {matchedProjects.length} project{matchedProjects.length !== 1 ? 's' : ''} using this template
-                      </p>
-                      <div className="flex flex-wrap gap-2">
-                        {matchedProjects.map((p: any) => (
-                          <a
-                            key={p.id}
-                            href={`/projects/${p.id}/tasks`}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-blue-200 hover:border-blue-400 hover:bg-blue-50 rounded-lg text-xs font-medium text-blue-800 transition-colors shadow-sm"
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-                            {p.name}
-                            <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" x2="21" y1="14" y2="3"/></svg>
-                          </a>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })()}
-
-                {/* Phases */}
-                {tpl.phases?.map((phase: any, pi: number) => {
-                  const phaseExpanded = expandedPhases.has(phase.id);
-                  const isEditingPhase = editingPhase === phase.id;
-
-                  return (
-                    <div key={phase.id} className="border border-gray-200 rounded-lg overflow-hidden">
-                      {/* Phase Header */}
-                      <div
-                        className="flex items-center justify-between p-3 bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors"
-                        onClick={() => togglePhaseExpand(phase.id)}
-                      >
-                        <div className="flex items-center gap-2">
-                          <span className="w-6 h-6 bg-primary-100 text-primary-700 rounded-full text-xs font-bold flex items-center justify-center">{pi + 1}</span>
-                          {isEditingPhase ? (
-                            <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                              <input
-                                className="text-sm font-medium border border-gray-300 rounded px-2 py-1 w-48 focus:ring-2 focus:ring-primary-500 outline-none"
-                                defaultValue={phase.name}
-                                onBlur={(e) => handleUpdatePhase(phase.id, { name: e.target.value })}
-                                onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-                                autoFocus
-                              />
-                              <input
-                                className="text-sm border border-gray-300 rounded px-2 py-1 w-20 focus:ring-2 focus:ring-primary-500 outline-none"
-                                type="number"
-                                defaultValue={phase.defaultDuration}
-                                onBlur={(e) => handleUpdatePhase(phase.id, { defaultDuration: parseInt(e.target.value) || 7 })}
-                                onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-                              />
-                              <span className="text-xs text-gray-400">days</span>
-                            </div>
-                          ) : (
-                            <>
-                              <span className="text-sm font-medium text-gray-900">{phase.name}</span>
-                              <span className="text-xs text-gray-400 ml-1">({phase.defaultDuration}d)</span>
-                              <span className="text-xs text-gray-400">· {phase.tasks?.length || 0} tasks</span>
-                            </>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                          <button onClick={() => setEditingPhase(isEditingPhase ? null : phase.id)} className="p-1 text-gray-400 hover:text-primary-600 rounded" title="Edit phase">
-                            <Settings size={14} />
-                          </button>
-                          <button onClick={() => handleDeletePhase(phase.id)} className="p-1 text-gray-400 hover:text-red-600 rounded" title="Delete phase">
-                            <Trash2 size={14} />
-                          </button>
-                          {phaseExpanded ? <ChevronUp size={16} className="text-gray-400 ml-1" /> : <ChevronDown size={16} className="text-gray-400 ml-1" />}
-                        </div>
-                      </div>
-
-                      {/* Tasks */}
-                      {phaseExpanded && (
-                        <div className="p-3 space-y-1.5 bg-white">
-                          {phase.tasks?.length === 0 && (
-                            <p className="text-xs text-gray-400 italic py-2 text-center">No tasks yet. Add one below.</p>
-                          )}
-                          {phase.tasks?.map((task: any, ti: number) => {
-                            const isEditingThisTask = editingTask === task.id;
-                            return (
-                              <div key={task.id} className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${task.isMilestone ? 'bg-yellow-50 border border-yellow-200' : 'bg-gray-50 border border-gray-100'}`}>
-                                <span className="w-5 h-5 bg-gray-200 text-gray-600 rounded text-xs font-medium flex items-center justify-center flex-shrink-0">
-                                  {ti + 1}
-                                </span>
-                                {isEditingThisTask ? (
-                                  <div className="flex items-center gap-2 flex-1" onClick={(e) => e.stopPropagation()}>
-                                    <input
-                                      className="text-sm border border-gray-300 rounded px-2 py-1 flex-1 focus:ring-2 focus:ring-primary-500 outline-none"
-                                      defaultValue={task.name}
-                                      onBlur={(e) => handleUpdateTask(task.id, { name: e.target.value })}
-                                      onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-                                      autoFocus
-                                    />
-                                    <input
-                                      className="text-sm border border-gray-300 rounded px-2 py-1 w-16 focus:ring-2 focus:ring-primary-500 outline-none"
-                                      type="number"
-                                      defaultValue={task.defaultDuration}
-                                      onBlur={(e) => handleUpdateTask(task.id, { defaultDuration: parseInt(e.target.value) || 1 })}
-                                      onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-                                    />
-                                    <label className="flex items-center gap-1 text-xs text-gray-500">
-                                      <input
-                                        type="checkbox"
-                                        defaultChecked={!!task.isMilestone}
-                                        onChange={(e) => handleUpdateTask(task.id, { isMilestone: e.target.checked })}
-                                        className="rounded"
-                                      />
-                                      Milestone
-                                    </label>
-                                  </div>
-                                ) : (
-                                  <>
-                                    <span className="flex-1 text-gray-700">{task.name}</span>
-                                    <span className="text-xs text-gray-400">{task.defaultDuration}d</span>
-                                    {task.isMilestone ? (
-                                      <span className="text-xs px-1.5 py-0.5 bg-yellow-100 text-yellow-700 rounded font-medium">Milestone</span>
-                                    ) : null}
-                                  </>
-                                )}
-                                <div className="flex items-center gap-0.5 flex-shrink-0">
-                                  <button onClick={() => setEditingTask(isEditingThisTask ? null : task.id)} className="p-1 text-gray-400 hover:text-primary-600 rounded">
-                                    <Settings size={12} />
-                                  </button>
-                                  <button onClick={() => handleDeleteTask(task.id)} className="p-1 text-gray-400 hover:text-red-500 rounded">
-                                    <Trash2 size={12} />
-                                  </button>
-                                </div>
-                              </div>
-                            );
-                          })}
-
-                          {/* Add Task inline */}
-                          {newTaskForm[phase.id] ? (
-                            <div className="flex items-center gap-2 px-3 py-2 bg-primary-50 border border-primary-200 rounded-lg">
-                              <input id={`new-task-name-${phase.id}`} className="text-sm border border-gray-300 rounded px-2 py-1 flex-1 focus:ring-2 focus:ring-primary-500 outline-none" placeholder="Task name" autoFocus />
-                              <input id={`new-task-dur-${phase.id}`} className="text-sm border border-gray-300 rounded px-2 py-1 w-16 focus:ring-2 focus:ring-primary-500 outline-none" type="number" defaultValue="2" placeholder="Days" />
-                              <label className="flex items-center gap-1 text-xs text-gray-500">
-                                <input id={`new-task-ms-${phase.id}`} type="checkbox" className="rounded" />MS
-                              </label>
-                              <button
-                                onClick={() => {
-                                  const nameEl = document.getElementById(`new-task-name-${phase.id}`) as HTMLInputElement;
-                                  const durEl = document.getElementById(`new-task-dur-${phase.id}`) as HTMLInputElement;
-                                  const msEl = document.getElementById(`new-task-ms-${phase.id}`) as HTMLInputElement;
-                                  if (nameEl?.value) {
-                                    handleAddTask(phase.id, nameEl.value, parseInt(durEl?.value) || 2, msEl?.checked || false);
-                                    setNewTaskForm({ ...newTaskForm, [phase.id]: false });
-                                  }
-                                }}
-                                className="px-2 py-1 bg-primary-600 text-white text-xs rounded hover:bg-primary-700"
-                              >
-                                Add
-                              </button>
-                              <button onClick={() => setNewTaskForm({ ...newTaskForm, [phase.id]: false })} className="text-gray-400 hover:text-gray-600">
-                                <X size={14} />
-                              </button>
-                            </div>
-                          ) : (
-                            <button
-                              onClick={() => setNewTaskForm({ ...newTaskForm, [phase.id]: true })}
-                              className="flex items-center gap-1 px-3 py-1.5 text-xs text-primary-600 hover:text-primary-700 hover:bg-primary-50 rounded-lg transition-colors w-full"
-                            >
-                              <Plus size={14} /> Add Task
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-
-                {/* Uploaded Documents */}
-                <div className="border border-gray-200 rounded-lg overflow-hidden mt-2">
-                  <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-200">
-                    <div className="flex items-center gap-2">
-                      <Upload size={15} className="text-gray-500" />
-                      <span className="text-sm font-medium text-gray-700">Uploaded Documents</span>
-                      {(templateUploads[tpl.id]?.length || 0) > 0 && (
-                        <span className="text-xs bg-primary-100 text-primary-700 px-1.5 py-0.5 rounded-full font-medium">{templateUploads[tpl.id].length}</span>
-                      )}
-                    </div>
-                    <label className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-primary-600 border border-primary-300 rounded-lg hover:bg-primary-50 cursor-pointer transition-colors">
-                      <Plus size={13} /> Upload File
-                      <input
-                        type="file"
-                        className="hidden"
-                        multiple
-                        accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.png,.jpg,.jpeg"
-                        onChange={(e) => {
-                          const files = Array.from(e.target.files || []);
-                          const newDocs = files.map((f) => ({
-                            id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-                            name: f.name,
-                            size: f.size > 1024 * 1024 ? `${(f.size / 1024 / 1024).toFixed(1)} MB` : `${(f.size / 1024).toFixed(0)} KB`,
-                            type: f.name.split('.').pop()?.toUpperCase() || 'FILE',
-                            uploadedAt: new Date().toISOString(),
-                          }));
-                          setTemplateUploads((prev) => ({
-                            ...prev,
-                            [tpl.id]: [...(prev[tpl.id] || []), ...newDocs],
-                          }));
-                          e.target.value = '';
-                        }}
-                      />
-                    </label>
-                  </div>
-                  <div className="p-3">
-                    {(!templateUploads[tpl.id] || templateUploads[tpl.id].length === 0) ? (
-                      <p className="text-xs text-gray-400 italic text-center py-3">No documents uploaded. Upload kickoff decks, runbooks, or template files.</p>
-                    ) : (
-                      <div className="space-y-1.5">
-                        {templateUploads[tpl.id].map((doc) => (
-                          <div key={doc.id} className="flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-100 rounded-lg text-sm">
-                            <FileText size={14} className="text-gray-400 flex-shrink-0" />
-                            <span className="flex-1 text-gray-700 truncate">{doc.name}</span>
-                            <span className="text-xs text-gray-400 flex-shrink-0">{doc.type}</span>
-                            <span className="text-xs text-gray-400 flex-shrink-0">{doc.size}</span>
-                            <button
-                              onClick={() => setTemplateUploads((prev) => ({
-                                ...prev,
-                                [tpl.id]: prev[tpl.id].filter((d) => d.id !== doc.id),
-                              }))}
-                              className="p-0.5 text-gray-400 hover:text-red-500 rounded flex-shrink-0"
-                              title="Remove"
-                            >
-                              <X size={13} />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Add Phase */}
-                {newPhaseForm[tpl.id] ? (
-                  <div className="flex items-center gap-2 p-3 bg-primary-50 border-2 border-dashed border-primary-200 rounded-lg">
-                    <input id={`new-phase-name-${tpl.id}`} className="text-sm border border-gray-300 rounded px-2 py-1.5 flex-1 focus:ring-2 focus:ring-primary-500 outline-none" placeholder="Phase name (e.g. Phase 6: Post-Migration)" autoFocus />
-                    <input id={`new-phase-dur-${tpl.id}`} className="text-sm border border-gray-300 rounded px-2 py-1.5 w-20 focus:ring-2 focus:ring-primary-500 outline-none" type="number" defaultValue="7" placeholder="Days" />
-                    <button
-                      onClick={() => {
-                        const nameEl = document.getElementById(`new-phase-name-${tpl.id}`) as HTMLInputElement;
-                        const durEl = document.getElementById(`new-phase-dur-${tpl.id}`) as HTMLInputElement;
-                        if (nameEl?.value) {
-                          handleAddPhase(tpl.id, nameEl.value, parseInt(durEl?.value) || 7);
-                          setNewPhaseForm({ ...newPhaseForm, [tpl.id]: false });
-                        }
-                      }}
-                      className="px-3 py-1.5 bg-primary-600 text-white text-sm rounded-lg hover:bg-primary-700"
-                    >
-                      Add Phase
-                    </button>
-                    <button onClick={() => setNewPhaseForm({ ...newPhaseForm, [tpl.id]: false })} className="text-gray-400 hover:text-gray-600"><X size={16} /></button>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => setNewPhaseForm({ ...newPhaseForm, [tpl.id]: true })}
-                    className="flex items-center gap-2 w-full p-3 border-2 border-dashed border-gray-200 rounded-lg text-sm text-gray-500 hover:border-primary-300 hover:text-primary-600 hover:bg-primary-50/30 transition-colors"
-                  >
-                    <Plus size={16} /> Add New Phase
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-        );
-      })}
-
-      {/* How it works */}
-      <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-        <div className="flex gap-3">
-          <Info size={20} className="text-blue-600 flex-shrink-0 mt-0.5" />
-          <div>
-            <h4 className="text-sm font-semibold text-blue-900">How Templates Work</h4>
-            <p className="text-sm text-blue-700 mt-0.5">
-              When you create a new project and select a migration type, the system automatically generates all phases and tasks from the matching template.
-              You can then track progress on each task. Click a template above to expand and edit its phases and tasks inline.
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-
   const renderTabContent = () => {
     try {
       switch (activeTab) {
-        case 'templates': return renderTemplatesTab();
         case 'migration': return renderMigrationTab();
-        case 'case-study': return renderCaseStudyTab();
         case 'project': return renderProjectConfigTab();
         case 'notifications': return renderNotificationsTab();
         case 'team': return renderTeamTab();
         case 'dashboard': return renderDashboardTab();
-        case 'automation': return renderAutomationTab();
         case 'integrations': return renderIntegrationsTab();
-        case 'data': return renderDataTab();
-        case 'branding': return renderBrandingTab();
-        case 'audit': return renderAuditTab();
         default: return null;
       }
     } catch (err) {
@@ -3669,10 +2181,10 @@ export default function SettingsPage() {
           <h3 className="text-lg font-semibold text-gray-800 mb-2">Tab failed to load</h3>
           <p className="text-sm text-gray-500 mb-4">There was an error rendering this tab. Check the browser console for details.</p>
           <button
-            onClick={() => setActiveTab('templates')}
+            onClick={() => setActiveTab('migration')}
             className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm hover:bg-primary-700 transition-colors"
           >
-            Go to Project Templates
+            Go to Migration Types
           </button>
         </div>
       );
