@@ -20,6 +20,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { useCaseStudyTemplate } from '@/hooks/useCaseStudyTemplate';
+import { useAuth } from '@/context/AuthContext';
 
 interface Project {
   id: string;
@@ -41,7 +42,12 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 export default function NewCaseStudyPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { user } = useAuth();
   const projectIdParam = searchParams.get('projectId');
+
+  useEffect(() => {
+    if (user && user.role === 'VIEWER') router.replace('/case-studies');
+  }, [user, router]);
 
   // Same source of truth as the editor/preview pages — keeps generated and
   // manually-created case studies using identical section ids.

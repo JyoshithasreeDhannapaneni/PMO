@@ -595,6 +595,7 @@ export default function MigrationValidationPage() {
   const isAdmin = user?.role === 'ADMIN';
   const isPM = user?.role === 'PROJECT_MANAGER' || isAdmin;
   const canVerify = isPM;
+  const isViewer = user?.role === 'VIEWER';
 
   const allProjects = ((projectsData as any)?.data || []) as any[];
   const migrationProjects = allProjects.filter((p: any) => !p.projectType || p.projectType === 'MIGRATION');
@@ -953,7 +954,7 @@ export default function MigrationValidationPage() {
 
   const configKey = getConfigKey(activePhaseKey);
   const currentSections = configKey ? CHECKLIST_CONFIG[activeType][configKey] : [];
-  const isReadOnly = currentRecord?.status === 'pm_verified' ||
+  const isReadOnly = isViewer || currentRecord?.status === 'pm_verified' ||
     (currentRecord?.status === 'engineer_submitted' && !canVerify);
   const { checked, total } = calcProgress(currentRecord || { checklistData: localData } as any, activeType, activePhaseKey);
 
@@ -1412,7 +1413,7 @@ export default function MigrationValidationPage() {
                         setActivePhaseKey(makePhaseKey('delta', next, 'pre'));
                       }
                     }}
-                    disabled={!canAdd}
+                    disabled={!canAdd || isViewer}
                     title={!canAdd ? `Complete and verify the current ${group === 'onetime' ? 'batch' : 'delta run'} first` : undefined}
                     className="w-full text-xs font-medium py-1 rounded-lg border border-dashed transition-all disabled:opacity-40 disabled:cursor-not-allowed text-slate-500 border-slate-300 hover:enabled:border-indigo-400 hover:enabled:text-indigo-600 hover:enabled:bg-white"
                   >
@@ -1609,7 +1610,7 @@ export default function MigrationValidationPage() {
               </div>
 
               <div className="flex items-center gap-2">
-                {currentRecord?.status !== 'pm_verified' && currentRecord?.status !== 'engineer_submitted' && (
+                {!isViewer && currentRecord?.status !== 'pm_verified' && currentRecord?.status !== 'engineer_submitted' && (
                   <button
                     onClick={handleSave}
                     disabled={saving}
@@ -1620,7 +1621,7 @@ export default function MigrationValidationPage() {
                   </button>
                 )}
 
-                {(currentRecord?.status === 'not_started' || !currentRecord) && (
+                {!isViewer && (currentRecord?.status === 'not_started' || !currentRecord) && (
                   <button
                     onClick={handleSubmit}
                     disabled={saving || checked === 0}

@@ -30,6 +30,7 @@ interface CommentSectionProps {
 
 export function CommentSection({ entityType, entityId }: CommentSectionProps) {
   const { user } = useAuth();
+  const isViewer = user?.role === 'VIEWER';
   const [comments, setComments] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(true);
   const [newComment, setNewComment] = useState('');
@@ -173,7 +174,7 @@ export function CommentSection({ entityType, entityId }: CommentSectionProps) {
 
             {!editingId && (
               <div className="flex items-center gap-3 mt-2">
-                {!isReply && (
+                {!isReply && !isViewer && (
                   <button
                     onClick={() => setReplyingTo(replyingTo === comment.id ? null : comment.id)}
                     className="text-xs text-gray-500 hover:text-primary-600 flex items-center gap-1"
@@ -204,7 +205,7 @@ export function CommentSection({ entityType, entityId }: CommentSectionProps) {
             )}
 
             {/* Reply Form */}
-            {replyingTo === comment.id && (
+            {!isViewer && replyingTo === comment.id && (
               <div className="mt-3 flex gap-2">
                 <input
                   type="text"
@@ -250,26 +251,28 @@ export function CommentSection({ entityType, entityId }: CommentSectionProps) {
       </h3>
 
       {/* New Comment Form */}
-      <div className="flex gap-3">
-        <div className="w-8 h-8 bg-primary-100 rounded-full flex items-center justify-center text-primary-600 text-sm font-medium">
-          {user?.name?.charAt(0).toUpperCase() || 'U'}
-        </div>
-        <div className="flex-1">
-          <textarea
-            value={newComment}
-            onChange={(e) => setNewComment(e.target.value)}
-            placeholder="Write a comment..."
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500"
-            rows={2}
-          />
-          <div className="flex justify-end mt-2">
-            <Button onClick={() => handleSubmit()} disabled={submitting || !newComment.trim()}>
-              <Send size={14} className="mr-2" />
-              Post Comment
-            </Button>
+      {!isViewer && (
+        <div className="flex gap-3">
+          <div className="w-8 h-8 bg-primary-100 rounded-full flex items-center justify-center text-primary-600 text-sm font-medium">
+            {user?.name?.charAt(0).toUpperCase() || 'U'}
+          </div>
+          <div className="flex-1">
+            <textarea
+              value={newComment}
+              onChange={(e) => setNewComment(e.target.value)}
+              placeholder="Write a comment..."
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500"
+              rows={2}
+            />
+            <div className="flex justify-end mt-2">
+              <Button onClick={() => handleSubmit()} disabled={submitting || !newComment.trim()}>
+                <Send size={14} className="mr-2" />
+                Post Comment
+              </Button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Comments List */}
       {comments.length === 0 ? (

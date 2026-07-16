@@ -459,8 +459,19 @@ export const platformReviewsApi = {
     reviewUrl?: string;
     reviewDate?: string;
     segment?: 'SMB' | 'ENT' | 'PS';
+    media?: Array<{ url: string; type: 'image' | 'video' }>;
   }) => {
     const { data } = await api.post('/platform-reviews', review);
+    return data;
+  },
+  // Multipart upload (not base64-in-JSON) so testimonial videos up to 1GB
+  // don't have to be buffered/inflated in memory as a JSON string.
+  uploadMedia: async (files: File[]) => {
+    const formData = new FormData();
+    files.forEach((f) => formData.append('files', f));
+    const { data } = await api.post('/platform-reviews/media', formData, {
+      headers: { 'Content-Type': undefined },
+    });
     return data;
   },
   delete: async (id: string) => {

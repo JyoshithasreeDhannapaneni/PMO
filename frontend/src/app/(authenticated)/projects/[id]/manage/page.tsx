@@ -5,6 +5,7 @@ import { useProject } from '@/hooks/useProjects';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { useToast } from '@/context/ToastContext';
+import { useAuth } from '@/context/AuthContext';
 import {
   Loader2, ArrowLeft, AlertTriangle, Users, FileText,
   BarChart3, GitPullRequest, Plus, Edit2, Trash2, Check,
@@ -23,6 +24,8 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 export default function ProjectManagePage({ params }: ProjectManagePageProps) {
   const { data, isLoading, error } = useProject(params.id);
   const { showToast } = useToast();
+  const { user } = useAuth();
+  const isViewer = user?.role === 'VIEWER';
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
   const authHeaders: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -211,42 +214,47 @@ export default function ProjectManagePage({ params }: ProjectManagePageProps) {
         ) : (
           <>
             {activeTab === 'risks' && (
-              <RisksTab 
-                risks={risks} 
-                projectId={params.id} 
+              <RisksTab
+                risks={risks}
+                projectId={params.id}
                 onRefresh={() => loadTabData('risks')}
                 onDelete={(id) => handleDelete('risks', id)}
+                isViewer={isViewer}
               />
             )}
             {activeTab === 'team' && (
-              <TeamTab 
-                team={team} 
+              <TeamTab
+                team={team}
                 projectId={params.id}
                 onRefresh={() => loadTabData('team')}
                 onDelete={(id) => handleDelete('team', id)}
+                isViewer={isViewer}
               />
             )}
             {activeTab === 'documents' && (
-              <DocumentsTab 
-                documents={documents} 
+              <DocumentsTab
+                documents={documents}
                 projectId={params.id}
                 onRefresh={() => loadTabData('documents')}
                 onDelete={(id) => handleDelete('documents', id)}
+                isViewer={isViewer}
               />
             )}
             {activeTab === 'reports' && (
-              <ReportsTab 
+              <ReportsTab
                 reports={reports}
                 onGenerate={generateWeeklyReport}
                 onDelete={(id) => handleDelete('reports', id)}
+                isViewer={isViewer}
               />
             )}
             {activeTab === 'changes' && (
-              <ChangeRequestsTab 
+              <ChangeRequestsTab
                 changeRequests={changeRequests}
                 projectId={params.id}
                 onRefresh={() => loadTabData('changes')}
                 onDelete={(id) => handleDelete('changes', id)}
+                isViewer={isViewer}
               />
             )}
           </>
@@ -257,7 +265,7 @@ export default function ProjectManagePage({ params }: ProjectManagePageProps) {
 }
 
 // Risks Tab Component
-function RisksTab({ risks, projectId, onRefresh, onDelete }: any) {
+function RisksTab({ risks, projectId, onRefresh, onDelete, isViewer }: any) {
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
     title: '', description: '', category: 'TECHNICAL', probability: 'MEDIUM', 
@@ -304,13 +312,15 @@ function RisksTab({ risks, projectId, onRefresh, onDelete }: any) {
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <h3 className="text-lg font-semibold">Risk Register</h3>
-        <Button onClick={() => setShowForm(!showForm)}>
-          <Plus size={16} className="mr-2" />
-          Add Risk
-        </Button>
+        {!isViewer && (
+          <Button onClick={() => setShowForm(!showForm)}>
+            <Plus size={16} className="mr-2" />
+            Add Risk
+          </Button>
+        )}
       </div>
 
-      {showForm && (
+      {!isViewer && showForm && (
         <Card className="p-4">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
@@ -438,9 +448,11 @@ function RisksTab({ risks, projectId, onRefresh, onDelete }: any) {
                     </p>
                   )}
                 </div>
-                <button onClick={() => onDelete(risk.id)} className="text-red-500 hover:text-red-700 p-1">
-                  <Trash2 size={16} />
-                </button>
+                {!isViewer && (
+                  <button onClick={() => onDelete(risk.id)} className="text-red-500 hover:text-red-700 p-1">
+                    <Trash2 size={16} />
+                  </button>
+                )}
               </div>
             </Card>
           ))}
@@ -934,7 +946,7 @@ function OptionBPreview({ team }: { team: any[] }) {
 }
 
 // Team Tab Component
-function TeamTab({ team, projectId, onRefresh, onDelete }: any) {
+function TeamTab({ team, projectId, onRefresh, onDelete, isViewer }: any) {
   const [showForm, setShowForm] = useState(false);
   const [showOptionB, setShowOptionB] = useState(false);
   const [viewMode, setViewMode] = useState<'table' | 'tree'>('table');
@@ -1104,13 +1116,15 @@ function TeamTab({ team, projectId, onRefresh, onDelete }: any) {
             </svg>
           </div>
         </div>
-        <Button onClick={() => setShowForm(!showForm)}>
-          <Plus size={16} className="mr-1.5" /> Add Member
-        </Button>
+        {!isViewer && (
+          <Button onClick={() => setShowForm(!showForm)}>
+            <Plus size={16} className="mr-1.5" /> Add Member
+          </Button>
+        )}
       </div>
 
       {/* ── Add Member Form ── */}
-      {showForm && (
+      {!isViewer && showForm && (
         <Card className="p-5 border-primary-200 bg-primary-50/30">
           <h4 className="text-sm font-semibold text-gray-800 mb-4">Add New Team Member</h4>
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -1348,14 +1362,16 @@ function TeamTab({ team, projectId, onRefresh, onDelete }: any) {
                             </td>
                             {/* Actions */}
                             <td className="px-4 py-3">
-                              <div className="flex items-center gap-1">
-                                <button onClick={() => startEdit(member)} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Edit">
-                                  <Pencil size={14} />
-                                </button>
-                                <button onClick={() => onDelete(member.id)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Remove">
-                                  <Trash2 size={14} />
-                                </button>
-                              </div>
+                              {!isViewer && (
+                                <div className="flex items-center gap-1">
+                                  <button onClick={() => startEdit(member)} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Edit">
+                                    <Pencil size={14} />
+                                  </button>
+                                  <button onClick={() => onDelete(member.id)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Remove">
+                                    <Trash2 size={14} />
+                                  </button>
+                                </div>
+                              )}
                             </td>
                           </>
                         )}
@@ -1453,10 +1469,12 @@ function TeamTab({ team, projectId, onRefresh, onDelete }: any) {
                             <span className="text-xs px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">Active</span>
                           </td>
                           <td className="px-3 py-2.5">
-                            <div className="flex gap-1">
-                              <button onClick={() => startEdit(member)} className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"><Pencil size={12} /></button>
-                              <button onClick={() => onDelete(member.id)} className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"><Trash2 size={12} /></button>
-                            </div>
+                            {!isViewer && (
+                              <div className="flex gap-1">
+                                <button onClick={() => startEdit(member)} className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"><Pencil size={12} /></button>
+                                <button onClick={() => onDelete(member.id)} className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"><Trash2 size={12} /></button>
+                              </div>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -1518,7 +1536,7 @@ function TeamTab({ team, projectId, onRefresh, onDelete }: any) {
 }
 
 // Documents Tab Component
-function DocumentsTab({ documents, projectId, onRefresh, onDelete }: any) {
+function DocumentsTab({ documents, projectId, onRefresh, onDelete, isViewer }: any) {
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
     name: '', description: '', category: 'OTHER', fileUrl: '', version: '1.0'
@@ -1578,13 +1596,15 @@ function DocumentsTab({ documents, projectId, onRefresh, onDelete }: any) {
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <h3 className="text-lg font-semibold">Project Documents</h3>
-        <Button onClick={() => setShowForm(!showForm)}>
-          <Plus size={16} className="mr-2" />
-          Add Document
-        </Button>
+        {!isViewer && (
+          <Button onClick={() => setShowForm(!showForm)}>
+            <Plus size={16} className="mr-2" />
+            Add Document
+          </Button>
+        )}
       </div>
 
-      {showForm && (
+      {!isViewer && showForm && (
         <Card className="p-4">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
@@ -1685,9 +1705,11 @@ function DocumentsTab({ documents, projectId, onRefresh, onDelete }: any) {
                     )}
                   </div>
                 </div>
-                <button onClick={() => onDelete(doc.id)} className="text-red-500 hover:text-red-700 p-1">
-                  <Trash2 size={16} />
-                </button>
+                {!isViewer && (
+                  <button onClick={() => onDelete(doc.id)} className="text-red-500 hover:text-red-700 p-1">
+                    <Trash2 size={16} />
+                  </button>
+                )}
               </div>
             </Card>
           ))}
@@ -1698,7 +1720,7 @@ function DocumentsTab({ documents, projectId, onRefresh, onDelete }: any) {
 }
 
 // Reports Tab Component
-function ReportsTab({ reports, onGenerate, onDelete }: any) {
+function ReportsTab({ reports, onGenerate, onDelete, isViewer }: any) {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'GREEN': return 'bg-green-500';
@@ -1720,10 +1742,12 @@ function ReportsTab({ reports, onGenerate, onDelete }: any) {
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <h3 className="text-lg font-semibold">Status Reports</h3>
-        <Button onClick={onGenerate}>
-          <BarChart3 size={16} className="mr-2" />
-          Generate Weekly Report
-        </Button>
+        {!isViewer && (
+          <Button onClick={onGenerate}>
+            <BarChart3 size={16} className="mr-2" />
+            Generate Weekly Report
+          </Button>
+        )}
       </div>
 
       {reports.length === 0 ? (
@@ -1747,9 +1771,11 @@ function ReportsTab({ reports, onGenerate, onDelete }: any) {
                     Progress: {report.completionPercentage}% ({report.tasksCompleted}/{report.tasksTotal} tasks)
                   </p>
                 </div>
-                <button onClick={() => onDelete(report.id)} className="text-red-500 hover:text-red-700 p-1">
-                  <Trash2 size={16} />
-                </button>
+                {!isViewer && (
+                  <button onClick={() => onDelete(report.id)} className="text-red-500 hover:text-red-700 p-1">
+                    <Trash2 size={16} />
+                  </button>
+                )}
               </div>
 
               {/* RAG Status */}
@@ -1808,7 +1834,7 @@ function ReportsTab({ reports, onGenerate, onDelete }: any) {
 }
 
 // Change Requests Tab Component
-function ChangeRequestsTab({ changeRequests, projectId, onRefresh, onDelete }: any) {
+function ChangeRequestsTab({ changeRequests, projectId, onRefresh, onDelete, isViewer }: any) {
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
     title: '', description: '', changeType: 'SCOPE', priority: 'MEDIUM',
@@ -1887,13 +1913,15 @@ function ChangeRequestsTab({ changeRequests, projectId, onRefresh, onDelete }: a
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <h3 className="text-lg font-semibold">Change Requests</h3>
-        <Button onClick={() => setShowForm(!showForm)}>
-          <Plus size={16} className="mr-2" />
-          New Change Request
-        </Button>
+        {!isViewer && (
+          <Button onClick={() => setShowForm(!showForm)}>
+            <Plus size={16} className="mr-2" />
+            New Change Request
+          </Button>
+        )}
       </div>
 
-      {showForm && (
+      {!isViewer && showForm && (
         <Card className="p-4">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
@@ -2023,29 +2051,31 @@ function ChangeRequestsTab({ changeRequests, projectId, onRefresh, onDelete }: a
                     {cr.scheduleImpact && <span>Schedule Impact: {cr.scheduleImpact} days</span>}
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  {(cr.status === 'PENDING' || cr.status === 'UNDER_REVIEW') && (
-                    <>
-                      <button 
-                        onClick={() => handleApprove(cr.id)}
-                        className="text-green-600 hover:text-green-800 p-1"
-                        title="Approve"
-                      >
-                        <Check size={18} />
-                      </button>
-                      <button 
-                        onClick={() => handleReject(cr.id)}
-                        className="text-red-600 hover:text-red-800 p-1"
-                        title="Reject"
-                      >
-                        <X size={18} />
-                      </button>
-                    </>
-                  )}
-                  <button onClick={() => onDelete(cr.id)} className="text-gray-400 hover:text-red-500 p-1">
-                    <Trash2 size={16} />
-                  </button>
-                </div>
+                {!isViewer && (
+                  <div className="flex items-center gap-2">
+                    {(cr.status === 'PENDING' || cr.status === 'UNDER_REVIEW') && (
+                      <>
+                        <button
+                          onClick={() => handleApprove(cr.id)}
+                          className="text-green-600 hover:text-green-800 p-1"
+                          title="Approve"
+                        >
+                          <Check size={18} />
+                        </button>
+                        <button
+                          onClick={() => handleReject(cr.id)}
+                          className="text-red-600 hover:text-red-800 p-1"
+                          title="Reject"
+                        >
+                          <X size={18} />
+                        </button>
+                      </>
+                    )}
+                    <button onClick={() => onDelete(cr.id)} className="text-gray-400 hover:text-red-500 p-1">
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                )}
               </div>
             </Card>
           ))}

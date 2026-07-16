@@ -83,6 +83,7 @@ const ITEMS_PER_PAGE = 15;
 // ── Main Page Component ───────────────────────────────────────────────
 export default function NotificationsPage() {
   const { user } = useAuth();
+  const isViewer = user?.role === 'VIEWER';
 
   // Data state
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -229,7 +230,7 @@ export default function NotificationsPage() {
           )}
 
           {/* Mark all as read */}
-          {unreadCount > 0 && (
+          {!isViewer && unreadCount > 0 && (
             <button
               onClick={handleMarkAllAsRead}
               disabled={actionLoading === 'all'}
@@ -432,7 +433,7 @@ export default function NotificationsPage() {
 
                       {/* Actions */}
                       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                        {isUnread && (
+                        {isUnread && !isViewer && (
                           <button
                             onClick={() => handleMarkAsRead(notification.id)}
                             disabled={isMarking}

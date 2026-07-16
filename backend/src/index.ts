@@ -9,6 +9,7 @@ import morgan from 'morgan';
 
 import { errorHandler } from './middleware/errorHandler';
 import { notFoundHandler } from './middleware/notFoundHandler';
+import { viewerReadOnly } from './middleware/viewerReadOnly';
 import { query, execute, pool } from './config/db';
 import { schema as dbSchema } from './db/init';
 
@@ -69,8 +70,8 @@ app.use(cors({
   credentials: true,
 }));
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '5mb' }));
+app.use(express.urlencoded({ extended: true, limit: '5mb' }));
 // serve uploaded poc documents
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
@@ -83,6 +84,11 @@ app.get('/health', (req, res) => {
 });
 
 app.get('/.well-known/appspecific/com.chrome.devtools.json', (req, res) => res.status(204).end());
+
+// Global read-only gate for VIEWER role — see middleware/viewerReadOnly.ts.
+// Applied once here so it covers every route file, since most of them don't
+// check role themselves.
+app.use(viewerReadOnly);
 
 app.use('/api/auth', authRoutes);
 app.use('/api/projects', projectRoutes);
@@ -540,6 +546,12 @@ async function runMigrations() {
   }
   if (!await columnExists('platform_reviews', 'segment')) {
     try { await execute(`ALTER TABLE platform_reviews ADD COLUMN segment VARCHAR(10)`); } catch {}
+  }
+  // media_items holds an array of { url, type } for the testimonial's attached
+  // images/videos — replaced the earlier single media_url/media_type columns
+  // so a review can carry multiple images and a video together.
+  if (!await columnExists('platform_reviews', 'media_items')) {
+    try { await execute(`ALTER TABLE platform_reviews ADD COLUMN media_items JSONB DEFAULT '[]'`); } catch {}
   }
   try { await execute(`CREATE INDEX IF NOT EXISTS idx_platform_reviews_platform ON platform_reviews(platform)`); } catch {}
   try { await execute(`CREATE INDEX IF NOT EXISTS idx_platform_reviews_project ON platform_reviews(project_id)`); } catch {}

@@ -10,6 +10,7 @@ import {
   History, Mail, ChevronDown, User,
 } from 'lucide-react';
 import { format, differenceInDays, addDays, eachMonthOfInterval, startOfMonth, endOfMonth } from 'date-fns';
+import { useAuth } from '@/context/AuthContext';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -380,6 +381,8 @@ export default function PortfolioDetailPage({ params }: { params: { id: string }
   const [risks, setRisks] = useState<any[]>([]);
   const [team, setTeam] = useState<any[]>([]);
   const [showActions, setShowActions] = useState(false);
+  const { user } = useAuth();
+  const isViewer = user?.role === 'VIEWER';
 
   useEffect(() => {
     if (!params.id) return;
@@ -446,10 +449,12 @@ export default function PortfolioDetailPage({ params }: { params: { id: string }
           </div>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
-          <Link href={`/projects/${project.id}/edit`}
-            className="flex items-center gap-1.5 px-3 py-2 border border-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors">
-            <Edit size={14} /> Edit Project
-          </Link>
+          {!isViewer && (
+            <Link href={`/projects/${project.id}/edit`}
+              className="flex items-center gap-1.5 px-3 py-2 border border-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors">
+              <Edit size={14} /> Edit Project
+            </Link>
+          )}
           <div className="relative">
             <button
               onClick={() => setShowActions(!showActions)}
@@ -461,7 +466,9 @@ export default function PortfolioDetailPage({ params }: { params: { id: string }
               <div className="absolute right-0 top-full mt-1 w-44 bg-white border border-gray-200 rounded-xl shadow-lg z-20 py-1">
                 <Link href={`/projects/${project.id}/tasks`} onClick={() => setShowActions(false)} className="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">View Tasks</Link>
                 <Link href={`/projects/${project.id}/manage`} onClick={() => setShowActions(false)} className="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Manage Project</Link>
-                <Link href={`/projects/${project.id}/edit`} onClick={() => setShowActions(false)} className="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Edit Project</Link>
+                {!isViewer && (
+                  <Link href={`/projects/${project.id}/edit`} onClick={() => setShowActions(false)} className="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Edit Project</Link>
+                )}
               </div>
             )}
           </div>

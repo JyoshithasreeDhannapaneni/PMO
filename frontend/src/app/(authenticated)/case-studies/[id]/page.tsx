@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { exportToPDF, exportToWord } from '@/utils/exportCaseStudy';
 import { useCaseStudyTemplate } from '@/hooks/useCaseStudyTemplate';
+import { useAuth } from '@/context/AuthContext';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -283,6 +284,8 @@ export default function CaseStudyEditorPage() {
   const params = useParams();
   const router = useRouter();
   const caseStudyId = params.id as string;
+  const { user } = useAuth();
+  const isViewer = user?.role === 'VIEWER';
 
   // ── Load template sections from admin-configured template (localStorage) ──
   const { sections: templateSections } = useCaseStudyTemplate();
@@ -511,7 +514,7 @@ export default function CaseStudyEditorPage() {
               {isExporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
               Word
             </button>
-            {!isPublished && (
+            {!isPublished && !isViewer && (
               <button
                 onClick={() => handleSave()}
                 disabled={isSaving}
@@ -632,7 +635,7 @@ export default function CaseStudyEditorPage() {
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="Enter a compelling title for this case study"
-              disabled={isPublished}
+              disabled={isPublished || isViewer}
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-60"
             />
           </div>
@@ -679,7 +682,7 @@ export default function CaseStudyEditorPage() {
                       value={sectionContent[section.id] || ''}
                       onChange={(html) => updateSection(section.id, html)}
                       placeholder={section.placeholder}
-                      disabled={isPublished}
+                      disabled={isPublished || isViewer}
                     />
                   </div>
                 )}
@@ -688,7 +691,7 @@ export default function CaseStudyEditorPage() {
           })}
 
           {/* Action buttons */}
-          {!isPublished && (
+          {!isPublished && !isViewer && (
             <div className="flex items-center justify-end gap-3 pt-2">
               <button
                 onClick={() => handleSave()}

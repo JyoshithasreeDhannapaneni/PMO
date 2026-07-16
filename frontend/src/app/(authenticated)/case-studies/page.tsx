@@ -387,12 +387,14 @@ function CaseStudiesContent() {
               >
                 <p className="font-medium text-gray-900">{project.name}</p>
                 <p className="text-sm text-gray-600">{project.customerName}</p>
-                <Link href={`/case-studies/new?projectId=${project.id}`}>
-                  <Button size="sm" className="mt-3">
-                    <Plus size={14} className="mr-1" />
-                    Create Case Study
-                  </Button>
-                </Link>
+                {!isViewer && (
+                  <Link href={`/case-studies/new?projectId=${project.id}`}>
+                    <Button size="sm" className="mt-3">
+                      <Plus size={14} className="mr-1" />
+                      Create Case Study
+                    </Button>
+                  </Link>
+                )}
               </div>
             ))}
           </div>
