@@ -12,6 +12,7 @@ import {
   CalendarDays, Flag, ChevronsLeft, ChevronsRight, Plus, Pencil, X, Trash2,
 } from 'lucide-react';
 import { useToast } from '@/context/ToastContext';
+import { useAuth } from '@/context/AuthContext';
 
 /* ── Types ─────────────────────────────────────────────────────────── */
 interface ProjectTask {
@@ -114,6 +115,8 @@ export default function ProjectTasksPage() {
   const projectId = params.id as string;
   const { settings } = useSettings();
   const { showToast } = useToast();
+  const { user } = useAuth();
+  const isViewer = user?.role === 'VIEWER';
 
   const leftRef  = useRef<HTMLDivElement>(null);
   const rightRef = useRef<HTMLDivElement>(null);
@@ -529,10 +532,12 @@ setExpandedPhases(prev => {
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <Button variant="outline" size="sm" onClick={triggerSync} disabled={isAutoUpdating}>
-            {isAutoUpdating ? <Loader2 size={13} className="animate-spin mr-1"/> : <Zap size={13} className="mr-1"/>}Sync
-          </Button>
-          {projectMigrationTypes.length > 0 && (
+          {!isViewer && (
+            <Button variant="outline" size="sm" onClick={triggerSync} disabled={isAutoUpdating}>
+              {isAutoUpdating ? <Loader2 size={13} className="animate-spin mr-1"/> : <Zap size={13} className="mr-1"/>}Sync
+            </Button>
+          )}
+          {!isViewer && projectMigrationTypes.length > 0 && (
             <div className="flex items-center gap-1">
               {projectMigrationTypes.map((mt) => (
                 <button key={mt.code} onClick={() => applyTemplate(mt.code)} disabled={isApplyingTpl}
@@ -562,7 +567,7 @@ setExpandedPhases(prev => {
       </div>
 
       {/* ── Template picker (no tasks yet) ───────────────────────────── */}
-      {hasNoTasks && projectMigrationTypes.length > 0 && (
+      {!isViewer && hasNoTasks && projectMigrationTypes.length > 0 && (
         <div className="mb-4 p-4 bg-indigo-50 border border-indigo-200 rounded-xl flex flex-col sm:flex-row sm:items-center gap-3">
           <div className="flex-1">
             <p className="text-sm font-semibold text-indigo-800">No tasks yet — apply a template to get started</p>
@@ -854,7 +859,7 @@ setExpandedPhases(prev => {
           {/* List toolbar */}
           <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-200 bg-gray-50/80">
             <span className="text-sm font-medium text-gray-700">{flatTasks.length} tasks</span>
-            {ganttData && (
+            {!isViewer && ganttData && (
               <button
                 onClick={openAddTask}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors font-medium"
@@ -932,7 +937,7 @@ setExpandedPhases(prev => {
                         <select
                           value={t.status}
                           onChange={e=>updateTaskStatus(t.id, e.target.value)}
-                          disabled={updatingTask===t.id}
+                          disabled={updatingTask===t.id || isViewer}
                           className={`text-[11px] font-semibold px-2 py-1 rounded-full border-0 cursor-pointer outline-none ${cfg.badge}`}>
                           <option value="TODO">To Do</option>
                           <option value="IN_PROGRESS">In Progress</option>
@@ -961,14 +966,16 @@ setExpandedPhases(prev => {
                       </td>
                       {/* Actions */}
                       <td className="py-3 px-2 text-center">
-                        <div className="flex items-center justify-center gap-1">
-                          <button onClick={() => openEditTask(t)} title="Edit task" className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-primary-600 transition-colors">
-                            <Pencil size={13} />
-                          </button>
-                          <button onClick={() => deleteTask(t.id, t.name)} title="Delete task" className="p-1.5 rounded hover:bg-red-100 text-gray-400 hover:text-red-600 transition-colors">
-                            <Trash2 size={13} />
-                          </button>
-                        </div>
+                        {!isViewer && (
+                          <div className="flex items-center justify-center gap-1">
+                            <button onClick={() => openEditTask(t)} title="Edit task" className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-primary-600 transition-colors">
+                              <Pencil size={13} />
+                            </button>
+                            <button onClick={() => deleteTask(t.id, t.name)} title="Delete task" className="p-1.5 rounded hover:bg-red-100 text-gray-400 hover:text-red-600 transition-colors">
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        )}
                       </td>
                     </tr>
                   );

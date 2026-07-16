@@ -52,8 +52,8 @@ export function initializeCronJobs(): void {
     try {
       const result = await ntaSyncService.syncFromNta();
       logger.info(`NTA sync: ${result.synced} upserted, ${result.total} total`);
-    } catch (error) {
-      logger.error(`NTA sync job failed: ${(error as Error).message}`);
+    } catch {
+      // already logged inside ntaSyncService.syncFromNta()
     }
   });
 

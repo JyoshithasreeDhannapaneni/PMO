@@ -44,6 +44,7 @@ function formatCurrency(n?: number | null) {
 export default function ArchivePage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'ADMIN';
+  const isViewer = user?.role === 'VIEWER';
   const queryClient = useQueryClient();
 
   const [tab, setTab]                       = useState<'completed' | 'cancelled'>('completed');
@@ -191,9 +192,11 @@ export default function ArchivePage() {
           <button onClick={() => refetch()} className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
             <RefreshCw size={14} /> Refresh
           </button>
-          <button onClick={downloadCSV} className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-            <Download size={14} /> Export CSV
-          </button>
+          {!isViewer && (
+            <button onClick={downloadCSV} className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+              <Download size={14} /> Export CSV
+            </button>
+          )}
         </div>
       </div>
 
@@ -557,15 +560,17 @@ export default function ArchivePage() {
                 <p className="text-xs opacity-80">{detailProject.project.customerName} · Full Archive Record</p>
               </div>
               <div className="flex items-center gap-2">
-                <button onClick={() => {
-                  const blob = new Blob([JSON.stringify(detailProject, null, 2)], { type: 'application/json' });
-                  const a = document.createElement('a');
-                  a.href = URL.createObjectURL(blob);
-                  a.download = `archive-${detailProject.project.name.replace(/[^a-z0-9]/gi,'_')}.json`;
-                  a.click();
-                }} className="flex items-center gap-1.5 px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-sm transition-colors">
-                  <Download size={14} /> Export JSON
-                </button>
+                {!isViewer && (
+                  <button onClick={() => {
+                    const blob = new Blob([JSON.stringify(detailProject, null, 2)], { type: 'application/json' });
+                    const a = document.createElement('a');
+                    a.href = URL.createObjectURL(blob);
+                    a.download = `archive-${detailProject.project.name.replace(/[^a-z0-9]/gi,'_')}.json`;
+                    a.click();
+                  }} className="flex items-center gap-1.5 px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-sm transition-colors">
+                    <Download size={14} /> Export JSON
+                  </button>
+                )}
                 <button onClick={() => setDetailProject(null)} className="p-2 rounded-lg hover:bg-white/20 transition-colors">✕</button>
               </div>
             </div>

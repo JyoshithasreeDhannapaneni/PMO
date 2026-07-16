@@ -436,13 +436,6 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
     { value: 'Rahul Verma',        label: 'Rahul Verma' },
   ];
 
-  function csatHealth(score: number | null | undefined): { label: string; color: string; bg: string } {
-    if (score == null) return { label: 'Not set', color: 'text-gray-400', bg: 'bg-gray-100' };
-    if (score >= 4.0) return { label: 'Good', color: 'text-green-700', bg: 'bg-green-100' };
-    if (score >= 2.5) return { label: 'Average', color: 'text-yellow-700', bg: 'bg-yellow-100' };
-    return { label: 'Bad', color: 'text-red-700', bg: 'bg-red-100' };
-  }
-
   const planOptions = [
     { value: 'BRONZE', label: 'Bronze' },
     { value: 'SILVER', label: 'Silver' },
@@ -541,7 +534,6 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
               <SortHeader field="name" label="Project Name" className="sticky left-0 z-30 bg-blue-50/60 border-r border-gray-200 shadow-[2px_0_4px_-1px_rgba(0,0,0,0.08)]" />
               <SortHeader field="projectManager" label="Project Manager" />
               <SortHeader field="accountManager" label="Account Manager" />
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap">C-SAT</th>
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap">Delay Happened</th>
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Migration Types</th>
               <SortHeader field="estimatedCost" label="Budget" />
@@ -625,78 +617,37 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
                   />
                 </td>
 
-                {/* C-SAT — compact inline pill */}
-                <td className="px-4 py-3">
-                  {(() => {
-                    const h = csatHealth(project.csatScore);
-                    const isEditingScore = editingCell?.projectId === project.id && editingCell?.field === 'csatScore';
-                    if (isEditingScore) {
-                      return (
-                        <div className="flex items-center gap-1">
-                          <input
-                            type="number"
-                            min="0" max="5" step="0.1"
-                            value={editValue}
-                            onChange={(e) => {
-                              const v = parseFloat(e.target.value);
-                              if (e.target.value === '' || e.target.value === '-') { setEditValue(e.target.value); return; }
-                              if (!isNaN(v)) setEditValue(String(Math.min(5, Math.max(0, Math.round(v * 10) / 10))));
-                            }}
-                            className="text-xs w-16 px-1.5 py-1 border border-primary-300 rounded focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
-                            autoFocus
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') saveEdit(project.id, 'csatScore');
-                              if (e.key === 'Escape') cancelEditing();
-                            }}
-                          />
-                          <button onClick={() => saveEdit(project.id, 'csatScore')} className="p-1 text-green-600 hover:bg-green-100 rounded" disabled={updateProject.isPending}>
-                            {updateProject.isPending ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
-                          </button>
-                          <button onClick={cancelEditing} className="p-1 text-red-600 hover:bg-red-100 rounded"><X size={13} /></button>
-                        </div>
-                      );
-                    }
-                    return (
-                      <span
-                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold cursor-pointer hover:opacity-80 transition-opacity ${h.bg} ${h.color}`}
-                        onClick={(e) => { e.stopPropagation(); startEditing(project.id, 'csatScore', project.csatScore != null ? String(project.csatScore) : ''); }}
-                        title="Click to edit CSAT score"
-                      >
-                        {h.label}
-                        {project.csatScore != null && (
-                          <span className="opacity-75">· {project.csatScore.toFixed(1)}★</span>
-                        )}
-                      </span>
-                    );
-                  })()}
-                </td>
-
                 {/* Delay Happened */}
                 <td className="px-4 py-3">
-                  <EditableSelect
-                    projectId={project.id}
-                    field="delayHappened"
-                    value={project.delayHappened || ''}
-                    options={[
-                      { value: '', label: '— None —' },
-                      { value: 'CUSTOMER_DELAY', label: 'Customer Delay' },
-                      { value: 'INTERNAL_DELAY', label: 'Internal Delay' },
-                    ]}
-                    displayComponent={
-                      project.delayHappened ? (
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${
-                          project.delayHappened === 'CUSTOMER_DELAY'
-                            ? 'bg-orange-100 text-orange-700'
-                            : 'bg-blue-100 text-blue-700'
-                        }`}>
-                          {project.delayHappened === 'CUSTOMER_DELAY' ? 'Customer Delay' : 'Internal Delay'}
-                        </span>
-                      ) : (
-                        <span className="text-xs text-gray-400 italic">Not set</span>
-                      )
-                    }
-                    {...selectEditProps}
-                  />
+                  <div className="min-w-[140px]">
+                    <EditableSelect
+                      projectId={project.id}
+                      field="delayHappened"
+                      value={project.delayHappened || ''}
+                      options={[
+                        { value: '', label: '— None —' },
+                        { value: 'CUSTOMER_DELAY', label: 'Customer Delay' },
+                        { value: 'INTERNAL_DELAY', label: 'Internal Delay' },
+                      ]}
+                      displayComponent={
+                        project.delayHappened ? (
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${
+                            project.delayHappened === 'CUSTOMER_DELAY'
+                              ? 'bg-orange-100 text-orange-700'
+                              : 'bg-blue-100 text-blue-700'
+                          }`}>
+                            {project.delayHappened === 'CUSTOMER_DELAY' ? 'Customer Delay' : 'Internal Delay'}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-400 italic">Not set</span>
+                        )
+                      }
+                      {...selectEditProps}
+                    />
+                    <button onClick={(e) => { e.stopPropagation(); openColumnNotes(project, 'Delay Happened'); }} className="mt-1 flex items-center gap-1 text-xs px-1.5 py-0.5 rounded transition-colors text-teal-600 bg-teal-50 hover:bg-teal-100" title="Notes on where the delay happened">
+                      <MessageSquare size={11} /><span>Notes</span>
+                    </button>
+                  </div>
                 </td>
 
                 {/* Migration Types */}

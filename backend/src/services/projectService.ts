@@ -319,7 +319,9 @@ class ProjectService {
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
     const sortColumn = sortBy === 'createdAt' ? 'created_at' : sortBy;
-    const safeLimit = Math.max(1, Math.min(500, Math.floor(limit)));
+    // Capped high enough that "get everything for export" (frontend requests
+    // 10000) actually returns everything, instead of being silently truncated.
+    const safeLimit = Math.max(1, Math.min(20000, Math.floor(limit)));
     const safeOffset = Math.max(0, Math.floor((page - 1) * safeLimit));
 
     const [projectsResult, countResult] = await Promise.all([

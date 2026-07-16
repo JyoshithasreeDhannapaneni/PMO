@@ -7,10 +7,17 @@ import { Input } from '@/components/ui/Input';
 import { Textarea } from '@/components/ui/Textarea';
 import { Select } from '@/components/ui/Select';
 import { platformReviewsApi, projectsApi } from '@/services/api';
+import { useAuth } from '@/context/AuthContext';
 import {
   Star, Plus, Loader2, X, Trash2, Trophy, CalendarDays,
   ExternalLink, Globe, Quote, Search, Sparkles, Users, UserCircle2, RotateCcw, Download,
+  ImagePlus, Film, Play,
 } from 'lucide-react';
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
+function mediaSrc(url: string) {
+  return `${API_URL}${url}`;
+}
 
 interface Project {
   id: string;
@@ -35,6 +42,7 @@ interface PlatformReview {
   reviewUrl: string | null;
   reviewDate: string;
   segment: 'SMB' | 'ENT' | 'PS' | null;
+  media: { url: string; type: 'image' | 'video' }[];
 }
 
 const SEGMENT_LABEL: Record<string, string> = { SMB: 'SMB', ENT: 'Enterprise', PS: 'Professional Services' };
@@ -61,6 +69,35 @@ const OTHER_PLATFORM_STYLE = 'bg-gray-50 text-gray-700 border-gray-200';
 
 function platformStyle(platform: string) {
   return PLATFORM_STYLE[platform] || OTHER_PLATFORM_STYLE;
+}
+
+// Small thumbnail chips for attached testimonial media — shows what's
+// attached at a glance instead of a stack of plain "Image N" text links.
+function MediaChips({ media }: { media: { url: string; type: 'image' | 'video' }[] }) {
+  if (media.length === 0) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+      {media.map((m, i) => (
+        <a
+          key={i}
+          href={mediaSrc(m.url)}
+          target="_blank"
+          rel="noopener noreferrer"
+          title={m.type === 'video' ? 'View video' : `View image ${i + 1}`}
+          className="relative w-9 h-9 rounded-md border border-gray-200 overflow-hidden flex-shrink-0 hover:ring-2 hover:ring-primary-300"
+        >
+          {m.type === 'video' ? (
+            <div className="w-full h-full bg-gray-900 flex items-center justify-center">
+              <Play size={14} className="text-white fill-white" />
+            </div>
+          ) : (
+            <img src={mediaSrc(m.url)} alt={`Testimonial attachment ${i + 1}`} className="w-full h-full object-cover" />
+          )}
+        </a>
+      ))}
+      <span className="text-[11px] text-gray-400">{media.length} file{media.length !== 1 ? 's' : ''}</span>
+    </div>
+  );
 }
 
 function StarRating({
@@ -228,8 +265,47 @@ function AddPlatformReviewModal({
   const [reviewUrl, setReviewUrl] = useState('');
   const [reviewDate, setReviewDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [segment, setSegment] = useState<'' | 'SMB' | 'ENT' | 'PS'>(defaultSegment || '');
+  const [mediaFiles, setMediaFiles] = useState<{ file: File; preview: string }[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
+
+  const MAX_IMAGE_MB = 10;
+  const MAX_VIDEO_MB = 1024; // 1GB
+  const MAX_MEDIA_ITEMS = 6;
+
+  // Multiple files at once, mixing images and video is fine — each is
+  // validated independently so one bad file doesn't drop the rest.
+  const handleMediaChange = (fileList: FileList | null) => {
+    if (!fileList || fileList.length === 0) return;
+    const incoming = Array.from(fileList);
+    const accepted: { file: File; preview: string }[] = [];
+    for (const file of incoming) {
+      if (!/^(image|video)\//.test(file.type)) {
+        setError(`"${file.name}" is not an image or video file.`);
+        continue;
+      }
+      const isVideo = file.type.startsWith('video/');
+      const maxMb = isVideo ? MAX_VIDEO_MB : MAX_IMAGE_MB;
+      if (file.size > maxMb * 1024 * 1024) {
+        setError(`"${file.name}" is larger than ${maxMb}MB.`);
+        continue;
+      }
+      accepted.push({ file, preview: URL.createObjectURL(file) });
+    }
+    setMediaFiles((prev) => {
+      const combined = [...prev, ...accepted];
+      if (combined.length > MAX_MEDIA_ITEMS) {
+        setError(`Only ${MAX_MEDIA_ITEMS} media files are allowed per review.`);
+        return combined.slice(0, MAX_MEDIA_ITEMS);
+      }
+      if (accepted.length === incoming.length) setError('');
+      return combined;
+    });
+  };
+
+  const removeMediaFile = (index: number) => {
+    setMediaFiles((prev) => prev.filter((_, i) => i !== index));
+  };
 
   const isOther = platformChoice === '__other__';
   const platform = isOther ? customPlatform.trim() : platformChoice;
@@ -252,6 +328,15 @@ function AddPlatformReviewModal({
     setError('');
     try {
       const matched = projects.find((p) => p.name.toLowerCase() === projectName.trim().toLowerCase());
+      let media: { url: string; type: 'image' | 'video' }[] = [];
+      if (mediaFiles.length > 0) {
+        const uploadRes = await platformReviewsApi.uploadMedia(mediaFiles.map((m) => m.file));
+        if (!uploadRes.success) {
+          setError(uploadRes.error?.message || 'Failed to upload media');
+          return;
+        }
+        media = uploadRes.data;
+      }
       const res = await platformReviewsApi.create({
         platform,
         projectName: projectName.trim(),
@@ -264,6 +349,7 @@ function AddPlatformReviewModal({
         reviewUrl: reviewUrl.trim() || undefined,
         reviewDate,
         segment: segment || undefined,
+        media: media.length ? media : undefined,
       });
       if (res.success) {
         onCreated();
@@ -380,6 +466,46 @@ function AddPlatformReviewModal({
             <label className="block text-sm font-medium text-gray-700 mb-1">Link to original review</label>
             <Input value={reviewUrl} onChange={(e) => setReviewUrl(e.target.value)} placeholder="https://..." />
           </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Testimonial images or video ({mediaFiles.length}/{MAX_MEDIA_ITEMS})
+            </label>
+            {mediaFiles.length > 0 && (
+              <div className="grid grid-cols-3 gap-2 mb-2">
+                {mediaFiles.map(({ file, preview }, i) => (
+                  <div key={i} className="relative rounded-lg border border-gray-200 overflow-hidden aspect-square">
+                    {file.type.startsWith('video/') ? (
+                      <video src={preview} className="w-full h-full object-cover bg-black" />
+                    ) : (
+                      <img src={preview} alt={file.name} className="w-full h-full object-cover bg-gray-50" />
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => removeMediaFile(i)}
+                      className="absolute top-1 right-1 p-1 rounded-full bg-white/90 hover:bg-white text-gray-500 hover:text-red-500 shadow"
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {mediaFiles.length < MAX_MEDIA_ITEMS && (
+              <label className="flex items-center justify-center gap-2 border border-dashed border-gray-300 rounded-lg py-4 text-sm text-gray-500 cursor-pointer hover:bg-gray-50">
+                <ImagePlus size={16} />
+                <Film size={16} />
+                <span>Upload images (max {MAX_IMAGE_MB}MB) and/or a video (max 1GB)</span>
+                <input
+                  type="file"
+                  accept="image/*,video/*"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => { handleMediaChange(e.target.files); e.target.value = ''; }}
+                />
+              </label>
+            )}
+          </div>
         </div>
 
         <div className="flex justify-end gap-3 p-5 border-t border-gray-100">
@@ -466,6 +592,8 @@ function ManagerLeaderboard({
 }
 
 export default function ReviewsPage() {
+  const { user } = useAuth();
+  const isViewer = user?.role === 'VIEWER';
   const [platformReviews, setPlatformReviews] = useState<PlatformReview[]>([]);
   const [platforms, setPlatforms] = useState<string[]>(['Gartner', 'G2', 'Trustpilot', 'TrustRadius']);
   const [activeTab, setActiveTab] = useState('Gartner');
@@ -574,19 +702,23 @@ export default function ReviewsPage() {
           <p className="text-sm text-gray-500 mt-0.5">Client feedback pulled in from review platforms, organized by source</p>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
-          <button
-            onClick={() => exportReviewsToCSV(platformReviews)}
-            disabled={platformReviews.length === 0}
-            title="Export every review, across all platforms and segments, as one CSV"
-            className="flex items-center gap-1.5 px-3 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            <Download size={14} />
-            Export All
-          </button>
-          <Button onClick={() => setShowPlatformModal(true)}>
-            <Plus size={16} className="mr-2" />
-            Add review
-          </Button>
+          {!isViewer && (
+            <button
+              onClick={() => exportReviewsToCSV(platformReviews)}
+              disabled={platformReviews.length === 0}
+              title="Export every review, across all platforms and segments, as one CSV"
+              className="flex items-center gap-1.5 px-3 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <Download size={14} />
+              Export All
+            </button>
+          )}
+          {!isViewer && (
+            <Button onClick={() => setShowPlatformModal(true)}>
+              <Plus size={16} className="mr-2" />
+              Add review
+            </Button>
+          )}
         </div>
       </div>
 
@@ -750,6 +882,19 @@ export default function ReviewsPage() {
                 <StarRating value={topPlatformReview.rating} size={14} />
               </div>
               <p className="text-base text-gray-800 leading-relaxed italic">"{topPlatformReview.reviewText}"</p>
+              {topPlatformReview.media?.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-2 max-w-sm">
+                  {topPlatformReview.media.map((m, i) => (
+                    <div key={i} className="rounded-lg overflow-hidden border border-gray-200 w-28 h-28">
+                      {m.type === 'video' ? (
+                        <video src={mediaSrc(m.url)} controls className="w-full h-full object-cover bg-black" />
+                      ) : (
+                        <img src={mediaSrc(m.url)} alt="Testimonial media" className="w-full h-full object-cover bg-gray-50" />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -782,7 +927,10 @@ export default function ReviewsPage() {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {filteredPlatformReviews.map((r) => (
-                  <tr key={r.id} className="align-top hover:bg-gray-50/60">
+                  <tr
+                    key={r.id}
+                    className={`align-top hover:bg-gray-50/60 ${!r.projectId ? 'bg-amber-50/40 shadow-[inset_3px_0_0_0_rgb(245,158,11)]' : ''}`}
+                  >
                     <td className="px-4 py-3">
                       <div className="flex items-start gap-2.5">
                         <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0 ${avatarColor(r.projectName)}`}>
@@ -798,7 +946,7 @@ export default function ReviewsPage() {
                             )}
                           </div>
                           {!r.projectId ? (
-                            <p className="text-xs text-amber-600">Not linked to an internal project</p>
+                            <p className="text-xs text-amber-600">Unlinked — AM/PM unavailable</p>
                           ) : (
                             <p className="text-xs text-gray-400">{r.reviewerName || '—'}</p>
                           )}
@@ -852,6 +1000,7 @@ export default function ReviewsPage() {
                           )}
                         </>
                       ) : <span className="text-gray-400 text-sm">—</span>}
+                      <MediaChips media={r.media || []} />
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
                       <p className="text-sm text-gray-700 flex items-center gap-1"><CalendarDays size={11} className="text-gray-400" />{formatDate(r.reviewDate)}</p>
@@ -870,14 +1019,16 @@ export default function ReviewsPage() {
                             <ExternalLink size={14} />
                           </a>
                         )}
-                        <button
-                          onClick={() => handleDeletePlatform(r.id)}
-                          disabled={deletingPlatformId === r.id}
-                          className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500"
-                          title="Delete review"
-                        >
-                          {deletingPlatformId === r.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                        </button>
+                        {!isViewer && (
+                          <button
+                            onClick={() => handleDeletePlatform(r.id)}
+                            disabled={deletingPlatformId === r.id}
+                            className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500"
+                            title="Delete review"
+                          >
+                            {deletingPlatformId === r.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

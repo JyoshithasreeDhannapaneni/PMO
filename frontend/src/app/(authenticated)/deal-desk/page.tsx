@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { useDealDeskDeals, useDealDeskStats, useDealDeskConfig, useTriggerDealDeskPoll, useImportSendGridHistory } from '@/hooks/useProjects';
 import { RefreshCw, FileText, CheckCircle, AlertCircle, DollarSign, ChevronDown, ChevronRight } from 'lucide-react';
 import { format } from 'date-fns';
+import { useAuth } from '@/context/AuthContext';
 
 const STATUS_COLORS: Record<string, string> = {
   Signed: 'bg-green-100 text-green-700',
@@ -68,6 +69,8 @@ interface Deal {
 }
 
 export default function DealDeskPage() {
+  const { user } = useAuth();
+  const isViewer = user?.role === 'VIEWER';
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [matchFilter, setMatchFilter] = useState('');
@@ -197,16 +200,18 @@ export default function DealDeskPage() {
               {testing ? 'Testing…' : 'Test connection'}
             </button>
           )}
-          <button
-            onClick={handleReparse}
-            disabled={reparsing}
-            className="flex items-center gap-2 px-3 py-2 border border-purple-300 text-purple-700 rounded-lg text-sm font-medium hover:bg-purple-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            title="Re-extract fields from already-imported documents without re-fetching emails"
-          >
-            <RefreshCw size={15} className={reparsing ? 'animate-spin' : ''} />
-            {reparsing ? 'Reparsing…' : 'Reparse docs'}
-          </button>
-          {isSendGridMode && (
+          {!isViewer && (
+            <button
+              onClick={handleReparse}
+              disabled={reparsing}
+              className="flex items-center gap-2 px-3 py-2 border border-purple-300 text-purple-700 rounded-lg text-sm font-medium hover:bg-purple-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              title="Re-extract fields from already-imported documents without re-fetching emails"
+            >
+              <RefreshCw size={15} className={reparsing ? 'animate-spin' : ''} />
+              {reparsing ? 'Reparsing…' : 'Reparse docs'}
+            </button>
+          )}
+          {isSendGridMode && !isViewer && (
             <div className="flex items-center gap-1">
               <select
                 value={importDays}
@@ -230,7 +235,7 @@ export default function DealDeskPage() {
               </button>
             </div>
           )}
-          {!isSendGridMode && (
+          {!isSendGridMode && !isViewer && (
             <button
               onClick={handlePoll}
               disabled={polling || !isConfigured}

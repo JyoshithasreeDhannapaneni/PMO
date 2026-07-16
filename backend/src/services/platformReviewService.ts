@@ -14,6 +14,12 @@ interface PlatformReviewInput {
   reviewUrl?: string;
   reviewDate?: string;
   segment?: 'SMB' | 'ENT';
+  mediaItems?: MediaItem[];
+}
+
+export interface MediaItem {
+  url: string;
+  type: 'image' | 'video';
 }
 
 interface PlatformReviewFilters {
@@ -41,6 +47,7 @@ function toReview(row: any) {
     reviewUrl: row.review_url,
     reviewDate: row.review_date,
     segment: row.segment || null,
+    media: (Array.isArray(row.media_items) ? row.media_items : []) as MediaItem[],
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -162,8 +169,9 @@ class PlatformReviewService {
     const result = await query(`
       INSERT INTO platform_reviews (
         platform, project_id, project_name, project_manager, account_manager,
-        reviewer_name, rating, review_text, review_url, review_date, segment
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_DATE), ?)
+        reviewer_name, rating, review_text, review_url, review_date, segment,
+        media_items
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_DATE), ?, ?)
       RETURNING id
     `, [
       input.platform,
@@ -177,6 +185,7 @@ class PlatformReviewService {
       input.reviewUrl || null,
       input.reviewDate || null,
       input.segment || null,
+      JSON.stringify(input.mediaItems || []),
     ]);
     return this.getById(result.rows[0].id);
   }
