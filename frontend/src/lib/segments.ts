@@ -1,13 +1,16 @@
 export type Segment = 'ENT' | 'SMB';
 
 export const SEGMENT_CONFIG: { label: Segment; managers: string[] }[] = [
-  { label: 'ENT', managers: ['Abhishek Sakala', 'Lakshmi Prasanna'] },
+  { label: 'ENT', managers: ['Abhishek Sakala', 'Lakshmi Prasanna', 'Pranavi'] },
   { label: 'SMB', managers: ['Ajay Singh', 'Abhishikth', 'Harika', 'Sravan', 'Raghu Yellani'] },
 ];
 
 export function segmentOfManager(name: string | null | undefined): Segment | null {
   if (!name) return null;
-  const found = SEGMENT_CONFIG.find((s) => s.managers.includes(name));
+  const normalized = name.trim().toLowerCase();
+  const found = SEGMENT_CONFIG.find((s) =>
+    s.managers.some((m) => m.toLowerCase() === normalized)
+  );
   return found ? found.label : null;
 }
 
