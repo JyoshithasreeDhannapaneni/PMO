@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { format, isThisWeek } from 'date-fns';
 import { StatusBadge } from '@/components/ui/StatusBadge';
+import { projectSegment, type Segment } from '@/lib/segments';
 
 function formatCurrency(n?: number | null) {
   if (!n) return '—';
@@ -44,6 +45,7 @@ export default function OverageProjectsPage() {
   const [search, setSearch] = useState('');
   const [managerSel, setManagerSel] = useState('');
   const [typeSel, setTypeSel] = useState('');
+  const [segmentTab, setSegmentTab] = useState<Segment | 'ALL'>('ALL');
   const [page, setPage] = useState(1);
   const PER_PAGE = 10;
 
@@ -169,8 +171,12 @@ export default function OverageProjectsPage() {
     });
   }, [projects, search, managerSel, typeSel]);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
-  const paged = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
+  const entCount = filtered.filter((p: any) => projectSegment(p) === 'ENT').length;
+  const smbCount = filtered.filter((p: any) => projectSegment(p) === 'SMB').length;
+  const segmentFiltered = segmentTab === 'ALL' ? filtered : filtered.filter((p: any) => projectSegment(p) === segmentTab);
+
+  const totalPages = Math.max(1, Math.ceil(segmentFiltered.length / PER_PAGE));
+  const paged = segmentFiltered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
 
   // Per-project cumulative overage = sum of all history entries for that project
   function projectCumulativeAmount(p: any): number {
@@ -326,6 +332,30 @@ export default function OverageProjectsPage() {
           </div>
         ) : (
           <>
+            <div className="flex items-end border-b border-gray-200 bg-gray-50 px-4 pt-3">
+              {([
+                { key: 'ALL' as const, label: 'All', count: filtered.length },
+                { key: 'ENT' as const, label: 'Enterprise', count: entCount },
+                { key: 'SMB' as const, label: 'SMB', count: smbCount },
+              ]).map(tab => (
+                <button
+                  key={tab.key}
+                  onClick={() => { setSegmentTab(tab.key); setPage(1); }}
+                  className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                    segmentTab === tab.key
+                      ? 'border-indigo-600 text-indigo-700 bg-white rounded-t-lg'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  {tab.label}
+                  <span className={`text-xs px-1.5 py-0.5 rounded-full font-semibold ${
+                    segmentTab === tab.key ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-200 text-gray-500'
+                  }`}>
+                    {tab.count}
+                  </span>
+                </button>
+              ))}
+            </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-blue-50/60">
@@ -477,7 +507,7 @@ export default function OverageProjectsPage() {
             {/* Pagination */}
             <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">
               <p className="text-xs text-gray-500">
-                Showing {(page - 1) * PER_PAGE + 1}–{Math.min(page * PER_PAGE, filtered.length)} of {filtered.length} entries
+                Showing {(page - 1) * PER_PAGE + 1}–{Math.min(page * PER_PAGE, segmentFiltered.length)} of {segmentFiltered.length} entries
               </p>
               <div className="flex items-center gap-1">
                 <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="p-1 rounded text-gray-500 disabled:opacity-40 hover:bg-gray-100">

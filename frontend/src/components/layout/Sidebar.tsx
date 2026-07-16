@@ -7,31 +7,30 @@ import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { useSettings } from '@/context/SettingsContext';
 import {
-  LayoutDashboard, FolderKanban, AlertTriangle, FileText,
-  Settings, Layers, BarChart2, ChevronDown,
-  ChevronRight, LogOut, DollarSign, Siren, Menu, PanelLeftClose, PanelLeftOpen, Archive,
-  FlaskConical, Building2, HeartHandshake, BookOpen, Briefcase, Bell,
-  LayoutGrid, Star,
+  LayoutDashboard, FolderKanban, ClipboardCheck, TrendingDown, Siren, Star,
+  BarChart2, ChevronDown, ChevronRight, LogOut, Menu, PanelLeftClose, PanelLeftOpen,
+  Archive, Building2, HeartHandshake, Briefcase, Users, Target, ServerCrash, Copy,
+  Receipt, BookMarked, Settings,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
 const allNavigation = [
-  { name: 'Dashboard',          href: '/',                       icon: LayoutDashboard, adminOnly: false },
-  { name: 'All Projects',        href: '/projects',               icon: FolderKanban,    adminOnly: false },
+  { name: 'Dashboard',            href: '/',                       icon: LayoutDashboard, adminOnly: false },
+  { name: 'All Projects',         href: '/projects',               icon: FolderKanban,    adminOnly: false },
   { name: 'Professional Services', href: '/professional-services', icon: Briefcase,       adminOnly: false },
-  { name: 'Migration Validation', href: '/migration-runbooks',     icon: BookOpen,        adminOnly: false },
-  { name: 'Overage Projects',   href: '/overage-projects',       icon: DollarSign,      adminOnly: false },
-  { name: 'Escalated Projects', href: '/escalation-projects',    icon: Siren,           adminOnly: false },
-  { name: 'Reviews',             href: '/reviews',                icon: Star,            adminOnly: false },
-  { name: 'Manager Dashboard',  href: '/manager-dashboard',      icon: LayoutGrid,               adminOnly: true },
-  { name: 'Pre-sales',          href: '/poc-projects',           icon: FlaskConical,    adminOnly: false },
-  { name: 'Account Manager View', href: '/account-manager',     icon: Building2,       adminOnly: false },
-  { name: 'Customer Success',   href: '/customer-success',       icon: HeartHandshake,  adminOnly: false },
-  { name: 'History Archive',    href: '/archive',                icon: Archive,         adminOnly: false },
-  { name: 'Server Notifications', href: '/server-alerts',         icon: Bell,            adminOnly: false },
-  { name: 'Templates',          href: '/templates',              icon: Layers,          adminOnly: false },
-  { name: 'Deal Desk',           href: '/deal-desk',              icon: Briefcase,       adminOnly: false },
-  { name: 'Case Studies',       href: '/case-studies',           icon: FileText,        adminOnly: false },
+  { name: 'Migration Validation', href: '/migration-runbooks',     icon: ClipboardCheck,  adminOnly: false },
+  { name: 'Overage Projects',     href: '/overage-projects',       icon: TrendingDown,    adminOnly: false },
+  { name: 'Escalated Projects',   href: '/escalation-projects',    icon: Siren,           adminOnly: false },
+  { name: 'Reviews',              href: '/reviews',                icon: Star,            adminOnly: false },
+  { name: 'Manager Dashboard',    href: '/manager-dashboard',      icon: Users,           adminOnly: true },
+  { name: 'Pre-sales',            href: '/poc-projects',           icon: Target,          adminOnly: false },
+  { name: 'Account Manager View', href: '/account-manager',        icon: Building2,       adminOnly: false },
+  { name: 'Customer Success',     href: '/customer-success',       icon: HeartHandshake,  adminOnly: false },
+  { name: 'History Archive',      href: '/archive',                icon: Archive,         adminOnly: false },
+  { name: 'Server Notifications', href: '/server-alerts',          icon: ServerCrash,     adminOnly: false },
+  { name: 'Templates',            href: '/templates',              icon: Copy,            adminOnly: false },
+  { name: 'Deal Desk',            href: '/deal-desk',              icon: Receipt,         adminOnly: false },
+  { name: 'Case Studies',         href: '/case-studies',           icon: BookMarked,      adminOnly: false },
   {
     name: 'Reports', href: '#', icon: BarChart2, adminOnly: false,
     children: [

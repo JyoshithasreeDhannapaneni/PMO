@@ -5,7 +5,6 @@ import { LogOut, Settings, ChevronDown } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useSettings } from '@/context/SettingsContext';
 import Link from 'next/link';
-import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import { NotificationCenter } from '@/components/notifications/NotificationCenter';
 
 export function Header() {
@@ -38,7 +37,6 @@ export function Header() {
 
       {/* Right actions */}
       <div className="flex items-center gap-2">
-        <ThemeToggle />
         <NotificationCenter />
 
         {/* User menu */}
