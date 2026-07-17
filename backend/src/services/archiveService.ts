@@ -155,10 +155,10 @@ class ArchiveService {
                 SUM(CASE WHEN status='CANCELLED' THEN 1 ELSE 0 END) as cancelled,
                 SUM(CASE WHEN status='CLOSED' THEN 1 ELSE 0 END) as closed,
                 SUM(CASE WHEN status='DECOMMISSIONED' THEN 1 ELSE 0 END) as decommissioned,
-                AVG(delay_days) as avgDelayDays,
-                SUM(actual_cost) as totalActualCost,
-                SUM(CASE WHEN status='COMPLETED' THEN COALESCE(estimated_cost, 0) ELSE 0 END) as completedBudget,
-                SUM(CASE WHEN status='COMPLETED' THEN COALESCE(actual_cost, 0) ELSE 0 END) as completedActualCost
+                AVG(delay_days) as "avgDelayDays",
+                SUM(actual_cost) as "totalActualCost",
+                SUM(CASE WHEN status='COMPLETED' THEN COALESCE(estimated_cost, 0) ELSE 0 END) as "completedBudget",
+                SUM(CASE WHEN status='COMPLETED' THEN COALESCE(actual_cost, 0) ELSE 0 END) as "completedActualCost"
          FROM projects
          WHERE ${ARCH_WHERE}`,
         []
