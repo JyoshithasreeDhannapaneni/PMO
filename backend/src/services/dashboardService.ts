@@ -459,7 +459,7 @@ class DashboardService {
     const result = await query(
       `SELECT id, name, customer_name, client_name, project_manager, account_manager, status, phase,
               planned_end, delay_days, delay_status, migration_types, is_overaged, overage_amount, overage_notes,
-              extended_start_date, extended_end_date
+              extended_start_date, extended_end_date, overage_sow_url, overage_sow_name, overage_sow_files
        FROM projects
        WHERE is_overaged = true AND status NOT IN ('COMPLETED','CANCELLED') AND archived_at IS NULL ${aw}
        ORDER BY planned_end ASC`,
@@ -484,6 +484,9 @@ class DashboardService {
       overageNotes: r.overage_notes ?? null,
       extendedStartDate: r.extended_start_date ?? null,
       extendedEndDate: r.extended_end_date ?? null,
+      overageSowUrl: r.overage_sow_url ?? null,
+      overageSowName: r.overage_sow_name ?? null,
+      overageSowFiles: Array.isArray(r.overage_sow_files) ? r.overage_sow_files : [],
       overageHistory: [] as any[],
     }));
     if (projects.length > 0) {
@@ -680,7 +683,26 @@ class DashboardService {
     try { await execute(`CREATE INDEX IF NOT EXISTS idx_overage_hist_project ON overage_history(project_id)`, []); } catch (_) {}
     try { await execute(`ALTER TABLE projects ADD COLUMN extended_start_date TIMESTAMP NULL`, []); } catch (_) { /* exists */ }
     try { await execute(`ALTER TABLE projects ADD COLUMN extended_end_date TIMESTAMP NULL`, []); } catch (_) { /* exists */ }
+    try { await execute(`ALTER TABLE projects ADD COLUMN overage_sow_url VARCHAR(500) NULL`, []); } catch (_) { /* exists */ }
+    try { await execute(`ALTER TABLE projects ADD COLUMN overage_sow_name VARCHAR(255) NULL`, []); } catch (_) { /* exists */ }
+    try { await execute(`ALTER TABLE projects ADD COLUMN overage_sow_files JSONB NULL`, []); } catch (_) { /* exists */ }
     this._overageHistoryReady = true;
+  }
+
+  // Appends newly uploaded SOW files to whatever's already on the project, so
+  // re-opening the Edit modal and uploading more doesn't wipe earlier ones.
+  async addOverageSowFiles(projectId: string, files: { url: string; name: string }[]) {
+    await this.ensureOverageHistoryTable();
+    const existing = await query(`SELECT overage_sow_files FROM projects WHERE id = $1`, [projectId]);
+    const current: { url: string; name: string }[] = Array.isArray(existing.rows[0]?.overage_sow_files)
+      ? existing.rows[0].overage_sow_files
+      : [];
+    const combined = [...current, ...files];
+    await execute(
+      `UPDATE projects SET overage_sow_files = $1 WHERE id = $2`,
+      [JSON.stringify(combined), projectId]
+    );
+    return combined;
   }
 
   // Syncs extended_end_date and extended_start_date on the project row.

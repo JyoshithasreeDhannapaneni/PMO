@@ -12,7 +12,7 @@ import { useAuth } from '@/context/AuthContext';
 import {
   Calendar, User, Building2, DollarSign, Settings,
   AlertTriangle, Users, FileText, Server, Database,
-  Layers, Siren, TrendingUp, Shield, GitPullRequest,
+  Layers, Siren, TrendingUp, Shield,
   Activity, History, Loader2, ExternalLink, CheckCircle,
   Clock, Circle, BarChart2, Package, ChevronRight,
   AlertCircle, RefreshCw, Eye, Edit, Pencil,
@@ -175,7 +175,6 @@ function TabLoader() {
 function OverviewTab({ project }: { project: Project }) {
   const [risks, setRisks] = useState<any[]>([]);
   const [team, setTeam] = useState<any[]>([]);
-  const [changeRequests, setChangeRequests] = useState<any[]>([]);
   const [latestReport, setLatestReport] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const { settings } = useSettings();
@@ -183,15 +182,13 @@ function OverviewTab({ project }: { project: Project }) {
   useEffect(() => {
     const load = async () => {
       setLoading(true);
-      const [r, t, cr, lr] = await Promise.all([
+      const [r, t, lr] = await Promise.all([
         apiFetch(`/api/risks/project/${project.id}`),
         apiFetch(`/api/team/project/${project.id}`),
-        apiFetch(`/api/change-requests/project/${project.id}`),
         apiFetch(`/api/reports/project/${project.id}/latest`),
       ]);
       setRisks(Array.isArray(r) ? r : []);
       setTeam(Array.isArray(t) ? t : []);
-      setChangeRequests(Array.isArray(cr) ? cr : []);
       setLatestReport(lr || null);
       setLoading(false);
     };
@@ -204,7 +201,6 @@ function OverviewTab({ project }: { project: Project }) {
     ? Math.round((project.actualCost / project.estimatedCost) * 100) : 0;
   const activeRisks = risks.filter(r => r.status !== 'CLOSED' && r.status !== 'RESOLVED');
   const riskLevel = activeRisks.length === 0 ? 'Low' : activeRisks.some(r => r.impact === 'HIGH' || r.impact === 'CRITICAL') ? 'High' : activeRisks.some(r => r.impact === 'MEDIUM') ? 'Medium' : 'Low';
-  const openCRs = changeRequests.filter(cr => cr.status === 'PENDING' || cr.status === 'UNDER_REVIEW');
   const phases = project.phases || [];
 
   const migrationTypesList: { code: string; name: string; icon: string; color: string }[] = (() => {
@@ -221,7 +217,7 @@ function OverviewTab({ project }: { project: Project }) {
   return (
     <div className="space-y-5">
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         {/* Project Health */}
         <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-col items-center gap-2 shadow-sm col-span-1">
           <span className="text-xs font-medium text-gray-500 uppercase tracking-wide w-full">Project Health</span>
@@ -240,13 +236,6 @@ function OverviewTab({ project }: { project: Project }) {
           <ProgressBar value={budgetPct} color={budgetPct > 100 ? '#ef4444' : '#22c55e'} />
           <div className="text-xs text-gray-400 mt-1">{budgetPct}% Used</div>
         </div>
-
-        {/* Change Requests */}
-        <KpiCard icon={GitPullRequest} label="Change Requests" color="blue"
-          extra={`Total: ${changeRequests.length}`}>
-          <span className="text-blue-600">{openCRs.length}</span>
-          <span className="text-sm font-normal text-gray-500 ml-1">Open</span>
-        </KpiCard>
 
         {/* Risks */}
         <KpiCard icon={AlertTriangle} label="Risks" color={riskLevel === 'High' ? 'red' : riskLevel === 'Medium' ? 'amber' : 'green'}
@@ -411,32 +400,8 @@ function OverviewTab({ project }: { project: Project }) {
         </div>
       </div>
 
-      {/* Bottom 4-card grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Change Requests Overview */}
-        <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
-          <SectionTitle>Change Requests Overview</SectionTitle>
-          <div className="flex items-center gap-4">
-            <div className="relative flex items-center justify-center w-20 h-20 shrink-0">
-              <CircleGauge value={changeRequests.length ? Math.round((openCRs.length / changeRequests.length) * 100) : 0} color="#3b82f6" size={80} />
-            </div>
-            <div className="space-y-1 text-xs">
-              {[
-                { label: 'Open', value: openCRs.length, color: 'text-blue-600' },
-                { label: 'Approved', value: changeRequests.filter(c => c.status === 'APPROVED').length, color: 'text-green-600' },
-                { label: 'Rejected', value: changeRequests.filter(c => c.status === 'REJECTED').length, color: 'text-red-600' },
-                { label: 'Implemented', value: changeRequests.filter(c => c.status === 'IMPLEMENTED').length, color: 'text-gray-600' },
-              ].map(({ label, value, color }) => (
-                <div key={label} className="flex justify-between gap-3">
-                  <span className="text-gray-500">{label}</span>
-                  <span className={`font-semibold ${color}`}>{value}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="mt-2 text-xs text-gray-400 text-center">Total: {changeRequests.length}</div>
-        </div>
-
+      {/* Bottom 3-card grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {/* Cost Summary */}
         <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
           <SectionTitle>Cost Summary (USD)</SectionTitle>
