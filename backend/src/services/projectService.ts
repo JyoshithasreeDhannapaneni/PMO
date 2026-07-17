@@ -84,6 +84,7 @@ export interface CreateProjectDTO {
   pocMigrationSpeed?: number | null;
   pocErrorRate?: number | null;
   customerContact?: string | null;
+  clientName?: string | null;
 }
 
 export interface UpdateProjectDTO extends Partial<CreateProjectDTO> {}
@@ -100,6 +101,7 @@ export interface ProjectFilters {
   migrationType?: string;
   projectType?: string;
   segment?: string;
+  clientName?: string;
 }
 
 export interface PaginationOptions {
@@ -157,6 +159,7 @@ function mapProjectRow(row: any) {
     id: row.id,
     name: row.name,
     customerName: row.customer_name,
+    clientName: row.client_name ?? null,
     projectManager: row.project_manager,
     accountManager: row.account_manager,
     planType: row.plan_type,
@@ -316,6 +319,10 @@ class ProjectService {
       conditions.push(`segment = $${params.length + 1}`);
       params.push(filters.segment);
     }
+    if (filters.clientName) {
+      conditions.push(`client_name ILIKE $${params.length + 1}`);
+      params.push(`%${filters.clientName}%`);
+    }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
     const sortColumn = sortBy === 'createdAt' ? 'created_at' : sortBy;
@@ -474,6 +481,9 @@ class ProjectService {
         ? data.segment.toUpperCase()
         : null;
       try { await execute(`UPDATE projects SET segment = $1 WHERE id = $2`, [safeSegment, projectId]); } catch {}
+    }
+    if (data.clientName !== undefined) {
+      try { await execute(`UPDATE projects SET client_name = $1 WHERE id = $2`, [data.clientName ?? null, projectId]); } catch {}
     }
 
     if (data.isAtRisk) {
@@ -663,6 +673,7 @@ class ProjectService {
 
     if (data.name !== undefined) { updates.push(`name = $${params.length + 1}`); params.push(data.name.toLowerCase()); }
     if (data.customerName !== undefined) { updates.push(`customer_name = $${params.length + 1}`); params.push(data.customerName); }
+    if (data.clientName !== undefined) { updates.push(`client_name = $${params.length + 1}`); params.push(data.clientName ?? null); }
     if (data.projectManager !== undefined) { updates.push(`project_manager = $${params.length + 1}`); params.push(data.projectManager); }
     if (data.accountManager !== undefined) { updates.push(`account_manager = $${params.length + 1}`); params.push(normalizeAccountManager(data.accountManager) ?? data.accountManager); }
     if (data.planType !== undefined) {
@@ -874,11 +885,48 @@ class ProjectService {
 
   async getProjectsWithoutCaseStudy() {
     const result = await query(
-      `SELECT p.* FROM projects p 
-       LEFT JOIN case_studies cs ON p.id = cs.project_id 
+      `SELECT p.* FROM projects p
+       LEFT JOIN case_studies cs ON p.id = cs.project_id
        WHERE p.status = 'COMPLETED' AND cs.id IS NULL`
     );
     return result.rows.map(mapProjectRow);
+  }
+
+  async getClientSummary(clientName: string) {
+    const result = await query(
+      `SELECT
+         COUNT(*) as total_projects,
+         SUM(CASE WHEN status='ACTIVE' THEN 1 ELSE 0 END) as active,
+         SUM(CASE WHEN status='ON_HOLD' THEN 1 ELSE 0 END) as on_hold,
+         SUM(CASE WHEN status='COMPLETED' THEN 1 ELSE 0 END) as completed,
+         SUM(CASE WHEN status='CANCELLED' THEN 1 ELSE 0 END) as cancelled,
+         SUM(CASE WHEN is_escalated=true THEN 1 ELSE 0 END) as escalated,
+         SUM(CASE WHEN is_overaged=true THEN 1 ELSE 0 END) as overaged,
+         SUM(estimated_cost) as total_budget,
+         SUM(actual_cost) as total_actual_cost,
+         MAX(delay_days) as max_delay_days,
+         STRING_AGG(DISTINCT project_manager, ', ' ORDER BY project_manager) as managers,
+         STRING_AGG(DISTINCT account_manager, ', ' ORDER BY account_manager) FILTER (WHERE account_manager IS NOT NULL) as account_managers
+       FROM projects
+       WHERE client_name ILIKE $1`,
+      [`%${clientName}%`]
+    );
+    const row = result.rows[0];
+    return {
+      clientName,
+      totalProjects: parseInt(row.total_projects || '0'),
+      active: parseInt(row.active || '0'),
+      onHold: parseInt(row.on_hold || '0'),
+      completed: parseInt(row.completed || '0'),
+      cancelled: parseInt(row.cancelled || '0'),
+      escalated: parseInt(row.escalated || '0'),
+      overaged: parseInt(row.overaged || '0'),
+      totalBudget: row.total_budget ? parseFloat(row.total_budget) : null,
+      totalActualCost: row.total_actual_cost ? parseFloat(row.total_actual_cost) : null,
+      maxDelayDays: parseInt(row.max_delay_days || '0'),
+      managers: row.managers || '',
+      accountManagers: row.account_managers || '',
+    };
   }
 }
 

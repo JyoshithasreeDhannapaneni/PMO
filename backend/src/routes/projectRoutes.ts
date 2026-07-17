@@ -10,6 +10,9 @@ router.get('/', projectController.getAll);
 // GET /api/projects/delayed - Get delayed projects
 router.get('/delayed', projectController.getDelayed);
 
+// GET /api/projects/client-summary - Get aggregated stats for a client
+router.get('/client-summary', projectController.getClientSummary);
+
 // GET /api/projects/:id - Get project by ID
 router.get('/:id', validate(projectIdSchema), projectController.getById);
 

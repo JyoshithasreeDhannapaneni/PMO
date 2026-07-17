@@ -60,7 +60,6 @@ export default function ProjectsPage() {
 
   const [searchInput, setSearchInput] = useState(filters.search);
   const [showFilters, setShowFilters] = useState(true);
-  const [showRefreshToast, setShowRefreshToast] = useState(false);
   const [segmentTab, setSegmentTab] = useState<Segment | 'ALL'>('ALL');
 
   // Update URL when filters change (preserve hideCompleted)
@@ -172,7 +171,7 @@ export default function ProjectsPage() {
     };
 
     const headers = [
-      'Project Name', 'Customer Name', 'Project Manager', 'Account Manager',
+      'Project Name', 'Client / Account', 'Customer Name', 'Project Manager', 'Account Manager',
       'Migration Types', 'Plan Type', 'Status', 'Phase',
       'CSAT Score', 'CSAT Health', 'Delay Happened',
       'Duration (Months)', 'Expected Project End', 'Extended End Date (Overage)',
@@ -189,6 +188,7 @@ export default function ProjectsPage() {
 
     const rows = segmentProjects.map((p: any) => [
       p.name ?? '',
+      p.clientName ?? '',
       p.customerName ?? '',
       p.projectManager ?? '',
       p.accountManager ?? '',
@@ -372,25 +372,11 @@ export default function ProjectsPage() {
     );
   };
 
-  const handleRefresh = async () => {
-    await refetch();
-    setShowRefreshToast(true);
-    setTimeout(() => setShowRefreshToast(false), 3000);
-  };
-
   return (
     // h-full fills the <main> content area; flex-col stacks sections vertically.
     // The table section gets flex-1 so it takes whatever space remains after
     // the header and filters, keeping all scrollbars inside the viewport.
     <div className="flex flex-col h-full gap-3 animate-fadeIn overflow-hidden">
-      {/* Refresh Toast */}
-      {showRefreshToast && (
-        <div className="fixed top-5 right-5 z-50 flex items-center gap-2 px-4 py-3 bg-green-600 text-white rounded-xl shadow-lg animate-fadeIn">
-          <CheckCircle size={16} />
-          <span className="text-sm font-medium">Data refreshed successfully</span>
-        </div>
-      )}
-
       {/* Page Header */}
       <div className="flex-shrink-0 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
@@ -405,15 +391,6 @@ export default function ProjectsPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleRefresh}
-            className="hidden sm:flex"
-          >
-            <RefreshCw size={16} className="mr-1" />
-            Refresh
-          </Button>
           <Button
             variant="outline"
             size="sm"

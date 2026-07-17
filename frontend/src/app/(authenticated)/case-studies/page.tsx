@@ -17,7 +17,6 @@ import {
   CheckCircle,
   Clock,
   AlertCircle,
-  RotateCcw,
   Download,
 } from 'lucide-react';
 
@@ -274,15 +273,6 @@ function CaseStudiesContent() {
           <p className="text-gray-500">Document and showcase successful project migrations</p>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={fetchData}
-            disabled={isLoading}
-            className="flex items-center gap-2 px-3 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50 transition-colors disabled:opacity-50"
-            title="Refresh"
-          >
-            <RotateCcw size={14} className={isLoading ? 'animate-spin' : ''} />
-            Refresh
-          </button>
           <button
             onClick={exportCSV}
             className="flex items-center gap-2 px-3 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50 transition-colors"

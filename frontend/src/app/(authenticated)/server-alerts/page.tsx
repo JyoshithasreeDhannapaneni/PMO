@@ -129,9 +129,6 @@ export default function ServerNotificationsPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => refetch()} className="flex items-center gap-1.5 px-3 py-2 text-sm border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 transition-colors">
-            <RefreshCw size={14} /> Refresh
-          </button>
           {isAdmin && (
             <button
               onClick={() => runNowMutation.mutate()}

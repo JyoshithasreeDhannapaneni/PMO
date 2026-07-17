@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { useDashboard, useWeeklyReport, useManagerStats, useProjectsByMigrationType, useOveragedProjects, useEscalatedProjects, useProjects } from '@/hooks/useProjects';
+import { useDashboard, useManagerStats, useProjectsByMigrationType, useOveragedProjects, useEscalatedProjects, useProjects } from '@/hooks/useProjects';
 import { useSettings } from '@/context/SettingsContext';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
@@ -11,7 +11,7 @@ import {
   Loader2, FolderKanban, PlayCircle, CheckCircle, PauseCircle,
   AlertTriangle, AlertCircle, Clock, Activity, FileText,
   RefreshCw, ChevronRight, Plus, User, Users, Calendar,
-  TrendingUp, X, Download, CalendarDays, UserCheck, MinusCircle, Filter,
+  TrendingUp, X, Download, CalendarDays, UserCheck, Filter,
 } from 'lucide-react';
 import { formatDistanceToNow, format } from 'date-fns';
 
@@ -75,9 +75,9 @@ function BarChart({ bars }: { bars: { label: string; value: number; color: strin
 }
 
 /* ── Escalate Control (inline priority picker + button) ─────────── */
-function EscalateControl({ projectId, isEscalated, defaultPriority, busy, onEscalate, onDeescalate }: {
+function EscalateControl({ projectId, isEscalated, defaultPriority, busy, onEscalate }: {
   projectId: string; isEscalated: boolean; defaultPriority: 'LOW' | 'MEDIUM' | 'HIGH';
-  busy: boolean; onEscalate: (p: 'LOW'|'MEDIUM'|'HIGH') => Promise<void>; onDeescalate: () => Promise<void>;
+  busy: boolean; onEscalate: (p: 'LOW'|'MEDIUM'|'HIGH') => Promise<void>;
 }) {
   const [priority, setPriority] = useState<'LOW'|'MEDIUM'|'HIGH'>(defaultPriority);
   if (isEscalated) return null; // already escalated rows handled differently
@@ -231,15 +231,10 @@ export default function DashboardPage() {
   const [viewMode, setViewMode] = useState<ViewMode>(isAdmin ? 'overall' : 'my');
   const pmFilter = viewMode === 'my' && user?.name ? `&projectManager=${encodeURIComponent(user.name)}` : '';
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [showWeeklyReport, setShowWeeklyReport] = useState(false);
-  const [weeklyTab, setWeeklyTab] = useState<'summary' | 'added' | 'closed' | 'changes'>('summary');
   const [selectedMigrationType, setSelectedMigrationType] = useState<string | null>(null);
   const [showOveragedPanel, setShowOveragedPanel] = useState(false);
   const [showEscalatedPanel, setShowEscalatedPanel] = useState(false);
   const [escalatingId, setEscalatingId] = useState<string | null>(null);
-  const [reportStartDate, setReportStartDate] = useState('');
-  const [reportEndDate, setReportEndDate] = useState('');
-  const [showDownloadMenu, setShowDownloadMenu] = useState(false);
   const { showToast } = useToast();
 
   // MANAGER 'my': filter to their own projects
@@ -247,11 +242,6 @@ export default function DashboardPage() {
   // ADMIN 'my': filter to their own; ADMIN 'overall': no filter
   const managerFilter = viewMode === 'my' ? (user?.name ?? '') : undefined;
   const { data, isLoading, error, refetch } = useDashboard(managerFilter);
-  const { data: weeklyData, isLoading: weeklyLoading, error: weeklyError } = useWeeklyReport(
-    managerFilter,
-    reportStartDate || undefined,
-    reportEndDate || undefined,
-  );
   const { data: managerData } = useManagerStats(managerFilter);
   const { data: overagedData, refetch: refetchOveraged } = useOveragedProjects(managerFilter);
   const { data: escalatedData, refetch: refetchEscalated } = useEscalatedProjects(managerFilter);
@@ -308,19 +298,21 @@ export default function DashboardPage() {
     });
   }, [allProjectsList, settings.migrationTypes]);
 
+  const portfolioStats = useMemo(() => {
+    const active    = allProjectsList.filter((p: any) => p.status === 'ACTIVE').length;
+    const completed = allProjectsList.filter((p: any) => p.status === 'COMPLETED').length;
+    const onHold    = allProjectsList.filter((p: any) => p.status === 'ON_HOLD').length;
+    const delayed   = allProjectsList.filter((p: any) => p.delayStatus === 'DELAYED').length;
+    const atRisk    = allProjectsList.filter((p: any) => p.delayStatus === 'AT_RISK').length;
+    return { active, completed, onHold, delayed, atRisk };
+  }, [allProjectsList]);
+
   const handleRefresh = async () => {
     setIsRefreshing(true);
     await Promise.all([refetch(), refetchOveraged(), refetchEscalated()]);
     setTimeout(() => setIsRefreshing(false), 600);
   };
 
-  // Check URL params for auto-open
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      if (params.get('report') === 'weekly') setShowWeeklyReport(true);
-    }
-  }, []);
 
   if (isLoading) return (
     <div className="flex items-center justify-center h-96">
@@ -382,10 +374,6 @@ export default function DashboardPage() {
           <button onClick={handleRefresh} className={`p-2 rounded-lg bg-white border border-blue-200 hover:bg-blue-50 transition-all ${isRefreshing ? 'animate-spin' : ''}`}>
             <RefreshCw size={15} className="text-slate-500" />
           </button>
-          <button onClick={() => { setShowWeeklyReport(true); setWeeklyTab('summary'); }}
-            className="flex items-center gap-1.5 px-3 py-2 bg-white border border-blue-200 text-slate-700 rounded-lg text-xs font-medium hover:bg-blue-50 transition-colors">
-            <FileText size={14} className="text-primary-600" /> Weekly Report
-          </button>
           {!isViewer && (
             <Link href="/projects/new" className="flex items-center gap-1.5 px-3 py-2 bg-primary-600 text-white rounded-lg text-xs font-medium hover:bg-primary-700 transition-colors">
               <Plus size={14} /> New Project
@@ -416,7 +404,7 @@ export default function DashboardPage() {
       ) : null}
 
       {/* ── KPI Row ────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Link href={`/projects?hideCompleted=true${pmFilter}`} className="col-span-2 lg:col-span-1 block group">
           <Card className="h-full transition-transform group-hover:scale-[1.02] group-hover:shadow-lg">
             <div className="flex items-center justify-between">
@@ -496,34 +484,10 @@ export default function DashboardPage() {
             </div>
           </Card>
         </Link>
-        <Link href="/overage-projects" className="block group">
-          <Card className="h-full transition-transform group-hover:scale-[1.02] group-hover:shadow-lg border-orange-200">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-orange-600 text-sm font-medium">Overages</p>
-                <p className="text-3xl font-bold text-orange-700 mt-1">{stats.overagedCount ?? overagedProjects.length}</p>
-                <p className="text-xs text-orange-500 mt-1">Total overaged</p>
-              </div>
-              <div className="w-11 h-11 rounded-xl bg-orange-50 flex items-center justify-center">
-                <Clock size={20} className="text-orange-600" />
-              </div>
-            </div>
-          </Card>
-        </Link>
       </div>
 
       {/* ── Quick Stats ─────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        <Link href="/projects?sortBy=createdAt&sortOrder=desc" className="block group">
-          <Card className="text-center py-3 h-full transition-transform group-hover:scale-[1.02] group-hover:shadow-lg">
-            <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center mx-auto mb-2">
-              <Plus size={18} className="text-purple-600" />
-            </div>
-            <p className="text-2xl font-bold text-gray-900">{migrationTypeStats?.totals?.newProjects ?? 0}</p>
-            <p className="text-xs text-gray-500 mt-0.5">New (30d)</p>
-          </Card>
-        </Link>
-
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <button type="button" onClick={() => setShowOveragedPanel(true)}
           className="block w-full text-left group focus:outline-none">
           <Card className="text-center py-3 h-full group-hover:shadow-lg group-hover:border-orange-300 transition-all">
@@ -662,7 +626,6 @@ export default function DashboardPage() {
                               setEscalatingId(null);
                               await Promise.all([refetchOveraged(), refetchEscalated()]);
                             }}
-                            onDeescalate={async () => {}}
                           />
                         </td>
                         <td className="text-center py-3 px-3">
@@ -864,71 +827,6 @@ export default function DashboardPage() {
         </div>
       </Card>
 
-      {/* ── Recent Projects (live, sorted by last updated) ─────────────── */}
-      <Card>
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="text-base font-semibold text-gray-900">Recent Projects</h2>
-            <p className="text-xs text-gray-400 mt-0.5">Most recently updated — live data</p>
-          </div>
-          <Link href="/projects" className="text-primary-600 hover:text-primary-700 text-sm font-medium flex items-center gap-1">View All <ChevronRight size={14} /></Link>
-        </div>
-        <div className="overflow-x-auto rounded-xl border border-blue-100">
-          <table className="w-full text-sm">
-            <thead className="bg-blue-50/60">
-              <tr>
-                {['Project Name', 'Customer', 'Manager', 'Migration Type', 'Phase', 'Status', 'Delay'].map((h) => (
-                  <th key={h} className={`py-2.5 px-3 font-medium text-gray-500 text-xs ${h === 'Project Name' ? 'text-left' : 'text-center'}`}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {[...allProjectsList]
-                .sort((a: any, b: any) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
-                .slice(0, 10)
-                .map((p: any) => (
-                  <tr key={p.id} className="border-t border-blue-50 hover:bg-blue-50/50 cursor-pointer"
-                    onClick={() => { window.location.href = `/projects/${p.id}`; }}>
-                    <td className="py-2.5 px-3">
-                      <p className="font-medium text-gray-900 max-w-[180px] truncate">{p.name}</p>
-                    </td>
-                    <td className="text-center py-2.5 px-3 text-xs text-gray-500">
-                      <span className="truncate block max-w-[100px] mx-auto">{p.customerName || '—'}</span>
-                    </td>
-                    <td className="text-center py-2.5 px-3 text-xs text-gray-600">{p.projectManager || '—'}</td>
-                    <td className="text-center py-2.5 px-3 text-xs text-gray-500">
-                      {p.migrationTypes ? p.migrationTypes.split(',')[0].trim() : '—'}
-                    </td>
-                    <td className="text-center py-2.5 px-3 text-xs text-gray-500">{p.phase?.replace(/_/g, ' ') || '—'}</td>
-                    <td className="text-center py-2.5 px-3">
-                      <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${
-                        p.status === 'ACTIVE'    ? 'bg-green-100 text-green-700' :
-                        p.status === 'COMPLETED' ? 'bg-blue-100 text-blue-700' :
-                        p.status === 'ON_HOLD'   ? 'bg-yellow-100 text-yellow-700' :
-                        'bg-red-100 text-red-700'
-                      }`}>{p.status}</span>
-                    </td>
-                    <td className="text-center py-2.5 px-3">
-                      {p.delayDays > 0
-                        ? <span className="text-xs font-semibold text-red-600">+{p.delayDays}d</span>
-                        : <span className="text-xs text-green-600">On Track</span>
-                      }
-                    </td>
-                  </tr>
-                ))}
-              {allProjectsList.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="py-12 text-center text-gray-400">
-                    <FolderKanban size={32} className="mx-auto mb-2 opacity-30" />
-                    <p className="text-sm">No projects found</p>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </Card>
-
       {/* ── Two-col: Portfolio Health + Delayed Projects ───────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
 
@@ -940,19 +838,19 @@ export default function DashboardPage() {
               <Link href="/projects" className="text-xs text-primary-600 hover:text-primary-700 font-medium flex items-center gap-0.5">View Details <ChevronRight size={12} /></Link>
             </div>
             <DonutChart segments={[
-              { label: 'On Track',  value: Math.max(0, stats.activeProjects - stats.delayedProjects - stats.atRiskProjects), color: '#22c55e' },
-              { label: 'At Risk',   value: stats.atRiskProjects,   color: '#f97316' },
-              { label: 'Delayed',   value: stats.delayedProjects,  color: '#ef4444' },
-              { label: 'On Hold',   value: stats.onHoldProjects,   color: '#eab308' },
-              { label: 'Completed', value: stats.completedProjects, color: '#3b82f6' },
+              { label: 'On Track',  value: Math.max(0, portfolioStats.active - portfolioStats.delayed - portfolioStats.atRisk), color: '#22c55e' },
+              { label: 'At Risk',   value: portfolioStats.atRisk,    color: '#f97316' },
+              { label: 'Delayed',   value: portfolioStats.delayed,   color: '#ef4444' },
+              { label: 'On Hold',   value: portfolioStats.onHold,    color: '#eab308' },
+              { label: 'Completed', value: portfolioStats.completed, color: '#3b82f6' },
             ].filter((s) => s.value > 0)} />
             <div className="mt-4 space-y-2 border-t border-blue-50 pt-3">
               {(() => {
-                const grandTotal = stats.activeProjects + stats.completedProjects + stats.onHoldProjects;
+                const grandTotal = portfolioStats.active + portfolioStats.completed + portfolioStats.onHold;
                 return [
-                  { label: 'Active',    value: stats.activeProjects,    sub: `${stats.delayedProjects} delayed · ${stats.atRiskProjects} at risk`, iconColor: 'text-green-600', barColor: 'bg-green-500', icon: PlayCircle },
-                  { label: 'Completed', value: stats.completedProjects, sub: null, iconColor: 'text-blue-600',  barColor: 'bg-blue-500',  icon: CheckCircle },
-                  { label: 'On Hold',   value: stats.onHoldProjects,    sub: null, iconColor: 'text-yellow-600', barColor: 'bg-yellow-500', icon: PauseCircle },
+                  { label: 'Active',    value: portfolioStats.active,    sub: `${portfolioStats.delayed} delayed · ${portfolioStats.atRisk} at risk`, iconColor: 'text-green-600', barColor: 'bg-green-500', icon: PlayCircle },
+                  { label: 'Completed', value: portfolioStats.completed, sub: null, iconColor: 'text-blue-600',  barColor: 'bg-blue-500',  icon: CheckCircle },
+                  { label: 'On Hold',   value: portfolioStats.onHold,    sub: null, iconColor: 'text-yellow-600', barColor: 'bg-yellow-500', icon: PauseCircle },
                 ].map((item) => (
                   <div key={item.label} className="flex items-center gap-2">
                     <div className="flex items-center gap-1.5 w-24 flex-shrink-0">
@@ -1106,310 +1004,6 @@ export default function DashboardPage() {
 
         </div>
       </div>
-
-      {/* ── Weekly Report Modal ────────────────────────────────────── */}
-      {showWeeklyReport && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setShowWeeklyReport(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between p-5 border-b border-blue-100">
-              <div>
-                <h2 className="text-lg font-bold text-gray-900">Weekly Report</h2>
-                <p className="text-xs text-gray-500 flex items-center gap-1 mt-0.5">
-                  <CalendarDays size={11} />
-                  {weeklyData?.data ? `${format(new Date(weeklyData.data.weekRange.start), 'MMM d, yyyy')} – ${format(new Date(weeklyData.data.weekRange.end), 'MMM d, yyyy')}` : 'Last 7 days'}
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="flex items-center gap-1.5 bg-gray-50 border border-blue-100 rounded-lg px-2 py-1">
-                  <Calendar size={12} className="text-gray-400 flex-shrink-0" />
-                  <input
-                    type="date"
-                    value={reportStartDate}
-                    onChange={(e) => setReportStartDate(e.target.value)}
-                    className="text-xs bg-transparent text-gray-700 outline-none w-28"
-                    title="Start date"
-                  />
-                  <span className="text-gray-300 text-xs">–</span>
-                  <input
-                    type="date"
-                    value={reportEndDate}
-                    onChange={(e) => setReportEndDate(e.target.value)}
-                    className="text-xs bg-transparent text-gray-700 outline-none w-28"
-                    title="End date"
-                  />
-                  {(reportStartDate || reportEndDate) && (
-                    <button onClick={() => { setReportStartDate(''); setReportEndDate(''); }} className="text-gray-400 hover:text-gray-600 ml-1" title="Reset to last 7 days">
-                      <X size={11} />
-                    </button>
-                  )}
-                </div>
-                <button onClick={() => setShowWeeklyReport(false)} className="p-2 rounded-lg hover:bg-blue-50 transition-colors"><X size={17} className="text-gray-500" /></button>
-              </div>
-            </div>
-
-            {weeklyLoading && (
-              <div className="flex-1 flex items-center justify-center py-20">
-                <Loader2 className="w-8 h-8 animate-spin text-primary-600" />
-              </div>
-            )}
-            {!weeklyLoading && (weeklyError || !weeklyData?.data) && (
-              <div className="flex-1 flex items-center justify-center py-16 text-center px-6">
-                <div>
-                  <AlertCircle className="w-10 h-10 text-red-400 mx-auto" />
-                  <p className="mt-3 text-sm font-medium text-gray-700">Could not load weekly report</p>
-                  <p className="mt-1 text-xs text-gray-400">Make sure the backend is running and <code className="bg-blue-50 px-1 rounded">/api/dashboard/weekly-report</code> is available.</p>
-                </div>
-              </div>
-            )}
-            {!weeklyLoading && weeklyData?.data && (() => {
-              const wr = weeklyData.data;
-              return (
-                <>
-                  <div className="flex border-b border-blue-100 px-5 gap-1 overflow-x-auto">
-                    {[
-                      { id: 'summary', label: 'Summary' },
-                      { id: 'added', label: `Newly Added (${wr.summary.newlyAdded})` },
-                      { id: 'closed', label: `Closed / Decommissioned (${wr.summary.closedDecommissioned})` },
-                      { id: 'changes', label: `Changes by Managers (${wr.summary.changesByManagers})` },
-                    ].map((tab) => (
-                      <button key={tab.id} onClick={() => setWeeklyTab(tab.id as any)}
-                        className={`px-3 py-2.5 text-xs font-medium border-b-2 transition-colors whitespace-nowrap flex-shrink-0 ${weeklyTab === tab.id ? 'border-primary-600 text-primary-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
-                        {tab.label}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="flex-1 overflow-y-auto p-5">
-                    {weeklyTab === 'summary' && (
-                      <div className="space-y-5">
-                        <div className="grid grid-cols-3 gap-3">
-                          {[
-                            { label: 'Newly Added', value: wr.summary.newlyAdded, vs: wr.summary.newlyAddedVsLastWeek, color: 'text-green-600', bg: 'bg-green-50', border: 'border-green-200', icon: Plus },
-                            { label: 'Closed / Decommissioned', value: wr.summary.closedDecommissioned, vs: wr.summary.closedVsLastWeek, color: 'text-red-500', bg: 'bg-red-50', border: 'border-red-200', icon: MinusCircle },
-                            { label: 'Changes by Managers', value: wr.summary.changesByManagers, vs: wr.summary.changesVsLastWeek, color: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-200', icon: UserCheck },
-                          ].map((item) => (
-                            <div key={item.label} className={`p-4 rounded-xl border ${item.border} ${item.bg}`}>
-                              <div className="flex items-center justify-between mb-2">
-                                <span className="text-xs text-gray-600 font-medium">{item.label}</span>
-                                <item.icon size={14} className={item.color} />
-                              </div>
-                              <p className={`text-3xl font-bold ${item.color}`}>{item.value}</p>
-                              <p className="text-xs text-gray-500 mt-1">{item.vs >= 0 ? `+${item.vs}` : item.vs} vs last week</p>
-                            </div>
-                          ))}
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="p-4 rounded-xl border border-blue-100">
-                            <h4 className="text-sm font-semibold text-gray-900 mb-3">Details Overview</h4>
-                            <div className="space-y-2.5">
-                              {[
-                                { icon: FolderKanban, label: 'Total Projects Impacted', value: wr.summary.totalProjectsImpacted },
-                                { icon: Users, label: 'Managers Involved', value: wr.summary.managersInvolved },
-                                { icon: Activity, label: 'Applications Modified', value: wr.summary.applicationsModified },
-                              ].map((item) => (
-                                <div key={item.label} className="flex items-center justify-between">
-                                  <div className="flex items-center gap-2 text-xs text-gray-600"><item.icon size={13} className="text-gray-400" />{item.label}</div>
-                                  <span className="text-sm font-semibold text-gray-900">{item.value}</span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                          <div className="p-4 rounded-xl border border-blue-100">
-                            <h4 className="text-sm font-semibold text-gray-900 mb-3">Change Types</h4>
-                            {(wr.changeTypes && wr.changeTypes.length > 0) ? (
-                              <div className="space-y-2">
-                                {wr.changeTypes.map((ct: any, i: number) => {
-                                  const colors = ['bg-blue-500', 'bg-green-500', 'bg-orange-500', 'bg-purple-500'];
-                                  const total = wr.changeTypes.reduce((s: number, c: any) => s + c.count, 0);
-                                  return (
-                                    <div key={ct.label} className="flex items-center gap-2">
-                                      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${colors[i % colors.length]}`} />
-                                      <span className="text-xs text-gray-600 flex-1">{ct.label}</span>
-                                      <span className="text-xs font-semibold">{ct.count}</span>
-                                      <div className="w-14 bg-blue-100 rounded-full h-1.5">
-                                        <div className={`${colors[i % colors.length]} h-1.5 rounded-full`} style={{ width: `${total > 0 ? (ct.count / total) * 100 : 0}%` }} />
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            ) : <p className="text-xs text-gray-400 text-center py-4">No changes this week</p>}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                    {weeklyTab === 'added' && (
-                      <div className="space-y-2">
-                        {wr.newlyAddedProjects.length > 0 ? wr.newlyAddedProjects.map((p: any) => (
-                          <Link key={p.id} href={`/projects/${p.id}`} onClick={() => setShowWeeklyReport(false)}
-                            className="flex items-center justify-between p-3 rounded-lg border border-gray-100 hover:border-green-300 hover:bg-green-50 transition-all">
-                            <div><p className="text-sm font-medium text-gray-900">{p.name}</p><p className="text-xs text-gray-500">{p.customerName} · {p.projectManager}</p></div>
-                            <span className="text-xs text-gray-400">{format(new Date(p.createdAt), 'MMM d')}</span>
-                          </Link>
-                        )) : <div className="text-center py-10 text-gray-400"><Plus size={30} className="mx-auto mb-2 opacity-30" /><p className="text-sm">No projects added this week</p></div>}
-                      </div>
-                    )}
-                    {weeklyTab === 'closed' && (
-                      <div className="space-y-2">
-                        {wr.closedProjects.length > 0 ? wr.closedProjects.map((p: any) => (
-                          <Link key={p.id} href={`/projects/${p.id}`} onClick={() => setShowWeeklyReport(false)}
-                            className="flex items-center justify-between p-3 rounded-lg border border-gray-100 hover:border-red-300 hover:bg-red-50 transition-all">
-                            <div><p className="text-sm font-medium text-gray-900">{p.name}</p><p className="text-xs text-gray-500">{p.customerName} · {p.projectManager}</p></div>
-                            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${p.status === 'COMPLETED' ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'}`}>{p.status === 'COMPLETED' ? 'Closed' : 'Decommissioned'}</span>
-                          </Link>
-                        )) : <div className="text-center py-10 text-gray-400"><CheckCircle size={30} className="mx-auto mb-2 opacity-30" /><p className="text-sm">No projects closed this week</p></div>}
-                      </div>
-                    )}
-                    {weeklyTab === 'changes' && (
-                      <div className="space-y-4">
-                        {wr.changesByManager.length > 0 && (
-                          <div className="p-4 rounded-xl border border-blue-100">
-                            <h4 className="text-sm font-semibold text-gray-900 mb-3">Changes by Manager</h4>
-                            <div className="space-y-2">
-                              {wr.changesByManager.map((cm: any) => (
-                                <div key={cm.manager} className="flex items-center gap-3">
-                                  <div className="w-7 h-7 rounded-full bg-primary-100 flex items-center justify-center text-xs font-bold text-primary-700 flex-shrink-0">{cm.manager.charAt(0).toUpperCase()}</div>
-                                  <span className="text-sm text-gray-700 flex-1">{cm.manager}</span>
-                                  <div className="flex items-center gap-2">
-                                    <div className="w-20 bg-blue-100 rounded-full h-1.5">
-                                      <div className="bg-primary-500 h-1.5 rounded-full" style={{ width: `${wr.summary.changesByManagers > 0 ? (cm.count / wr.summary.changesByManagers) * 100 : 0}%` }} />
-                                    </div>
-                                    <span className="text-xs font-semibold w-4 text-right">{cm.count}</span>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                        <div className="space-y-2">
-                          {wr.changedProjects.length > 0 ? wr.changedProjects.map((p: any) => (
-                            <Link key={p.id} href={`/projects/${p.id}`} onClick={() => setShowWeeklyReport(false)}
-                              className="flex items-center justify-between p-3 rounded-lg border border-gray-100 hover:border-blue-300 hover:bg-blue-50 transition-all">
-                              <div><p className="text-sm font-medium text-gray-900">{p.name}</p><p className="text-xs text-gray-500">{p.customerName} · {p.projectManager}</p></div>
-                              <span className="text-xs text-gray-400">{formatDistanceToNow(new Date(p.updatedAt), { addSuffix: true })}</span>
-                            </Link>
-                          )) : <div className="text-center py-10 text-gray-400"><Activity size={30} className="mx-auto mb-2 opacity-30" /><p className="text-sm">No manager changes this week</p></div>}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  <div className="p-4 border-t border-blue-100 flex justify-end">
-                    <div className="relative">
-                      <button
-                        onClick={() => setShowDownloadMenu((v) => !v)}
-                        className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors">
-                        <Download size={13} /> Download Report <ChevronRight size={12} className={`transition-transform ${showDownloadMenu ? 'rotate-90' : ''}`} />
-                      </button>
-                      {showDownloadMenu && (
-                        <div className="absolute bottom-full right-0 mb-1 w-44 bg-white rounded-xl shadow-lg border border-blue-100 overflow-hidden z-10">
-                          {[
-                            { label: 'Download PDF', fmt: 'pdf' },
-                            { label: 'Download Excel', fmt: 'excel' },
-                            { label: 'Download PPT', fmt: 'ppt' },
-                            { label: 'Download CSV', fmt: 'csv' },
-                          ].map(({ label, fmt }) => (
-                            <button key={fmt} onClick={async () => {
-                              setShowDownloadMenu(false);
-                              if (!weeklyData?.data) return;
-                              const wr = weeklyData.data;
-                              const dateRange = `${format(new Date(wr.weekRange.start), 'MMM d')} – ${format(new Date(wr.weekRange.end), 'MMM d, yyyy')}`;
-                              const rows = [
-                                ['Section', 'Project Name', 'Customer', 'Manager', 'Migration Type', 'Status', 'Date'],
-                                ...wr.newlyAddedProjects.map((p: any) => ['Newly Added', p.name, p.customerName || '', p.projectManager, p.migrationTypes || '', 'ACTIVE', p.createdAt?.split('T')[0] || '']),
-                                ...wr.closedProjects.map((p: any) => ['Closed/Decommissioned', p.name, p.customerName || '', p.projectManager, p.migrationTypes || '', p.status, p.updatedAt?.split('T')[0] || '']),
-                                ...wr.changedProjects.map((p: any) => ['Changed by Manager', p.name, p.customerName || '', p.projectManager, p.migrationTypes || '', 'ACTIVE', p.updatedAt?.split('T')[0] || '']),
-                              ];
-                              const filename = `weekly-report-${new Date().toISOString().split('T')[0]}`;
-
-                              if (fmt === 'csv') {
-                                const csv = rows.map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
-                                const blob = new Blob([csv], { type: 'text/csv' });
-                                const url = URL.createObjectURL(blob);
-                                const a = document.createElement('a'); a.href = url; a.download = `${filename}.csv`; a.click(); URL.revokeObjectURL(url);
-                                showToast('success', 'CSV downloaded!');
-                              } else if (fmt === 'excel') {
-                                const tableHtml = `<html><head><meta charset="UTF-8"><style>table{border-collapse:collapse}th,td{border:1px solid #ccc;padding:6px 10px;font-size:12px}th{background:#1e40af;color:white}</style></head><body><h2 style="font-family:Arial">Weekly Report — ${dateRange}</h2><table><thead><tr>${rows[0].map((h) => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.slice(1).map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table></body></html>`;
-                                const blob = new Blob([tableHtml], { type: 'application/vnd.ms-excel' });
-                                const url = URL.createObjectURL(blob);
-                                const a = document.createElement('a'); a.href = url; a.download = `${filename}.xls`; a.click(); URL.revokeObjectURL(url);
-                                showToast('success', 'Excel downloaded!');
-                              } else if (fmt === 'pdf') {
-                                const { jsPDF } = await import('jspdf');
-                                const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-                                doc.setFontSize(16); doc.setTextColor(30, 64, 175);
-                                doc.text('Weekly Report', 14, 15);
-                                doc.setFontSize(10); doc.setTextColor(100);
-                                doc.text(dateRange, 14, 22);
-                                doc.setFontSize(9); doc.setTextColor(50);
-                                const summary = [
-                                  `Newly Added: ${wr.summary.newlyAdded}   Closed/Decommissioned: ${wr.summary.closedDecommissioned}   Changes by Managers: ${wr.summary.changesByManagers}`,
-                                  `Total Projects Impacted: ${wr.summary.totalProjectsImpacted}   Managers Involved: ${wr.summary.managersInvolved}`,
-                                ];
-                                doc.text(summary, 14, 30);
-                                let y = 42;
-                                const colWidths = [40, 50, 30, 30, 30, 25, 28];
-                                const headers = rows[0];
-                                doc.setFillColor(30, 64, 175); doc.setTextColor(255);
-                                doc.rect(14, y, 263, 7, 'F');
-                                headers.forEach((h, i) => doc.text(h, 15 + colWidths.slice(0, i).reduce((a, b) => a + b, 0), y + 5));
-                                y += 9;
-                                doc.setTextColor(50); doc.setFontSize(8);
-                                rows.slice(1).forEach((row, ri) => {
-                                  if (y > 190) { doc.addPage(); y = 15; }
-                                  if (ri % 2 === 0) { doc.setFillColor(240, 245, 255); doc.rect(14, y - 1, 263, 7, 'F'); }
-                                  row.forEach((cell, i) => {
-                                    const x = 15 + colWidths.slice(0, i).reduce((a, b) => a + b, 0);
-                                    doc.text(String(cell).substring(0, 22), x, y + 4.5);
-                                  });
-                                  y += 7;
-                                });
-                                doc.save(`${filename}.pdf`);
-                                showToast('success', 'PDF downloaded!');
-                              } else if (fmt === 'ppt') {
-                                // Browser-native PPT: HTML presentation saved as .ppt (opens in PowerPoint)
-                                const makeSlide = (title: string, body: string) => `
-                                  <div style="page-break-after:always;width:960px;height:540px;background:#fff;padding:40px 56px;box-sizing:border-box;font-family:Arial,sans-serif;border:1px solid #e5e7eb;margin-bottom:20px">
-                                    <h2 style="color:#1e40af;font-size:26px;margin:0 0 20px">${title}</h2>
-                                    <div style="font-size:13px;color:#374151">${body}</div>
-                                  </div>`;
-                                const summaryBody = `
-                                  <table style="border-collapse:collapse;width:100%">
-                                    <tr style="background:#1e40af;color:#fff"><th style="padding:8px 12px;text-align:left">Metric</th><th style="padding:8px 12px;text-align:center">Count</th></tr>
-                                    ${[
-                                      ['Newly Added', wr.summary.newlyAdded],
-                                      ['Closed / Decommissioned', wr.summary.closedDecommissioned],
-                                      ['Changes by Managers', wr.summary.changesByManagers],
-                                      ['Total Projects Impacted', wr.summary.totalProjectsImpacted],
-                                      ['Managers Involved', wr.summary.managersInvolved],
-                                    ].map(([k, v], i) => `<tr style="background:${i % 2 === 0 ? '#f0f5ff' : '#fff'}"><td style="padding:7px 12px;border-bottom:1px solid #e5e7eb">${k}</td><td style="padding:7px 12px;text-align:center;font-weight:bold;border-bottom:1px solid #e5e7eb">${v}</td></tr>`).join('')}
-                                  </table>`;
-                                const detailsBody = rows.length > 1 ? `
-                                  <table style="border-collapse:collapse;width:100%;font-size:11px">
-                                    ${rows.map((row, ri) => `<tr style="background:${ri === 0 ? '#1e40af' : ri % 2 === 0 ? '#f0f5ff' : '#fff'}">${row.map(cell => `<td style="padding:5px 8px;border:1px solid #e5e7eb;color:${ri === 0 ? '#fff' : '#374151'};font-weight:${ri === 0 ? 'bold' : 'normal'}">${cell}</td>`).join('')}</tr>`).join('')}
-                                  </table>` : '<p style="color:#9ca3af">No project data</p>';
-                                const html = `<html><head><meta charset="UTF-8"><style>body{margin:20px;background:#f9fafb}@media print{body{margin:0}}</style></head><body>
-                                  ${makeSlide('Weekly Report — ' + dateRange, `<p style="font-size:16px;color:#6b7280">PMO Weekly Summary Report</p><p style="font-size:14px;margin-top:12px">Period: <strong>${dateRange}</strong></p>`)}
-                                  ${makeSlide('Summary', summaryBody)}
-                                  ${makeSlide('Project Details', detailsBody)}
-                                </body></html>`;
-                                const blob = new Blob([html], { type: 'application/vnd.ms-powerpoint' });
-                                const url = URL.createObjectURL(blob);
-                                const a = document.createElement('a'); a.href = url; a.download = `${filename}.ppt`; a.click(); URL.revokeObjectURL(url);
-                                showToast('success', 'PPT downloaded!', 'Open in PowerPoint or Google Slides');
-                              }
-                            }} className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50/50 flex items-center gap-2 transition-colors">
-                              <Download size={13} className="text-primary-600" /> {label}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </>
-              );
-            })()}
-          </div>
-        </div>
-      )}
 
       {/* ── Migration Type Modal ───────────────────────────────────── */}
       {selectedMigrationType && (

@@ -105,7 +105,7 @@ class ArchiveService {
     const total = parseInt(countResult.rows[0]?.total || '0');
 
     const dataResult = await query(
-      `SELECT id, name, customer_name, project_manager, account_manager, status, phase,
+      `SELECT id, name, customer_name, client_name, project_manager, account_manager, status, phase,
               planned_start, planned_end, actual_start, actual_end, migration_types,
               source_platform, target_platform, plan_type, description, notes,
               estimated_cost, actual_cost, delay_days, delay_status,
@@ -156,7 +156,9 @@ class ArchiveService {
                 SUM(CASE WHEN status='CLOSED' THEN 1 ELSE 0 END) as closed,
                 SUM(CASE WHEN status='DECOMMISSIONED' THEN 1 ELSE 0 END) as decommissioned,
                 AVG(delay_days) as avgDelayDays,
-                SUM(actual_cost) as totalActualCost
+                SUM(actual_cost) as totalActualCost,
+                SUM(CASE WHEN status='COMPLETED' THEN COALESCE(estimated_cost, 0) ELSE 0 END) as completedBudget,
+                SUM(CASE WHEN status='COMPLETED' THEN COALESCE(actual_cost, 0) ELSE 0 END) as completedActualCost
          FROM projects
          WHERE ${ARCH_WHERE}`,
         []
@@ -172,6 +174,8 @@ class ArchiveService {
         decommissioned: parseInt(totals.rows[0]?.decommissioned || '0'),
         avgDelayDays: parseFloat(totals.rows[0]?.avgDelayDays || '0').toFixed(1),
         totalActualCost: parseFloat(totals.rows[0]?.totalActualCost || '0'),
+        completedBudget: parseFloat(totals.rows[0]?.completedBudget || '0'),
+        completedActualCost: parseFloat(totals.rows[0]?.completedActualCost || '0'),
       },
       byStatus: byStatus.rows.map((r: any) => ({ status: r.status, count: parseInt(r.count) })),
       byMigration: byMigration.rows.map((r: any) => ({ type: r.migration_types, count: parseInt(r.count) })),
@@ -242,7 +246,7 @@ class ArchiveService {
 
   private mapRow(r: any) {
     return {
-      id: r.id, name: r.name, customerName: r.customer_name,
+      id: r.id, name: r.name, customerName: r.customer_name, clientName: r.client_name ?? null,
       projectManager: r.project_manager, accountManager: r.account_manager,
       status: r.status, phase: r.phase,
       plannedStart: r.planned_start, plannedEnd: r.planned_end,

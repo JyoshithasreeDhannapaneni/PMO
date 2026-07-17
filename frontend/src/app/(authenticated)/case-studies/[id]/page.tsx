@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -10,6 +11,7 @@ import {
   Table, Undo, Redo,
 } from 'lucide-react';
 import { exportToPDF, exportToWord } from '@/utils/exportCaseStudy';
+import { useExtractKbArticles, useBulkSaveKbArticles } from '@/hooks/useProjects';
 import { useCaseStudyTemplate } from '@/hooks/useCaseStudyTemplate';
 import { useAuth } from '@/context/AuthContext';
 
@@ -302,6 +304,24 @@ export default function CaseStudyEditorPage() {
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [saveError, setSaveError] = useState(false);
   const [now, setNow] = useState(() => new Date());
+  const [showKbModal, setShowKbModal] = useState(false);
+  const [kbDrafts, setKbDrafts] = useState<any[]>([]);
+  const [kbSaved, setKbSaved] = useState(false);
+  const extractKb = useExtractKbArticles();
+  const bulkSaveKb = useBulkSaveKbArticles();
+
+  const handleExtractKb = async () => {
+    setKbSaved(false);
+    const result = await extractKb.mutateAsync(caseStudyId);
+    const drafts = (result?.data || []).map((d: any, i: number) => ({ ...d, _key: i }));
+    setKbDrafts(drafts);
+    setShowKbModal(true);
+  };
+
+  const handleSaveKbArticles = async () => {
+    await bulkSaveKb.mutateAsync({ caseStudyId, articles: kbDrafts });
+    setKbSaved(true);
+  };
 
   useEffect(() => {
     if (!lastSaved) return;
@@ -514,6 +534,16 @@ export default function CaseStudyEditorPage() {
               {isExporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
               Word
             </button>
+            {(caseStudy.status === 'COMPLETED' || caseStudy.status === 'PUBLISHED') && (
+              <button
+                onClick={handleExtractKb}
+                disabled={extractKb.isPending}
+                className="flex items-center gap-1.5 px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 transition-colors disabled:opacity-50"
+              >
+                {extractKb.isPending ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                Extract KB Articles
+              </button>
+            )}
             {!isPublished && !isViewer && (
               <button
                 onClick={() => handleSave()}
@@ -723,6 +753,102 @@ export default function CaseStudyEditorPage() {
           )}
         </div>
       </div>
+
+      {/* KB Articles Extract Modal */}
+      {showKbModal && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/50" onClick={() => setShowKbModal(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-5 border-b border-gray-200">
+              <div>
+                <h2 className="text-base font-bold text-gray-900">KB Articles Preview</h2>
+                <p className="text-xs text-gray-500 mt-0.5">Review and edit each article before saving to the KB library</p>
+              </div>
+              <button onClick={() => setShowKbModal(false)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500">✕</button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-5 space-y-4">
+              {kbDrafts.length === 0 ? (
+                <div className="text-center py-12 text-gray-400">
+                  <p className="text-sm">No issues found in the Issues & Resolutions section.</p>
+                  <p className="text-xs mt-1">Add content to that section and try again.</p>
+                </div>
+              ) : kbDrafts.map((draft, i) => (
+                <div key={draft._key} className="border border-gray-200 rounded-xl overflow-hidden">
+                  <div className="bg-gray-50 px-4 py-2.5 flex items-center justify-between">
+                    <span className="text-xs font-semibold text-gray-600">Article {i + 1}</span>
+                    <button onClick={() => setKbDrafts((prev) => prev.filter((_, j) => j !== i))}
+                      className="text-xs text-red-500 hover:text-red-700">Remove</button>
+                  </div>
+                  <div className="p-4 space-y-3">
+                    <div>
+                      <label className="text-xs font-medium text-gray-600 block mb-1">Title</label>
+                      <input value={draft.title} onChange={(e) => setKbDrafts((prev) => prev.map((d, j) => j === i ? { ...d, title: e.target.value } : d))}
+                        className="w-full px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-xs font-medium text-red-600 block mb-1">Issue / Error</label>
+                        <textarea rows={3} value={draft.issue} onChange={(e) => setKbDrafts((prev) => prev.map((d, j) => j === i ? { ...d, issue: e.target.value } : d))}
+                          className="w-full px-3 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none" />
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-orange-600 block mb-1">Root Cause</label>
+                        <textarea rows={3} value={draft.rootCause} onChange={(e) => setKbDrafts((prev) => prev.map((d, j) => j === i ? { ...d, rootCause: e.target.value } : d))}
+                          className="w-full px-3 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none" />
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-green-600 block mb-1">Fix / Workaround</label>
+                        <textarea rows={3} value={draft.fix} onChange={(e) => setKbDrafts((prev) => prev.map((d, j) => j === i ? { ...d, fix: e.target.value } : d))}
+                          className="w-full px-3 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none" />
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-blue-600 block mb-1">Prevention</label>
+                        <textarea rows={3} value={draft.prevention} onChange={(e) => setKbDrafts((prev) => prev.map((d, j) => j === i ? { ...d, prevention: e.target.value } : d))}
+                          className="w-full px-3 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-gray-600 block mb-1">Category</label>
+                      <select value={draft.category} onChange={(e) => setKbDrafts((prev) => prev.map((d, j) => j === i ? { ...d, category: e.target.value } : d))}
+                        className="px-3 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                        {['General','Lessons','Performance','Security','Configuration','Data','Network'].map((c) => (
+                          <option key={c} value={c}>{c}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="p-4 border-t border-gray-200 flex items-center justify-between">
+              {kbSaved ? (
+                <span className="text-sm text-green-600">✓ {kbDrafts.length} article{kbDrafts.length !== 1 ? 's' : ''} saved to KB library</span>
+              ) : (
+                <span className="text-xs text-gray-500">{kbDrafts.length} article{kbDrafts.length !== 1 ? 's' : ''} ready to save</span>
+              )}
+              <div className="flex items-center gap-2">
+                <button onClick={() => setShowKbModal(false)} className="px-4 py-2 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">
+                  Close
+                </button>
+                {!kbSaved && kbDrafts.length > 0 && (
+                  <button onClick={handleSaveKbArticles} disabled={bulkSaveKb.isPending}
+                    className="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-1.5">
+                    {bulkSaveKb.isPending ? <Loader2 size={13} className="animate-spin" /> : null}
+                    Save to KB Library
+                  </button>
+                )}
+                {kbSaved && (
+                  <a href="/kb-articles" className="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 flex items-center gap-1.5">
+                    View KB Library →
+                  </a>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }

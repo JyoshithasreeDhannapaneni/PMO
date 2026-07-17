@@ -58,6 +58,7 @@ export const projectsApi = {
     projectManager?: string;
     accountManager?: string;
     excludeStatus?: string;
+    clientName?: string;
   }): Promise<PaginatedResponse<Project>> => {
     const { data } = await api.get('/projects', { params });
     return data;
@@ -85,6 +86,11 @@ export const projectsApi = {
 
   getDelayed: async (): Promise<ApiResponse<Project[]>> => {
     const { data } = await api.get('/projects/delayed');
+    return data;
+  },
+
+  getClientSummary: async (clientName: string): Promise<ApiResponse<any>> => {
+    const { data } = await api.get('/projects/client-summary', { params: { clientName } });
     return data;
   },
 };
@@ -214,6 +220,60 @@ export const caseStudiesApi = {
 
   update: async (id: string, updates: Partial<CaseStudy>): Promise<ApiResponse<CaseStudy>> => {
     const { data } = await api.put(`/case-studies/${id}`, updates);
+    return data;
+  },
+};
+
+// KB Articles API
+export interface KbArticle {
+  id: string;
+  caseStudyId: string;
+  projectId: string;
+  title: string;
+  issue: string | null;
+  rootCause: string | null;
+  fix: string | null;
+  prevention: string | null;
+  category: string;
+  customerName: string | null;
+  projectManager: string | null;
+  migrationTypes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface KbArticleDraft {
+  title: string;
+  issue: string;
+  rootCause: string;
+  fix: string;
+  prevention: string;
+  category: string;
+}
+
+export const kbArticlesApi = {
+  getAll: async (params?: { search?: string; category?: string; caseStudyId?: string }): Promise<ApiResponse<KbArticle[]>> => {
+    const { data } = await api.get('/kb-articles', { params });
+    return data;
+  },
+
+  extract: async (caseStudyId: string): Promise<ApiResponse<KbArticleDraft[]>> => {
+    const { data } = await api.post(`/kb-articles/extract/${caseStudyId}`);
+    return data;
+  },
+
+  bulkSave: async (caseStudyId: string, articles: KbArticleDraft[]): Promise<ApiResponse<KbArticle[]>> => {
+    const { data } = await api.post('/kb-articles/bulk', { caseStudyId, articles });
+    return data;
+  },
+
+  update: async (id: string, updates: Partial<KbArticleDraft>): Promise<ApiResponse<KbArticle>> => {
+    const { data } = await api.put(`/kb-articles/${id}`, updates);
+    return data;
+  },
+
+  delete: async (id: string): Promise<ApiResponse<null>> => {
+    const { data } = await api.delete(`/kb-articles/${id}`);
     return data;
   },
 };

@@ -132,8 +132,8 @@ class DashboardService {
          FROM projects ${w} GROUP BY delay_status`, p
       ),
       query(
-        `SELECT id, name, customer_name, delay_days, delay_status
-         FROM projects WHERE delay_status = 'DELAYED' ${aw}
+        `SELECT id, name, customer_name, delay_days, delay_status, project_manager
+         FROM projects WHERE delay_status = 'DELAYED' AND status NOT IN ('COMPLETED', 'INACTIVE', 'CANCELLED') ${aw}
          ORDER BY delay_days DESC LIMIT 5`, ap
       ),
     ]);
@@ -150,6 +150,7 @@ class DashboardService {
         customerName: r.customer_name,
         delayDays: r.delay_days,
         delayStatus: r.delay_status,
+        projectManager: r.project_manager,
       })),
     };
   }
@@ -456,7 +457,7 @@ class DashboardService {
     await this.ensureOverageHistoryTable();
     const { clause: aw, params: ap } = this.andManagerWhere(managerName);
     const result = await query(
-      `SELECT id, name, customer_name, project_manager, account_manager, status, phase,
+      `SELECT id, name, customer_name, client_name, project_manager, account_manager, status, phase,
               planned_end, delay_days, delay_status, migration_types, is_overaged, overage_amount, overage_notes,
               extended_start_date, extended_end_date
        FROM projects
@@ -469,6 +470,7 @@ class DashboardService {
       id: r.id,
       name: r.name,
       customerName: r.customer_name,
+      clientName: r.client_name ?? null,
       projectManager: r.project_manager,
       accountManager: r.account_manager,
       status: r.status,
@@ -534,7 +536,7 @@ class DashboardService {
     await this.ensureEscalationHistoryTable();
     const { clause: aw, params: ap } = this.andManagerWhere(managerName);
     const result = await query(
-      `SELECT id, name, customer_name, project_manager, account_manager, status, phase,
+      `SELECT id, name, customer_name, client_name, project_manager, account_manager, status, phase,
               planned_end, delay_days, delay_status, migration_types,
               is_escalated, escalation_priority, escalated_at, escalation_notes, resolved_date
        FROM projects
@@ -549,6 +551,7 @@ class DashboardService {
       id: r.id,
       name: r.name,
       customerName: r.customer_name,
+      clientName: r.client_name ?? null,
       projectManager: r.project_manager,
       accountManager: r.account_manager,
       status: r.status,

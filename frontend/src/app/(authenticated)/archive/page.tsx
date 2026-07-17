@@ -9,7 +9,7 @@ import {
   Archive, Search, Download, ChevronLeft, ChevronRight,
   Eye, CheckCircle, XCircle, FileText, BarChart3, Calendar,
   RefreshCw, ChevronDown, History, RotateCw, Layers,
-  AlertTriangle, DollarSign, Package,
+  AlertTriangle, DollarSign,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { StatusBadge } from '@/components/ui/StatusBadge';
@@ -33,7 +33,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 const STATUS_ICONS: Record<string, any> = {
   COMPLETED: CheckCircle, CANCELLED: XCircle,
-  CLOSED: Archive, DECOMMISSIONED: Package,
+  CLOSED: Archive, DECOMMISSIONED: Archive,
 };
 
 function formatCurrency(n?: number | null) {
@@ -189,9 +189,6 @@ export default function ArchivePage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => refetch()} className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-            <RefreshCw size={14} /> Refresh
-          </button>
           {!isViewer && (
             <button onClick={downloadCSV} className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
               <Download size={14} /> Export CSV
@@ -202,7 +199,7 @@ export default function ArchivePage() {
 
       {/* Stats Cards */}
       {stats && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <Card className="col-span-1">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-primary-100 dark:bg-primary-900/40 flex items-center justify-center">
@@ -238,34 +235,13 @@ export default function ArchivePage() {
           </Card>
           <Card className="col-span-1">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center">
-                <Archive size={18} className="text-blue-600" />
-              </div>
-              <div>
-                <p className="text-xs text-gray-500 dark:text-gray-400">Closed</p>
-                <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.totals.closed}</p>
-              </div>
-            </div>
-          </Card>
-          <Card className="col-span-1">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
-                <Package size={18} className="text-gray-500" />
-              </div>
-              <div>
-                <p className="text-xs text-gray-500 dark:text-gray-400">Decommissioned</p>
-                <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.totals.decommissioned}</p>
-              </div>
-            </div>
-          </Card>
-          <Card className="col-span-1">
-            <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-orange-100 dark:bg-orange-900/40 flex items-center justify-center">
                 <DollarSign size={18} className="text-orange-600" />
               </div>
-              <div>
-                <p className="text-xs text-gray-500 dark:text-gray-400">Total Revenue</p>
-                <p className="text-lg font-bold text-gray-900 dark:text-white">{formatCurrency(stats.totals.totalActualCost)}</p>
+              <div className="min-w-0">
+                <p className="text-xs text-gray-500 dark:text-gray-400">Completed Budget</p>
+                <p className="text-lg font-bold text-gray-900 dark:text-white">{formatCurrency(stats.totals.completedBudget)}</p>
+                <p className="text-[11px] text-gray-400 mt-0.5">Actual: {formatCurrency(stats.totals.completedActualCost)}</p>
               </div>
             </div>
           </Card>
@@ -405,6 +381,9 @@ export default function ArchivePage() {
                           </td>
                           <td className="py-3 px-3 max-w-[200px]">
                             <div className="font-medium text-gray-900 dark:text-white truncate">{p.name}</div>
+                            {p.clientName && (
+                              <Link href={`/clients/${encodeURIComponent(p.clientName)}`} onClick={e => e.stopPropagation()} className="text-xs text-indigo-500 hover:underline truncate block">{p.clientName}</Link>
+                            )}
                             <div className="text-xs text-gray-400 truncate">{p.customerName}</div>
                           </td>
                           <td className="py-3 px-3 text-center text-xs text-gray-600 dark:text-gray-400">{p.projectManager || '—'}</td>

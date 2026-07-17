@@ -32,6 +32,7 @@ export interface Project {
   id: string;
   name: string;
   customerName: string;
+  clientName?: string | null;
   projectManager: string;
   accountManager: string;
   planType: PlanType;
@@ -279,6 +280,7 @@ export interface PaginatedResponse<T> {
 export interface CreateProjectInput {
   name: string;
   customerName: string;
+  clientName?: string | null;
   projectManager: string;
   accountManager: string;
   planType: PlanType;
