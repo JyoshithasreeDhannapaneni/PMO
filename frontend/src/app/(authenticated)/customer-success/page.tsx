@@ -140,15 +140,6 @@ function GrowthCard({
     grouped[d.category]!.push(d);
   }
 
-  // PMO signals (non-none, sorted by strength)
-  const pmoSignals = [
-    { label: 'CF Migrate',            signal: account.cfMigrate            },
-    { label: 'Professional Services', signal: account.professionalServices  },
-    { label: 'CF Manage',             signal: account.cfManage              },
-    { label: 'Managed Services',      signal: account.managedServices       },
-  ]
-    .filter(p => p.signal.level !== 'none')
-    .sort((a, b) => SIGNAL_SORT_ORDER[a.signal.level] - SIGNAL_SORT_ORDER[b.signal.level]);
 
   return (
     <Card className="overflow-hidden">
@@ -166,19 +157,13 @@ function GrowthCard({
             )}
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            {hasHubspot ? (
+            {hasHubspot && (
               <div className="text-right">
                 {(hubspot?.openValue ?? 0) > 0 && (
                   <p className="text-sm font-bold text-blue-600">{currencyFmt.format(hubspot!.openValue)}</p>
                 )}
                 <p className="text-[10px] text-gray-400">{openDeals.length} open deal{openDeals.length !== 1 ? 's' : ''}</p>
               </div>
-            ) : (
-              pmoSignals.length > 0 && (
-                <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${SIGNAL_CFG[pmoSignals[0].signal.level].badge}`}>
-                  {pmoSignals[0].label}
-                </span>
-              )
             )}
             {canEdit && (
               <button
@@ -249,27 +234,7 @@ function GrowthCard({
             )}
           </div>
         ) : (
-          /* FALLBACK: PMO signals when no HubSpot match */
-          pmoSignals.length > 0 ? (
-            <div className="space-y-2">
-              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">PMO Signals · No HubSpot match</p>
-              {pmoSignals.map(p => (
-                <ProductInterestRow key={p.label} label={p.label} signal={p.signal} />
-              ))}
-            </div>
-          ) : (
-            <p className="text-xs text-gray-400 italic text-center py-2">No active pipeline or signals</p>
-          )
-        )}
-
-        {/* CONTEXT: PMO signals below HubSpot data */}
-        {hasHubspot && pmoSignals.length > 0 && (
-          <div className="pt-2 border-t border-gray-100 space-y-1.5">
-            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">PMO Product Signals</p>
-            {pmoSignals.map(p => (
-              <ProductInterestRow key={p.label} label={p.label} signal={p.signal} />
-            ))}
-          </div>
+          <p className="text-xs text-gray-400 italic text-center py-2">No active pipeline</p>
         )}
 
         {/* AI Insights from HubSpot deal patterns */}
