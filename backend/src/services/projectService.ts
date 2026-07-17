@@ -269,10 +269,19 @@ class ProjectService {
     const conditions: string[] = ["archived_at IS NULL"];
     const params: any[] = [];
 
-    if (filters.status) {
-      conditions.push(`status = $${params.length + 1}`);
-      params.push(filters.status);
-    }
+    // Comma-separated values become an IN (...) clause — lets the All Projects
+    // filter dropdowns support multi-select while staying single-value-compatible
+    // for any existing single-value callers.
+    const addInClause = (column: string, value?: string) => {
+      if (!value) return;
+      const values = value.split(',').map((s) => s.trim()).filter(Boolean);
+      if (values.length === 0) return;
+      const placeholders = values.map((_, i) => `$${params.length + 1 + i}`).join(', ');
+      conditions.push(`${column} IN (${placeholders})`);
+      params.push(...values);
+    };
+
+    addInClause('status', filters.status);
     if (filters.excludeStatus) {
       const excluded = filters.excludeStatus.split(',').map((s: string) => s.trim()).filter(Boolean);
       if (excluded.length > 0) {
@@ -281,32 +290,17 @@ class ProjectService {
         params.push(...excluded);
       }
     }
-    if (filters.phase) {
-      conditions.push(`phase = $${params.length + 1}`);
-      params.push(filters.phase);
-    }
-    if (filters.planType) {
-      conditions.push(`plan_type = $${params.length + 1}`);
-      params.push(filters.planType);
-    }
-    if (filters.delayStatus) {
-      conditions.push(`delay_status = $${params.length + 1}`);
-      params.push(filters.delayStatus);
-    }
+    addInClause('phase', filters.phase);
+    addInClause('plan_type', filters.planType);
+    addInClause('delay_status', filters.delayStatus);
     if (filters.search) {
       conditions.push(
         `(name ILIKE $${params.length + 1} OR customer_name ILIKE $${params.length + 1} OR account_manager ILIKE $${params.length + 1} OR project_manager ILIKE $${params.length + 1} OR migration_types ILIKE $${params.length + 1})`
       );
       params.push(`%${filters.search}%`);
     }
-    if (filters.projectManager) {
-      conditions.push(`project_manager ILIKE $${params.length + 1}`);
-      params.push(`%${filters.projectManager}%`);
-    }
-    if (filters.accountManager) {
-      conditions.push(`account_manager ILIKE $${params.length + 1}`);
-      params.push(filters.accountManager);
-    }
+    addInClause('project_manager', filters.projectManager);
+    addInClause('account_manager', filters.accountManager);
     if (filters.migrationType) {
       conditions.push(`migration_types ILIKE $${params.length + 1}`);
       params.push(`%${filters.migrationType}%`);

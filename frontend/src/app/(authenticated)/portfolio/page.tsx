@@ -347,9 +347,10 @@ function ListView({ projects, phaseProgress }: { projects: Project[]; phaseProgr
 export default function PortfolioPage() {
   const { user } = useAuth();
   const { settings } = useSettings();
-  const isAdmin   = user?.role === 'ADMIN';
-  const isManager = user?.role === 'PROJECT_MANAGER';
-  const isViewer  = user?.role === 'VIEWER';
+  const isAdmin          = user?.role === 'ADMIN';
+  const isManager        = user?.role === 'PROJECT_MANAGER';
+  const isAccountManager = user?.role === 'ACCOUNT_MANAGER';
+  const isViewer         = user?.role === 'VIEWER';
   const phaseProgress = useMemo(
     () => buildPhaseProgress(settings.phases.map((p) => ({ code: p.code, order: p.order }))),
     [settings.phases]
@@ -363,10 +364,12 @@ export default function PortfolioPage() {
   const [dateRangeStart, setDateRangeStart] = useState('');
   const [dateRangeEnd, setDateRangeEnd] = useState('');
 
-  // MANAGER role: only their own projects; ADMIN/VIEWER: all projects
+  // PROJECT_MANAGER: only projects they run; ACCOUNT_MANAGER: only projects
+  // they own the customer relationship for; ADMIN/VIEWER: all projects
   const { data: projectsData, isLoading: loading } = useProjects({
     limit: 200,
     projectManager: isManager ? (user?.name ?? undefined) : undefined,
+    accountManager: isAccountManager ? (user?.name ?? undefined) : undefined,
   });
   const projects: Project[] = (projectsData?.data as any) || [];
 
@@ -445,9 +448,11 @@ export default function PortfolioPage() {
           <p className="text-sm text-gray-500">
             {isManager
               ? `Your project portfolio — ${user?.name}`
-              : isAdmin
-                ? selectedManager ? `Viewing: ${selectedManager}'s projects` : 'All project portfolios'
-                : 'Project portfolio — read only'}
+              : isAccountManager
+                ? `Your customer portfolio — ${user?.name}`
+                : isAdmin
+                  ? selectedManager ? `Viewing: ${selectedManager}'s projects` : 'All project portfolios'
+                  : 'Project portfolio — read only'}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -488,6 +493,14 @@ export default function PortfolioPage() {
         <div className="flex items-center gap-3 p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-700">
           <User size={14} className="flex-shrink-0" />
           <span><strong>Manager View</strong> — Showing your portfolio: projects assigned to <strong>{user?.name}</strong>.</span>
+        </div>
+      )}
+
+      {/* Account scope banner — for ACCOUNT_MANAGER role */}
+      {isAccountManager && (
+        <div className="flex items-center gap-3 p-3 bg-teal-50 border border-teal-200 rounded-xl text-xs text-teal-700">
+          <User size={14} className="flex-shrink-0" />
+          <span><strong>Account Manager View</strong> — Showing your portfolio: projects where you're the account manager for <strong>{user?.name}</strong>.</span>
         </div>
       )}
 

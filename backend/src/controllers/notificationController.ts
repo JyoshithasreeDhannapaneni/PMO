@@ -96,7 +96,7 @@ export const notificationController = {
         from: smtpSettings?.fromEmail || smtpSettings?.user || 'noreply@pmo.local',
         to,
         subject: subject || `[PMO] Test Email${notificationType ? ` — ${notificationType}` : ''}`,
-        text: body || 'This is a test email from PMO Tracker. Your SMTP configuration is working correctly.',
+        text: body || 'This is a test email from Neutara PMO Tracker. Your SMTP configuration is working correctly.',
       });
 
       res.json({ success: true, message: 'Test email sent successfully' });

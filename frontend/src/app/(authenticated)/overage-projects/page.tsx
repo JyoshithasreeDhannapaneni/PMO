@@ -4,6 +4,7 @@ import { useState, useMemo, Fragment } from 'react';
 import { useOveragedProjects, useMarkOverageProject, useUpdateOverageProject, useUnmarkOverageProject, useDeleteOverageHistoryEntry, useProjects } from '@/hooks/useProjects';
 import { useAuth } from '@/context/AuthContext';
 import { Card } from '@/components/ui/Card';
+import { MultiSelectDropdown } from '@/components/ui/MultiSelectDropdown';
 import Link from 'next/link';
 import {
   DollarSign, Clock, TrendingUp, Calendar, Search,
@@ -165,8 +166,15 @@ export default function OverageProjectsPage() {
     const q = search.toLowerCase();
     return projects.filter((p) => {
       if (q && !p.name?.toLowerCase().includes(q) && !p.customerName?.toLowerCase().includes(q) && !p.projectManager?.toLowerCase().includes(q)) return false;
-      if (managerSel && p.projectManager !== managerSel) return false;
-      if (typeSel && !(p.migrationTypes || '').toLowerCase().includes(typeSel.toLowerCase())) return false;
+      if (managerSel) {
+        const managers = managerSel.split(',').filter(Boolean);
+        if (managers.length > 0 && !managers.includes(p.projectManager)) return false;
+      }
+      if (typeSel) {
+        const types = typeSel.split(',').filter(Boolean);
+        const projectTypes = (p.migrationTypes || '').toLowerCase();
+        if (types.length > 0 && !types.some((t) => projectTypes.includes(t.toLowerCase()))) return false;
+      }
       return true;
     });
   }, [projects, search, managerSel, typeSel]);
@@ -290,22 +298,25 @@ export default function OverageProjectsPage() {
               className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-900"
             />
           </div>
-          <select
-            value={managerSel}
-            onChange={(e) => { setManagerSel(e.target.value); setPage(1); }}
-            className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-900"
-          >
-            <option value="">All Managers</option>
-            {managers.map((m) => <option key={m} value={m}>{m}</option>)}
-          </select>
-          <select
-            value={typeSel}
-            onChange={(e) => { setTypeSel(e.target.value); setPage(1); }}
-            className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-900"
-          >
-            <option value="">All Migration Types</option>
-            {types.map((t) => <option key={t} value={t}>{t}</option>)}
-          </select>
+          <div className="min-w-[180px]">
+            <MultiSelectDropdown
+              label=""
+              value={managerSel}
+              options={managers.map((m) => ({ value: m, label: m }))}
+              placeholder="All Managers"
+              searchable
+              onChange={(v) => { setManagerSel(v); setPage(1); }}
+            />
+          </div>
+          <div className="min-w-[180px]">
+            <MultiSelectDropdown
+              label=""
+              value={typeSel}
+              options={types.map((t) => ({ value: t, label: t }))}
+              placeholder="All Migration Types"
+              onChange={(v) => { setTypeSel(v); setPage(1); }}
+            />
+          </div>
           <button
             onClick={() => { setSearch(''); setManagerSel(''); setTypeSel(''); setPage(1); }}
             className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
