@@ -104,11 +104,11 @@ class SmtpSettingsService {
       await transporter.sendMail({
         from: `"CloudFuze PMO" <${settings.email}>`,
         to: recipientEmail,
-        subject: '✅ SMTP Test — CloudFuze PMO Tracker',
+        subject: '✅ SMTP Test — CloudFuze Neutara PMO Tracker',
         html: `
           <div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;padding:24px;background:#f8faff;border-radius:12px;border:1px solid #bfdbfe;">
             <h2 style="color:#2563eb;margin:0 0 16px 0;">SMTP Test Successful</h2>
-            <p>Your CloudFuze PMO Tracker email settings are working correctly.</p>
+            <p>Your CloudFuze Neutara PMO Tracker email settings are working correctly.</p>
             <table style="width:100%;font-size:13px;border-collapse:collapse;">
               <tr><td style="padding:6px;color:#64748b;">Host</td><td style="padding:6px;font-weight:600;">${settings.host}</td></tr>
               <tr><td style="padding:6px;color:#64748b;">Port</td><td style="padding:6px;font-weight:600;">${settings.port}</td></tr>

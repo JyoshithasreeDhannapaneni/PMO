@@ -7,8 +7,9 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { usePsEngagements, useCreatePsEngagement, useUpdatePsEngagement, useDeletePsEngagement } from '@/hooks/useProjects';
+import { MultiSelectDropdown } from '@/components/ui/MultiSelectDropdown';
 import {
-  Briefcase, Plus, ChevronLeft, ChevronDown,
+  Briefcase, Plus, ChevronLeft,
   FileText, X, Search, SlidersHorizontal, Trash2,
 } from 'lucide-react';
 
@@ -657,6 +658,7 @@ export default function ProfessionalServicesPage() {
   const [hasUnsaved, setHasUnsaved] = useState(false);
   const [searchFilter, setSearchFilter] = useState('');
   const [engTypeFilter, setEngTypeFilter] = useState('');
+  const [psLeadFilter, setPsLeadFilter] = useState('');
   const [showFilters, setShowFilters] = useState(true);
   const [listTab, setListTab] = useState<'active' | 'archive'>('active');
   const [migrating, setMigrating] = useState(false);
@@ -690,10 +692,22 @@ export default function ProfessionalServicesPage() {
     setHasUnsaved(false);
   };
 
+  // "PS Lead/AM" options — union of both fields, since either can identify who owns an engagement
+  const psLeadOptions = Array.from(
+    new Set(engagements.flatMap(eng => [eng.cfPsLead, eng.accountManager]).filter(Boolean))
+  ).sort();
+
   const filteredEngagements = engagements.filter(eng => {
     const s = searchFilter.toLowerCase();
     if (s && !eng.clientName.toLowerCase().includes(s) && !eng.sowRefId.toLowerCase().includes(s) && !eng.cfPsLead.toLowerCase().includes(s) && !eng.accountManager.toLowerCase().includes(s)) return false;
-    if (engTypeFilter && eng.engagementType !== engTypeFilter) return false;
+    if (engTypeFilter) {
+      const types = engTypeFilter.split(',').filter(Boolean);
+      if (types.length > 0 && !types.includes(eng.engagementType)) return false;
+    }
+    if (psLeadFilter) {
+      const leads = psLeadFilter.split(',').filter(Boolean);
+      if (leads.length > 0 && !leads.includes(eng.cfPsLead) && !leads.includes(eng.accountManager)) return false;
+    }
     return true;
   });
 
@@ -705,8 +719,8 @@ export default function ProfessionalServicesPage() {
   const archivedEngagements = filteredEngagements.filter(eng =>  isEngCompleted(eng));
   const displayEngagements  = listTab === 'archive' ? archivedEngagements : activeEngagements;
 
-  const activeFilterCount = [searchFilter, engTypeFilter].filter(Boolean).length;
-  const clearFilters = () => { setSearchFilter(''); setEngTypeFilter(''); };
+  const activeFilterCount = [searchFilter, engTypeFilter, psLeadFilter].filter(Boolean).length;
+  const clearFilters = () => { setSearchFilter(''); setEngTypeFilter(''); setPsLeadFilter(''); };
 
   const addEngagement = async (eng: PSEngagement) => {
     await createMutation.mutateAsync(eng);
@@ -849,25 +863,21 @@ export default function ProfessionalServicesPage() {
                   )}
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">Engagement Type</label>
-                    <div className="relative">
-                      <select
-                        value={engTypeFilter}
-                        onChange={e => setEngTypeFilter(e.target.value)}
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-400 bg-white appearance-none pr-8"
-                      >
-                        <option value="">All Types</option>
-                        {ENGAGEMENT_TYPES.map(t => <option key={t}>{t}</option>)}
-                      </select>
-                      <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                      {engTypeFilter && (
-                        <button onClick={() => setEngTypeFilter('')} className="absolute right-7 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                          <X size={12} />
-                        </button>
-                      )}
-                    </div>
-                  </div>
+                  <MultiSelectDropdown
+                    label="Engagement Type"
+                    value={engTypeFilter}
+                    options={ENGAGEMENT_TYPES.map(t => ({ value: t, label: t }))}
+                    placeholder="All Types"
+                    onChange={setEngTypeFilter}
+                  />
+                  <MultiSelectDropdown
+                    label="PS Lead/AM"
+                    value={psLeadFilter}
+                    options={psLeadOptions.map(n => ({ value: n, label: n }))}
+                    placeholder="All PS Lead/AM"
+                    searchable
+                    onChange={setPsLeadFilter}
+                  />
                 </div>
                 {activeFilterCount > 0 && (
                   <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-100">
@@ -879,8 +889,14 @@ export default function ProfessionalServicesPage() {
                     )}
                     {engTypeFilter && (
                       <span className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
-                        Type: {engTypeFilter}
+                        Type: {engTypeFilter.split(',').join(', ')}
                         <button onClick={() => setEngTypeFilter('')}><X size={10} /></button>
+                      </span>
+                    )}
+                    {psLeadFilter && (
+                      <span className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
+                        PS Lead/AM: {psLeadFilter.split(',').join(', ')}
+                        <button onClick={() => setPsLeadFilter('')}><X size={10} /></button>
                       </span>
                     )}
                   </div>

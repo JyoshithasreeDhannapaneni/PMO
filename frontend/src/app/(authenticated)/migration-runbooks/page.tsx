@@ -6,12 +6,13 @@ import { useToast } from '@/context/ToastContext';
 import { useProjects } from '@/hooks/useProjects';
 import { useSettings } from '@/context/SettingsContext';
 import {
-  BookOpen, CheckCircle2, Clock, AlertTriangle, ChevronDown, ChevronRight,
+  BookOpen, CheckCircle2, Clock, AlertTriangle, ChevronRight,
   FileText, Send, ShieldCheck, RotateCcw, Flag, Loader2, Info, Lock, Unlock,
   ArrowLeft, FolderOpen, User, Calendar, Layers, Search, SlidersHorizontal, X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { StatusBadge } from '@/components/ui/StatusBadge';
+import { MultiSelectDropdown } from '@/components/ui/MultiSelectDropdown';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -637,8 +638,14 @@ export default function MigrationValidationPage() {
   const filteredProjects = tabProjects.filter((p: any) => {
     const s = searchFilter.toLowerCase();
     if (s && !p.name?.toLowerCase().includes(s) && !p.customerName?.toLowerCase().includes(s) && !p.projectManager?.toLowerCase().includes(s)) return false;
-    if (pmFilter && p.projectManager !== pmFilter) return false;
-    if (phaseFilter && p.phase !== phaseFilter) return false;
+    if (pmFilter) {
+      const pms = pmFilter.split(',').filter(Boolean);
+      if (pms.length > 0 && !pms.includes(p.projectManager)) return false;
+    }
+    if (phaseFilter) {
+      const phases = phaseFilter.split(',').filter(Boolean);
+      if (phases.length > 0 && !phases.includes(p.phase)) return false;
+    }
     return true;
   });
 
@@ -1144,48 +1151,24 @@ export default function MigrationValidationPage() {
                   )}
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">Project Manager</label>
-                    <div className="relative">
-                      <select
-                        value={pmFilter}
-                        onChange={e => setPmFilter(e.target.value)}
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-400 bg-white appearance-none pr-8"
-                      >
-                        <option value="">All PMs</option>
-                        {tabPMs.map(pm => <option key={pm}>{pm}</option>)}
-                      </select>
-                      <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                      {pmFilter && (
-                        <button onClick={() => setPmFilter('')} className="absolute right-7 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                          <X size={12} />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">Project Phase</label>
-                    <div className="relative">
-                      <select
-                        value={phaseFilter}
-                        onChange={e => setPhaseFilter(e.target.value)}
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-400 bg-white appearance-none pr-8"
-                      >
-                        <option value="">All Phases</option>
-                        {[...settings.phases].sort((a, b) => a.order - b.order).map(ph => (
-                          <option key={ph.code || ph.name} value={(ph.code || ph.name).toUpperCase()}>
-                            {ph.name}
-                          </option>
-                        ))}
-                      </select>
-                      <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                      {phaseFilter && (
-                        <button onClick={() => setPhaseFilter('')} className="absolute right-7 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                          <X size={12} />
-                        </button>
-                      )}
-                    </div>
-                  </div>
+                  <MultiSelectDropdown
+                    label="Project Manager"
+                    value={pmFilter}
+                    options={tabPMs.map(pm => ({ value: pm, label: pm }))}
+                    placeholder="All PMs"
+                    searchable
+                    onChange={setPmFilter}
+                  />
+                  <MultiSelectDropdown
+                    label="Project Phase"
+                    value={phaseFilter}
+                    options={[...settings.phases].sort((a, b) => a.order - b.order).map(ph => ({
+                      value: (ph.code || ph.name).toUpperCase(),
+                      label: ph.name,
+                    }))}
+                    placeholder="All Phases"
+                    onChange={setPhaseFilter}
+                  />
                 </div>
                 {activeFilterCount > 0 && (
                   <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-100">
@@ -1197,13 +1180,13 @@ export default function MigrationValidationPage() {
                     )}
                     {pmFilter && (
                       <span className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
-                        PM: {pmFilter}
+                        PM: {pmFilter.split(',').join(', ')}
                         <button onClick={() => setPmFilter('')}><X size={10} /></button>
                       </span>
                     )}
                     {phaseFilter && (
                       <span className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
-                        Phase: {phaseFilter}
+                        Phase: {phaseFilter.split(',').join(', ')}
                         <button onClick={() => setPhaseFilter('')}><X size={10} /></button>
                       </span>
                     )}

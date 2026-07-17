@@ -7,7 +7,7 @@ import { Providers } from './providers';
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
 
 export const metadata: Metadata = {
-  title: 'PMO Tracker - Project Migration Tracking System',
+  title: 'Neutara PMO Tracker - Project Migration Tracking System',
   description: 'Track and manage project migrations with ease',
 };
 

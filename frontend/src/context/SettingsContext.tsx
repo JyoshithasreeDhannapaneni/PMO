@@ -212,7 +212,7 @@ const defaultSettings: PMOSettings = {
     caseStudyReminderDays: 7,
   },
   brandingSettings: {
-    companyName: 'PMO Tracker',
+    companyName: 'Neutara PMO Tracker',
     primaryColor: '#4F46E5',
     secondaryColor: '#10B981',
     theme: 'light',

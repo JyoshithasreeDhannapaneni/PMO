@@ -460,8 +460,8 @@ export default function DashboardPage() {
           <Card className="h-full transition-transform group-hover:scale-[1.02] group-hover:shadow-lg border-yellow-200">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-yellow-600 text-sm font-medium">Inactive</p>
-                <p className="text-3xl font-bold text-yellow-700 mt-1">{stats.inactiveProjects ?? stats.onHoldProjects}</p>
+                <p className="text-yellow-600 text-sm font-medium">On Hold</p>
+                <p className="text-3xl font-bold text-yellow-700 mt-1">{stats.onHoldProjects}</p>
                 <p className="text-xs text-yellow-500 mt-1">On hold projects</p>
               </div>
               <div className="w-11 h-11 rounded-xl bg-yellow-50 flex items-center justify-center">

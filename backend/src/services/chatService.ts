@@ -2,9 +2,9 @@ import Anthropic from '@anthropic-ai/sdk';
 import { query } from '../config/db';
 import { logger } from '../utils/logger';
 
-const SYSTEM_PROMPT = `You are the CloudFuze PMO Assistant — an AI embedded in CloudFuze's internal PMO Tracker.
+const SYSTEM_PROMPT = `You are the CloudFuze PMO Assistant — an AI embedded in CloudFuze's internal Neutara PMO Tracker.
 
-CloudFuze is a cloud migration company. The PMO Tracker manages:
+CloudFuze is a cloud migration company. The Neutara PMO Tracker manages:
 - Projects: cloud migration engagements (ENT = Enterprise, SMB = Small-Medium Business)
 - Phases: KICKOFF → MIGRATION → VALIDATION → CLOSURE
 - Plan types: BRONZE, SILVER, GOLD, PLATINUM

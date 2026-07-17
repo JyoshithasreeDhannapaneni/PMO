@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { StatusBadge } from '@/components/ui/StatusBadge';
+import { MultiSelectDropdown } from '@/components/ui/MultiSelectDropdown';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import {
@@ -93,6 +94,8 @@ function CaseStudiesContent() {
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'all' | 'pending' | 'completed'>('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [pmFilter, setPmFilter] = useState('');
+  const [amFilter, setAmFilter] = useState('');
 
   useEffect(() => {
     fetchData();
@@ -225,8 +228,25 @@ function CaseStudiesContent() {
     URL.revokeObjectURL(url);
   };
 
+  // Options for the PM/AM filter dropdowns — deduped from whatever's actually
+  // present on the loaded case studies, not a separate lookup fetch.
+  const pmOptions = Array.from(new Set(
+    caseStudies.map((cs) => cs.project?.projectManager).filter(Boolean)
+  )).sort() as string[];
+  const amOptions = Array.from(new Set(
+    caseStudies.map((cs) => cs.project?.accountManager).filter(Boolean)
+  )).sort() as string[];
+
   const filteredCaseStudies = caseStudies.filter((cs) => {
     if (isManager && cs.project?.projectManager !== user?.name) return false;
+    if (pmFilter) {
+      const pms = pmFilter.split(',').filter(Boolean);
+      if (pms.length > 0 && !pms.includes(cs.project?.projectManager ?? '')) return false;
+    }
+    if (amFilter) {
+      const ams = amFilter.split(',').filter(Boolean);
+      if (ams.length > 0 && !ams.includes(cs.project?.accountManager ?? '')) return false;
+    }
     const matchesSearch =
       cs.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       cs.project?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -424,6 +444,28 @@ function CaseStudiesContent() {
           />
         </div>
       </div>
+
+      {/* PM / AM filters — identify case studies by who ran or owned the project */}
+      {!isManager && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-xl">
+          <MultiSelectDropdown
+            label="Project Manager"
+            value={pmFilter}
+            options={pmOptions.map((pm) => ({ value: pm, label: pm }))}
+            placeholder="All Project Managers"
+            searchable
+            onChange={setPmFilter}
+          />
+          <MultiSelectDropdown
+            label="Account Manager"
+            value={amFilter}
+            options={amOptions.map((am) => ({ value: am, label: am }))}
+            placeholder="All Account Managers"
+            searchable
+            onChange={setAmFilter}
+          />
+        </div>
+      )}
 
       {/* Case Studies List */}
       <Card>

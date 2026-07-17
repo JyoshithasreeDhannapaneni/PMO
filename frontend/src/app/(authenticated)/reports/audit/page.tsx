@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
-import { useAuth } from '@/context/AuthContext';
 import { auditApi } from '@/services/api';
 import { Card } from '@/components/ui/Card';
 import { Select } from '@/components/ui/Select';
@@ -365,9 +364,6 @@ function downloadBlob(blob: Blob, filename: string) {
 }
 
 export default function AuditReportPage() {
-  const { user } = useAuth();
-  const isAdmin = user?.role === 'ADMIN';
-
   const [activeTab, setActiveTab] = useState<'log' | 'leaderboard'>('log');
 
   const today = new Date();
@@ -394,7 +390,7 @@ export default function AuditReportPage() {
       startDate: new Date(weekStart).toISOString(),
       endDate: new Date(new Date(weekEnd).setHours(23, 59, 59, 999)).toISOString(),
     }),
-    enabled: isAdmin && activeTab === 'leaderboard',
+    enabled: activeTab === 'leaderboard',
   });
 
   const board = leaderboardData?.data;
@@ -403,7 +399,7 @@ export default function AuditReportPage() {
   const { data: trendData, isLoading: trendLoading } = useQuery({
     queryKey: ['weeklyTrend', weekEnd],
     queryFn: () => auditApi.getWeeklyTrend({ endDate: new Date(weekEnd).toISOString(), weeks: 8 }),
-    enabled: isAdmin && activeTab === 'leaderboard',
+    enabled: activeTab === 'leaderboard',
   });
   const trend: WeekTrendPoint[] = trendData?.data || [];
 
@@ -418,7 +414,7 @@ export default function AuditReportPage() {
       action: action || undefined,
       entityType: entityType || undefined,
     }),
-    enabled: isAdmin && activeTab === 'log',
+    enabled: activeTab === 'log',
   });
 
   const logs: any[] = data?.data || [];
@@ -452,16 +448,6 @@ export default function AuditReportPage() {
     } finally {
       setIsExporting(false);
     }
-  }
-
-  if (!isAdmin) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 gap-3">
-        <AlertCircle size={40} className="text-red-400" />
-        <p className="text-lg font-semibold text-gray-700">Access Denied</p>
-        <p className="text-sm text-gray-400">This page is only accessible to administrators.</p>
-      </div>
-    );
   }
 
   return (

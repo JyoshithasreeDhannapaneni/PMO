@@ -55,7 +55,7 @@ function brandedEmail(title: string, body: string, accentColor = BRAND_COLOR): s
         <tr>
           <td style="background:#f8faff;padding:20px 32px;border-top:1px solid #e2e8f0;text-align:center;">
             <p style="margin:0;font-size:12px;color:#94a3b8;">
-              CloudFuze PMO Tracker &nbsp;·&nbsp; Project Migration Management<br/>
+              CloudFuze Neutara PMO Tracker &nbsp;·&nbsp; Project Migration Management<br/>
               This is an automated notification — please do not reply directly to this email.
             </p>
           </td>
@@ -159,14 +159,14 @@ class EmailService {
   async sendWelcome(name: string, email: string): Promise<void> {
     const body = `
       <p style="font-size:15px;">Hello <strong>${name}</strong>,</p>
-      <p>Your CloudFuze PMO Tracker account has been created successfully. You can now log in and start tracking your migration projects.</p>
+      <p>Your CloudFuze Neutara PMO Tracker account has been created successfully. You can now log in and start tracking your migration projects.</p>
       <p style="margin-top:24px;">
         <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/login"
            style="background:${BRAND_COLOR};color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">
           Sign In Now →
         </a>
       </p>`;
-    await this.sendEmail({ to: email, subject: 'Welcome to CloudFuze PMO Tracker', html: brandedEmail('Welcome!', body) });
+    await this.sendEmail({ to: email, subject: 'Welcome to CloudFuze Neutara PMO Tracker', html: brandedEmail('Welcome!', body) });
   }
 
   async sendPasswordChanged(name: string, email: string): Promise<void> {
@@ -182,7 +182,7 @@ class EmailService {
   async sendNewUserCredentials(name: string, email: string, tempPassword: string): Promise<void> {
     const body = `
       <p>Hello <strong>${name}</strong>,</p>
-      <p>An administrator has created your CloudFuze PMO Tracker account. Use the credentials below to sign in.</p>
+      <p>An administrator has created your CloudFuze Neutara PMO Tracker account. Use the credentials below to sign in.</p>
       <table cellpadding="0" cellspacing="0" style="background:#f8faff;border:1px solid #bfdbfe;border-radius:8px;padding:16px;margin:16px 0;width:100%;">
         <tr><td style="padding:6px 12px;font-size:13px;color:#64748b;">Email</td><td style="padding:6px 12px;font-weight:600;">${email}</td></tr>
         <tr><td style="padding:6px 12px;font-size:13px;color:#64748b;">Temp password</td><td style="padding:6px 12px;font-weight:600;font-family:monospace;">${tempPassword}</td></tr>
@@ -200,7 +200,7 @@ class EmailService {
   async sendPasswordReset(name: string, email: string, resetUrl: string): Promise<void> {
     const body = `
       <p>Hello <strong>${name}</strong>,</p>
-      <p>We received a request to reset your CloudFuze PMO Tracker password. Click the button below to set a new password:</p>
+      <p>We received a request to reset your CloudFuze Neutara PMO Tracker password. Click the button below to set a new password:</p>
       <p style="margin:24px 0;">
         <a href="${resetUrl}"
            style="background:${BRAND_COLOR};color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">

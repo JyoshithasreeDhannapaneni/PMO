@@ -170,7 +170,7 @@ const defaultDashboardSettings: DashboardSettings = {
 };
 
 const defaultBrandingSettings: BrandingSettings = {
-  companyName: 'PMO Tracker',
+  companyName: 'Neutara PMO Tracker',
   primaryColor: '#4F46E5',
   secondaryColor: '#10B981',
   theme: 'light',

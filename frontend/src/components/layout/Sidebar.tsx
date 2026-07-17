@@ -7,37 +7,40 @@ import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { useSettings } from '@/context/SettingsContext';
 import {
-  LayoutDashboard, FolderKanban, ClipboardCheck, TrendingDown, Siren, Star,
-  BarChart2, ChevronDown, ChevronRight, LogOut, Menu, PanelLeftClose, PanelLeftOpen,
-  Archive, Building2, HeartHandshake, Briefcase, Users, Target, ServerCrash, Copy,
-  Receipt, BookMarked, Settings,
+  Home, Folder, ShieldCheck, Gauge, Bell, Star,
+  BarChart3, ChevronDown, ChevronRight, LogOut, Menu, PanelLeftClose, PanelLeftOpen,
+  Archive, CircleUserRound, Handshake, Briefcase, Users, Target, Megaphone, FileText,
+  HandCoins, BookMarked, BookOpen, Settings,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
+// Each item gets its own icon color so the sidebar reads as a set of distinct
+// destinations at a glance, not a uniform gray list. Colors are deliberately
+// varied (not one hue family) since this is a long list of unrelated sections.
 const allNavigation = [
-  { name: 'Dashboard',            href: '/',                       icon: LayoutDashboard, adminOnly: false },
-  { name: 'All Projects',         href: '/projects',               icon: FolderKanban,    adminOnly: false },
-  { name: 'Professional Services', href: '/professional-services', icon: Briefcase,       adminOnly: false },
-  { name: 'Migration Validation', href: '/migration-runbooks',     icon: ClipboardCheck,  adminOnly: false },
-  { name: 'Overage Projects',     href: '/overage-projects',       icon: TrendingDown,    adminOnly: false },
-  { name: 'Escalated Projects',   href: '/escalation-projects',    icon: Siren,           adminOnly: false },
-  { name: 'Reviews',              href: '/reviews',                icon: Star,            adminOnly: false },
-  { name: 'Manager Dashboard',    href: '/manager-dashboard',      icon: Users,           adminOnly: true },
-  { name: 'Pre-sales',            href: '/poc-projects',           icon: Target,          adminOnly: false },
-  { name: 'Account Manager View', href: '/account-manager',        icon: Building2,       adminOnly: false },
-  { name: 'Customer Success',     href: '/customer-success',       icon: HeartHandshake,  adminOnly: false },
-  { name: 'History Archive',      href: '/archive',                icon: Archive,         adminOnly: false },
-  { name: 'Server Notifications', href: '/server-alerts',          icon: ServerCrash,     adminOnly: false },
-  { name: 'Templates',            href: '/templates',              icon: Copy,            adminOnly: false },
-  { name: 'Deal Desk',            href: '/deal-desk',              icon: Receipt,         adminOnly: false },
-  { name: 'Case Studies',         href: '/case-studies',           icon: BookMarked,      adminOnly: false },
-  { name: 'KB Articles',          href: '/kb-articles',            icon: BookMarked,      adminOnly: false },
+  { name: 'Dashboard',            href: '/',                       icon: Home,            color: '#2563eb', adminOnly: false },
+  { name: 'All Projects',         href: '/projects',               icon: Folder,          color: '#d97706', adminOnly: false },
+  { name: 'Professional Services', href: '/professional-services', icon: Briefcase,       color: '#7c3aed', adminOnly: false },
+  { name: 'Migration Validation', href: '/migration-runbooks',     icon: ShieldCheck,     color: '#059669', adminOnly: false },
+  { name: 'Overage Projects',     href: '/overage-projects',       icon: Gauge,           color: '#dc2626', adminOnly: false },
+  { name: 'Escalated Projects',   href: '/escalation-projects',    icon: Bell,            color: '#ea580c', adminOnly: false },
+  { name: 'Reviews',              href: '/reviews',                icon: Star,            color: '#eab308', adminOnly: false },
+  { name: 'Manager Dashboard',    href: '/manager-dashboard',      icon: Users,           color: '#0891b2', adminOnly: true },
+  { name: 'Pre-sales',            href: '/poc-projects',           icon: Target,          color: '#db2777', adminOnly: false },
+  { name: 'Account Manager View', href: '/account-manager',        icon: CircleUserRound, color: '#4f46e5', adminOnly: false },
+  { name: 'Customer Success',     href: '/customer-success',       icon: Handshake,       color: '#16a34a', adminOnly: false },
+  { name: 'History Archive',      href: '/archive',                icon: Archive,         color: '#78716c', adminOnly: false },
+  { name: 'Server Notifications', href: '/server-alerts',          icon: Megaphone,       color: '#f59e0b', adminOnly: false },
+  { name: 'Templates',            href: '/templates',              icon: FileText,        color: '#0d9488', adminOnly: false },
+  { name: 'Deal Desk',            href: '/deal-desk',              icon: HandCoins,       color: '#65a30d', adminOnly: false },
+  { name: 'Case Studies',         href: '/case-studies',           icon: BookMarked,      color: '#9333ea', adminOnly: false },
+  { name: 'KB Articles',          href: '/kb-articles',            icon: BookOpen,        color: '#0284c7', adminOnly: false },
   {
-    name: 'Reports', href: '#', icon: BarChart2, adminOnly: false,
+    name: 'Reports', href: '#', icon: BarChart3, color: '#e11d48', adminOnly: false,
     children: [
       { name: 'Weekly Reports',  href: '/reports/weekly' },
       { name: 'Monthly Reports', href: '/reports/monthly' },
-      { name: 'Audit Report',    href: '/reports/audit', adminOnly: true },
+      { name: 'Audit Report',    href: '/reports/audit' },
     ],
   },
 ];
@@ -46,7 +49,7 @@ export function Sidebar() {
   const pathname = usePathname();
   const { settings } = useSettings();
   const { user, logout } = useAuth();
-  const companyName = settings.brandingSettings?.companyName || 'PMO Tracker';
+  const companyName = settings.brandingSettings?.companyName || 'Neutara PMO Tracker';
   const [openGroups, setOpenGroups] = useState<string[]>([]);
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -108,7 +111,7 @@ export function Sidebar() {
                     collapsed && 'justify-center'
                   )}
                 >
-                  <item.icon size={17} className="flex-shrink-0" />
+                  <item.icon size={17} className="flex-shrink-0" style={{ color: item.color }} />
                   {!collapsed && (
                     <>
                       <span className="flex-1 text-left">{item.name}</span>
@@ -151,7 +154,7 @@ export function Sidebar() {
               )}
               style={{ animationDelay: `${idx * 0.04}s` }}
             >
-              <item.icon size={17} className="flex-shrink-0" />
+              <item.icon size={17} className="flex-shrink-0" style={{ color: isActive ? undefined : item.color }} />
               {!collapsed && <span className="flex-1">{item.name}</span>}
             </Link>
           );

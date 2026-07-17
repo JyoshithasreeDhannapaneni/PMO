@@ -8,6 +8,7 @@ import { authApi } from '@/services/api';
 import { ProjectsTable } from '@/components/projects/ProjectsTable';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { MultiSelectDropdown } from '@/components/ui/MultiSelectDropdown';
 import { useAuth } from '@/context/AuthContext';
 import { useSettings } from '@/context/SettingsContext';
 import {
@@ -15,7 +16,6 @@ import {
   Plus,
   Filter,
   X,
-  ChevronDown,
   Search,
   RefreshCw,
   Download,
@@ -313,65 +313,6 @@ export default function ProjectsPage() {
     ];
   }, [namesData?.data]);
 
-  const FilterDropdown = ({ 
-    label, 
-    value, 
-    options, 
-    onChange 
-  }: { 
-    label: string;
-    value: string;
-    options: { value: string; label: string; color: string }[];
-    onChange: (value: string) => void;
-  }) => {
-    const selectedOption = options.find(o => o.value === value) || options[0];
-    
-    return (
-      <div className="relative">
-        <label className="block text-xs font-medium text-gray-500 mb-1">
-          {label}
-        </label>
-        <div className="relative">
-          <select
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            className={`
-              appearance-none w-full px-3 py-2 pr-8 text-sm font-medium rounded-lg border
-              bg-white 
-              border-gray-200
-              text-gray-900
-              hover:border-primary-400
-              focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500
-              transition-all cursor-pointer
-              ${value ? 'border-primary-300 bg-primary-50' : ''}
-            `}
-          >
-            {options.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-          <ChevronDown 
-            size={16} 
-            className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" 
-          />
-          {value && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onChange('');
-              }}
-              className="absolute right-7 top-1/2 -translate-y-1/2 p-0.5 text-gray-400 hover:text-gray-600"
-            >
-              <X size={14} />
-            </button>
-          )}
-        </div>
-      </div>
-    );
-  };
-
   return (
     // h-full fills the <main> content area; flex-col stacks sections vertically.
     // The table section gets flex-1 so it takes whatever space remains after
@@ -481,40 +422,48 @@ export default function ProjectsPage() {
 
             {/* Filter Dropdowns */}
             <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
-              <FilterDropdown
+              <MultiSelectDropdown
                 label="Status"
                 value={filters.status}
-                options={statusOptions}
+                options={statusOptions.filter(o => o.value)}
+                placeholder="All Statuses"
                 onChange={(value) => handleFilterChange('status', value)}
               />
-              <FilterDropdown
+              <MultiSelectDropdown
                 label="Phase"
                 value={filters.phase}
-                options={phaseOptions}
+                options={phaseOptions.filter(o => o.value)}
+                placeholder="All Phases"
                 onChange={(value) => handleFilterChange('phase', value)}
               />
-              <FilterDropdown
+              <MultiSelectDropdown
                 label="Delay Status"
                 value={filters.delayStatus}
-                options={delayOptions}
+                options={delayOptions.filter(o => o.value)}
+                placeholder="All Delay Status"
                 onChange={(value) => handleFilterChange('delayStatus', value)}
               />
-              <FilterDropdown
+              <MultiSelectDropdown
                 label="Plan Type"
                 value={filters.planType}
-                options={planOptions}
+                options={planOptions.filter(o => o.value)}
+                placeholder="All Plans"
                 onChange={(value) => handleFilterChange('planType', value)}
               />
-              <FilterDropdown
+              <MultiSelectDropdown
                 label="Project Manager"
                 value={filters.projectManager}
-                options={projectManagerOptions}
+                options={projectManagerOptions.filter(o => o.value)}
+                placeholder="All Project Managers"
+                searchable
                 onChange={(value) => handleFilterChange('projectManager', value)}
               />
-              <FilterDropdown
+              <MultiSelectDropdown
                 label="Account Manager"
                 value={filters.accountManager}
-                options={accountManagerOptions}
+                options={accountManagerOptions.filter(o => o.value)}
+                placeholder="All Account Managers"
+                searchable
                 onChange={(value) => handleFilterChange('accountManager', value)}
               />
             </div>
@@ -533,7 +482,7 @@ export default function ProjectsPage() {
                 )}
                 {filters.status && (
                   <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-green-100 text-green-700 rounded-full">
-                    Status: {statusOptions.find(o => o.value === filters.status)?.label}
+                    Status: {filters.status.split(',').map(v => statusOptions.find(o => o.value === v)?.label || v).join(', ')}
                     <button onClick={() => handleFilterChange('status', '')} className="hover:text-green-900">
                       <X size={12} />
                     </button>
@@ -541,7 +490,7 @@ export default function ProjectsPage() {
                 )}
                 {filters.phase && (
                   <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-blue-100 text-blue-700 rounded-full">
-                    Phase: {phaseOptions.find(o => o.value === filters.phase)?.label}
+                    Phase: {filters.phase.split(',').map(v => phaseOptions.find(o => o.value === v)?.label || v).join(', ')}
                     <button onClick={() => handleFilterChange('phase', '')} className="hover:text-blue-900">
                       <X size={12} />
                     </button>
@@ -549,7 +498,7 @@ export default function ProjectsPage() {
                 )}
                 {filters.delayStatus && (
                   <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-orange-100 text-orange-700 rounded-full">
-                    Delay: {delayOptions.find(o => o.value === filters.delayStatus)?.label}
+                    Delay: {filters.delayStatus.split(',').map(v => delayOptions.find(o => o.value === v)?.label || v).join(', ')}
                     <button onClick={() => handleFilterChange('delayStatus', '')} className="hover:text-orange-900">
                       <X size={12} />
                     </button>
@@ -557,7 +506,7 @@ export default function ProjectsPage() {
                 )}
                 {filters.planType && (
                   <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-purple-100 text-purple-700 rounded-full">
-                    Plan: {planOptions.find(o => o.value === filters.planType)?.label}
+                    Plan: {filters.planType.split(',').map(v => planOptions.find(o => o.value === v)?.label || v).join(', ')}
                     <button onClick={() => handleFilterChange('planType', '')} className="hover:text-purple-900">
                       <X size={12} />
                     </button>
@@ -565,7 +514,7 @@ export default function ProjectsPage() {
                 )}
                 {filters.projectManager && (
                   <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-indigo-100 text-indigo-700 rounded-full">
-                    PM: {filters.projectManager}
+                    PM: {filters.projectManager.split(',').join(', ')}
                     <button onClick={() => handleFilterChange('projectManager', '')} className="hover:text-indigo-900">
                       <X size={12} />
                     </button>
@@ -573,7 +522,7 @@ export default function ProjectsPage() {
                 )}
                 {filters.accountManager && (
                   <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-teal-100 text-teal-700 rounded-full">
-                    AM: {filters.accountManager}
+                    AM: {filters.accountManager.split(',').join(', ')}
                     <button onClick={() => handleFilterChange('accountManager', '')} className="hover:text-teal-900">
                       <X size={12} />
                     </button>
