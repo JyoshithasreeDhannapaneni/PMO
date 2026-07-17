@@ -37,6 +37,7 @@ const allNavigation = [
     children: [
       { name: 'Weekly Reports',  href: '/reports/weekly' },
       { name: 'Monthly Reports', href: '/reports/monthly' },
+      { name: 'Audit Report',    href: '/reports/audit', adminOnly: true },
     ],
   },
 ];
@@ -117,7 +118,7 @@ export function Sidebar() {
                 </button>
                 {!collapsed && isOpen && (
                   <div className="ml-8 mt-0.5 space-y-0.5 animate-fadeInUp">
-                    {item.children.map((child) => (
+                    {item.children.filter((child: any) => !child.adminOnly || isAdmin).map((child) => (
                       <Link
                         key={child.name}
                         href={child.href}

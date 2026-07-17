@@ -154,6 +154,147 @@ class AuditService {
     }));
   }
 
+  // Week-on-week trend for the Audit Report — segment-level (not per-manager)
+  // totals for each of the last `weeks` calendar weeks ending on `endDate`,
+  // so ENT vs SMB can be charted side by side over time.
+  async getWeeklyTrend(endDate: Date, weeks: number) {
+    const safeWeeks = Math.max(1, Math.min(26, Math.floor(weeks)));
+    const anchor = new Date(endDate);
+
+    const ranges: { weekStart: Date; weekEnd: Date }[] = [];
+    for (let i = safeWeeks - 1; i >= 0; i--) {
+      const weekEnd = new Date(anchor);
+      weekEnd.setDate(weekEnd.getDate() - i * 7);
+      weekEnd.setHours(23, 59, 59, 999);
+      const weekStart = new Date(weekEnd);
+      weekStart.setDate(weekStart.getDate() - 6);
+      weekStart.setHours(0, 0, 0, 0);
+      ranges.push({ weekStart, weekEnd });
+    }
+
+    const results = await Promise.all(
+      ranges.map(({ weekStart, weekEnd }) =>
+        query(
+          `SELECT
+            segment,
+            COUNT(DISTINCT id)::int AS total,
+            COUNT(DISTINCT id) FILTER (WHERE status = 'COMPLETED')::int AS completed,
+            COUNT(DISTINCT id) FILTER (WHERE is_escalated = true)::int AS escalations,
+            COALESCE(SUM(overage_amount) FILTER (WHERE is_overaged = true), 0)::numeric AS overage_amount
+          FROM projects
+          WHERE segment IN ('SMB', 'ENT')
+            AND (created_at >= $1 AND created_at <= $2
+              OR  updated_at  >= $1 AND updated_at  <= $2)
+          GROUP BY segment`,
+          [weekStart, weekEnd]
+        )
+      )
+    );
+
+    return ranges.map(({ weekStart, weekEnd }, i) => {
+      const rows = results[i].rows;
+      const forSegment = (seg: 'ENT' | 'SMB') => {
+        const row = rows.find((r: any) => r.segment === seg);
+        const total = row?.total ?? 0;
+        const completed = row?.completed ?? 0;
+        return {
+          total,
+          completed,
+          escalations: row?.escalations ?? 0,
+          overageAmount: parseFloat(row?.overage_amount) || 0,
+        };
+      };
+      return {
+        weekStart: weekStart.toISOString(),
+        weekEnd: weekEnd.toISOString(),
+        ENT: forSegment('ENT'),
+        SMB: forSegment('SMB'),
+      };
+    });
+  }
+
+  // Manager leaderboard for the Audit Report's weekly snapshot — same
+  // project_manager/account_manager name-matching pattern as
+  // getUserProjectSummary, but grouped by segment (SMB/ENT) and with
+  // escalation/overage figures added per manager.
+  async getManagerLeaderboard(startDate: Date, endDate: Date) {
+    const end = new Date(endDate);
+    end.setHours(23, 59, 59, 999);
+    const start = new Date(startDate);
+
+    const buildQuery = (managerField: 'project_manager' | 'account_manager') => `
+      SELECT
+        COALESCE(u.id::text, x.mgr) AS id,
+        x.mgr                       AS name,
+        COALESCE(u.email, '')       AS email,
+        p.segment                   AS segment,
+        COUNT(DISTINCT p.id)::int   AS total,
+        COUNT(DISTINCT p.id) FILTER (WHERE p.status = 'COMPLETED')::int AS completed,
+        COUNT(DISTINCT p.id) FILTER (WHERE p.created_at >= $1 AND p.created_at <= $2)::int AS newly_added,
+        COUNT(DISTINCT p.id) FILTER (WHERE p.is_escalated = true)::int AS escalations,
+        COUNT(DISTINCT p.id) FILTER (WHERE p.is_overaged = true)::int AS overage_count,
+        COALESCE(SUM(p.overage_amount) FILTER (WHERE p.is_overaged = true), 0)::numeric AS overage_amount
+      FROM (
+        SELECT DISTINCT ${managerField} AS mgr
+        FROM projects
+        WHERE ${managerField} IS NOT NULL AND TRIM(${managerField}) <> '' AND segment IN ('SMB', 'ENT')
+      ) x
+      LEFT JOIN users u
+        ON LOWER(TRIM(u.name)) = LOWER(TRIM(x.mgr))
+      LEFT JOIN projects p
+        ON LOWER(TRIM(p.${managerField})) = LOWER(TRIM(x.mgr))
+        AND p.segment IN ('SMB', 'ENT')
+        AND (p.created_at >= $1 AND p.created_at <= $2
+          OR  p.updated_at  >= $1 AND p.updated_at  <= $2)
+      GROUP BY x.mgr, u.id, u.email, p.segment
+      HAVING p.segment IS NOT NULL
+      ORDER BY p.segment, completed DESC
+    `;
+
+    const [pmResult, amResult] = await Promise.all([
+      query(buildQuery('project_manager'), [start, end]),
+      query(buildQuery('account_manager'), [start, end]),
+    ]);
+
+    const mapRow = (row: any) => ({
+      id: row.id,
+      name: row.name,
+      email: row.email,
+      segment: row.segment,
+      total: row.total,
+      completed: row.completed,
+      completionRate: row.total > 0 ? Math.round((row.completed / row.total) * 100) : 0,
+      newlyAdded: row.newly_added,
+      escalations: row.escalations,
+      overageCount: row.overage_count,
+      overageAmount: parseFloat(row.overage_amount) || 0,
+    });
+
+    const bySegment = (rows: any[]) => ({
+      ENT: rows.filter((r) => r.segment === 'ENT').sort((a, b) => b.completionRate - a.completionRate),
+      SMB: rows.filter((r) => r.segment === 'SMB').sort((a, b) => b.completionRate - a.completionRate),
+    });
+
+    const pmRows = pmResult.rows.map(mapRow);
+    const amRows = amResult.rows.map(mapRow);
+
+    const totalEscalations = [...pmRows, ...amRows].reduce((s, r) => s + r.escalations, 0);
+    const totalOverage = [...pmRows, ...amRows].reduce((s, r) => s + r.overageAmount, 0);
+    const entProjects = pmRows.filter((r) => r.segment === 'ENT').reduce((s, r) => s + r.total, 0);
+    const smbProjects = pmRows.filter((r) => r.segment === 'SMB').reduce((s, r) => s + r.total, 0);
+
+    return {
+      projectManagers: bySegment(pmRows),
+      accountManagers: bySegment(amRows),
+      summary: {
+        totalEscalations,
+        totalOverageAmount: totalOverage,
+        entProjects,
+        smbProjects,
+      },
+    };
+  }
+
   async getUserProjectSummary(startDate: Date, endDate: Date) {
     const end = new Date(endDate);
     end.setHours(23, 59, 59, 999);
