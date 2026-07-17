@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useUpdateProject, useEscalationDailyNotes, useAddEscalationDailyNote, useDeleteEscalationDailyNote } from '@/hooks/useProjects';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { DelayIndicator } from '@/components/ui/DelayIndicator';
@@ -588,7 +589,18 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
                     <div className="font-medium text-gray-900 hover:text-primary-600">
                       {project.name}
                     </div>
-                    <div className="text-xs text-gray-500">{project.customerName}</div>
+                    {project.clientName && (
+                      <Link
+                        href={`/clients/${encodeURIComponent(project.clientName)}`}
+                        className="text-xs text-indigo-600 hover:underline"
+                        onClick={e => e.stopPropagation()}
+                      >
+                        {project.clientName}
+                      </Link>
+                    )}
+                    {project.customerName && (
+                      <div className="text-xs text-gray-500">{project.customerName}</div>
+                    )}
                   </div>
                 </td>
 

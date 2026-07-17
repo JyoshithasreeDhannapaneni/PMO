@@ -217,12 +217,6 @@ export default function OverageProjectsPage() {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => refetch()}
-            className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-          >
-            <RotateCcw size={14} /> Refresh
-          </button>
-          <button
             onClick={downloadCSV}
             className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
           >
@@ -381,6 +375,9 @@ export default function OverageProjectsPage() {
                             {expandedRows.has(p.id) ? <ChevronUp size={14} className="text-gray-400 shrink-0" /> : <ChevronDown size={14} className="text-gray-400 shrink-0" />}
                             <div>
                               <Link href={`/projects/${p.id}`} className="font-medium text-primary-600 hover:underline" onClick={(e) => e.stopPropagation()}>{p.name}</Link>
+                              {p.clientName && (
+                                <Link href={`/clients/${encodeURIComponent(p.clientName)}`} onClick={(e) => e.stopPropagation()} className="text-xs text-indigo-500 hover:underline block">{p.clientName}</Link>
+                              )}
                               <div className="text-xs text-gray-400">{p.customerName}</div>
                             </div>
                           </div>

@@ -21,6 +21,7 @@ getAll: asyncHandler(async (req: Request, res: Response): Promise<void> => {
       projectType: req.query.projectType as string,
       segment: req.query.segment as string,
       excludeStatus: req.query.excludeStatus as string,
+      clientName: req.query.clientName as string,
     };
     const pagination: PaginationOptions = {
       page: parseInt(req.query.page as string) || 1,
@@ -158,5 +159,15 @@ getAll: asyncHandler(async (req: Request, res: Response): Promise<void> => {
       success: true,
       data: projects,
     });
+  }),
+
+  getClientSummary: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const clientName = req.query.clientName as string;
+    if (!clientName) {
+      res.status(400).json({ success: false, error: 'clientName query param is required' });
+      return;
+    }
+    const summary = await projectService.getClientSummary(clientName);
+    res.json({ success: true, data: summary });
   }),
 };

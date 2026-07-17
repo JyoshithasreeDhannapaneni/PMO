@@ -2,7 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect } from 'react';
-import { projectsApi, dashboardApi, statusReportsApi, managerGoalsApi, migrationTypeApi, pocProjectsApi, accountManagerApi, customerSuccessApi, hubspotApi, psEngagementsApi } from '@/services/api';
+import { projectsApi, dashboardApi, statusReportsApi, managerGoalsApi, migrationTypeApi, pocProjectsApi, accountManagerApi, customerSuccessApi, hubspotApi, psEngagementsApi, kbArticlesApi } from '@/services/api';
 import type { CreateProjectInput, UpdateProjectInput } from '@/types';
 
 export function useProjects(params?: {
@@ -18,6 +18,7 @@ export function useProjects(params?: {
   projectManager?: string;
   accountManager?: string;
   excludeStatus?: string;
+  clientName?: string;
 }) {
   return useQuery({
     queryKey: ['projects', params],
@@ -906,5 +907,59 @@ export function useNtaTrends(params: NtaSearchFilters & { groupBy: 'week' | 'mon
     },
     enabled: enabled ?? true,
     staleTime: 60_000,
+  });
+}
+
+export function useKbArticles(params?: { search?: string; category?: string; caseStudyId?: string }) {
+  return useQuery({
+    queryKey: ['kb-articles', params],
+    queryFn: () => kbArticlesApi.getAll(params),
+    staleTime: 30_000,
+  });
+}
+
+export function useExtractKbArticles() {
+  return useMutation({
+    mutationFn: (caseStudyId: string) => kbArticlesApi.extract(caseStudyId),
+  });
+}
+
+export function useBulkSaveKbArticles() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ caseStudyId, articles }: { caseStudyId: string; articles: any[] }) =>
+      kbArticlesApi.bulkSave(caseStudyId, articles),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['kb-articles'] });
+    },
+  });
+}
+
+export function useUpdateKbArticle() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, updates }: { id: string; updates: any }) => kbArticlesApi.update(id, updates),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['kb-articles'] });
+    },
+  });
+}
+
+export function useDeleteKbArticle() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => kbArticlesApi.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['kb-articles'] });
+    },
+  });
+}
+
+export function useClientSummary(clientName: string) {
+  return useQuery({
+    queryKey: ['client-summary', clientName],
+    queryFn: () => projectsApi.getClientSummary(clientName),
+    enabled: !!clientName,
+    staleTime: 30_000,
   });
 }

@@ -16,6 +16,7 @@ import type { Project, CreateProjectInput } from '@/types';
 
 const baseSchema = z.object({
   name: z.string().min(1, 'Project name is required'),
+  clientName: z.string().optional(),
   customerName: z.string().min(1, 'Customer name is required'),
   projectManager: z.string().min(1, 'Project manager is required'),
   accountManager: z.string().min(1, 'Account manager is required'),
@@ -121,6 +122,7 @@ export function ProjectForm({ project, onSubmit, isLoading, defaultManagerName }
     resolver: zodResolver(baseSchema),
     defaultValues: project ? {
       name: project.name,
+      clientName: project.clientName ?? '',
       customerName: project.customerName,
       projectManager: project.projectManager,
       accountManager: project.accountManager,
@@ -242,6 +244,7 @@ export function ProjectForm({ project, onSubmit, isLoading, defaultManagerName }
 
     onSubmit({
       name: data.name,
+      clientName: (data as any).clientName || null,
       customerName: data.customerName,
       projectManager: data.projectManager,
       accountManager: data.accountManager,
@@ -314,8 +317,9 @@ export function ProjectForm({ project, onSubmit, isLoading, defaultManagerName }
           <div className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input label="Project Name *" {...register('name')} error={errors.name?.message} />
-              <Input label="Customer Name *" {...register('customerName')} error={errors.customerName?.message} />
+              <Input label="Client / Account" placeholder="e.g. Peak Mining" {...register('clientName' as any)} />
             </div>
+            <Input label="Customer Name *" {...register('customerName')} error={errors.customerName?.message} />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Project Manager <span className="text-red-500">*</span></label>

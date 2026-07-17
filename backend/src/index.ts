@@ -17,6 +17,7 @@ import authRoutes from './routes/authRoutes';
 import projectRoutes from './routes/projectRoutes';
 import phaseRoutes from './routes/phaseRoutes';
 import caseStudyRoutes from './routes/caseStudyRoutes';
+import kbArticleRoutes from './routes/kbArticleRoutes';
 import notificationRoutes from './routes/notificationRoutes';
 import dashboardRoutes from './routes/dashboardRoutes';
 import templateRoutes from './routes/templateRoutes';
@@ -94,6 +95,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api/phases', phaseRoutes);
 app.use('/api/case-studies', caseStudyRoutes);
+app.use('/api/kb-articles', kbArticleRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/templates', templateRoutes);
@@ -418,6 +420,9 @@ async function runMigrations() {
   if (!await columnExists('projects', 'delay_happened')) {
     try { await execute(`ALTER TABLE projects ADD COLUMN delay_happened VARCHAR(50) DEFAULT NULL`); } catch {}
   }
+  if (!await columnExists('projects', 'client_name')) {
+    try { await execute(`ALTER TABLE projects ADD COLUMN client_name VARCHAR(255) DEFAULT NULL`); } catch {}
+  }
 
   // Server alert logs
   await execute(`CREATE TABLE IF NOT EXISTS server_alert_logs (
@@ -465,12 +470,15 @@ async function runMigrations() {
     doc_type VARCHAR(100) NOT NULL DEFAULT 'other',
     file_size BIGINT,
     mime_type VARCHAR(200),
-    file_path TEXT NOT NULL,
+    file_path TEXT,
+    file_data TEXT,
     uploaded_by VARCHAR(255),
     created_at TIMESTAMP DEFAULT NOW()
   )`);
   try { await execute(`CREATE INDEX IF NOT EXISTS idx_tmpl_combo_cat ON template_combinations(migration_category)`); } catch {}
   try { await execute(`CREATE INDEX IF NOT EXISTS idx_tmpl_combo_docs ON template_combination_documents(combination_id)`); } catch {}
+  try { await execute(`ALTER TABLE template_combination_documents ADD COLUMN IF NOT EXISTS file_data TEXT`); } catch {}
+  try { await execute(`ALTER TABLE template_combination_documents ALTER COLUMN file_path DROP NOT NULL`); } catch {}
 
   // Professional Services engagements
   await execute(`CREATE TABLE IF NOT EXISTS ps_engagements (

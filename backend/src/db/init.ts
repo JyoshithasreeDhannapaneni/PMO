@@ -160,6 +160,7 @@ CREATE TABLE IF NOT EXISTS projects (
   template_id UUID REFERENCES migration_templates(id),
   number_of_servers INTEGER,
   project_memory VARCHAR(100),
+  client_name VARCHAR(255),
   is_escalated BOOLEAN NOT NULL DEFAULT false,
   escalation_priority VARCHAR(20) DEFAULT NULL,
   escalated_at TIMESTAMP DEFAULT NULL,
@@ -350,6 +351,26 @@ CREATE TABLE IF NOT EXISTS case_studies (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS kb_articles (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    case_study_id UUID NOT NULL REFERENCES case_studies(id) ON DELETE CASCADE,
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    title VARCHAR(500) NOT NULL,
+    issue TEXT,
+    root_cause TEXT,
+    fix TEXT,
+    prevention TEXT,
+    category VARCHAR(100) DEFAULT 'General',
+    customer_name VARCHAR(255),
+    project_manager VARCHAR(255),
+    migration_types VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_kb_articles_case_study ON kb_articles(case_study_id);
+  CREATE INDEX IF NOT EXISTS idx_kb_articles_project ON kb_articles(project_id);
+
 CREATE TABLE IF NOT EXISTS notifications (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
@@ -529,6 +550,9 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN
   CREATE TRIGGER update_case_studies_updated_at BEFORE UPDATE ON case_studies FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+  DO $$ BEGIN
+    CREATE TRIGGER update_kb_articles_updated_at BEFORE UPDATE ON kb_articles FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+  EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN
   CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;

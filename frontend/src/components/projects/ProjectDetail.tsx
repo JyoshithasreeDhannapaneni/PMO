@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { DelayIndicator } from '@/components/ui/DelayIndicator';
 import { Button } from '@/components/ui/Button';
@@ -8,7 +9,6 @@ import { formatDate, formatCurrency } from '@/lib/utils';
 import type { Project, ProjectPhaseRecord } from '@/types';
 import { useSettings } from '@/context/SettingsContext';
 import { useAuth } from '@/context/AuthContext';
-import Link from 'next/link';
 import {
   Calendar, User, Building2, DollarSign, Settings,
   AlertTriangle, Users, FileText, Server, Database,
@@ -624,6 +624,12 @@ function OverviewTab({ project }: { project: Project }) {
           <div className="space-y-2 text-sm">
             <div className="flex justify-between"><span className="text-gray-500">Project Manager</span><span className="font-medium text-gray-800">{project.projectManager || '—'}</span></div>
             <div className="flex justify-between"><span className="text-gray-500">Account Manager</span><span className="font-medium text-gray-800">{project.accountManager || '—'}</span></div>
+            {project.clientName && (
+              <div className="flex justify-between">
+                <span className="text-gray-500">Client</span>
+                <Link href={`/clients/${encodeURIComponent(project.clientName)}`} className="font-medium text-indigo-600 hover:underline">{project.clientName}</Link>
+              </div>
+            )}
             <div className="flex justify-between"><span className="text-gray-500">Customer</span><span className="font-medium text-gray-800">{project.customerName || '—'}</span></div>
             <div className="flex justify-between"><span className="text-gray-500">Plan Type</span><StatusBadge status={project.planType} variant="plan" /></div>
           </div>
@@ -1051,6 +1057,13 @@ export function ProjectDetail({ project }: ProjectDetailProps) {
               )}
               {project.accountManager && (
                 <span className="flex items-center gap-1"><Users size={13} className="text-gray-400" /><span className="text-gray-400">Account Manager:</span><span className="font-medium text-gray-700">{project.accountManager}</span></span>
+              )}
+              {project.clientName && (
+                <Link href={`/clients/${encodeURIComponent(project.clientName)}`} className="flex items-center gap-1 hover:text-indigo-600">
+                  <Building2 size={13} className="text-indigo-400" />
+                  <span className="text-gray-400">Client:</span>
+                  <span className="font-medium text-indigo-600 hover:underline">{project.clientName}</span>
+                </Link>
               )}
               {project.customerName && (
                 <span className="flex items-center gap-1"><Building2 size={13} className="text-gray-400" /><span className="text-gray-400">Customer:</span><span className="font-medium text-gray-700">{project.customerName}</span></span>

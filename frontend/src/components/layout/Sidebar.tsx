@@ -31,6 +31,7 @@ const allNavigation = [
   { name: 'Templates',            href: '/templates',              icon: Copy,            adminOnly: false },
   { name: 'Deal Desk',            href: '/deal-desk',              icon: Receipt,         adminOnly: false },
   { name: 'Case Studies',         href: '/case-studies',           icon: BookMarked,      adminOnly: false },
+  { name: 'KB Articles',          href: '/kb-articles',            icon: BookMarked,      adminOnly: false },
   {
     name: 'Reports', href: '#', icon: BarChart2, adminOnly: false,
     children: [

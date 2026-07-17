@@ -396,9 +396,6 @@ export default function EscalationProjectsPage() {
           <h1 className="text-2xl font-bold text-gray-900">{pageTab === 'atRisk' ? 'At Risk Projects' : 'Escalated Projects'}</h1>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => refetch()} className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-            <RotateCcw size={14} /> Refresh
-          </button>
           {pageTab === 'escalated' ? (
             <>
               <button onClick={downloadCSV} className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
@@ -522,6 +519,9 @@ export default function EscalationProjectsPage() {
                         </td>
                         <td className="py-3 px-4">
                           <Link href={`/projects/${p.id}`} onClick={(e) => e.stopPropagation()} className="font-medium text-primary-600 hover:underline">{p.name}</Link>
+                          {p.clientName && (
+                            <Link href={`/clients/${encodeURIComponent(p.clientName)}`} onClick={(e) => e.stopPropagation()} className="text-xs text-indigo-500 hover:underline block">{p.clientName}</Link>
+                          )}
                           <div className="text-xs text-gray-400">{p.customerName}</div>
                         </td>
                         <td className="py-3 px-4 text-center text-gray-700">{p.projectManager || '—'}</td>
