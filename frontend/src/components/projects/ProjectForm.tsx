@@ -89,6 +89,12 @@ export function ProjectForm({ project, onSubmit, isLoading, defaultManagerName }
   const [migrationTypeSearch, setMigrationTypeSearch] = useState('');
   const [migrationTypeError, setMigrationTypeError] = useState('');
 
+  // Email migration needs two values (users + size) instead of the single
+  // "Project Memory" field — both get folded into that same underlying
+  // projectMemory string on submit, so no schema/API change is needed.
+  const [emailUsers, setEmailUsers] = useState('');
+  const [emailSize, setEmailSize] = useState('');
+
   const migrationTypeDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -476,11 +482,48 @@ export function ProjectForm({ project, onSubmit, isLoading, defaultManagerName }
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <Input label="Budget ($)" type="number" placeholder="0" {...register('estimatedCost')} error={errors.estimatedCost?.message} />
               <Input label="Number of Servers" type="number" placeholder="0" min="0" step="1" {...register('numberOfServers')} error={errors.numberOfServers?.message} />
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Project Memory</label>
-                <input type="text" placeholder="e.g. 512 GB, 2 TB" {...register('projectMemory')}
-                  className="w-full px-3 py-2 border border-blue-200 rounded-lg bg-white text-slate-900 text-sm focus:ring-2 focus:ring-blue-300 focus:outline-none" />
-              </div>
+              {selectedMigrationCategory === 'Email' ? (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">No. of Users</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 150"
+                      value={emailUsers}
+                      onChange={(e) => {
+                        setEmailUsers(e.target.value);
+                        setValue('projectMemory', [e.target.value && `${e.target.value} users`, emailSize].filter(Boolean).join(', '));
+                      }}
+                      className="w-full px-3 py-2 border border-blue-200 rounded-lg bg-white text-slate-900 text-sm focus:ring-2 focus:ring-blue-300 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Size</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 512 GB, 2 TB"
+                      value={emailSize}
+                      onChange={(e) => {
+                        setEmailSize(e.target.value);
+                        setValue('projectMemory', [emailUsers && `${emailUsers} users`, e.target.value].filter(Boolean).join(', '));
+                      }}
+                      className="w-full px-3 py-2 border border-blue-200 rounded-lg bg-white text-slate-900 text-sm focus:ring-2 focus:ring-blue-300 focus:outline-none"
+                    />
+                  </div>
+                </>
+              ) : (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">
+                    {selectedMigrationCategory === 'Content Migration' ? 'Project Size' : selectedMigrationCategory === 'Messaging' ? 'Count' : 'Project Memory'}
+                  </label>
+                  <input
+                    type="text"
+                    placeholder={selectedMigrationCategory === 'Content Migration' ? 'e.g. 512 GB, 2 TB' : selectedMigrationCategory === 'Messaging' ? 'e.g. 25 channels' : 'e.g. 512 GB, 2 TB'}
+                    {...register('projectMemory')}
+                    className="w-full px-3 py-2 border border-blue-200 rounded-lg bg-white text-slate-900 text-sm focus:ring-2 focus:ring-blue-300 focus:outline-none"
+                  />
+                </div>
+              )}
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
