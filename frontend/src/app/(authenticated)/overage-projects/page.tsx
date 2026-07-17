@@ -9,11 +9,17 @@ import Link from 'next/link';
 import {
   DollarSign, Clock, TrendingUp, Calendar, Search,
   RotateCcw, Eye, Download, ChevronLeft, ChevronRight, AlertCircle,
-  Plus, X, Trash2, ChevronDown, ChevronUp, Pencil,
+  Plus, X, Trash2, ChevronDown, ChevronUp, Pencil, Upload, FileText,
 } from 'lucide-react';
 import { format, isThisWeek } from 'date-fns';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { projectSegment, type Segment } from '@/lib/segments';
+import { overageApi } from '@/services/api';
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
+function sowSrc(url: string) {
+  return `${API_URL}${url}`;
+}
 
 function formatCurrency(n?: number | null) {
   if (!n) return '—';
@@ -53,12 +59,17 @@ export default function OverageProjectsPage() {
   // Add Overage Modal state
   const [showModal, setShowModal] = useState(false);
   const [overageForm, setOverageForm] = useState({ projectId: '', overageAmount: '', notes: '', extendedStartDate: '', extendedEndDate: '' });
+  const [sowFiles, setSowFiles] = useState<File[]>([]);
   const [saving, setSaving] = useState(false);
   const [modalError, setModalError] = useState('');
+
+  // View Overage Details Modal state (overage-only view — does not navigate to the main project page)
+  const [viewProject, setViewProject] = useState<any | null>(null);
 
   // Edit Overage Modal state
   const [editProject, setEditProject] = useState<any | null>(null);
   const [editForm, setEditForm] = useState({ overageAmount: '', notes: '', extendedStartDate: '', extendedEndDate: '' });
+  const [editSowFiles, setEditSowFiles] = useState<File[]>([]);
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState('');
 
@@ -70,11 +81,16 @@ export default function OverageProjectsPage() {
       extendedStartDate: p.extendedStartDate ? p.extendedStartDate.split('T')[0] : '',
       extendedEndDate: p.extendedEndDate ? p.extendedEndDate.split('T')[0] : '',
     });
+    setEditSowFiles([]);
     setEditError('');
   }
 
   async function handleEditOverage() {
     if (!editProject) return;
+    if (!editForm.extendedStartDate || !editForm.extendedEndDate) {
+      setEditError('Extended Start Date and Extended End Date are required');
+      return;
+    }
     setEditSaving(true);
     setEditError('');
     try {
@@ -85,7 +101,11 @@ export default function OverageProjectsPage() {
         extendedStartDate: editForm.extendedStartDate || undefined,
         extendedEndDate: editForm.extendedEndDate || undefined,
       });
+      if (editSowFiles.length > 0) {
+        await overageApi.uploadSow(editProject.id, editSowFiles);
+      }
       setEditProject(null);
+      setEditSowFiles([]);
       refetch();
     } catch {
       setEditError('Failed to update overage. Please try again.');
@@ -110,6 +130,10 @@ export default function OverageProjectsPage() {
 
   async function handleAddOverage() {
     if (!overageForm.projectId) { setModalError('Please select a project'); return; }
+    if (!overageForm.extendedStartDate || !overageForm.extendedEndDate) {
+      setModalError('Extended Start Date and Extended End Date are required');
+      return;
+    }
     setModalError('');
     setSaving(true);
     try {
@@ -121,8 +145,12 @@ export default function OverageProjectsPage() {
         extendedStartDate: overageForm.extendedStartDate || undefined,
         extendedEndDate: overageForm.extendedEndDate || undefined,
       });
+      if (sowFiles.length > 0) {
+        await overageApi.uploadSow(overageForm.projectId, sowFiles);
+      }
       setShowModal(false);
       setOverageForm({ projectId: '', overageAmount: '', notes: '', extendedStartDate: '', extendedEndDate: '' });
+      setSowFiles([]);
       setProjectSearch('');
       refetch();
     } catch {
@@ -385,7 +413,13 @@ export default function OverageProjectsPage() {
                           <div className="flex items-center gap-1">
                             {expandedRows.has(p.id) ? <ChevronUp size={14} className="text-gray-400 shrink-0" /> : <ChevronDown size={14} className="text-gray-400 shrink-0" />}
                             <div>
-                              <Link href={`/projects/${p.id}`} className="font-medium text-primary-600 hover:underline" onClick={(e) => e.stopPropagation()}>{p.name}</Link>
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); setViewProject(p); }}
+                                className="font-medium text-primary-600 hover:underline text-left"
+                              >
+                                {p.name}
+                              </button>
                               {p.clientName && (
                                 <Link href={`/clients/${encodeURIComponent(p.clientName)}`} onClick={(e) => e.stopPropagation()} className="text-xs text-indigo-500 hover:underline block">{p.clientName}</Link>
                               )}
@@ -435,9 +469,14 @@ export default function OverageProjectsPage() {
                         </td>
                         <td className="py-3 px-4 text-center" onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center justify-center gap-1">
-                            <Link href={`/projects/${p.id}`} className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 text-gray-600 hover:bg-primary-100 hover:text-primary-700 transition-colors">
+                            <button
+                              type="button"
+                              onClick={() => setViewProject(p)}
+                              title="View overage details"
+                              className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-100 text-gray-600 hover:bg-primary-100 hover:text-primary-700 transition-colors"
+                            >
                               <Eye size={14} />
-                            </Link>
+                            </button>
                             {canEditProject(p) && (
                               <button
                                 onClick={() => openEditModal(p)}
@@ -463,7 +502,25 @@ export default function OverageProjectsPage() {
                         <tr>
                           <td colSpan={12} className="px-4 pb-4 pt-0 bg-orange-50/40">
                             <div className="pl-6">
-                              <p className="text-xs font-semibold text-gray-500 mb-2 mt-2">Overage History</p>
+                              <div className="flex items-center justify-between mt-2 mb-2">
+                                <p className="text-xs font-semibold text-gray-500">Overage History</p>
+                                {(() => {
+                                  const files = p.overageSowFiles?.length ? p.overageSowFiles
+                                    : (p.overageSowUrl ? [{ url: p.overageSowUrl, name: p.overageSowName }] : []);
+                                  return files.length > 0 ? (
+                                    <div className="flex items-center gap-3 flex-wrap justify-end">
+                                      {files.map((f: any, i: number) => (
+                                        <a key={i} href={sowSrc(f.url)} target="_blank" rel="noopener noreferrer"
+                                          className="flex items-center gap-1 text-xs text-primary-600 hover:underline">
+                                          <FileText size={12} /> {f.name || `SOW ${i + 1}`}
+                                        </a>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <span className="text-xs text-gray-400 italic">No SOW uploaded</span>
+                                  );
+                                })()}
+                              </div>
                               {(!p.overageHistory || p.overageHistory.length === 0) ? (
                                 <p className="text-xs text-gray-400 italic">No overage history recorded.</p>
                               ) : (
@@ -542,6 +599,93 @@ export default function OverageProjectsPage() {
         Overage projects are those that require additional payment or extension beyond the original scope.
       </div>
 
+      {/* View Overage Details Modal — overage-only view, does not navigate to the main project page */}
+      {viewProject && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg p-6 mx-4 max-h-[85vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <DollarSign size={18} className="text-orange-600" /> Overage Details
+              </h2>
+              <button onClick={() => setViewProject(null)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+            </div>
+            <p className="text-sm text-gray-500 mb-4">{viewProject.name} — {viewProject.customerName}</p>
+
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <div className="text-xs text-gray-400 mb-0.5">Overage Amount</div>
+                  <div className="font-semibold text-green-700">{formatCurrency(projectCumulativeAmount(viewProject))}</div>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <div className="text-xs text-gray-400 mb-0.5">Days Overdue</div>
+                  <div className="font-semibold text-orange-600">{daysLabel(viewProject.daysOverdue)}</div>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <div className="text-xs text-gray-400 mb-0.5">Extended Start Date</div>
+                  <div className="font-medium text-gray-700">{viewProject.extendedStartDate ? format(new Date(viewProject.extendedStartDate), 'MMM d, yyyy') : '—'}</div>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <div className="text-xs text-gray-400 mb-0.5">Extended End Date</div>
+                  <div className="font-medium text-gray-700">{viewProject.extendedEndDate ? format(new Date(viewProject.extendedEndDate), 'MMM d, yyyy') : '—'}</div>
+                </div>
+              </div>
+
+              <div>
+                <div className="text-xs font-medium text-gray-500 mb-1">Notes</div>
+                <p className="text-sm text-gray-700 bg-gray-50 rounded-lg p-3 whitespace-pre-wrap">{viewProject.overageNotes || 'No notes recorded.'}</p>
+              </div>
+
+              <div>
+                <div className="text-xs font-medium text-gray-500 mb-1">Overage SOW Documents</div>
+                {(() => {
+                  const files = viewProject.overageSowFiles?.length ? viewProject.overageSowFiles
+                    : (viewProject.overageSowUrl ? [{ url: viewProject.overageSowUrl, name: viewProject.overageSowName }] : []);
+                  return files.length > 0 ? (
+                    <ul className="space-y-1.5">
+                      {files.map((f: any, i: number) => (
+                        <li key={i}>
+                          <a href={sowSrc(f.url)} target="_blank" rel="noopener noreferrer"
+                            className="flex items-center gap-1.5 text-sm text-primary-600 hover:underline bg-gray-50 rounded-lg p-3">
+                            <FileText size={14} /> {f.name || 'View / Download SOW'}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-gray-400 italic bg-gray-50 rounded-lg p-3">No SOW documents uploaded.</p>
+                  );
+                })()}
+              </div>
+
+              {viewProject.overageHistory && viewProject.overageHistory.length > 0 && (
+                <div>
+                  <div className="text-xs font-medium text-gray-500 mb-1">Overage History</div>
+                  <div className="space-y-1.5">
+                    {viewProject.overageHistory.map((h: any) => (
+                      <div key={h.id} className="flex items-center justify-between text-xs bg-gray-50 rounded-lg px-3 py-2">
+                        <span className="text-gray-500">{h.createdAt ? format(new Date(h.createdAt), 'MMM d, yyyy') : '—'}</span>
+                        <span className="font-medium text-green-700">{formatCurrency(h.overageAmount)}</span>
+                        <span className="text-orange-600">{h.extendedEndDate ? format(new Date(h.extendedEndDate), 'MMM d, yyyy') : '—'}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setViewProject(null)}
+                className="flex-1 px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Edit Overage Modal */}
       {editProject && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
@@ -569,18 +713,20 @@ export default function OverageProjectsPage() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Extended Start Date</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Extended Start Date <span className="text-red-500">*</span></label>
                   <input
                     type="date"
+                    required
                     value={editForm.extendedStartDate}
                     onChange={(e) => setEditForm({ ...editForm, extendedStartDate: e.target.value })}
                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-900"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Extended End Date</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Extended End Date <span className="text-red-500">*</span></label>
                   <input
                     type="date"
+                    required
                     value={editForm.extendedEndDate}
                     onChange={(e) => setEditForm({ ...editForm, extendedEndDate: e.target.value })}
                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-900"
@@ -596,6 +742,48 @@ export default function OverageProjectsPage() {
                   placeholder="Describe the overage reason..."
                   className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-900 resize-none"
                 />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Overage SOW Documents</label>
+                {(() => {
+                  const existing = editProject.overageSowFiles?.length ? editProject.overageSowFiles
+                    : (editProject.overageSowUrl ? [{ url: editProject.overageSowUrl, name: editProject.overageSowName }] : []);
+                  return existing.length > 0 ? (
+                    <ul className="mb-1.5 space-y-1">
+                      {existing.map((f: any, i: number) => (
+                        <li key={i}>
+                          <a href={sowSrc(f.url)} target="_blank" rel="noopener noreferrer"
+                            className="flex items-center gap-1.5 text-xs text-primary-600 hover:underline">
+                            <FileText size={12} /> {f.name || 'View uploaded SOW'}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null;
+                })()}
+                <label className="flex items-center gap-2 px-3 py-2 text-sm border border-dashed border-gray-300 rounded-lg text-gray-500 hover:border-primary-400 cursor-pointer">
+                  <Upload size={14} />
+                  {editSowFiles.length > 0 ? `${editSowFiles.length} new file${editSowFiles.length !== 1 ? 's' : ''} selected` : 'Add more SOW file(s)...'}
+                  <input
+                    type="file"
+                    multiple
+                    accept=".pdf,.doc,.docx,image/*"
+                    className="hidden"
+                    onChange={(e) => setEditSowFiles((prev) => [...prev, ...Array.from(e.target.files || [])])}
+                  />
+                </label>
+                {editSowFiles.length > 0 && (
+                  <ul className="mt-1.5 space-y-1">
+                    {editSowFiles.map((f, i) => (
+                      <li key={i} className="flex items-center justify-between text-xs text-gray-600 bg-gray-50 rounded px-2 py-1">
+                        <span className="truncate">{f.name}</span>
+                        <button type="button" onClick={() => setEditSowFiles((prev) => prev.filter((_, idx) => idx !== i))} className="text-gray-400 hover:text-red-500 ml-2 shrink-0">
+                          <X size={12} />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
               {editError && <p className="text-sm text-red-600 flex items-center gap-1"><AlertCircle size={13} /> {editError}</p>}
             </div>
@@ -700,18 +888,20 @@ export default function OverageProjectsPage() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Extended Start Date (optional)</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Extended Start Date <span className="text-red-500">*</span></label>
                   <input
                     type="date"
+                    required
                     value={overageForm.extendedStartDate}
                     onChange={(e) => setOverageForm({ ...overageForm, extendedStartDate: e.target.value })}
                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-900"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Extended End Date (optional)</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Extended End Date <span className="text-red-500">*</span></label>
                   <input
                     type="date"
+                    required
                     value={overageForm.extendedEndDate}
                     onChange={(e) => setOverageForm({ ...overageForm, extendedEndDate: e.target.value })}
                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-900"
@@ -728,6 +918,33 @@ export default function OverageProjectsPage() {
                   placeholder="Describe the overage reason..."
                   className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-900 resize-none"
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Overage SOW Documents (optional)</label>
+                <label className="flex items-center gap-2 px-3 py-2 text-sm border border-dashed border-gray-300 rounded-lg text-gray-500 hover:border-primary-400 cursor-pointer">
+                  <Upload size={14} />
+                  {sowFiles.length > 0 ? `${sowFiles.length} file${sowFiles.length !== 1 ? 's' : ''} selected` : 'Upload SOW file(s)...'}
+                  <input
+                    type="file"
+                    multiple
+                    accept=".pdf,.doc,.docx,image/*"
+                    className="hidden"
+                    onChange={(e) => setSowFiles((prev) => [...prev, ...Array.from(e.target.files || [])])}
+                  />
+                </label>
+                {sowFiles.length > 0 && (
+                  <ul className="mt-1.5 space-y-1">
+                    {sowFiles.map((f, i) => (
+                      <li key={i} className="flex items-center justify-between text-xs text-gray-600 bg-gray-50 rounded px-2 py-1">
+                        <span className="truncate">{f.name}</span>
+                        <button type="button" onClick={() => setSowFiles((prev) => prev.filter((_, idx) => idx !== i))} className="text-gray-400 hover:text-red-500 ml-2 shrink-0">
+                          <X size={12} />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
 
               {modalError && (

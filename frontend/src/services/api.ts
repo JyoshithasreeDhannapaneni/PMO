@@ -540,6 +540,18 @@ export const platformReviewsApi = {
   },
 };
 
+// Overage API
+export const overageApi = {
+  uploadSow: async (projectId: string, files: File[]) => {
+    const formData = new FormData();
+    files.forEach((f) => formData.append('files', f));
+    const { data } = await api.post(`/overage/${projectId}/sow`, formData, {
+      headers: { 'Content-Type': undefined },
+    });
+    return data;
+  },
+};
+
 // SMTP API
 export const smtpApi = {
   get: async () => {
