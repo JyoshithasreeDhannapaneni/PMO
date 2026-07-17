@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { authService } from '../services/authService';
 import { emailService } from '../services/emailService';
 import { passwordResetService } from '../services/passwordResetService';
+import { auditService } from '../services/auditService';
 import { asyncHandler, AppError } from '../middleware/errorHandler';
 import { createHash } from 'crypto';
 
@@ -19,6 +20,16 @@ export const authController = {
     }
 
     const result = await authService.login(usernameOrEmail, password);
+
+    await auditService.log({
+      userId: result.user.id,
+      action: 'LOGIN',
+      entityType: 'user',
+      entityId: result.user.id,
+      entityName: result.user.name,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
 
     res.json({
       success: true,
@@ -80,7 +91,19 @@ export const authController = {
     const token = req.headers.authorization?.replace('Bearer ', '');
 
     if (token) {
+      const user = await authService.getUserFromToken(token);
       await authService.logout(token);
+      if (user) {
+        await auditService.log({
+          userId: user.id,
+          action: 'LOGOUT',
+          entityType: 'user',
+          entityId: user.id,
+          entityName: user.name,
+          ipAddress: req.ip,
+          userAgent: req.headers['user-agent'],
+        });
+      }
     }
 
     res.json({

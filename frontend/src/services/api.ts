@@ -707,4 +707,32 @@ export const psEngagementsApi = {
   },
 };
 
+export const auditApi = {
+  getAll: async (params?: {
+    page?: number; limit?: number; userId?: string; entityType?: string;
+    entityId?: string; action?: string; startDate?: string; endDate?: string;
+  }) => {
+    const { data } = await api.get('/audit', { params });
+    return data;
+  },
+  getManagerLeaderboard: async (params: { startDate: string; endDate: string }) => {
+    const { data } = await api.get('/audit/manager-leaderboard', { params });
+    return data;
+  },
+  getWeeklyTrend: async (params: { endDate: string; weeks?: number }) => {
+    const { data } = await api.get('/audit/weekly-trend', { params });
+    return data;
+  },
+  exportLogExcel: async (params?: {
+    userId?: string; entityType?: string; entityId?: string; action?: string; startDate?: string; endDate?: string;
+  }) => {
+    const { data } = await api.get('/audit/export/log', { params, responseType: 'blob' });
+    return data as Blob;
+  },
+  exportLeaderboardExcel: async (params: { startDate: string; endDate: string }) => {
+    const { data } = await api.get('/audit/export/leaderboard', { params, responseType: 'blob' });
+    return data as Blob;
+  },
+};
+
 export default api;
