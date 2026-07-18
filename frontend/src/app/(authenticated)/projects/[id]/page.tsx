@@ -36,16 +36,20 @@ export default function ProjectPage({ params }: ProjectPageProps) {
     );
   }
 
+  const project = data.data;
+  const backHref  = project.clientName ? `/clients/${encodeURIComponent(project.clientName)}` : '/projects';
+  const backLabel = project.clientName ? project.clientName : 'Projects';
+
   return (
     <div className="animate-fadeIn">
       {/* Back button */}
-      <Link href="/projects" className="inline-flex items-center text-sm text-gray-500 hover:text-gray-700 mb-4">
+      <Link href={backHref} className="inline-flex items-center text-sm text-gray-500 hover:text-gray-700 mb-4">
         <ArrowLeft size={16} className="mr-1" />
-        Back to Projects
+        Back to {backLabel}
       </Link>
 
       {/* Project Detail */}
-      <ProjectDetail project={data.data} />
+      <ProjectDetail project={project} />
     </div>
   );
 }

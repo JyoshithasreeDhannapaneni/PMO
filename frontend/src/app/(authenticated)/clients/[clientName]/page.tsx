@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useProjects, useClientSummary } from '@/hooks/useProjects';
 import { StatusBadge } from '@/components/ui/StatusBadge';
@@ -23,7 +23,6 @@ type StatusFilter = 'all' | 'ACTIVE' | 'ON_HOLD' | 'COMPLETED';
 
 export default function ClientProfilePage() {
   const params = useParams();
-  const router = useRouter();
   const rawClientName = params.clientName as string;
   const clientName = decodeURIComponent(rawClientName);
 
@@ -58,12 +57,12 @@ export default function ClientProfilePage() {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
       {/* Header */}
       <div className="flex items-start gap-4">
-        <button
-          onClick={() => router.back()}
+        <Link
+          href="/projects"
           className="mt-1 p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
         >
           <ArrowLeft size={18} />
-        </button>
+        </Link>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <Building2 size={22} className="text-indigo-500 shrink-0" />

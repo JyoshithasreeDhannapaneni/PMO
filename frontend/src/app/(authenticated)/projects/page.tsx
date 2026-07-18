@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useProjects, useDeleteProject } from '@/hooks/useProjects';
 import { authApi } from '@/services/api';
 import { ProjectsTable } from '@/components/projects/ProjectsTable';
+import { MultiScopeProjectModal } from '@/components/projects/MultiScopeProjectModal';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { MultiSelectDropdown } from '@/components/ui/MultiSelectDropdown';
@@ -61,6 +62,7 @@ export default function ProjectsPage() {
   const [searchInput, setSearchInput] = useState(filters.search);
   const [showFilters, setShowFilters] = useState(true);
   const [segmentTab, setSegmentTab] = useState<Segment | 'ALL'>('ALL');
+  const [showMultiModal, setShowMultiModal] = useState(false);
 
   // Update URL when filters change (preserve hideCompleted)
   useEffect(() => {
@@ -130,6 +132,35 @@ export default function ProjectsPage() {
   const segmentProjects = segmentTab === 'ALL'
     ? displayProjects
     : displayProjects.filter((p: any) => projectSegment(p) === segmentTab);
+
+  const clientGroups = useMemo(() => {
+    const grouped = new Map<string, any[]>();
+    const ungrouped: any[] = [];
+    for (const p of displayProjects) {
+      if (p.clientName) {
+        if (!grouped.has(p.clientName)) grouped.set(p.clientName, []);
+        grouped.get(p.clientName)!.push(p);
+      } else {
+        ungrouped.push(p);
+      }
+    }
+    return { grouped, ungrouped };
+  }, [displayProjects]);
+
+  // Map migration type name → category so grouped rows can show scope chips
+  const typeToCategory = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const mt of settings.migrationTypes) {
+      map.set(mt.name, mt.category || 'Other');
+    }
+    return map;
+  }, [settings.migrationTypes]);
+
+  function getProjectScope(project: any): string {
+    if (!project.migrationTypes) return 'Other';
+    const firstName = project.migrationTypes.split(',')[0].trim();
+    return typeToCategory.get(firstName) || 'Other';
+  }
 
   const exportToCSV = () => {
     if (!segmentProjects.length) return;
@@ -628,7 +659,7 @@ export default function ProjectsPage() {
             </div>
 
             {/* Table content */}
-            <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+            <div className="flex-1 min-h-0 overflow-auto flex flex-col">
               {segmentProjects.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full py-16">
                   <div className="w-16 h-16 mb-4 rounded-full bg-gray-100 flex items-center justify-center">
@@ -638,6 +669,90 @@ export default function ProjectsPage() {
                     {segmentTab === 'ALL' ? 'No projects found' : `No ${segmentTab} projects found`}
                   </p>
                 </div>
+              ) : segmentTab === 'ALL' && clientGroups.grouped.size > 0 ? (
+                <>
+                  {/* Client-grouped rows */}
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-gray-200 bg-gray-50 text-left">
+                          <th className="py-2.5 px-4 font-semibold text-gray-500 text-xs uppercase tracking-wide">Client / Account</th>
+                          <th className="py-2.5 px-4 font-semibold text-gray-500 text-xs uppercase tracking-wide">Scopes</th>
+                          <th className="py-2.5 px-4 font-semibold text-gray-500 text-xs uppercase tracking-wide">Status</th>
+                          <th className="py-2.5 px-4 font-semibold text-gray-500 text-xs uppercase tracking-wide">Project Manager(s)</th>
+                          <th className="py-2.5 px-4" />
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {Array.from(clientGroups.grouped.entries()).map(([cName, projects]) => {
+                          const activeCount    = projects.filter((p: any) => p.status === 'ACTIVE').length;
+                          const completedCount = projects.filter((p: any) => p.status === 'COMPLETED').length;
+                          const onHoldCount    = projects.filter((p: any) => p.status === 'ON_HOLD').length;
+                          const delayedCount   = projects.filter((p: any) => p.delayStatus && p.delayStatus !== 'NOT_DELAYED').length;
+                          const escalatedCount = projects.filter((p: any) => p.isEscalated).length;
+                          const pms = [...new Set(projects.map((p: any) => p.projectManager).filter(Boolean))].join(', ');
+                          return (
+                            <tr
+                              key={cName}
+                              onClick={() => router.push(`/clients/${encodeURIComponent(cName)}`)}
+                              className="hover:bg-indigo-50/50 cursor-pointer transition-colors group"
+                            >
+                              <td className="py-3.5 px-4">
+                                <div className="font-semibold text-indigo-700 group-hover:text-indigo-900 transition-colors">{cName}</div>
+                                <div className="text-xs text-gray-400 mt-0.5">{projects.length} project{projects.length !== 1 ? 's' : ''}</div>
+                              </td>
+                              <td className="py-3.5 px-4">
+                                <div className="flex flex-wrap gap-1.5">
+                                  {projects.map((p: any) => {
+                                    const scope = getProjectScope(p);
+                                    const chipCls =
+                                      scope === 'Content Migration' ? 'bg-blue-50 text-blue-700'    :
+                                      scope === 'Messaging'         ? 'bg-purple-50 text-purple-700':
+                                      scope === 'Email'             ? 'bg-emerald-50 text-emerald-700':
+                                      'bg-gray-100 text-gray-600';
+                                    const chipLabel =
+                                      scope === 'Content Migration' ? 'Content'  :
+                                      scope === 'Messaging'         ? 'Messaging':
+                                      scope === 'Email'             ? 'Email'    :
+                                      p.name;
+                                    return (
+                                      <span key={p.id} className={`text-xs px-2.5 py-0.5 rounded-full font-semibold ${chipCls}`}>
+                                        {chipLabel}
+                                      </span>
+                                    );
+                                  })}
+                                </div>
+                              </td>
+                              <td className="py-3.5 px-4">
+                                <div className="flex flex-wrap gap-1">
+                                  {activeCount > 0    && <span className="text-xs px-2 py-0.5 rounded-full bg-green-50 text-green-700 font-medium">Active {activeCount}</span>}
+                                  {completedCount > 0 && <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 font-medium">Done {completedCount}</span>}
+                                  {onHoldCount > 0    && <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-50 text-yellow-700 font-medium">On Hold {onHoldCount}</span>}
+                                  {delayedCount > 0   && <span className="text-xs px-2 py-0.5 rounded-full bg-red-50 text-red-600 font-medium">Delayed {delayedCount}</span>}
+                                  {escalatedCount > 0 && <span className="text-xs px-2 py-0.5 rounded-full bg-orange-50 text-orange-600 font-medium">Escalated {escalatedCount}</span>}
+                                </div>
+                              </td>
+                              <td className="py-3.5 px-4 text-xs text-gray-500">{pms || '—'}</td>
+                              <td className="py-3.5 px-4 text-gray-300 group-hover:text-indigo-500 font-bold text-lg transition-colors">›</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Ungrouped (no clientName) projects shown below the grouped table */}
+                  {clientGroups.ungrouped.length > 0 && (
+                    <>
+                      <div className="flex items-center gap-2 px-4 py-2 bg-amber-50 border-y border-amber-100">
+                        <span className="text-xs text-amber-700 font-medium">
+                          Individual Projects ({clientGroups.ungrouped.length}) — no client assigned
+                        </span>
+                      </div>
+                      <ProjectsTable projects={clientGroups.ungrouped} onDelete={handleDelete} />
+                    </>
+                  )}
+                </>
               ) : (
                 <ProjectsTable projects={segmentProjects} onDelete={handleDelete} />
               )}
@@ -645,6 +760,8 @@ export default function ProjectsPage() {
           </div>
         );
       })()}
+
+      {showMultiModal && <MultiScopeProjectModal onClose={() => setShowMultiModal(false)} />}
     </div>
   );
 }

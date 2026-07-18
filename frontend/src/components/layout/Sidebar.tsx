@@ -38,9 +38,10 @@ const allNavigation = [
   {
     name: 'Reports', href: '#', icon: BarChart3, color: '#e11d48', adminOnly: false,
     children: [
-      { name: 'Weekly Reports',  href: '/reports/weekly' },
-      { name: 'Monthly Reports', href: '/reports/monthly' },
-      { name: 'Audit Report',    href: '/reports/audit' },
+      { name: 'Weekly Reports',   href: '/reports/weekly' },
+      { name: 'Monthly Reports',  href: '/reports/monthly' },
+      { name: 'Audit Report',     href: '/reports/audit' },
+      { name: 'Audit Dashboard',  href: '/reports/audit-dashboard' },
     ],
   },
 ];
