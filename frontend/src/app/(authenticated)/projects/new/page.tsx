@@ -69,15 +69,18 @@ export default function NewProjectPage() {
 
   const defaultManagerName = user?.role === 'PROJECT_MANAGER' ? user.name : undefined;
 
-  const handleSubmit = async (data: CreateProjectInput) => {
+  const handleSubmit = async (dataArray: CreateProjectInput[]) => {
     try {
-      const submitData = {
-        ...data,
-        ...(defaultManagerName ? { projectManager: defaultManagerName } : {}),
-        ...(markAtRisk ? { isAtRisk: true, atRiskNotes: atRiskNotes || undefined } : {}),
-      };
-      await createProject.mutateAsync(submitData);
-      setCreatedProjectName(data.name);
+      for (const data of dataArray) {
+        const submitData = {
+          ...data,
+          ...(defaultManagerName ? { projectManager: defaultManagerName } : {}),
+          ...(markAtRisk ? { isAtRisk: true, atRiskNotes: atRiskNotes || undefined } : {}),
+        };
+        await createProject.mutateAsync(submitData);
+      }
+      const names = dataArray.map(d => d.name).filter(Boolean).join(', ');
+      setCreatedProjectName(names || 'Project');
     } catch (error: any) {
       const msg = error?.response?.data?.error?.message
         || error?.response?.data?.message

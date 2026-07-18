@@ -7,7 +7,7 @@ import { Card } from '@/components/ui/Card';
 import Link from 'next/link';
 import {
   Siren, AlertTriangle, Search,
-  RotateCcw, Download, ChevronLeft, ChevronRight,
+  Download, ChevronLeft, ChevronRight,
   Plus, X, AlertCircle, TrendingUp, ChevronDown, History, Calendar, Trash2, CheckCircle2,
   BookOpen, Send, Loader2, Pencil,
 } from 'lucide-react';
@@ -56,8 +56,10 @@ export default function EscalationProjectsPage() {
   const [atRiskSearch, setAtRiskSearch] = useState('');
 
   const [search, setSearch] = useState('');
-  const [prioritySel, setPrioritySel] = useState('');
-  const [typeSel, setTypeSel] = useState('');
+  const [prioritySels, setPrioritySels] = useState<Set<string>>(new Set());
+  const [typeSels, setTypeSels] = useState<Set<string>>(new Set());
+  const [showPriorityDrop, setShowPriorityDrop] = useState(false);
+  const [showTypeDrop, setShowTypeDrop] = useState(false);
   const [escSegmentTab, setEscSegmentTab] = useState<Segment | 'ALL'>('ALL');
   const [atRiskSegmentTab, setAtRiskSegmentTab] = useState<Segment | 'ALL'>('ALL');
   const [page, setPage] = useState(1);
@@ -177,13 +179,13 @@ export default function EscalationProjectsPage() {
     const q = search.toLowerCase();
     return deduped.filter((p) => {
       if (q && !p.name?.toLowerCase().includes(q) && !p.customerName?.toLowerCase().includes(q) && !p.projectManager?.toLowerCase().includes(q)) return false;
-      if (prioritySel && p.escalationPriority !== prioritySel) return false;
-      if (typeSel && !(p.escalationNotes || '').toLowerCase().includes(typeSel.toLowerCase())) return false;
+      if (prioritySels.size > 0 && !prioritySels.has(p.escalationPriority)) return false;
+      if (typeSels.size > 0 && !Array.from(typeSels).some((t) => (p.escalationNotes || '').toLowerCase().includes(t.toLowerCase()))) return false;
       if (kpiFilter === 'active' && !p.isEscalated) return false;
       if (kpiFilter === 'critical' && p.escalationPriority !== 'HIGH') return false;
       return true;
     });
-  }, [deduped, search, prioritySel, typeSel, kpiFilter]);
+  }, [deduped, search, prioritySels, typeSels, kpiFilter]);
 
   const escEntCount = filtered.filter((p: any) => projectSegment(p) === 'ENT').length;
   const escSmbCount = filtered.filter((p: any) => projectSegment(p) === 'SMB').length;
@@ -383,6 +385,9 @@ export default function EscalationProjectsPage() {
 
   return (
     <div className="space-y-6">
+      {(showPriorityDrop || showTypeDrop) && (
+        <div className="fixed inset-0 z-10" onClick={() => { setShowPriorityDrop(false); setShowTypeDrop(false); }} />
+      )}
       {/* Header — title and actions follow whichever tab is active, so the
           page doesn't keep saying "Escalated Projects" while you're looking
           at At Risk */}
@@ -733,7 +738,7 @@ export default function EscalationProjectsPage() {
       </div>
 
       {/* Filters */}
-      <Card>
+      <div className="bg-white rounded-2xl border border-blue-100 p-4 sm:p-6 shadow-sm">
         <div className="flex flex-wrap gap-3 items-center">
           <div className="relative flex-1 min-w-[200px]">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -744,32 +749,99 @@ export default function EscalationProjectsPage() {
               className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-900"
             />
           </div>
-          <select
-            value={prioritySel}
-            onChange={(e) => { setPrioritySel(e.target.value); setPage(1); }}
-            className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-900"
-          >
-            <option value="">All Priorities</option>
-            <option value="HIGH">Critical (High)</option>
-            <option value="MEDIUM">Medium</option>
-            <option value="LOW">Low</option>
-          </select>
-          <select
-            value={typeSel}
-            onChange={(e) => { setTypeSel(e.target.value); setPage(1); }}
-            className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-900"
-          >
-            <option value="">All Types</option>
-            {ESCALATION_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-          </select>
-          <button
-            onClick={() => { setSearch(''); setPrioritySel(''); setTypeSel(''); setKpiFilter(''); setPage(1); }}
-            className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
-          >
-            <RotateCcw size={13} /> Reset
-          </button>
+
+          {/* Priority multi-select */}
+          <div className="relative">
+            <button
+              onClick={() => { setShowPriorityDrop((v) => !v); setShowTypeDrop(false); }}
+              className={`flex items-center gap-2 px-3 py-2 text-sm border rounded-lg bg-white transition-colors ${prioritySels.size > 0 ? 'border-red-400 text-red-700 bg-red-50' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`}
+            >
+              Priority
+              {prioritySels.size > 0 && (
+                <span className="inline-flex items-center justify-center w-4 h-4 text-[10px] font-bold bg-red-500 text-white rounded-full">{prioritySels.size}</span>
+              )}
+              <ChevronDown size={13} className={`transition-transform ${showPriorityDrop ? 'rotate-180' : ''}`} />
+            </button>
+            {showPriorityDrop && (
+              <div className="absolute z-20 top-full mt-1 left-0 w-48 bg-white border border-gray-200 rounded-xl shadow-lg py-2" onClick={(e) => e.stopPropagation()}>
+                {[{ value: 'HIGH', label: 'Critical (High)' }, { value: 'MEDIUM', label: 'Medium' }, { value: 'LOW', label: 'Low' }].map(({ value, label }) => (
+                  <label key={value} className="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 cursor-pointer text-sm text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={prioritySels.has(value)}
+                      onChange={() => {
+                        setPrioritySels((prev) => {
+                          const next = new Set(prev);
+                          next.has(value) ? next.delete(value) : next.add(value);
+                          return next;
+                        });
+                        setPage(1);
+                      }}
+                      className="accent-red-500 w-3.5 h-3.5"
+                    />
+                    {label}
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Type multi-select */}
+          <div className="relative">
+            <button
+              onClick={() => { setShowTypeDrop((v) => !v); setShowPriorityDrop(false); }}
+              className={`flex items-center gap-2 px-3 py-2 text-sm border rounded-lg bg-white transition-colors ${typeSels.size > 0 ? 'border-purple-400 text-purple-700 bg-purple-50' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`}
+            >
+              Escalation Type
+              {typeSels.size > 0 && (
+                <span className="inline-flex items-center justify-center w-4 h-4 text-[10px] font-bold bg-purple-500 text-white rounded-full">{typeSels.size}</span>
+              )}
+              <ChevronDown size={13} className={`transition-transform ${showTypeDrop ? 'rotate-180' : ''}`} />
+            </button>
+            {showTypeDrop && (
+              <div className="absolute z-20 top-full mt-1 left-0 w-56 bg-white border border-gray-200 rounded-xl shadow-lg py-2" onClick={(e) => e.stopPropagation()}>
+                {ESCALATION_TYPES.map((t) => (
+                  <label key={t} className="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 cursor-pointer text-sm text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={typeSels.has(t)}
+                      onChange={() => {
+                        setTypeSels((prev) => {
+                          const next = new Set(prev);
+                          next.has(t) ? next.delete(t) : next.add(t);
+                          return next;
+                        });
+                        setPage(1);
+                      }}
+                      className="accent-purple-500 w-3.5 h-3.5"
+                    />
+                    {t}
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+
         </div>
-      </Card>
+
+        {/* Active filter chips */}
+        {(prioritySels.size > 0 || typeSels.size > 0) && (
+          <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-gray-100">
+            {Array.from(prioritySels).map((v) => (
+              <span key={v} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-red-100 text-red-700 border border-red-200">
+                {v === 'HIGH' ? 'Critical' : v === 'MEDIUM' ? 'Medium' : 'Low'}
+                <button onClick={() => { setPrioritySels((prev) => { const n = new Set(prev); n.delete(v); return n; }); setPage(1); }} className="hover:text-red-900"><X size={10} /></button>
+              </span>
+            ))}
+            {Array.from(typeSels).map((t) => (
+              <span key={t} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-purple-100 text-purple-700 border border-purple-200">
+                {t}
+                <button onClick={() => { setTypeSels((prev) => { const n = new Set(prev); n.delete(t); return n; }); setPage(1); }} className="hover:text-purple-900"><X size={10} /></button>
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* Escalations Table */}
       <Card>
@@ -827,8 +899,8 @@ export default function EscalationProjectsPage() {
                     const userNote = notes.includes(' — ') ? notes.split(' — ').slice(1).join(' — ') : '';
                     const isExpanded = expandedRows.has(p.id);
                     return (
-                      <>
-                        <tr key={p.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => toggleRow(p.id)}>
+                      <Fragment key={p.id}>
+                        <tr className="hover:bg-gray-50 cursor-pointer" onClick={() => toggleRow(p.id)}>
                           <td className="py-3 px-2 text-center">
                             <ChevronDown size={14} className={`text-gray-400 transition-transform mx-auto ${isExpanded ? 'rotate-180' : ''}`} />
                           </td>
@@ -923,7 +995,7 @@ export default function EscalationProjectsPage() {
                           </td>
                         </tr>
                         {isExpanded && (
-                          <tr key={`${p.id}-history`} className="bg-red-50/50">
+                          <tr className="bg-red-50/50">
                             <td colSpan={12} className="px-6 py-4">
                               <div className="flex items-start gap-3">
                                 <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0 mt-0.5">
@@ -996,7 +1068,7 @@ export default function EscalationProjectsPage() {
                             </td>
                           </tr>
                         )}
-                      </>
+                      </Fragment>
                     );
                   })}
                 </tbody>

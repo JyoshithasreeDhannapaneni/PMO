@@ -722,6 +722,33 @@ export default function ProfessionalServicesPage() {
   const activeFilterCount = [searchFilter, engTypeFilter, psLeadFilter].filter(Boolean).length;
   const clearFilters = () => { setSearchFilter(''); setEngTypeFilter(''); setPsLeadFilter(''); };
 
+  const downloadCSV = (rows: PSEngagement[], tabLabel: string) => {
+    const headers = [
+      'SOW Ref ID', 'Client Name', 'PS Lead', 'Account Manager',
+      'Start Date', 'End Date', 'Line Items', 'Progress', 'Created By', 'Created At',
+    ];
+    const csvRows = rows.map(eng => {
+      const lineItems = eng.lineItems || [];
+      const allDone = lineItems.length > 0 && lineItems.every((li: LineItem) => li.status === 'Completed');
+      const progress = lineItems.length === 0 ? '' : allDone ? 'Completed' : 'In Progress';
+      const lineItemNames = lineItems.map((li: LineItem) => li.name || '(unnamed)').join('; ');
+      return [
+        eng.sowRefId, eng.clientName, eng.cfPsLead, eng.accountManager,
+        fmtDate(eng.startDate), fmtDate(eng.endDate),
+        lineItemNames, progress, eng.createdBy || '',
+        eng.createdAt ? new Date(eng.createdAt).toLocaleDateString() : '',
+      ].map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',');
+    });
+    const csv = [headers.map(h => `"${h}"`).join(','), ...csvRows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `ps-engagements-${tabLabel.toLowerCase().replace(/\s+/g, '-')}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const addEngagement = async (eng: PSEngagement) => {
     await createMutation.mutateAsync(eng);
     queryClient.setQueryData<any[]>(['ps-engagements'], (old) =>
@@ -954,10 +981,23 @@ export default function ProfessionalServicesPage() {
                 </div>
               ) : (
                 <>
-                  <p className="text-xs text-slate-500">
-                    {displayEngagements.length} engagement{displayEngagements.length !== 1 ? 's' : ''}
-                    {activeFilterCount > 0 ? ' matching filters' : ''}
-                  </p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-slate-500">
+                      {displayEngagements.length} engagement{displayEngagements.length !== 1 ? 's' : ''}
+                      {activeFilterCount > 0 ? ' matching filters' : ''}
+                    </p>
+                    <button
+                      onClick={() => downloadCSV(displayEngagements, listTab === 'archive' ? 'history-archive' : 'active')}
+                      className="flex items-center gap-1.5 text-xs text-slate-600 hover:text-indigo-600 border border-slate-200 hover:border-indigo-300 rounded-lg px-3 py-1.5 transition-colors"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="7 10 12 15 17 10"/>
+                        <line x1="12" y1="15" x2="12" y2="3"/>
+                      </svg>
+                      Export CSV
+                    </button>
+                  </div>
                   <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
                     <table className="w-full">
                       <thead>

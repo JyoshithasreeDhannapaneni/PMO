@@ -30,7 +30,8 @@ export default function EditProjectPage({ params }: EditProjectPageProps) {
 
   if (user && user.role !== 'ADMIN' && user.role !== 'PROJECT_MANAGER') return null;
 
-  const handleSubmit = async (formData: CreateProjectInput) => {
+  const handleSubmit = async (dataArray: CreateProjectInput[]) => {
+    const formData = dataArray[0];
     try {
       await updateProject.mutateAsync({ id: params.id, data: formData });
       showToast('success', 'Project updated!');
