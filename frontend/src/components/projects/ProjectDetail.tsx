@@ -9,6 +9,9 @@ import { formatDate, formatCurrency } from '@/lib/utils';
 import type { Project, ProjectPhaseRecord } from '@/types';
 import { useSettings } from '@/context/SettingsContext';
 import { useAuth } from '@/context/AuthContext';
+import { useToast } from '@/context/ToastContext';
+import { useUpdateProject, useEscalationDailyNotes, useAddEscalationDailyNote, useDeleteEscalationDailyNote } from '@/hooks/useProjects';
+import { format } from 'date-fns';
 import {
   Calendar, User, Building2, DollarSign, Settings,
   AlertTriangle, Users, FileText, Server, Database,
@@ -16,6 +19,7 @@ import {
   Activity, History, Loader2, ExternalLink, CheckCircle,
   Clock, Circle, BarChart2, Package, ChevronRight,
   AlertCircle, RefreshCw, Eye, Edit, Pencil,
+  MessageSquare, Trash2, BookOpen, Check, X,
 } from 'lucide-react';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
@@ -628,64 +632,325 @@ function OverviewTab({ project }: { project: Project }) {
   );
 }
 
+// ─── Inline-editable date & select — defined at module level for stable refs ───
+interface TLEditableDateProps {
+  projectId: string; field: string; value: string | null | undefined;
+  editingCell: { projectId: string; field: string } | null;
+  onStartEdit: (projectId: string, field: string, value: string) => void;
+  onSave: (projectId: string, field: string, value: string) => void;
+  onCancel: () => void; isPending: boolean;
+}
+function TLEditableDate({ projectId, field, value, editingCell, onStartEdit, onSave, onCancel, isPending }: TLEditableDateProps) {
+  const isEditing = editingCell?.projectId === projectId && editingCell?.field === field;
+  const dateValue = value ? value.split('T')[0] : '';
+  const [localDate, setLocalDate] = useState(dateValue);
+  useEffect(() => { if (isEditing) setLocalDate(dateValue); }, [isEditing]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (isEditing) {
+    return (
+      <div className="flex items-center gap-1">
+        <input type="date" value={localDate} onChange={e => setLocalDate(e.target.value)}
+          className="text-xs px-2 py-1 border border-indigo-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white" autoFocus />
+        <button onClick={() => onSave(projectId, field, localDate)} disabled={isPending}
+          className="p-1 text-green-600 hover:bg-green-100 rounded">
+          {isPending ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+        </button>
+        <button onClick={onCancel} className="p-1 text-red-500 hover:bg-red-100 rounded"><X size={13} /></button>
+      </div>
+    );
+  }
+  return (
+    <div className="cursor-pointer hover:bg-gray-100 rounded px-1 py-0.5 transition-colors flex items-center gap-1 text-sm"
+      onClick={() => onStartEdit(projectId, field, dateValue)} title="Click to edit">
+      <Calendar size={11} className="text-gray-400 shrink-0" />
+      {value ? <span>{formatDate(value)}</span> : <span className="text-gray-400 italic text-xs">Not set</span>}
+    </div>
+  );
+}
+
+interface TLEditableSelectProps {
+  projectId: string; field: string; value: string;
+  options: { value: string; label: string }[];
+  displayComponent: React.ReactNode;
+  editingCell: { projectId: string; field: string } | null;
+  onStartEdit: (projectId: string, field: string, value: string) => void;
+  onSave: (projectId: string, field: string, value: string) => void;
+  onCancel: () => void; isPending: boolean;
+}
+function TLEditableSelect({ projectId, field, value, options, displayComponent, editingCell, onStartEdit, onSave, onCancel, isPending }: TLEditableSelectProps) {
+  const isEditing = editingCell?.projectId === projectId && editingCell?.field === field;
+  const [localValue, setLocalValue] = useState(value);
+  useEffect(() => { if (isEditing) setLocalValue(value); }, [isEditing]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (isEditing) {
+    return (
+      <div className="flex items-center gap-1">
+        <select value={localValue} onChange={e => setLocalValue(e.target.value)} autoFocus
+          className="text-xs px-2 py-1 border border-indigo-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
+          {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+        <button onClick={() => onSave(projectId, field, localValue)} disabled={isPending}
+          className="p-1 text-green-600 hover:bg-green-100 rounded">
+          {isPending ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+        </button>
+        <button onClick={onCancel} className="p-1 text-red-500 hover:bg-red-100 rounded"><X size={13} /></button>
+      </div>
+    );
+  }
+  return (
+    <div className="cursor-pointer hover:bg-gray-100 rounded px-1 py-0.5 transition-colors"
+      onClick={() => onStartEdit(projectId, field, value)} title="Click to edit">
+      {displayComponent}
+    </div>
+  );
+}
+
 // ─── Tab: Timeline ─────────────────────────────────────────────────────────────
-function TimelineTab({ project }: { project: Project }) {
-  const phases = project.phases || [];
-  const phaseOrder = ['KICKOFF', 'MIGRATION', 'VALIDATION', 'CLOSURE'];
+function TimelineTab({ project, onProjectUpdate }: { project: Project; onProjectUpdate?: () => void }) {
+  const { user } = useAuth();
+  const { showToast } = useToast();
+  const updateProject = useUpdateProject();
+  const addDailyNote = useAddEscalationDailyNote();
+  const deleteDailyNote = useDeleteEscalationDailyNote();
+
+  const [editingCell, setEditingCell] = useState<{ projectId: string; field: string } | null>(null);
+  const [notesPanel, setNotesPanel] = useState<{ columnName: string } | null>(null);
+  const [newNote, setNewNote] = useState('');
+  const [noteDate, setNoteDate] = useState(new Date().toISOString().split('T')[0]);
+
+  const { data: notesData, isLoading: loadingNotes } = useEscalationDailyNotes(
+    notesPanel ? project.id : null,
+    notesPanel?.columnName
+  );
+  const dailyNotes: any[] = notesData?.data ?? notesData ?? [];
+
+  const startEditing = useCallback((projectId: string, field: string, value: string) => {
+    setEditingCell({ projectId, field });
+  }, []);
+  const cancelEditing = useCallback(() => setEditingCell(null), []);
+
+  const saveDateEdit = useCallback(async (projectId: string, field: string, value: string) => {
+    try {
+      await updateProject.mutateAsync({ id: projectId, data: { [field]: value || null } });
+      setEditingCell(null);
+      showToast('success', 'Date updated');
+      onProjectUpdate?.();
+    } catch (e: any) {
+      showToast('error', 'Failed to update', e?.response?.data?.error?.message || e?.message);
+    }
+  }, [updateProject, showToast, onProjectUpdate]);
+
+  const saveSelectEdit = useCallback(async (projectId: string, field: string, value: string) => {
+    try {
+      await updateProject.mutateAsync({ id: projectId, data: { [field]: value || null } });
+      setEditingCell(null);
+      showToast('success', 'Updated');
+      onProjectUpdate?.();
+    } catch (e: any) {
+      showToast('error', 'Failed to update', e?.response?.data?.error?.message || e?.message);
+    }
+  }, [updateProject, showToast, onProjectUpdate]);
+
+  const handleAddNote = async () => {
+    if (!notesPanel || !newNote.trim()) return;
+    await addDailyNote.mutateAsync({
+      projectId: project.id,
+      note: newNote.trim(),
+      author: user?.name || user?.email || '',
+      noteDate: noteDate,
+      columnName: notesPanel.columnName,
+    });
+    setNewNote('');
+  };
+
+  const dateProps = { editingCell, onStartEdit: startEditing, onSave: saveDateEdit, onCancel: cancelEditing, isPending: updateProject.isPending };
+  const selectProps = { editingCell, onStartEdit: startEditing, onSave: saveSelectEdit, onCancel: cancelEditing, isPending: updateProject.isPending };
+
+  const PHASE_ROWS: Array<{ label: string; startField: string; endField: string | null; notesCol: string | null }> = [
+    { label: 'Kickoff Start',      startField: 'actualStart',           endField: null,                  notesCol: null },
+    { label: 'Cloud Adding',       startField: 'cloudAddingStart',      endField: 'cloudAddingEnd',      notesCol: 'Cloud Adding' },
+    { label: 'Pilot Migration',    startField: 'pilotMigrationStart',   endField: 'pilotMigrationEnd',   notesCol: 'Pilot Migration' },
+    { label: 'Onetime Migration',  startField: 'onetimeMigrationStart', endField: 'onetimeMigrationEnd', notesCol: 'Onetime Migration' },
+    { label: 'Delta Migration',    startField: 'deltaMigrationStart',   endField: 'deltaMigrationEnd',   notesCol: 'Delta Migration' },
+    { label: 'Final Validation',   startField: 'finalValidationStart',  endField: 'finalValidationEnd',  notesCol: 'Final Validation' },
+    { label: 'Project End',        startField: 'actualEnd',             endField: null,                  notesCol: null },
+  ];
+
   return (
     <div className="space-y-5">
-      <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
-        <div className="flex items-center justify-between mb-5">
-          <h3 className="font-semibold text-gray-800">Phase Timeline</h3>
-          <Link href={`/projects/${project.id}/tasks`}>
-            <Button variant="primary" className="text-sm">View Tasks & Gantt <ExternalLink size={14} className="ml-1.5" /></Button>
-          </Link>
-        </div>
-        <div className="relative">
-          <div className="absolute left-5 top-6 bottom-6 w-0.5 bg-gray-200" />
-          <div className="space-y-6">
-            {phaseOrder.map((phaseName, idx) => {
-              const phase = phases.find(p => p.phaseName === phaseName);
-              const isCurrent = project.phase === phaseName;
-              const isCompleted = phase?.status === 'COMPLETED' || (phaseOrder.indexOf(project.phase) > idx);
-              return (
-                <div key={phaseName} className="flex gap-4 relative">
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 z-10 ${
-                    isCompleted ? 'bg-green-500 text-white' : isCurrent ? 'bg-primary-500 text-white ring-4 ring-primary-100' : 'bg-gray-200 text-gray-400'
-                  }`}>
-                    {isCompleted ? <CheckCircle size={18} /> : isCurrent ? <Clock size={18} /> : <Circle size={18} />}
-                  </div>
-                  <div className="flex-1 bg-gray-50 rounded-lg p-4">
-                    <div className="flex items-center justify-between">
-                      <span className={`font-semibold text-sm ${isCompleted ? 'text-green-700' : isCurrent ? 'text-primary-700' : 'text-gray-500'}`}>
-                        {phaseName.charAt(0) + phaseName.slice(1).toLowerCase()}
-                      </span>
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                        isCompleted ? 'bg-green-100 text-green-700' : isCurrent ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'
-                      }`}>
-                        {isCompleted ? 'Completed' : isCurrent ? 'In Progress' : 'Pending'}
-                      </span>
-                    </div>
-                    {phase && (
-                      <div className="mt-2 flex gap-4 text-xs text-gray-500">
-                        {phase.plannedDate && <span>Planned: {formatDate(phase.plannedDate)}</span>}
-                        {phase.actualDate && <span className="text-green-600">Actual: {formatDate(phase.actualDate)}</span>}
-                        {phase.notes && <span className="italic text-gray-400">— {phase.notes}</span>}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-        <div className="mt-5 pt-4 border-t border-gray-100 grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div className="text-center"><div className="text-xs text-gray-400">SOW Start</div><div className="font-semibold text-sm">{formatDate(project.plannedStart)}</div></div>
-          <div className="text-center"><div className="text-xs text-gray-400">SOW End</div><div className="font-semibold text-sm">{formatDate(project.plannedEnd)}</div></div>
-          <div className="text-center"><div className="text-xs text-gray-400">Kickoff Date</div><div className="font-semibold text-sm">{formatDate(project.actualStart) || '—'}</div></div>
-          <div className="text-center"><div className="text-xs text-gray-400">Completion</div><div className="font-semibold text-sm">{formatDate(project.actualEnd) || '—'}</div></div>
+      {/* ── 1. Delay Happened (first) ── */}
+      <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+        <h3 className="font-semibold text-gray-800 mb-4">Delay Happened</h3>
+        <div className="flex items-center gap-4 flex-wrap">
+          <TLEditableSelect
+            projectId={project.id} field="delayHappened" value={project.delayHappened || ''}
+            options={[
+              { value: '', label: '— None —' },
+              { value: 'CUSTOMER_DELAY', label: 'Customer Delay' },
+              { value: 'INTERNAL_DELAY', label: 'Internal Delay' },
+              { value: 'BOTH', label: 'Both' },
+            ]}
+            displayComponent={
+              project.delayHappened ? (
+                <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold ${
+                  project.delayHappened === 'CUSTOMER_DELAY' ? 'bg-orange-100 text-orange-700' :
+                  project.delayHappened === 'BOTH'           ? 'bg-purple-100 text-purple-700' :
+                                                               'bg-blue-100 text-blue-700'
+                }`}>
+                  {project.delayHappened === 'CUSTOMER_DELAY' ? 'Customer Delay' :
+                   project.delayHappened === 'BOTH'           ? 'Both' : 'Internal Delay'}
+                </span>
+              ) : <span className="text-sm text-gray-400 italic">Not set — click to set</span>
+            }
+            {...selectProps}
+          />
+          <button onClick={() => { setNotesPanel({ columnName: 'Delay Happened' }); setNewNote(''); setNoteDate(new Date().toISOString().split('T')[0]); }}
+            className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg bg-teal-50 text-teal-700 hover:bg-teal-100 transition-colors border border-teal-200">
+            <MessageSquare size={13} /> Delay Notes
+          </button>
         </div>
       </div>
+
+      {/* ── 2. Phase Dates & Notes table ── */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+          <h3 className="font-semibold text-gray-800">Phase Dates &amp; Notes</h3>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-gray-400 italic">Click any date to edit</span>
+            <Link href={`/projects/${project.id}/tasks`}>
+              <Button variant="primary" className="text-sm">View Tasks &amp; Gantt <ExternalLink size={14} className="ml-1.5" /></Button>
+            </Link>
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gray-50 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                <th className="px-4 py-3 text-left whitespace-nowrap">Phase</th>
+                <th className="px-4 py-3 text-left whitespace-nowrap">Start Date</th>
+                <th className="px-4 py-3 text-left whitespace-nowrap">End Date</th>
+                <th className="px-4 py-3 text-left whitespace-nowrap">Notes</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {/* SOW — single row showing planned start → planned end */}
+              <tr className="hover:bg-gray-50/60 transition-colors">
+                <td className="px-4 py-3 font-medium text-gray-700 whitespace-nowrap">SOW</td>
+                <td className="px-4 py-3">
+                  <TLEditableDate projectId={project.id} field="plannedStart" value={project.plannedStart} {...dateProps} />
+                </td>
+                <td className="px-4 py-3">
+                  <TLEditableDate projectId={project.id} field="plannedEnd" value={project.plannedEnd} {...dateProps} />
+                </td>
+                <td className="px-4 py-3"><span className="text-gray-300 text-xs">—</span></td>
+              </tr>
+              {PHASE_ROWS.map(row => (
+                <tr key={row.label} className="hover:bg-gray-50/60 transition-colors">
+                  <td className="px-4 py-3 font-medium text-gray-700 whitespace-nowrap">{row.label}</td>
+                  <td className="px-4 py-3">
+                    <TLEditableDate projectId={project.id} field={row.startField} value={(project as any)[row.startField]} {...dateProps} />
+                  </td>
+                  <td className="px-4 py-3">
+                    {row.endField
+                      ? <TLEditableDate projectId={project.id} field={row.endField} value={(project as any)[row.endField]} {...dateProps} />
+                      : <span className="text-gray-300 text-xs">—</span>
+                    }
+                  </td>
+                  <td className="px-4 py-3">
+                    {row.notesCol
+                      ? <button onClick={() => { setNotesPanel({ columnName: row.notesCol! }); setNewNote(''); setNoteDate(new Date().toISOString().split('T')[0]); }}
+                          className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-teal-50 text-teal-700 hover:bg-teal-100 transition-colors">
+                          <MessageSquare size={11} /> Notes
+                        </button>
+                      : <span className="text-gray-300 text-xs">—</span>
+                    }
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* ── Notes Modal ── */}
+      {notesPanel && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => setNotesPanel(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 bg-teal-600 text-white flex-shrink-0">
+              <div className="flex items-center gap-2">
+                <MessageSquare size={18} />
+                <div>
+                  <p className="font-bold text-sm">{project.name}</p>
+                  <p className="text-xs opacity-80">{notesPanel.columnName} Notes</p>
+                </div>
+              </div>
+              <button onClick={() => setNotesPanel(null)} className="p-1.5 rounded hover:bg-white/20 transition-colors"><X size={16} /></button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-5 space-y-3">
+              {loadingNotes ? (
+                <div className="flex justify-center py-8"><Loader2 className="animate-spin text-teal-600" size={24} /></div>
+              ) : dailyNotes.length === 0 ? (
+                <div className="text-center py-10 text-gray-400">
+                  <BookOpen size={32} className="mx-auto mb-2 opacity-30" />
+                  <p className="text-sm">No notes yet. Add the first note below.</p>
+                </div>
+              ) : (
+                (() => {
+                  const grouped: Record<string, any[]> = {};
+                  dailyNotes.forEach((n: any) => {
+                    const d = n.noteDate?.split('T')[0] || n.noteDate;
+                    if (!grouped[d]) grouped[d] = [];
+                    grouped[d].push(n);
+                  });
+                  return Object.entries(grouped).sort(([a], [b]) => b.localeCompare(a)).map(([date, notes]) => (
+                    <div key={date}>
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-xs font-bold text-teal-700 bg-teal-50 px-2 py-0.5 rounded-full">
+                          {format(new Date(date + 'T12:00:00'), 'EEE, MMM d, yyyy')}
+                        </span>
+                        <div className="flex-1 h-px bg-gray-100" />
+                      </div>
+                      <div className="space-y-2 pl-2">
+                        {notes.map((n: any) => (
+                          <div key={n.id} className="flex items-start gap-3 bg-gray-50 rounded-lg p-3 group border border-gray-100">
+                            <div className="w-1.5 h-1.5 rounded-full bg-teal-400 mt-1.5 flex-shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm text-gray-800 whitespace-pre-wrap">{n.note}</p>
+                              {n.author && <p className="text-xs text-gray-400 mt-1">— {n.author} · {n.createdAt ? format(new Date(n.createdAt), 'HH:mm') : ''}</p>}
+                            </div>
+                            <button onClick={() => deleteDailyNote.mutate({ projectId: project.id, noteId: n.id })}
+                              className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-all flex-shrink-0 p-0.5" title="Delete note">
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ));
+                })()
+              )}
+            </div>
+
+            <div className="border-t border-gray-200 p-4 bg-gray-50 flex-shrink-0">
+              <div className="flex items-center gap-2 mb-2">
+                <label className="text-xs font-medium text-gray-600">Date:</label>
+                <input type="date" value={noteDate} onChange={e => setNoteDate(e.target.value)}
+                  className="text-xs border border-gray-300 rounded-lg px-2 py-1 bg-white text-gray-900" />
+              </div>
+              <div className="flex gap-2">
+                <textarea value={newNote} onChange={e => setNewNote(e.target.value)}
+                  placeholder="Add a note…" rows={2}
+                  className="flex-1 text-sm border border-gray-300 rounded-lg px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white"
+                  onKeyDown={e => { if (e.key === 'Enter' && e.ctrlKey) handleAddNote(); }} />
+                <button onClick={handleAddNote} disabled={!newNote.trim() || addDailyNote.isPending}
+                  className="px-4 py-2 bg-teal-600 text-white text-sm rounded-lg hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap self-end">
+                  {addDailyNote.isPending ? <Loader2 size={14} className="animate-spin" /> : 'Add Note'}
+                </button>
+              </div>
+              <p className="text-xs text-gray-400 mt-1.5">Ctrl+Enter to submit</p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
