@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { projectSegment, type Segment } from '@/lib/segments';
+import { formatCurrency } from '@/lib/utils';
 
 interface FilterState {
   status: string;
@@ -687,68 +688,141 @@ export default function ProjectsPage() {
                 </div>
               ) : segmentTab === 'ALL' && clientGroups.grouped.size > 0 ? (
                 <>
-                  {/* Client-grouped rows */}
+                  {/* ── Client / Account grouped table ── */}
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
-                        <tr className="border-b border-gray-200 bg-gray-50 text-left">
-                          <th className="py-2.5 px-4 font-semibold text-gray-500 text-xs uppercase tracking-wide">Client / Account</th>
-                          <th className="py-2.5 px-4 font-semibold text-gray-500 text-xs uppercase tracking-wide">Scopes</th>
-                          <th className="py-2.5 px-4 font-semibold text-gray-500 text-xs uppercase tracking-wide">Status</th>
-                          <th className="py-2.5 px-4 font-semibold text-gray-500 text-xs uppercase tracking-wide">Project Manager(s)</th>
-                          <th className="py-2.5 px-4" />
+                        <tr className="border-b border-gray-200 bg-blue-50/60 text-left sticky top-0 z-10">
+                          <th className="py-3 px-4 font-semibold text-gray-600 text-xs uppercase tracking-wider whitespace-nowrap sticky left-0 z-20 bg-blue-50/60 border-r border-gray-200 shadow-[2px_0_4px_-1px_rgba(0,0,0,0.06)]">Client / Account</th>
+                          <th className="py-3 px-4 font-semibold text-gray-600 text-xs uppercase tracking-wider whitespace-nowrap">Project Manager</th>
+                          <th className="py-3 px-4 font-semibold text-gray-600 text-xs uppercase tracking-wider whitespace-nowrap">Account Manager</th>
+                          <th className="py-3 px-4 font-semibold text-gray-600 text-xs uppercase tracking-wider whitespace-nowrap">Migration Combinations</th>
+                          <th className="py-3 px-4 font-semibold text-gray-600 text-xs uppercase tracking-wider whitespace-nowrap">Budget</th>
+                          <th className="py-3 px-4 font-semibold text-gray-600 text-xs uppercase tracking-wider whitespace-nowrap">Plan</th>
+                          <th className="py-3 px-4 font-semibold text-gray-600 text-xs uppercase tracking-wider whitespace-nowrap">Status</th>
+                          <th className="py-3 px-4 font-semibold text-gray-600 text-xs uppercase tracking-wider whitespace-nowrap">SOW Start</th>
+                          <th className="py-3 px-4 font-semibold text-gray-600 text-xs uppercase tracking-wider whitespace-nowrap">SOW End</th>
+                          <th className="py-3 px-4 font-semibold text-gray-600 text-xs uppercase tracking-wider whitespace-nowrap">Duration (months)</th>
+                          <th className="py-3 px-4" />
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100">
-                        {Array.from(clientGroups.grouped.entries()).map(([cName, projects]) => {
-                          const activeCount    = projects.filter((p: any) => p.status === 'ACTIVE').length;
-                          const completedCount = projects.filter((p: any) => p.status === 'COMPLETED').length;
-                          const onHoldCount    = projects.filter((p: any) => p.status === 'ON_HOLD').length;
-                          const delayedCount   = projects.filter((p: any) => p.delayStatus && p.delayStatus !== 'NOT_DELAYED').length;
-                          const escalatedCount = projects.filter((p: any) => p.isEscalated).length;
-                          const pms = [...new Set(projects.map((p: any) => p.projectManager).filter(Boolean))].join(', ');
+                        {Array.from(clientGroups.grouped.entries()).map(([cName, projs]) => {
+                          // Aggregations across all client projects
+                          const pms = [...new Set(projs.map((p: any) => p.projectManager).filter(Boolean))].join(', ');
+                          const ams = [...new Set(projs.map((p: any) => p.accountManager).filter(Boolean))].join(', ');
+
+                          // All distinct migration types across every project
+                          const allTypes = projs.flatMap((p: any) =>
+                            p.migrationTypes ? p.migrationTypes.split(',').map((t: string) => t.trim()).filter(Boolean) : []
+                          );
+                          const uniqueTypes = [...new Set(allTypes)] as string[];
+
+                          // Budget — sum of estimatedCost
+                          const totalBudget = projs.reduce((sum: number, p: any) =>
+                            sum + (p.estimatedCost != null ? Number(p.estimatedCost) : 0), 0);
+
+                          // Plans — distinct
+                          const plans = [...new Set(projs.map((p: any) => p.planType).filter(Boolean))] as string[];
+
+                          // Status summary
+                          const activeCount    = projs.filter((p: any) => p.status === 'ACTIVE').length;
+                          const completedCount = projs.filter((p: any) => p.status === 'COMPLETED').length;
+                          const onHoldCount    = projs.filter((p: any) => p.status === 'ON_HOLD').length;
+
+                          // SOW dates — earliest start, latest end
+                          const starts = projs.map((p: any) => p.plannedStart).filter(Boolean).map((d: string) => new Date(d).getTime());
+                          const ends   = projs.map((p: any) => p.plannedEnd).filter(Boolean).map((d: string) => new Date(d).getTime());
+                          const sowStart = starts.length ? new Date(Math.min(...starts)) : null;
+                          const sowEnd   = ends.length   ? new Date(Math.max(...ends))   : null;
+
+                          // Duration in months between earliest start and latest end
+                          let durationMonths = '—';
+                          if (sowStart && sowEnd) {
+                            const months = (sowEnd.getFullYear() - sowStart.getFullYear()) * 12
+                              + (sowEnd.getMonth() - sowStart.getMonth());
+                            durationMonths = String(Math.max(months, 0));
+                          }
+
+                          const fmtDate = (d: Date | null) => d
+                            ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                            : '—';
+
                           return (
                             <tr
                               key={cName}
                               onClick={() => router.push(`/clients/${encodeURIComponent(cName)}`)}
-                              className="hover:bg-indigo-50/50 cursor-pointer transition-colors group"
+                              className="hover:bg-indigo-50/40 cursor-pointer transition-colors group"
                             >
-                              <td className="py-3.5 px-4">
-                                <div className="font-semibold text-indigo-700 group-hover:text-indigo-900 transition-colors">{cName}</div>
-                                <div className="text-xs text-gray-400 mt-0.5">{projects.length} project{projects.length !== 1 ? 's' : ''}</div>
+                              {/* Client / Account — sticky */}
+                              <td className="py-3.5 px-4 sticky left-0 z-10 bg-white group-hover:bg-indigo-50/40 transition-colors border-r border-gray-200 shadow-[2px_0_4px_-1px_rgba(0,0,0,0.04)]">
+                                <div className="font-semibold text-indigo-700 group-hover:text-indigo-900">{cName}</div>
+                                <div className="text-xs text-gray-400 mt-0.5">{projs.length} project{projs.length !== 1 ? 's' : ''}</div>
                               </td>
+
+                              {/* Project Manager */}
+                              <td className="py-3.5 px-4 text-xs text-gray-700 whitespace-nowrap">{pms || '—'}</td>
+
+                              {/* Account Manager */}
+                              <td className="py-3.5 px-4 text-xs text-gray-700 whitespace-nowrap">{ams || '—'}</td>
+
+                              {/* Migration Combinations */}
                               <td className="py-3.5 px-4">
-                                <div className="flex flex-wrap gap-1.5">
-                                  {projects.map((p: any) => {
-                                    const scope = getProjectScope(p);
-                                    const chipCls =
-                                      scope === 'Content Migration' ? 'bg-blue-50 text-blue-700'    :
-                                      scope === 'Messaging'         ? 'bg-purple-50 text-purple-700':
-                                      scope === 'Email'             ? 'bg-emerald-50 text-emerald-700':
-                                      'bg-gray-100 text-gray-600';
-                                    const chipLabel =
-                                      scope === 'Content Migration' ? 'Content'  :
-                                      scope === 'Messaging'         ? 'Messaging':
-                                      scope === 'Email'             ? 'Email'    :
-                                      p.name;
-                                    return (
-                                      <span key={p.id} className={`text-xs px-2.5 py-0.5 rounded-full font-semibold ${chipCls}`}>
-                                        {chipLabel}
-                                      </span>
-                                    );
-                                  })}
+                                <div className="flex flex-wrap gap-1 min-w-[120px]">
+                                  {uniqueTypes.length > 0
+                                    ? uniqueTypes.map(t => {
+                                        const mt = settings.migrationTypes.find(m => m.code === t.toUpperCase() || m.name.toLowerCase() === t.toLowerCase());
+                                        return mt
+                                          ? <span key={t} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs font-medium text-white" style={{ backgroundColor: mt.color }}>{mt.icon} {mt.name}</span>
+                                          : <span key={t} className="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">{t}</span>;
+                                      })
+                                    : <span className="text-xs text-gray-400">—</span>
+                                  }
                                 </div>
                               </td>
+
+                              {/* Budget */}
+                              <td className="py-3.5 px-4 text-xs font-medium text-gray-800 whitespace-nowrap">
+                                {totalBudget > 0 ? formatCurrency(totalBudget) : '—'}
+                              </td>
+
+                              {/* Plan */}
+                              <td className="py-3.5 px-4">
+                                <div className="flex flex-wrap gap-1">
+                                  {plans.length > 0
+                                    ? plans.map(pl => (
+                                        <span key={pl} className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-medium capitalize">
+                                          {pl.replace('_', ' ').toLowerCase()}
+                                        </span>
+                                      ))
+                                    : <span className="text-xs text-gray-400">—</span>
+                                  }
+                                </div>
+                              </td>
+
+                              {/* Status */}
                               <td className="py-3.5 px-4">
                                 <div className="flex flex-wrap gap-1">
                                   {activeCount > 0    && <span className="text-xs px-2 py-0.5 rounded-full bg-green-50 text-green-700 font-medium">Active {activeCount}</span>}
                                   {completedCount > 0 && <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 font-medium">Done {completedCount}</span>}
                                   {onHoldCount > 0    && <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-50 text-yellow-700 font-medium">On Hold {onHoldCount}</span>}
-                                  {delayedCount > 0   && <span className="text-xs px-2 py-0.5 rounded-full bg-red-50 text-red-600 font-medium">Delayed {delayedCount}</span>}
-                                  {escalatedCount > 0 && <span className="text-xs px-2 py-0.5 rounded-full bg-orange-50 text-orange-600 font-medium">Escalated {escalatedCount}</span>}
                                 </div>
                               </td>
-                              <td className="py-3.5 px-4 text-xs text-gray-500">{pms || '—'}</td>
+
+                              {/* SOW Start */}
+                              <td className="py-3.5 px-4 text-xs text-gray-700 whitespace-nowrap">{fmtDate(sowStart)}</td>
+
+                              {/* SOW End */}
+                              <td className="py-3.5 px-4 text-xs text-gray-700 whitespace-nowrap">{fmtDate(sowEnd)}</td>
+
+                              {/* Duration */}
+                              <td className="py-3.5 px-4 whitespace-nowrap">
+                                {durationMonths !== '—'
+                                  ? <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-medium">{durationMonths} mo</span>
+                                  : <span className="text-xs text-gray-400">—</span>
+                                }
+                              </td>
+
                               <td className="py-3.5 px-4 text-gray-300 group-hover:text-indigo-500 font-bold text-lg transition-colors">›</td>
                             </tr>
                           );
@@ -757,7 +831,7 @@ export default function ProjectsPage() {
                     </table>
                   </div>
 
-                  {/* Ungrouped (no clientName) projects shown below the grouped table */}
+                  {/* Ungrouped projects below */}
                   {clientGroups.ungrouped.length > 0 && (
                     <>
                       <div className="flex items-center gap-2 px-4 py-2 bg-amber-50 border-y border-amber-100">
