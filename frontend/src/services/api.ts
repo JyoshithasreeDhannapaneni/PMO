@@ -745,6 +745,14 @@ export const auditApi = {
     const { data } = await api.get('/audit/export/leaderboard', { params, responseType: 'blob' });
     return data as Blob;
   },
+  getHygieneBoard: async () => {
+    const { data } = await api.get('/audit/hygiene-board');
+    return data;
+  },
+  exportHygieneExcel: async () => {
+    const { data } = await api.get('/audit/export/hygiene-board', { responseType: 'blob' });
+    return data as Blob;
+  },
 };
 
 export default api;

@@ -506,6 +506,170 @@ class AuditService {
     };
   }
 
+  async getHygieneBoard() {
+    // ── 1. Real activity from audit_logs (last 30 days), matched by user account ──
+    const activityResult = await query(`
+      SELECT
+        u.id   AS user_id,
+        u.name AS pm_name,
+        COUNT(a.id) FILTER (WHERE a.action = 'LOGIN')::int                                          AS logins,
+        COUNT(a.id) FILTER (WHERE a.action IN ('UPDATE','STATUS_CHANGE','CREATE')
+                             AND a.entity_type ILIKE '%project%')::int                              AS project_updates,
+        COUNT(a.id) FILTER (WHERE a.action IN ('UPDATE','STATUS_CHANGE','CREATE')
+                             AND a.entity_type ILIKE '%case%')::int                                AS case_study_updates,
+        MAX(a.created_at) FILTER (WHERE a.action = 'LOGIN')                                        AS last_login_at,
+        MAX(a.created_at) FILTER (WHERE a.action IN ('UPDATE','STATUS_CHANGE','CREATE'))           AS last_action_at
+      FROM users u
+      LEFT JOIN audit_logs a
+        ON a.user_id = u.id
+       AND a.created_at >= NOW() - INTERVAL '30 days'
+      WHERE u.role = 'PROJECT_MANAGER'
+      GROUP BY u.id, u.name
+    `);
+
+    const activityByName = new Map<string, any>();
+    for (const row of activityResult.rows) {
+      activityByName.set(row.pm_name.toLowerCase().trim(), row);
+    }
+
+    // ── 2. Projects + case studies per PM ────────────────────────────────
+    const projectResult = await query(`
+      SELECT
+        p.project_manager,
+        p.id,
+        p.status,
+        p.planned_start,
+        p.planned_end,
+        p.actual_start,
+        p.customer_contact,
+        p.notes,
+        p.project_memory,
+        p.estimated_cost,
+        cs.id          AS cs_id,
+        cs.status      AS cs_status,
+        cs.title       AS cs_title,
+        cs.content     AS cs_content
+      FROM projects p
+      LEFT JOIN case_studies cs ON cs.project_id = p.id
+      WHERE p.status NOT IN ('CANCELLED','INACTIVE')
+        AND p.project_manager IS NOT NULL AND TRIM(p.project_manager) <> ''
+      ORDER BY p.project_manager
+    `);
+
+    const byPM = new Map<string, any[]>();
+    for (const row of projectResult.rows) {
+      const key = row.project_manager;
+      if (!byPM.has(key)) byPM.set(key, []);
+      byPM.get(key)!.push(row);
+    }
+
+    const now = new Date();
+    const board = [];
+
+    for (const [pm, projects] of byPM) {
+      const act = activityByName.get(pm.toLowerCase().trim()) || {
+        logins: 0, project_updates: 0, case_study_updates: 0,
+        last_login_at: null, last_action_at: null,
+      };
+
+      const active    = projects.filter((p) => p.status === 'ACTIVE' || p.status === 'ON_HOLD');
+      const completed = projects.filter((p) => p.status === 'COMPLETED' || p.status === 'ARCHIVED');
+
+      // ── Activity metrics (from audit_logs) ────────────────────────────
+      const logins30d          = Number(act.logins);
+      const projectUpdates30d  = Number(act.project_updates);
+      const caseStudyUpdates30d = Number(act.case_study_updates);
+      const lastLoginAt        = act.last_login_at ? new Date(act.last_login_at).toISOString() : null;
+      const lastActionAt       = act.last_action_at ? new Date(act.last_action_at).toISOString() : null;
+      const daysSinceLastAction = lastActionAt
+        ? Math.floor((now.getTime() - new Date(lastActionAt).getTime()) / 86400000)
+        : 999;
+
+      // ── Data quality metrics (from active/on-hold projects) ───────────
+      const missingKickoffDate  = active.filter((p) => !p.actual_start).length;
+      const missingPlannedDates = projects.filter((p) => !p.planned_start || !p.planned_end).length;
+      const missingCustomerEmail = projects.filter((p) => !p.customer_contact).length;
+      const missingNotes        = active.filter((p) => !p.notes || !String(p.notes).trim()).length;
+      const overdueNotFlagged   = active.filter((p) => p.planned_end && new Date(p.planned_end) < now).length;
+      const missingProjectSize  = projects.filter((p) => !p.project_memory).length;
+      const missingBudget       = projects.filter((p) => !p.estimated_cost).length;
+
+      // ── Case study metrics ────────────────────────────────────────────
+      const csDone     = completed.filter((p) => p.cs_status === 'COMPLETED' || p.cs_status === 'PUBLISHED').length;
+      const csPending  = completed.filter((p) => p.cs_status === 'PENDING' || p.cs_status === 'IN_PROGRESS').length;
+      const csMissing  = completed.filter((p) => !p.cs_id).length;
+
+      // ── Activity Score (0-100) ────────────────────────────────────────
+      // Logins  (0-30 pts): 0→0, 1→10, 2-3→20, 4+→30
+      const loginPts = logins30d === 0 ? 0 : logins30d === 1 ? 10 : logins30d <= 3 ? 20 : 30;
+      // Updates (0-70 pts): expected = max(1, activeProjects × 2) updates/month
+      const expectedUpdates = Math.max(1, active.length * 2);
+      const updatePts = logins30d === 0 ? 0 : Math.min(70, Math.round((projectUpdates30d / expectedUpdates) * 70));
+      const activityScore = loginPts + updatePts;
+
+      // ── Data Quality Score (0-100) ────────────────────────────────────
+      let qualityScore = 100;
+      if (active.length > 0) {
+        const earned = active.reduce((sum, p) => {
+          let pts = 0;
+          if (p.planned_start)                    pts++;
+          if (p.planned_end)                      pts++;
+          if (p.actual_start)                     pts++;
+          if (p.customer_contact)                 pts++;
+          if (p.notes && String(p.notes).trim())  pts++;
+          if (p.project_memory)                   pts++;
+          if (p.estimated_cost)                   pts++;
+          return sum + pts;
+        }, 0);
+        const base = Math.round((earned / (active.length * 7)) * 100);
+        qualityScore = Math.max(0, base - Math.min(overdueNotFlagged * 5, 20));
+      }
+
+      // ── Case Study Score (0-100) ──────────────────────────────────────
+      let caseStudyScore = 100;
+      if (completed.length > 0) {
+        const base = Math.round((csDone / completed.length) * 100);
+        caseStudyScore = Math.max(0, base - Math.min(csPending * 5, 15) - Math.min(csMissing * 10, 30));
+      }
+
+      // ── Overall Hygiene Score ─────────────────────────────────────────
+      const hygieneScore = Math.round(activityScore * 0.35 + qualityScore * 0.35 + caseStudyScore * 0.30);
+
+      board.push({
+        projectManager: pm,
+        totalProjects: projects.length,
+        activeProjects: active.length,
+        completedProjects: completed.length,
+        // Activity
+        logins30d,
+        projectUpdates30d,
+        caseStudyUpdates30d,
+        lastLoginAt,
+        lastActionAt,
+        daysSinceLastAction: daysSinceLastAction === 999 ? null : daysSinceLastAction,
+        // Data quality
+        missingKickoffDate,
+        missingPlannedDates,
+        missingCustomerEmail,
+        missingNotes,
+        overdueNotFlagged,
+        missingProjectSize,
+        missingBudget,
+        // Case studies
+        csDone,
+        csPending,
+        csMissing,
+        // Scores
+        activityScore,
+        qualityScore,
+        caseStudyScore,
+        hygieneScore,
+      });
+    }
+
+    return board.sort((a, b) => b.hygieneScore - a.hygieneScore);
+  }
+
   async getRecentActivity(limit = 20) {
     const safeLimit = Math.max(1, Math.min(100, Math.floor(limit)));
     const result = await query(

@@ -11,6 +11,8 @@ router.get('/user-project-summary', requireAuth, auditController.getUserProjectS
 router.get('/activity-summary', requireAuth, auditController.getActivitySummary);
 router.get('/manager-leaderboard', requireAuth, auditController.getManagerLeaderboard);
 router.get('/weekly-trend', requireAuth, auditController.getWeeklyTrend);
+router.get('/hygiene-board', requireAuth, auditController.getHygieneBoard);
+router.get('/export/hygiene-board', requireAuth, auditController.exportHygieneExcel);
 router.get('/export/log', requireAuth, auditController.exportLogExcel);
 router.get('/export/leaderboard', requireAuth, auditController.exportLeaderboardExcel);
 router.get('/', requireAuth, auditController.getAll);

@@ -172,4 +172,48 @@ export const auditController = {
     const logs = await auditService.getRecentActivity(limit ? parseInt(limit as string) : undefined);
     res.json({ success: true, data: logs });
   }),
+
+  getHygieneBoard: asyncHandler(async (_req: Request, res: Response): Promise<void> => {
+    const data = await auditService.getHygieneBoard();
+    res.json({ success: true, data });
+  }),
+
+  exportHygieneExcel: asyncHandler(async (_req: Request, res: Response): Promise<void> => {
+    const board = await auditService.getHygieneBoard();
+    const rows = board.map((pm) => ({
+      'Project Manager': pm.projectManager,
+      'Total Projects': pm.totalProjects,
+      'Active / On-Hold': pm.activeProjects,
+      'Completed / Archived': pm.completedProjects,
+      // Activity (from audit_logs)
+      'Logins (30d)': pm.logins30d,
+      'Project Updates (30d)': pm.projectUpdates30d,
+      'Case Study Updates (30d)': pm.caseStudyUpdates30d,
+      'Last Login': pm.lastLoginAt ? new Date(pm.lastLoginAt).toISOString().slice(0, 10) : '',
+      'Last Action': pm.lastActionAt ? new Date(pm.lastActionAt).toISOString().slice(0, 10) : '',
+      'Days Since Last Action': pm.daysSinceLastAction ?? 'Never',
+      // Data quality
+      'Missing Kickoff Date': pm.missingKickoffDate,
+      'Missing Planned Dates': pm.missingPlannedDates,
+      'Missing Customer Email': pm.missingCustomerEmail,
+      'Missing Notes': pm.missingNotes,
+      'Overdue (Not Flagged)': pm.overdueNotFlagged,
+      'Missing Project Size': pm.missingProjectSize,
+      'Missing Budget': pm.missingBudget,
+      // Case studies
+      'Case Studies Done': pm.csDone,
+      'Case Studies Pending': pm.csPending,
+      'No Case Study': pm.csMissing,
+      // Scores
+      'Activity Score': pm.activityScore,
+      'Data Quality Score': pm.qualityScore,
+      'Case Study Score': pm.caseStudyScore,
+      'Hygiene Score': pm.hygieneScore,
+    }));
+    sendWorkbook(
+      res,
+      { 'Hygiene Board': rows },
+      `hygiene-board-${new Date().toISOString().slice(0, 10)}.xlsx`
+    );
+  }),
 };
