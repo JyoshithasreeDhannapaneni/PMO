@@ -97,6 +97,11 @@ export const projectsApi = {
 
 // Dashboard API
 export const dashboardApi = {
+  getDelayHappenedNotes: async (): Promise<Record<string, string>> => {
+    const { data } = await api.get('/dashboard/delay-happened-notes');
+    return data.data as Record<string, string>;
+  },
+
   getOverview: async (manager?: string): Promise<ApiResponse<DashboardOverview>> => {
     const { data } = await api.get('/dashboard/overview', { params: manager ? { manager } : undefined });
     return data;
