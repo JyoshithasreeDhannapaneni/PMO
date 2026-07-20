@@ -640,15 +640,17 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
                         { value: '', label: '— None —' },
                         { value: 'CUSTOMER_DELAY', label: 'Customer Delay' },
                         { value: 'INTERNAL_DELAY', label: 'Internal Delay' },
+                        { value: 'BOTH', label: 'Both' },
                       ]}
                       displayComponent={
                         project.delayHappened ? (
                           <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${
-                            project.delayHappened === 'CUSTOMER_DELAY'
-                              ? 'bg-orange-100 text-orange-700'
-                              : 'bg-blue-100 text-blue-700'
+                            project.delayHappened === 'CUSTOMER_DELAY' ? 'bg-orange-100 text-orange-700' :
+                            project.delayHappened === 'BOTH' ? 'bg-purple-100 text-purple-700' :
+                            'bg-blue-100 text-blue-700'
                           }`}>
-                            {project.delayHappened === 'CUSTOMER_DELAY' ? 'Customer Delay' : 'Internal Delay'}
+                            {project.delayHappened === 'CUSTOMER_DELAY' ? 'Customer Delay' :
+                             project.delayHappened === 'BOTH' ? 'Both' : 'Internal Delay'}
                           </span>
                         ) : (
                           <span className="text-xs text-gray-400 italic">Not set</span>

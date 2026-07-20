@@ -56,6 +56,7 @@ import platformReviewRoutes from './routes/platformReviewRoutes';
 import overageRoutes from './routes/overageRoutes';
 import dealDeskRoutes from './routes/dealDeskRoutes';
 import ticketingRoutes from './routes/ticketingRoutes';
+import emailHygieneRoutes from './routes/emailHygieneRoutes';
 import { ntaSyncService, isNtaConfigured } from './services/ntaSyncService';
 import { logger } from './utils/logger';
 import { authService } from './services/authService';
@@ -133,6 +134,7 @@ app.use('/api/ps-engagements', psEngagementsRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/deal-desk', dealDeskRoutes);
 app.use('/api/ticketing', ticketingRoutes);
+app.use('/api/email-hygiene', emailHygieneRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
@@ -649,10 +651,73 @@ async function runMigrations() {
   try { await execute(`CREATE INDEX IF NOT EXISTS idx_nta_created   ON nta_tickets(created_at)`); } catch {}
   try { await execute(`CREATE INDEX IF NOT EXISTS idx_nta_status_cat ON nta_tickets(status_category)`); } catch {}
 
+  // Email hygiene cache — stores computed metrics (refreshed every 2h on demand)
+  await execute(`CREATE TABLE IF NOT EXISTS email_hygiene_cache (
+    id           UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    period_start TIMESTAMPTZ NOT NULL,
+    period_end   TIMESTAMPTZ NOT NULL,
+    metrics      JSONB NOT NULL DEFAULT '[]',
+    computed_at  TIMESTAMPTZ DEFAULT NOW()
+  )`);
+
+  // Email hygiene members — definitive list of @cloudfuze.com mailboxes to analyze
+  await execute(`CREATE TABLE IF NOT EXISTS email_hygiene_members (
+    id           UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    email        VARCHAR(255) UNIQUE NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
+    is_active    BOOLEAN DEFAULT true,
+    created_at   TIMESTAMPTZ DEFAULT NOW()
+  )`);
+
+  const TEAM_MEMBERS: [string, string][] = [
+    ['Abhishek.Sakala@cloudfuze.com',         'Abhishek Sakala'],
+    ['Abhishikth.Yenugula@cloudfuze.com',     'Abhishikth Yenugula'],
+    ['ajay.singh@cloudfuze.com',              'Ajay Singh'],
+    ['Ramana.Reddy@cloudfuze.com',            'Ramana Reddy'],
+    ['Amulya.Anapuram@cloudfuze.com',         'Amulya Anapuram'],
+    ['Arun@cloudfuze.com',                    'Arun'],
+    ['Bharath.Tummaganti@cloudfuze.com',      'Bharath Tummaganti'],
+    ['Chaitanya.Gupta@cloudfuze.com',         'Chaitanya Gupta'],
+    ['chandra.mouli@cloudfuze.com',           'Chandra Mouli'],
+    ['Dathu.Kaluvala@cloudfuze.com',          'Dathu Kaluvala'],
+    ['Davidraj.Dumpala@cloudfuze.com',        'Davidraj Dumpala'],
+    ['Ganesh.Kondameedi@cloudfuze.com',       'Ganesh Kondameedi'],
+    ['Habeebunnisa.Begum@cloudfuze.com',      'Habeebunnisa Begum'],
+    ['Harika.Velidi@cloudfuze.com',           'Harika Velidi'],
+    ['Jyoshitha.Dhannapaneni@cloudfuze.com',  'Jyoshitha Dhannapaneni'],
+    ['LakshmaReddy@cloudfuze.com',            'LakshmaReddy'],
+    ['Lakshmi.Prasanna@cloudfuze.com',        'Lakshmi Prasanna'],
+    ['Manoj.Bathula@cloudfuze.com',           'Manoj Bathula'],
+    ['Meena.Lakshmi@cloudfuze.com',           'Meena Lakshmi'],
+    ['neelima.krotta@cloudfuze.com',          'Neelima Krotta'],
+    ['Pallavi.Kosuvaripalli@cloudfuze.com',   'Pallavi Kosuvaripalli'],
+    ['Pranavi@cloudfuze.com',                 'Pranavi'],
+    ['Raghu.Yellani@cloudfuze.com',           'Raghu Yellani'],
+    ['Ranadeep.Muddam@cloudfuze.com',         'Ranadeep Muddam'],
+    ['Ravi.Hemanth@cloudfuze.com',            'Ravi Hemanth'],
+    ['Saikumar.Kustapuram@cloudfuze.com',     'Saikumar Kustapuram'],
+    ['Siva.Kota@cloudfuze.com',              'Siva Kota'],
+    ['Sravan.Kesaram@cloudfuze.com',          'Sravan Kesaram'],
+    ['sriram.ramakrishnan@cloudfuze.com',     'Sriram Ramakrishnan'],
+    ['swaroop@cloudfuze.com',                 'Swaroop'],
+    ['Vijendar.Burgula@cloudfuze.com',        'Vijendar Burgula'],
+    ['Vineetha.Yenti@cloudfuze.com',          'Vineetha Yenti'],
+  ];
+  for (const [email, display_name] of TEAM_MEMBERS) {
+    await execute(
+      `INSERT INTO email_hygiene_members (email, display_name) VALUES ($1, $2) ON CONFLICT (email) DO NOTHING`,
+      [email, display_name]
+    );
+  }
+
 }
 
 // Start server
-app.listen(PORT, async () => {
+const server = app.listen(PORT, async () => {
+  // Increase timeout for long-running requests (email hygiene Graph fetch can take 3-4 min)
+  server.keepAliveTimeout = 10 * 60 * 1000;
+  server.headersTimeout = 11 * 60 * 1000;
+
   logger.info(`🚀 Server running on port ${PORT}`);
   logger.info(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
 

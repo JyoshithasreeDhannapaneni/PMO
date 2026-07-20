@@ -143,7 +143,7 @@ type ProjectRow = {
   trackType: 'migration' | 'poc';
   pocOutcome?: string | null;
   csatScore?: number | null;
-  delayHappened?: 'CUSTOMER_DELAY' | 'INTERNAL_DELAY' | null;
+  delayHappened?: 'CUSTOMER_DELAY' | 'INTERNAL_DELAY' | 'BOTH' | null;
   [key: string]: any;
 };
 
@@ -699,9 +699,11 @@ export default function AccountManagerPage() {
                     <td className="px-4 py-3 whitespace-nowrap">
                       {row.delayHappened ? (
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                          row.delayHappened === 'CUSTOMER_DELAY' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'
+                          row.delayHappened === 'CUSTOMER_DELAY' ? 'bg-amber-100 text-amber-700' :
+                          row.delayHappened === 'BOTH' ? 'bg-purple-100 text-purple-700' :
+                          'bg-red-100 text-red-700'
                         }`}>
-                          {row.delayHappened === 'CUSTOMER_DELAY' ? 'Customer' : 'Internal'}
+                          {row.delayHappened === 'CUSTOMER_DELAY' ? 'Customer' : row.delayHappened === 'BOTH' ? 'Both' : 'Internal'}
                         </span>
                       ) : <span className="text-xs text-gray-400">—</span>}
                     </td>
