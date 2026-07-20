@@ -2,7 +2,7 @@
 
 import { useState, useRef, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useProjects } from '@/hooks/useProjects';
+import { useProjects, useEmailHygiene } from '@/hooks/useProjects';
 import { useSettings } from '@/context/SettingsContext';
 import { Card } from '@/components/ui/Card';
 import Link from 'next/link';
@@ -14,7 +14,7 @@ import {
   Layers, FolderOpen, MessageSquare, Mail, Flag,
   UserX, ShieldCheck, FileSpreadsheet,
 } from 'lucide-react';
-import { auditApi } from '@/services/api';
+import { auditApi, emailHygieneApi } from '@/services/api';
 import { format, subDays, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { toPng } from 'html-to-image';
 import type { Project } from '@/types';
@@ -85,6 +85,7 @@ export default function AuditDashboardPage() {
   const [sortKey, setSortKey] = useState<SortKey>('totalProjects');
   const [sortAsc, setSortAsc] = useState(false);
   const [snapshotTab, setSnapshotTab] = useState<'snapshot' | 'delay' | 'final'>('snapshot');
+  const [hygieneTab, setHygieneTab] = useState<'project' | 'email'>('project');
 
   const { data, isLoading, isFetching, refetch } = useQuery({
     queryKey: ['auditUserProjectSummary', queryStart, queryEnd],
@@ -125,6 +126,76 @@ export default function AuditDashboardPage() {
     queryFn: () => auditApi.getHygieneBoard(),
   });
   const hygieneBoard: any[] = hygieneData?.data ?? [];
+
+  // ── Email Hygiene ───────────────────────────────────────────────
+  const {
+    data: emailHygieneData,
+    isLoading: isEmailHygieneLoading,
+    refetch: refetchEmailHygiene,
+    isFetching: isEmailHygieneFetching,
+  } = useEmailHygiene(hygieneTab === 'email');
+
+  const emailHygieneResult = emailHygieneData?.data ?? {};
+  const emailMetrics: any[] = emailHygieneResult.metrics ?? [];
+  const emailHygieneConfigured: boolean = emailHygieneResult.isConfigured ?? false;
+  const emailHygienePeriodStart: string = emailHygieneResult.periodStart ?? '';
+  const emailHygienePeriodEnd: string = emailHygieneResult.periodEnd ?? '';
+  const emailHygieneComputedAt: string = emailHygieneResult.computedAt ?? '';
+
+  function emailScoreColor(score: number) {
+    if (score >= 80) return { bg: 'bg-green-100', text: 'text-green-700', ring: 'ring-green-300' };
+    if (score >= 60) return { bg: 'bg-yellow-100', text: 'text-yellow-700', ring: 'ring-yellow-300' };
+    return { bg: 'bg-red-100', text: 'text-red-700', ring: 'ring-red-300' };
+  }
+
+  function fmtHours(h: number | null): string {
+    if (h === null) return '—';
+    if (h < 1) return `${Math.round(h * 60)}m`;
+    if (h < 24) return `${h.toFixed(1)}h`;
+    return `${(h / 24).toFixed(1)}d`;
+  }
+
+  function handleExportEmailHygieneCSV() {
+    if (!emailMetrics.length) return;
+    const rows = [
+      [
+        'Team Member', 'Email',
+        'Emails Sent (Ext)', 'Emails Received (Ext)', 'Customer Threads',
+        'Avg Response Time', 'Median Response Time',
+        'Replied ≤4h', 'Replied ≤24h', 'Replied >24h', 'Unreplied',
+        'Response Rate (%)', 'Avg Reply Length (chars)', 'Auto-Replies',
+        'Relevancy Score', 'AI Sample Reason',
+        'Response Time Score', 'Rate Score', 'Quality Score', 'Email Hygiene Score',
+      ],
+      ...emailMetrics.map((m: any) => [
+        m.userName, m.userEmail,
+        m.externalEmailsSent, m.externalEmailsReceived, m.uniqueCustomerThreads,
+        m.avgResponseTimeHours ?? 'N/A', m.medianResponseTimeHours ?? 'N/A',
+        m.responsesWithin4h, m.responsesWithin24h, m.responsesOver24h, m.unrepliedThreads,
+        m.responseRate, m.avgReplyLengthChars, m.autoRepliesDetected,
+        m.relevancyScore ?? 'N/A', m.relevancySample ?? '',
+        m.responseTimeScore, m.responseRateScore, m.qualityScore, m.emailHygieneScore,
+      ]),
+    ];
+    downloadCSV(rows, `email-hygiene-${format(new Date(), 'yyyy-MM-dd')}.csv`);
+  }
+
+  async function handleExportEmailHygieneExcel() {
+    try {
+      const blob = await emailHygieneApi.exportExcel();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `email-hygiene-${format(new Date(), 'yyyy-MM-dd')}.xlsx`;
+      a.click();
+    } catch {}
+  }
+
+  async function handleForceRefreshEmailHygiene() {
+    try {
+      await emailHygieneApi.getMetrics(true);
+      refetchEmailHygiene();
+    } catch {}
+  }
 
   function hygieneScoreColor(score: number) {
     if (score >= 80) return { bg: 'bg-green-100', text: 'text-green-700', ring: 'ring-green-300' };
@@ -1058,39 +1129,91 @@ export default function AuditDashboardPage() {
       {/* ── Hygiene Board ──────────────────────────────────────── */}
       <div className="space-y-4">
         {/* Section header */}
-        <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="flex items-start justify-between flex-wrap gap-3">
           <div>
             <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
               <ShieldCheck size={18} className="text-indigo-600" /> Hygiene Board
             </h2>
             <p className="text-xs text-gray-500 mt-0.5">
-              Based on real login and update activity (audit logs), data completeness, and case study completion
+              {hygieneTab === 'project'
+                ? 'PM login & update activity (audit logs), data completeness, and case study completion'
+                : 'Email response time, response rate, and heuristic reply relevancy for all @cloudfuze.com team members (last 30 days)'}
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => refetchHygiene()}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-            >
-              <RefreshCw size={13} /> Refresh
-            </button>
-            <button
-              onClick={handleExportHygieneCSV}
-              disabled={!hygieneBoard.length}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-40"
-            >
-              <Download size={13} /> CSV
-            </button>
-            <button
-              onClick={handleExportHygieneExcel}
-              disabled={!hygieneBoard.length}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-40"
-            >
-              <FileSpreadsheet size={13} /> Excel
-            </button>
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Tab switcher */}
+            <div className="flex bg-gray-100 rounded-lg p-0.5 gap-0.5">
+              <button
+                onClick={() => setHygieneTab('project')}
+                className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${hygieneTab === 'project' ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                Project Hygiene
+              </button>
+              <button
+                onClick={() => setHygieneTab('email')}
+                className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${hygieneTab === 'email' ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                <Mail size={11} className="inline-block mr-1 -mt-px" />Email Hygiene
+              </button>
+            </div>
+            {/* Action buttons — project tab */}
+            {hygieneTab === 'project' && (<>
+              <button
+                onClick={() => refetchHygiene()}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                <RefreshCw size={13} /> Refresh
+              </button>
+              <button
+                onClick={handleExportHygieneCSV}
+                disabled={!hygieneBoard.length}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-40"
+              >
+                <Download size={13} /> CSV
+              </button>
+              <button
+                onClick={handleExportHygieneExcel}
+                disabled={!hygieneBoard.length}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-40"
+              >
+                <FileSpreadsheet size={13} /> Excel
+              </button>
+            </>)}
+            {/* Action buttons — email tab */}
+            {hygieneTab === 'email' && (<>
+              <button
+                onClick={() => refetchEmailHygiene()}
+                disabled={isEmailHygieneFetching}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+              >
+                <RefreshCw size={13} className={isEmailHygieneFetching ? 'animate-spin' : ''} /> Refresh
+              </button>
+              <button
+                onClick={handleForceRefreshEmailHygiene}
+                disabled={isEmailHygieneFetching}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+              >
+                <RefreshCw size={13} /> Sync from Outlook
+              </button>
+              <button
+                onClick={handleExportEmailHygieneCSV}
+                disabled={!emailMetrics.length}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-40"
+              >
+                <Download size={13} /> CSV
+              </button>
+              <button
+                onClick={handleExportEmailHygieneExcel}
+                disabled={!emailMetrics.length}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-40"
+              >
+                <FileSpreadsheet size={13} /> Excel
+              </button>
+            </>)}
           </div>
         </div>
 
+        {hygieneTab === 'project' && (<>
         {/* Fleet KPIs */}
         {hygieneBoard.length > 0 && (() => {
           const avg = Math.round(hygieneBoard.reduce((s: number, pm: any) => s + pm.hygieneScore, 0) / hygieneBoard.length);
@@ -1252,6 +1375,190 @@ export default function AuditDashboardPage() {
             </div>
           )}
         </Card>
+        </>)}
+
+        {/* ── Email Hygiene Tab ───────────────────────────────────── */}
+        {hygieneTab === 'email' && (<>
+          {/* Not configured */}
+          {!isEmailHygieneLoading && !emailHygieneConfigured && (
+            <Card>
+              <div className="py-12 text-center space-y-3">
+                <Mail size={32} className="mx-auto text-gray-300" />
+                <p className="font-semibold text-gray-600">Microsoft Graph API not configured</p>
+                <p className="text-sm text-gray-400 max-w-lg mx-auto leading-relaxed">
+                  Add <code className="bg-gray-100 px-1 rounded font-mono text-xs">MS_GRAPH_TENANT_ID</code>,{' '}
+                  <code className="bg-gray-100 px-1 rounded font-mono text-xs">MS_GRAPH_CLIENT_ID</code>, and{' '}
+                  <code className="bg-gray-100 px-1 rounded font-mono text-xs">MS_GRAPH_CLIENT_SECRET</code> to{' '}
+                  <code className="bg-gray-100 px-1 rounded font-mono text-xs">backend/.env</code>.
+                  The Azure AD app needs <strong>Mail.Read</strong> and <strong>User.Read.All</strong> application permissions with admin consent.
+                </p>
+              </div>
+            </Card>
+          )}
+
+          {/* Loading */}
+          {isEmailHygieneLoading && (
+            <div className="flex flex-col items-center justify-center py-16 gap-3">
+              <div className="flex items-center gap-3">
+                <Loader2 size={28} className="animate-spin text-indigo-500" />
+                <span className="text-gray-600 text-sm font-medium">Fetching emails from Microsoft 365…</span>
+              </div>
+              <p className="text-xs text-gray-400 max-w-sm text-center">
+                First load reads mailboxes for all team members — this takes 2–4 minutes. Results are cached for 2 hours.
+              </p>
+            </div>
+          )}
+
+          {/* KPI cards */}
+          {emailMetrics.length > 0 && (() => {
+            const avgScore = Math.round(emailMetrics.reduce((s: number, m: any) => s + m.emailHygieneScore, 0) / emailMetrics.length);
+            const totalUnreplied = emailMetrics.reduce((s: number, m: any) => s + m.unrepliedThreads, 0);
+            const validTimes = emailMetrics.filter((m: any) => m.avgResponseTimeHours !== null);
+            const avgRespTime: number | null = validTimes.length > 0
+              ? validTimes.reduce((s: number, m: any) => s + m.avgResponseTimeHours, 0) / validTimes.length
+              : null;
+            const validRel = emailMetrics.filter((m: any) => m.relevancyScore !== null);
+            const avgRelevancy: number | null = validRel.length > 0
+              ? Math.round(validRel.reduce((s: number, m: any) => s + m.relevancyScore, 0) / validRel.length)
+              : null;
+            const sc = emailScoreColor(avgScore);
+            return (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className={`${sc.bg} rounded-xl p-4 border border-white`}>
+                  <div className={`text-2xl font-bold ${sc.text}`}>{avgScore}</div>
+                  <div className="text-xs text-gray-500 mt-0.5">Fleet Email Hygiene Score</div>
+                </div>
+                <div className="bg-blue-50 rounded-xl p-4 border border-white">
+                  <div className="text-2xl font-bold text-blue-700">{fmtHours(avgRespTime)}</div>
+                  <div className="text-xs text-gray-500 mt-0.5">Avg Response Time</div>
+                </div>
+                <div className="bg-red-50 rounded-xl p-4 border border-white">
+                  <div className="text-2xl font-bold text-red-700">{totalUnreplied}</div>
+                  <div className="text-xs text-gray-500 mt-0.5">Total Unreplied Threads</div>
+                </div>
+                <div className="bg-purple-50 rounded-xl p-4 border border-white">
+                  <div className="text-2xl font-bold text-purple-700">{avgRelevancy !== null ? avgRelevancy : '—'}</div>
+                  <div className="text-xs text-gray-500 mt-0.5">Avg Relevancy Score</div>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Period note */}
+          {emailHygienePeriodStart && (
+            <p className="text-xs text-gray-400">
+              Period: {emailHygienePeriodStart.slice(0, 10)} → {emailHygienePeriodEnd.slice(0, 10)}.
+              {' '}Last synced: {emailHygieneComputedAt ? format(new Date(emailHygieneComputedAt), 'MMM d, yyyy HH:mm') : '—'}
+            </p>
+          )}
+
+          {/* Email table */}
+          {emailMetrics.length > 0 && (
+            <Card>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm" style={{ minWidth: '1500px' }}>
+                  <thead>
+                    <tr className="border-b border-gray-100">
+                      <th colSpan={4} className="py-1.5 px-3" />
+                      <th colSpan={5} className="text-center text-xs font-semibold text-blue-600 py-1.5 bg-blue-50">Response Time</th>
+                      <th colSpan={3} className="text-center text-xs font-semibold text-purple-600 py-1.5 bg-purple-50">Content Quality</th>
+                      <th colSpan={2} className="text-center text-xs font-semibold text-teal-600 py-1.5 bg-teal-50">Relevancy</th>
+                      <th colSpan={4} className="text-center text-xs font-medium text-gray-400 py-1.5">Scores</th>
+                    </tr>
+                    <tr className="border-b border-gray-200 bg-gray-50/60">
+                      <th className="text-left py-2.5 px-3 text-xs font-semibold text-gray-700 whitespace-nowrap">Team Member</th>
+                      <th className="text-center py-2.5 px-2 text-xs font-semibold text-gray-500 whitespace-nowrap">Sent</th>
+                      <th className="text-center py-2.5 px-2 text-xs font-semibold text-gray-500 whitespace-nowrap">Recv</th>
+                      <th className="text-center py-2.5 px-2 text-xs font-semibold text-gray-500 whitespace-nowrap">Threads</th>
+                      <th className="text-center py-2.5 px-2 text-xs font-semibold text-blue-600 bg-blue-50/70 whitespace-nowrap">Avg Time</th>
+                      <th className="text-center py-2.5 px-2 text-xs font-semibold text-blue-600 bg-blue-50/70 whitespace-nowrap">≤4h</th>
+                      <th className="text-center py-2.5 px-2 text-xs font-semibold text-blue-600 bg-blue-50/70 whitespace-nowrap">≤24h</th>
+                      <th className="text-center py-2.5 px-2 text-xs font-semibold text-blue-600 bg-blue-50/70 whitespace-nowrap">&gt;24h</th>
+                      <th className="text-center py-2.5 px-2 text-xs font-semibold text-blue-600 bg-blue-50/70 whitespace-nowrap">Unreplied</th>
+                      <th className="text-center py-2.5 px-2 text-xs font-semibold text-purple-600 bg-purple-50/70 whitespace-nowrap">Resp. Rate</th>
+                      <th className="text-center py-2.5 px-2 text-xs font-semibold text-purple-600 bg-purple-50/70 whitespace-nowrap">Avg Length</th>
+                      <th className="text-center py-2.5 px-2 text-xs font-semibold text-purple-600 bg-purple-50/70 whitespace-nowrap">Auto-Reply</th>
+                      <th className="text-center py-2.5 px-2 text-xs font-semibold text-teal-600 bg-teal-50/70 whitespace-nowrap">Score</th>
+                      <th className="text-left py-2.5 px-2 text-xs font-semibold text-teal-600 bg-teal-50/70 whitespace-nowrap">AI Note</th>
+                      <th className="text-center py-2.5 px-2 text-xs font-semibold text-blue-700 whitespace-nowrap">Resp. Time</th>
+                      <th className="text-center py-2.5 px-2 text-xs font-semibold text-purple-700 whitespace-nowrap">Rate</th>
+                      <th className="text-center py-2.5 px-2 text-xs font-semibold text-teal-700 whitespace-nowrap">Quality</th>
+                      <th className="text-center py-2.5 px-3 text-xs font-semibold text-gray-800 whitespace-nowrap">Hygiene</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {emailMetrics.map((m: any, i: number) => {
+                      const sc = emailScoreColor(m.emailHygieneScore);
+                      const bad = (n: number) => n > 0 ? 'text-red-600 font-semibold' : 'text-gray-300';
+                      const good = (n: number) => n > 0 ? 'text-green-600 font-semibold' : 'text-gray-300';
+                      return (
+                        <tr key={m.userEmail} className={`border-b border-gray-50 ${i % 2 === 0 ? '' : 'bg-gray-50/30'} hover:bg-indigo-50/20 transition-colors`}>
+                          <td className="py-3 px-3 whitespace-nowrap">
+                            <div className="font-medium text-gray-800">{m.userName}</div>
+                            <div className="text-xs text-gray-400">{m.userEmail}</div>
+                          </td>
+                          <td className="py-3 px-2 text-center text-gray-600">{m.externalEmailsSent}</td>
+                          <td className="py-3 px-2 text-center text-gray-600">{m.externalEmailsReceived}</td>
+                          <td className="py-3 px-2 text-center text-gray-600">{m.uniqueCustomerThreads}</td>
+                          <td className="py-3 px-2 text-center bg-blue-50/40">
+                            <span className={
+                              m.avgResponseTimeHours === null ? 'text-gray-400' :
+                              m.avgResponseTimeHours <= 4 ? 'text-green-600 font-semibold' :
+                              m.avgResponseTimeHours <= 24 ? 'text-yellow-600 font-semibold' :
+                              'text-red-600 font-semibold'
+                            }>{fmtHours(m.avgResponseTimeHours)}</span>
+                          </td>
+                          <td className="py-3 px-2 text-center bg-blue-50/40"><span className={good(m.responsesWithin4h)}>{m.responsesWithin4h}</span></td>
+                          <td className="py-3 px-2 text-center bg-blue-50/40"><span className={good(m.responsesWithin24h)}>{m.responsesWithin24h}</span></td>
+                          <td className="py-3 px-2 text-center bg-blue-50/40"><span className={bad(m.responsesOver24h)}>{m.responsesOver24h}</span></td>
+                          <td className="py-3 px-2 text-center bg-blue-50/40"><span className={bad(m.unrepliedThreads)}>{m.unrepliedThreads}</span></td>
+                          <td className="py-3 px-2 text-center bg-purple-50/40">
+                            <span className={m.responseRate >= 90 ? 'text-green-600 font-semibold' : m.responseRate >= 70 ? 'text-yellow-600 font-semibold' : 'text-red-600 font-semibold'}>
+                              {m.responseRate}%
+                            </span>
+                          </td>
+                          <td className="py-3 px-2 text-center bg-purple-50/40 text-gray-600">{m.avgReplyLengthChars.toLocaleString()}</td>
+                          <td className="py-3 px-2 text-center bg-purple-50/40"><span className={bad(m.autoRepliesDetected)}>{m.autoRepliesDetected}</span></td>
+                          <td className="py-3 px-2 text-center bg-teal-50/40">
+                            {m.relevancyScore !== null ? (
+                              <span className={`inline-block text-xs font-semibold px-2 py-0.5 rounded-full ${
+                                m.relevancyScore >= 80 ? 'bg-green-100 text-green-700' :
+                                m.relevancyScore >= 60 ? 'bg-yellow-100 text-yellow-700' :
+                                'bg-red-100 text-red-700'
+                              }`}>{m.relevancyScore}</span>
+                            ) : <span className="text-gray-300 text-xs">N/A</span>}
+                          </td>
+                          <td className="py-3 px-2 bg-teal-50/40 text-xs text-gray-500 max-w-xs">{m.relevancySample ?? '—'}</td>
+                          <td className="py-3 px-2 text-center">
+                            <span className="inline-block text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">{m.responseTimeScore}</span>
+                          </td>
+                          <td className="py-3 px-2 text-center">
+                            <span className="inline-block text-xs font-semibold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">{m.responseRateScore}</span>
+                          </td>
+                          <td className="py-3 px-2 text-center">
+                            <span className="inline-block text-xs font-semibold px-2 py-0.5 rounded-full bg-teal-100 text-teal-700">{m.qualityScore}</span>
+                          </td>
+                          <td className="py-3 px-3 text-center">
+                            <span className={`inline-block text-sm font-bold px-3 py-1 rounded-full ring-1 ${sc.bg} ${sc.text} ${sc.ring}`}>
+                              {m.emailHygieneScore}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <div className="flex items-center gap-4 pt-3 mt-3 border-t border-gray-100 text-xs text-gray-500 flex-wrap">
+                <span className="font-medium text-gray-700">Email Hygiene Score:</span>
+                <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-green-400 inline-block" /> ≥80 Good</span>
+                <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-yellow-400 inline-block" /> 60–79 Fair</span>
+                <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-red-400 inline-block" /> &lt;60 Needs Attention</span>
+                <span className="ml-auto text-gray-400">Response Time 40% · Response Rate 20% · Reply Quality 40%</span>
+              </div>
+            </Card>
+          )}
+        </>)}
       </div>
     </div>
   );

@@ -198,6 +198,7 @@ export default function ProjectsPage() {
       if (!v) return '';
       if (v === 'CUSTOMER_DELAY') return 'Customer Delay';
       if (v === 'INTERNAL_DELAY') return 'Internal Delay';
+      if (v === 'BOTH') return 'Both';
       return v;
     };
 
@@ -215,6 +216,10 @@ export default function ProjectsPage() {
       'Delta Migration Start', 'Delta Migration End',
       'Final Validation Start', 'Final Validation End',
       'Project End',
+      'Project Notes',
+      'Cloud Adding Notes', 'Pilot Migration Notes',
+      'Onetime Migration Notes', 'Delta Migration Notes',
+      'Final Validation Notes',
     ];
 
     const rows = segmentProjects.map((p: any) => [
@@ -253,6 +258,12 @@ export default function ProjectsPage() {
       fmt(p.finalValidationStart),
       fmt(p.finalValidationEnd),
       fmt(p.actualEnd),
+      p.notes ?? '',
+      p.cloudAddingNotes ?? '',
+      p.pilotMigrationNotes ?? '',
+      p.onetimeMigrationNotes ?? '',
+      p.deltaMigrationNotes ?? '',
+      p.finalValidationNotes ?? '',
     ]);
 
     const csv = [headers, ...rows]

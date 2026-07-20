@@ -129,7 +129,7 @@ export interface Project {
   onetimeProgress?: number | null;
   customerSuccess?: string | null;
   csatScore?: number | null;
-  delayHappened?: 'CUSTOMER_DELAY' | 'INTERNAL_DELAY' | null;
+  delayHappened?: 'CUSTOMER_DELAY' | 'INTERNAL_DELAY' | 'BOTH' | null;
   createdAt: string;
   updatedAt: string;
   phases?: ProjectPhaseRecord[];

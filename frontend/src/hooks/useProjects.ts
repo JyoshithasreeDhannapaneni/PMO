@@ -2,7 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect } from 'react';
-import { projectsApi, dashboardApi, statusReportsApi, managerGoalsApi, migrationTypeApi, pocProjectsApi, accountManagerApi, customerSuccessApi, hubspotApi, psEngagementsApi, kbArticlesApi } from '@/services/api';
+import { projectsApi, dashboardApi, statusReportsApi, managerGoalsApi, migrationTypeApi, pocProjectsApi, accountManagerApi, customerSuccessApi, hubspotApi, psEngagementsApi, kbArticlesApi, emailHygieneApi } from '@/services/api';
 import type { CreateProjectInput, UpdateProjectInput } from '@/types';
 
 export function useProjects(params?: {
@@ -961,5 +961,16 @@ export function useClientSummary(clientName: string) {
     queryFn: () => projectsApi.getClientSummary(clientName),
     enabled: !!clientName,
     staleTime: 30_000,
+  });
+}
+
+export function useEmailHygiene(enabled = true) {
+  return useQuery({
+    queryKey: ['email-hygiene'],
+    queryFn: () => emailHygieneApi.getMetrics(false),
+    enabled,
+    staleTime: 2 * 60 * 60 * 1000,
+    gcTime: 2 * 60 * 60 * 1000,
+    retry: 0, // First fetch can take 2-4 min — don't retry on timeout
   });
 }
