@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { useProjects, useDeleteProject } from '@/hooks/useProjects';
-import { authApi } from '@/services/api';
+import { authApi, dashboardApi } from '@/services/api';
 import { ProjectsTable } from '@/components/projects/ProjectsTable';
 import { MultiScopeProjectModal } from '@/components/projects/MultiScopeProjectModal';
 import { Button } from '@/components/ui/Button';
@@ -162,8 +162,12 @@ export default function ProjectsPage() {
     return typeToCategory.get(firstName) || 'Other';
   }
 
-  const exportToCSV = () => {
+  const exportToCSV = async () => {
     if (!segmentProjects.length) return;
+
+    // Fetch delay happened notes for all projects (stored in escalation_daily_notes table)
+    let delayNotes: Record<string, string> = {};
+    try { delayNotes = await dashboardApi.getDelayHappenedNotes(); } catch { /* skip if unavailable */ }
 
     const fmt = (d: string | null | undefined) =>
       d ? new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' }) : '';
@@ -205,7 +209,7 @@ export default function ProjectsPage() {
     const headers = [
       'Project Name', 'Client / Account', 'Customer Name', 'Project Manager', 'Account Manager',
       'Migration Types', 'Plan Type', 'Status', 'Phase',
-      'CSAT Score', 'CSAT Health', 'Delay Happened',
+      'CSAT Score', 'CSAT Health', 'Delay Happened', 'Delay Happened Notes',
       'Duration (Months)', 'Expected Project End', 'Extended End Date (Overage)',
       'Delay Status', 'Delay Days', 'SOW Date Ended',
       'Estimated Budget', 'Is Overaged', 'Overage Amount',
@@ -235,6 +239,7 @@ export default function ProjectsPage() {
       p.csatScore != null ? p.csatScore.toFixed(1) : '',
       csatLabel(p.csatScore),
       delayHappenedLabel(p.delayHappened),
+      delayNotes[p.id] ?? '',
       getDurationMonths(p),
       fmt(p.expectedEnd ?? p.plannedEnd),
       p.isOveraged && p.extendedEndDate ? fmt(p.extendedEndDate) : '',

@@ -1082,6 +1082,25 @@ class DashboardService {
       [noteId, projectId]
     );
   }
+
+  async getDelayHappenedNotesByProject(): Promise<Record<string, string>> {
+    await this.ensureDailyNotesTable();
+    const result = await query(
+      `SELECT project_id, note_date, author, note
+       FROM escalation_daily_notes
+       WHERE column_name = 'Delay Happened'
+       ORDER BY project_id, note_date ASC, created_at ASC`
+    );
+    const map: Record<string, string[]> = {};
+    for (const r of result.rows as { project_id: string; note_date: string; author: string | null; note: string }[]) {
+      if (!map[r.project_id]) map[r.project_id] = [];
+      const d = new Date(r.note_date);
+      const dateStr = `${d.getDate().toString().padStart(2,'0')}/${(d.getMonth()+1).toString().padStart(2,'0')}/${d.getFullYear()}`;
+      const prefix = r.author ? `[${dateStr} – ${r.author}]` : `[${dateStr}]`;
+      map[r.project_id].push(`${prefix} ${r.note}`);
+    }
+    return Object.fromEntries(Object.entries(map).map(([id, notes]) => [id, notes.join('\n')]));
+  }
 }
 
 export const dashboardService = new DashboardService();

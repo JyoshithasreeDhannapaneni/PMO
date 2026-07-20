@@ -84,6 +84,9 @@ router.post('/escalation-daily-notes/:projectId', dashboardController.addEscalat
 // DELETE /api/dashboard/escalation-daily-notes/:projectId/:noteId - Delete a daily note
 router.delete('/escalation-daily-notes/:projectId/:noteId', dashboardController.deleteEscalationDailyNote);
 
+// GET /api/dashboard/delay-happened-notes - All delay happened notes keyed by projectId (for CSV export)
+router.get('/delay-happened-notes', dashboardController.getDelayHappenedNotesByProject);
+
 // GET /api/dashboard/at-risk-projects - Projects manually flagged at risk
 router.get('/at-risk-projects', dashboardController.getAtRiskProjects);
 

@@ -280,6 +280,11 @@ export const dashboardController = {
     res.json({ success: true, message: 'Note deleted' });
   }),
 
+  getDelayHappenedNotesByProject: asyncHandler(async (_req: Request, res: Response): Promise<void> => {
+    const data = await dashboardService.getDelayHappenedNotesByProject();
+    res.json({ success: true, data });
+  }),
+
   getAtRiskProjects: asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const managerName = req.query.manager as string | undefined;
     const data = await dashboardService.getAtRiskProjects(managerName);
