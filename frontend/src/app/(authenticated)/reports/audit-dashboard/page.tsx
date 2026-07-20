@@ -12,8 +12,9 @@ import {
   ChevronDown, ChevronUp, FolderKanban, CheckCircle,
   AlertTriangle, TrendingUp, Plus, Camera,
   Layers, FolderOpen, MessageSquare, Mail, Flag,
-  UserX,
+  UserX, ShieldCheck, FileSpreadsheet,
 } from 'lucide-react';
+import { auditApi } from '@/services/api';
 import { format, subDays, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { toPng } from 'html-to-image';
 import type { Project } from '@/types';
@@ -116,6 +117,55 @@ export default function AuditDashboardPage() {
       ...inactiveUsers.map((u: any) => [u.name, u.email, u.role, u.lastActive ? format(new Date(u.lastActive), 'yyyy-MM-dd') : 'Never']),
     ];
     downloadCSV(rows, `inactive-users-${inactivityStart}-to-${inactivityEnd}.csv`);
+  }
+
+  // ── Hygiene Board ──────────────────────────────────────────────
+  const { data: hygieneData, isLoading: isHygieneLoading, refetch: refetchHygiene } = useQuery({
+    queryKey: ['hygieneBoard'],
+    queryFn: () => auditApi.getHygieneBoard(),
+  });
+  const hygieneBoard: any[] = hygieneData?.data ?? [];
+
+  function hygieneScoreColor(score: number) {
+    if (score >= 80) return { bg: 'bg-green-100', text: 'text-green-700', ring: 'ring-green-300' };
+    if (score >= 60) return { bg: 'bg-yellow-100', text: 'text-yellow-700', ring: 'ring-yellow-300' };
+    return { bg: 'bg-red-100', text: 'text-red-700', ring: 'ring-red-300' };
+  }
+
+  function handleExportHygieneCSV() {
+    if (!hygieneBoard.length) return;
+    const rows = [
+      [
+        'Project Manager', 'Total Projects', 'Active/On-Hold', 'Completed/Archived',
+        'Logins (30d)', 'Project Updates (30d)', 'Case Study Updates (30d)',
+        'Last Login', 'Days Since Last Action',
+        'Missing Kickoff', 'Missing SOW Dates', 'Missing Email', 'Missing Notes',
+        'Overdue (unflagged)', 'Missing Size', 'Missing Budget',
+        'CS Done', 'CS Pending', 'No Case Study',
+        'Activity Score', 'Data Quality Score', 'Case Study Score', 'Hygiene Score',
+      ],
+      ...hygieneBoard.map((pm: any) => [
+        pm.projectManager, pm.totalProjects, pm.activeProjects, pm.completedProjects,
+        pm.logins30d, pm.projectUpdates30d, pm.caseStudyUpdates30d,
+        pm.lastLoginAt ? pm.lastLoginAt.slice(0, 10) : 'Never',
+        pm.daysSinceLastAction ?? 'Never',
+        pm.missingKickoffDate, pm.missingPlannedDates, pm.missingCustomerEmail,
+        pm.missingNotes, pm.overdueNotFlagged, pm.missingProjectSize, pm.missingBudget,
+        pm.csDone, pm.csPending, pm.csMissing,
+        pm.activityScore, pm.qualityScore, pm.caseStudyScore, pm.hygieneScore,
+      ]),
+    ];
+    downloadCSV(rows, `hygiene-board-${format(new Date(), 'yyyy-MM-dd')}.csv`);
+  }
+
+  async function handleExportHygieneExcel() {
+    try {
+      const blob = await auditApi.exportHygieneExcel();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `hygiene-board-${format(new Date(), 'yyyy-MM-dd')}.xlsx`;
+      a.click();
+    } catch {}
   }
 
   const { settings } = useSettings();
@@ -1003,6 +1053,205 @@ export default function AuditDashboardPage() {
             );
           })()
         )}
+      </div>
+
+      {/* ── Hygiene Board ──────────────────────────────────────── */}
+      <div className="space-y-4">
+        {/* Section header */}
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div>
+            <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+              <ShieldCheck size={18} className="text-indigo-600" /> Hygiene Board
+            </h2>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Based on real login and update activity (audit logs), data completeness, and case study completion
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => refetchHygiene()}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              <RefreshCw size={13} /> Refresh
+            </button>
+            <button
+              onClick={handleExportHygieneCSV}
+              disabled={!hygieneBoard.length}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-40"
+            >
+              <Download size={13} /> CSV
+            </button>
+            <button
+              onClick={handleExportHygieneExcel}
+              disabled={!hygieneBoard.length}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-40"
+            >
+              <FileSpreadsheet size={13} /> Excel
+            </button>
+          </div>
+        </div>
+
+        {/* Fleet KPIs */}
+        {hygieneBoard.length > 0 && (() => {
+          const avg = Math.round(hygieneBoard.reduce((s: number, pm: any) => s + pm.hygieneScore, 0) / hygieneBoard.length);
+          const neverLoggedIn = hygieneBoard.filter((pm: any) => !pm.lastLoginAt).length;
+          const overdue = hygieneBoard.reduce((s: number, pm: any) => s + pm.overdueNotFlagged, 0);
+          const missingCS = hygieneBoard.reduce((s: number, pm: any) => s + pm.csMissing, 0);
+          const kpis = [
+            { label: 'Fleet Hygiene Score', value: avg, color: hygieneScoreColor(avg) },
+            { label: 'PMs Never Logged In (30d)', value: neverLoggedIn, color: { bg: 'bg-red-50', text: 'text-red-700', ring: '' } },
+            { label: 'Overdue (unflagged)', value: overdue, color: { bg: 'bg-amber-50', text: 'text-amber-700', ring: '' } },
+            { label: 'Missing Case Studies', value: missingCS, color: { bg: 'bg-orange-50', text: 'text-orange-700', ring: '' } },
+          ];
+          return (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {kpis.map(({ label, value, color }) => (
+                <div key={label} className={`${color.bg} rounded-xl p-4 border border-white`}>
+                  <div className={`text-2xl font-bold ${color.text}`}>{value}</div>
+                  <div className="text-xs text-gray-500 mt-0.5">{label}</div>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
+
+        {/* Hygiene table */}
+        <Card>
+          {isHygieneLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 size={24} className="animate-spin text-indigo-500" />
+            </div>
+          ) : hygieneBoard.length === 0 ? (
+            <div className="text-center py-10 text-gray-400 text-sm">No project data available</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm" style={{ minWidth: '1400px' }}>
+                <thead>
+                  {/* Column-group labels */}
+                  <tr className="border-b border-gray-100">
+                    <th colSpan={3} className="text-left text-xs font-medium text-gray-400 py-1.5 px-3" />
+                    <th colSpan={5} className="text-center text-xs font-semibold text-blue-600 py-1.5 bg-blue-50">Activity (last 30 days)</th>
+                    <th colSpan={7} className="text-center text-xs font-semibold text-purple-600 py-1.5 bg-purple-50">Data Quality (active projects)</th>
+                    <th colSpan={3} className="text-center text-xs font-semibold text-teal-600 py-1.5 bg-teal-50">Case Studies</th>
+                    <th colSpan={4} className="text-center text-xs font-medium text-gray-400 py-1.5" />
+                  </tr>
+                  <tr className="border-b border-gray-200 bg-gray-50/60">
+                    {/* Identity */}
+                    <th className="text-left font-semibold text-gray-700 py-2.5 px-3 whitespace-nowrap text-xs">Project Manager</th>
+                    <th className="text-center font-semibold text-gray-500 py-2.5 px-2 whitespace-nowrap text-xs">Projects</th>
+                    <th className="text-center font-semibold text-gray-500 py-2.5 px-2 whitespace-nowrap text-xs">Active</th>
+                    {/* Activity */}
+                    <th className="text-center font-semibold text-blue-600 py-2.5 px-2 whitespace-nowrap text-xs bg-blue-50/70">Logins</th>
+                    <th className="text-center font-semibold text-blue-600 py-2.5 px-2 whitespace-nowrap text-xs bg-blue-50/70">Proj. Updates</th>
+                    <th className="text-center font-semibold text-blue-600 py-2.5 px-2 whitespace-nowrap text-xs bg-blue-50/70">CS Updates</th>
+                    <th className="text-center font-semibold text-blue-600 py-2.5 px-2 whitespace-nowrap text-xs bg-blue-50/70">Last Login</th>
+                    <th className="text-center font-semibold text-blue-600 py-2.5 px-2 whitespace-nowrap text-xs bg-blue-50/70">Days Idle</th>
+                    {/* Data quality */}
+                    <th className="text-center font-semibold text-purple-600 py-2.5 px-2 whitespace-nowrap text-xs bg-purple-50/70">No Kickoff</th>
+                    <th className="text-center font-semibold text-purple-600 py-2.5 px-2 whitespace-nowrap text-xs bg-purple-50/70">No SOW</th>
+                    <th className="text-center font-semibold text-purple-600 py-2.5 px-2 whitespace-nowrap text-xs bg-purple-50/70">No Email</th>
+                    <th className="text-center font-semibold text-purple-600 py-2.5 px-2 whitespace-nowrap text-xs bg-purple-50/70">No Notes</th>
+                    <th className="text-center font-semibold text-purple-600 py-2.5 px-2 whitespace-nowrap text-xs bg-purple-50/70">Overdue</th>
+                    <th className="text-center font-semibold text-purple-600 py-2.5 px-2 whitespace-nowrap text-xs bg-purple-50/70">No Size</th>
+                    <th className="text-center font-semibold text-purple-600 py-2.5 px-2 whitespace-nowrap text-xs bg-purple-50/70">No Budget</th>
+                    {/* Case studies */}
+                    <th className="text-center font-semibold text-teal-600 py-2.5 px-2 whitespace-nowrap text-xs bg-teal-50/70">Done</th>
+                    <th className="text-center font-semibold text-teal-600 py-2.5 px-2 whitespace-nowrap text-xs bg-teal-50/70">Pending</th>
+                    <th className="text-center font-semibold text-teal-600 py-2.5 px-2 whitespace-nowrap text-xs bg-teal-50/70">Missing</th>
+                    {/* Scores */}
+                    <th className="text-center font-semibold text-blue-700 py-2.5 px-2 whitespace-nowrap text-xs">Activity</th>
+                    <th className="text-center font-semibold text-purple-700 py-2.5 px-2 whitespace-nowrap text-xs">Quality</th>
+                    <th className="text-center font-semibold text-teal-700 py-2.5 px-2 whitespace-nowrap text-xs">CS Score</th>
+                    <th className="text-center font-semibold text-gray-800 py-2.5 px-3 whitespace-nowrap text-xs">Hygiene</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {hygieneBoard.map((pm: any, i: number) => {
+                    const sc = hygieneScoreColor(pm.hygieneScore);
+                    const bad = (n: number) => n > 0 ? 'text-red-600 font-semibold' : 'text-gray-300';
+                    const neverLoggedIn = !pm.lastLoginAt;
+                    const daysIdle = pm.daysSinceLastAction;
+                    return (
+                      <tr key={pm.projectManager} className={`border-b border-gray-50 ${i % 2 === 0 ? '' : 'bg-gray-50/30'} hover:bg-indigo-50/20 transition-colors`}>
+                        {/* Identity */}
+                        <td className="py-3 px-3 font-medium text-gray-800 whitespace-nowrap">{pm.projectManager}</td>
+                        <td className="py-3 px-2 text-center text-gray-600">{pm.totalProjects}</td>
+                        <td className="py-3 px-2 text-center text-gray-600">{pm.activeProjects}</td>
+                        {/* Activity cols */}
+                        <td className="py-3 px-2 text-center bg-blue-50/40">
+                          <span className={neverLoggedIn ? 'text-red-500 font-semibold' : pm.logins30d >= 4 ? 'text-green-600 font-semibold' : 'text-gray-700'}>
+                            {pm.logins30d}
+                          </span>
+                        </td>
+                        <td className="py-3 px-2 text-center bg-blue-50/40">
+                          <span className={pm.projectUpdates30d === 0 && pm.activeProjects > 0 ? 'text-red-500 font-semibold' : 'text-gray-700'}>
+                            {pm.projectUpdates30d}
+                          </span>
+                        </td>
+                        <td className="py-3 px-2 text-center bg-blue-50/40 text-gray-700">{pm.caseStudyUpdates30d}</td>
+                        <td className="py-3 px-2 text-center bg-blue-50/40">
+                          <span className={neverLoggedIn ? 'text-red-400 italic text-xs' : 'text-gray-500 text-xs'}>
+                            {pm.lastLoginAt ? pm.lastLoginAt.slice(0, 10) : 'Never'}
+                          </span>
+                        </td>
+                        <td className="py-3 px-2 text-center bg-blue-50/40">
+                          {daysIdle === null ? (
+                            <span className="text-red-400 text-xs italic">Never</span>
+                          ) : (
+                            <span className={daysIdle > 21 ? 'text-red-600 font-semibold' : daysIdle > 14 ? 'text-yellow-600 font-semibold' : 'text-green-600 font-semibold'}>
+                              {daysIdle}d
+                            </span>
+                          )}
+                        </td>
+                        {/* Data quality cols */}
+                        <td className="py-3 px-2 text-center bg-purple-50/40"><span className={bad(pm.missingKickoffDate)}>{pm.missingKickoffDate}</span></td>
+                        <td className="py-3 px-2 text-center bg-purple-50/40"><span className={bad(pm.missingPlannedDates)}>{pm.missingPlannedDates}</span></td>
+                        <td className="py-3 px-2 text-center bg-purple-50/40"><span className={bad(pm.missingCustomerEmail)}>{pm.missingCustomerEmail}</span></td>
+                        <td className="py-3 px-2 text-center bg-purple-50/40"><span className={bad(pm.missingNotes)}>{pm.missingNotes}</span></td>
+                        <td className="py-3 px-2 text-center bg-purple-50/40"><span className={bad(pm.overdueNotFlagged)}>{pm.overdueNotFlagged}</span></td>
+                        <td className="py-3 px-2 text-center bg-purple-50/40"><span className={bad(pm.missingProjectSize)}>{pm.missingProjectSize}</span></td>
+                        <td className="py-3 px-2 text-center bg-purple-50/40"><span className={bad(pm.missingBudget)}>{pm.missingBudget}</span></td>
+                        {/* Case study cols */}
+                        <td className="py-3 px-2 text-center bg-teal-50/40">
+                          <span className={pm.csDone > 0 ? 'text-teal-600 font-semibold' : 'text-gray-300'}>{pm.csDone}</span>
+                        </td>
+                        <td className="py-3 px-2 text-center bg-teal-50/40">
+                          <span className={pm.csPending > 0 ? 'text-yellow-600 font-semibold' : 'text-gray-300'}>{pm.csPending}</span>
+                        </td>
+                        <td className="py-3 px-2 text-center bg-teal-50/40"><span className={bad(pm.csMissing)}>{pm.csMissing}</span></td>
+                        {/* Score pills */}
+                        <td className="py-3 px-2 text-center">
+                          <span className="inline-block text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">{pm.activityScore}</span>
+                        </td>
+                        <td className="py-3 px-2 text-center">
+                          <span className="inline-block text-xs font-semibold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">{pm.qualityScore}</span>
+                        </td>
+                        <td className="py-3 px-2 text-center">
+                          <span className="inline-block text-xs font-semibold px-2 py-0.5 rounded-full bg-teal-100 text-teal-700">{pm.caseStudyScore}</span>
+                        </td>
+                        <td className="py-3 px-3 text-center">
+                          <span className={`inline-block text-sm font-bold px-3 py-1 rounded-full ring-1 ${sc.bg} ${sc.text} ${sc.ring}`}>
+                            {pm.hygieneScore}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {/* Legend */}
+          {hygieneBoard.length > 0 && (
+            <div className="flex items-center gap-4 pt-3 mt-3 border-t border-gray-100 text-xs text-gray-500 flex-wrap">
+              <span className="font-medium text-gray-700">Hygiene Score:</span>
+              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-green-400 inline-block" /> ≥80 Good</span>
+              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-yellow-400 inline-block" /> 60–79 Fair</span>
+              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-red-400 inline-block" /> &lt;60 Needs Attention</span>
+              <span className="ml-auto text-gray-400">Activity 35% · Data Quality 35% · Case Studies 30%</span>
+            </div>
+          )}
+        </Card>
       </div>
     </div>
   );
