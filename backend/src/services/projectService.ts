@@ -886,6 +886,24 @@ class ProjectService {
     return result.rows.map(mapProjectRow);
   }
 
+  async deleteByClient(clientName: string, requestingUserName?: string, requestingUserRole?: string): Promise<number> {
+    let sql: string;
+    let params: any[];
+
+    if (requestingUserRole === 'ADMIN') {
+      sql    = `DELETE FROM projects WHERE client_name ILIKE $1 RETURNING id`;
+      params = [clientName];
+    } else {
+      // PROJECT_MANAGER — only delete their own projects under this client
+      sql    = `DELETE FROM projects WHERE client_name ILIKE $1 AND project_manager = $2 RETURNING id`;
+      params = [clientName, requestingUserName];
+    }
+
+    const result = await query(sql, params);
+    logger.info(`Deleted ${result.rowCount} projects for client "${clientName}" by ${requestingUserRole} ${requestingUserName}`);
+    return result.rowCount ?? 0;
+  }
+
   async getClientSummary(clientName: string) {
     const result = await query(
       `SELECT

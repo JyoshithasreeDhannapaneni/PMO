@@ -25,6 +25,7 @@ import {
   isExcelDataAvailable,
   getExcelSlaByManager,
   getExcelEngineerStats,
+  getBoardData,
 } from '../services/jiraExcelService';
 import { logger } from '../utils/logger';
 
@@ -231,5 +232,22 @@ export const jiraController = {
   oauthDisconnect: asyncHandler(async (_req: Request, res: Response): Promise<void> => {
     revokeTokens();
     res.json({ success: true, message: 'Jira OAuth disconnected' });
+  }),
+
+  getBoardTickets: asyncHandler(async (_req: Request, res: Response): Promise<void> => {
+    const jiraBaseUrl = (process.env.JIRA_API_URL || 'https://cf2020.atlassian.net').replace(/\/+$/, '');
+
+    if (isExcelDataAvailable()) {
+      try {
+        const store = loadExcelData()!;
+        const data = getBoardData(store);
+        res.json({ success: true, configured: true, source: 'excel', jiraBaseUrl, data });
+        return;
+      } catch (err: any) {
+        logger.error(`[Excel] getBoardData failed: ${err.message}`);
+      }
+    }
+
+    res.json({ success: true, configured: false, data: null });
   }),
 };

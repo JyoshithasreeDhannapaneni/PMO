@@ -923,7 +923,7 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
                         <Edit size={16} />
                       </button>
                     )}
-                    {onDelete && (
+                    {onDelete && (user?.role === 'ADMIN' || user?.role === 'PROJECT_MANAGER') && (
                       <button
                         onClick={(e) => {
                           e.stopPropagation();

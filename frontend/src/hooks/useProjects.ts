@@ -370,6 +370,14 @@ export function useJiraExcelStatus() {
   });
 }
 
+export function useJiraBoardTickets() {
+  return useQuery({
+    queryKey: ['jira-board'],
+    queryFn: () => authFetch(`${API_BASE}/api/jira/board`),
+    staleTime: 5 * 60_000,
+  });
+}
+
 export function useOveragedProjects(manager?: string) {
   return useQuery({
     queryKey: ['overagedProjects', manager],
@@ -951,6 +959,18 @@ export function useDeleteKbArticle() {
     mutationFn: (id: string) => kbArticlesApi.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['kb-articles'] });
+    },
+  });
+}
+
+export function useDeleteClient() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (clientName: string) => projectsApi.deleteClient(clientName),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['client-summary'] });
     },
   });
 }

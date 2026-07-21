@@ -1,12 +1,13 @@
 'use client';
 
 import { useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { useProjects, useClientSummary } from '@/hooks/useProjects';
+import { useProjects, useClientSummary, useDeleteClient, useDeleteProject } from '@/hooks/useProjects';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { DelayIndicator } from '@/components/ui/DelayIndicator';
 import { formatCurrency } from '@/lib/utils';
+import { useAuth } from '@/context/AuthContext';
 import {
   ArrowLeft,
   Building2,
@@ -17,16 +18,39 @@ import {
   Users,
   DollarSign,
   RefreshCw,
+  Trash2,
 } from 'lucide-react';
 
 type StatusFilter = 'all' | 'ACTIVE' | 'ON_HOLD' | 'COMPLETED';
 
 export default function ClientProfilePage() {
   const params = useParams();
+  const router = useRouter();
   const rawClientName = params.clientName as string;
   const clientName = decodeURIComponent(rawClientName);
+  const { user } = useAuth();
+  const deleteClient = useDeleteClient();
 
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [deleting, setDeleting] = useState(false);
+
+  const canDelete = user?.role === 'ADMIN' || user?.role === 'PROJECT_MANAGER';
+  const deleteProject = useDeleteProject();
+
+  const handleDeleteClient = async () => {
+    const msg = user?.role === 'ADMIN'
+      ? `Delete ALL projects under "${clientName}"? This cannot be undone.`
+      : `Delete your projects under "${clientName}"? This cannot be undone.`;
+    if (!confirm(msg)) return;
+    setDeleting(true);
+    try {
+      await deleteClient.mutateAsync(clientName);
+      router.push('/projects');
+    } catch (e: any) {
+      alert(e?.response?.data?.error?.message || 'Failed to delete');
+      setDeleting(false);
+    }
+  };
 
   const { data: projectsData, isLoading: projectsLoading } = useProjects({
     clientName,
@@ -77,6 +101,17 @@ export default function ClientProfilePage() {
             </p>
           )}
         </div>
+        {canDelete && (
+          <button
+            onClick={handleDeleteClient}
+            disabled={deleting}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 text-sm font-medium transition-colors disabled:opacity-50"
+            title={user?.role === 'ADMIN' ? 'Delete all projects in this client' : 'Delete your projects in this client'}
+          >
+            {deleting ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
+            {user?.role === 'ADMIN' ? 'Delete Client' : 'Delete My Projects'}
+          </button>
+        )}
       </div>
 
       {/* KPI Row */}
@@ -161,68 +196,89 @@ export default function ClientProfilePage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filtered.map(project => (
-            <Link
-              key={project.id}
-              href={`/projects/${project.id}`}
-              className="block bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md hover:border-indigo-200 transition-all p-5 group"
-            >
-              {/* Top: name + status */}
-              <div className="flex items-start justify-between gap-2 mb-3">
-                <h3 className="font-semibold text-gray-900 group-hover:text-indigo-600 transition-colors leading-tight capitalize">
-                  {project.name}
-                </h3>
-                <StatusBadge status={project.status} />
+          {filtered.map(project => {
+            const canDeleteProject = user?.role === 'ADMIN' ||
+              (user?.role === 'PROJECT_MANAGER' && project.projectManager === user.name);
+
+            return (
+              <div
+                key={project.id}
+                className="relative bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md hover:border-indigo-200 transition-all group"
+              >
+                {/* Delete button — top-right corner */}
+                {canDeleteProject && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (confirm(`Delete "${project.name}"? This cannot be undone.`)) {
+                        deleteProject.mutate(project.id);
+                      }
+                    }}
+                    className="absolute top-3 right-3 z-10 p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
+                    title="Delete project"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                )}
+
+                {/* Card body — navigates to project */}
+                <Link href={`/projects/${project.id}`} className="block p-5">
+                  {/* Top: name + status */}
+                  <div className="flex items-start justify-between gap-2 mb-3 pr-6">
+                    <h3 className="font-semibold text-gray-900 group-hover:text-indigo-600 transition-colors leading-tight capitalize">
+                      {project.name}
+                    </h3>
+                    <StatusBadge status={project.status} />
+                  </div>
+
+                  {/* Migration type */}
+                  {project.migrationTypes && (
+                    <div className="text-xs text-gray-500 mb-2">{project.migrationTypes}</div>
+                  )}
+
+                  {/* Source → Target */}
+                  {(project.sourcePlatform || project.targetPlatform) && (
+                    <div className="text-xs text-gray-600 mb-3">
+                      {project.sourcePlatform}{project.sourcePlatform && project.targetPlatform ? ' → ' : ''}{project.targetPlatform}
+                    </div>
+                  )}
+
+                  {/* Delay + PM row */}
+                  <div className="flex items-center justify-between mt-auto pt-3 border-t border-gray-100">
+                    <div className="flex items-center gap-1.5">
+                      {project.delayStatus && project.delayStatus !== 'NOT_DELAYED' ? (
+                        <DelayIndicator status={project.delayStatus} days={project.delayDays} />
+                      ) : (
+                        <span className="flex items-center gap-1 text-xs text-green-600">
+                          <CheckCircle size={12} /> On Time
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1 text-xs text-gray-500">
+                      <Users size={11} />
+                      {project.projectManager}
+                    </div>
+                  </div>
+
+                  {/* Escalation / Overage badges */}
+                  {(project.isEscalated || project.isOveraged) && (
+                    <div className="flex gap-2 mt-2 pt-2 border-t border-gray-100">
+                      {project.isEscalated && (
+                        <span className="flex items-center gap-1 text-xs px-2 py-0.5 bg-red-50 text-red-600 rounded-full">
+                          <AlertTriangle size={10} /> Escalated
+                        </span>
+                      )}
+                      {project.isOveraged && (
+                        <span className="flex items-center gap-1 text-xs px-2 py-0.5 bg-orange-50 text-orange-600 rounded-full">
+                          <RefreshCw size={10} /> Overaged
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </Link>
               </div>
-
-              {/* Migration type */}
-              {project.migrationTypes && (
-                <div className="text-xs text-gray-500 mb-2">
-                  {project.migrationTypes}
-                </div>
-              )}
-
-              {/* Source → Target */}
-              {(project.sourcePlatform || project.targetPlatform) && (
-                <div className="text-xs text-gray-600 mb-3">
-                  {project.sourcePlatform} {project.sourcePlatform && project.targetPlatform ? '→' : ''} {project.targetPlatform}
-                </div>
-              )}
-
-              {/* Delay + PM row */}
-              <div className="flex items-center justify-between mt-auto pt-3 border-t border-gray-100">
-                <div className="flex items-center gap-1.5">
-                  {project.delayStatus && project.delayStatus !== 'NOT_DELAYED' ? (
-                    <DelayIndicator status={project.delayStatus} days={project.delayDays} />
-                  ) : (
-                    <span className="flex items-center gap-1 text-xs text-green-600">
-                      <CheckCircle size={12} /> On Time
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center gap-1 text-xs text-gray-500">
-                  <Users size={11} />
-                  {project.projectManager}
-                </div>
-              </div>
-
-              {/* Escalation / Overage badges */}
-              {(project.isEscalated || project.isOveraged) && (
-                <div className="flex gap-2 mt-2 pt-2 border-t border-gray-100">
-                  {project.isEscalated && (
-                    <span className="flex items-center gap-1 text-xs px-2 py-0.5 bg-red-50 text-red-600 rounded-full">
-                      <AlertTriangle size={10} /> Escalated
-                    </span>
-                  )}
-                  {project.isOveraged && (
-                    <span className="flex items-center gap-1 text-xs px-2 py-0.5 bg-orange-50 text-orange-600 rounded-full">
-                      <RefreshCw size={10} /> Overaged
-                    </span>
-                  )}
-                </div>
-              )}
-            </Link>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

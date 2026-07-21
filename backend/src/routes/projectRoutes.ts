@@ -22,6 +22,9 @@ router.post('/', validate(createProjectSchema), projectController.create);
 // PUT /api/projects/:id - Update project
 router.put('/:id', validate(updateProjectSchema), projectController.update);
 
+// DELETE /api/projects/by-client/:clientName - Delete all projects for a client (must be before /:id)
+router.delete('/by-client/:clientName', projectController.deleteClient);
+
 // DELETE /api/projects/:id - Delete project
 router.delete('/:id', validate(projectIdSchema), projectController.delete);
 

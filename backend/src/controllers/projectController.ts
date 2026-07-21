@@ -149,6 +149,30 @@ getAll: asyncHandler(async (req: Request, res: Response): Promise<void> => {
   }),
 
   /**
+   * DELETE /api/projects/by-client/:clientName
+   * Delete all projects for a client (ADMIN) or own projects in that client (PROJECT_MANAGER)
+   */
+  deleteClient: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const { clientName } = req.params;
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (!token) {
+      res.status(401).json({ success: false, error: { message: 'Authentication required' } });
+      return;
+    }
+    let user: any;
+    try { user = await authService.getUserFromToken(token); } catch {
+      res.status(401).json({ success: false, error: { message: 'Invalid token' } });
+      return;
+    }
+    if (user.role !== 'ADMIN' && user.role !== 'PROJECT_MANAGER') {
+      res.status(403).json({ success: false, error: { message: 'Only Admins and Project Managers can delete client projects' } });
+      return;
+    }
+    const deleted = await projectService.deleteByClient(decodeURIComponent(clientName), user.name, user.role);
+    res.json({ success: true, message: `${deleted} project${deleted !== 1 ? 's' : ''} deleted` });
+  }),
+
+  /**
    * GET /api/projects/delayed
    * Get all delayed projects
    */

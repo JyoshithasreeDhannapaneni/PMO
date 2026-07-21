@@ -396,6 +396,7 @@ export const emailHygieneService = {
     periodStart: string;
     periodEnd: string;
     isConfigured: boolean;
+    authError?: string;
   }> {
     if (!isGraphConfigured()) {
       return {
@@ -430,7 +431,24 @@ export const emailHygieneService = {
       }
     }
 
-    const token = await getAccessToken();
+    let token: string;
+    try {
+      token = await getAccessToken();
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { status?: number; data?: { error?: string; error_description?: string } }; message?: string };
+      const status = axiosErr?.response?.status;
+      const desc = axiosErr?.response?.data?.error_description || axiosErr?.response?.data?.error || axiosErr?.message || 'Unknown error';
+      const detail = status ? `HTTP ${status}: ${desc}` : desc;
+      logger.error('Email hygiene: Graph API token fetch failed:', detail);
+      return {
+        metrics: [],
+        computedAt: new Date().toISOString(),
+        periodStart: '',
+        periodEnd: '',
+        isConfigured: true,
+        authError: detail,
+      };
+    }
     const client = graphClient(token);
 
     // Collect users from both the users table and project PM/AM name derivation

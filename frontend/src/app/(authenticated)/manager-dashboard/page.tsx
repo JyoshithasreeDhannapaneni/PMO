@@ -4,7 +4,7 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
-import { useManagerGoalsWithStats, useEscalatedProjects, useNtaStats, useNtaSpaces, useNtaIssues, useNtaSearch, useNtaTrends, useNtaAssignees, useNtaReporters, useNtaProjectManagers, useNtaDepartments, useNtaCustomerTickets, useJiraExcelStatus } from '@/hooks/useProjects';
+import { useManagerGoalsWithStats, useEscalatedProjects, useNtaStats, useNtaSpaces, useNtaIssues, useNtaSearch, useNtaTrends, useNtaAssignees, useNtaReporters, useNtaProjectManagers, useNtaDepartments, useNtaCustomerTickets, useJiraExcelStatus, useJiraBoardTickets, useJiraEngineers } from '@/hooks/useProjects';
 import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import {
@@ -13,11 +13,11 @@ import {
   ArrowLeft, ExternalLink, Upload, FileSpreadsheet, Trash2,
 } from 'lucide-react';
 import api from '@/services/api';
-import { SEGMENT_CONFIG, type Segment } from '@/lib/segments';
+import { SEGMENT_CONFIG, segmentOfManager, type Segment } from '@/lib/segments';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type ActiveTab = 'ENT' | 'SMB' | 'OBSERVATIONS' | 'TICKETS';
+type ActiveTab = 'ENT' | 'SMB' | 'ENGINEERS' | 'OBSERVATIONS' | 'TICKETS';
 
 interface ManagerStat {
   manager: string;
@@ -750,6 +750,141 @@ function ManagerRow({
   );
 }
 
+// ─── Jira Board Section (ENT / SMB tickets by manager) ───────────────────────
+
+const JIRA_BASE_URL = 'https://cf2020.atlassian.net';
+
+function JiraBoardSection({ segment }: { segment: Segment }) {
+  const { data: boardData, isLoading } = useJiraBoardTickets();
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  const configured: boolean = boardData?.configured ?? false;
+  const jiraBaseUrl: string = boardData?.jiraBaseUrl ?? JIRA_BASE_URL;
+  const allManagers: any[] = boardData?.data?.managers ?? [];
+  const uploadedAt: string = boardData?.data?.uploadedAt ?? '';
+
+  const segmentManagers = allManagers.filter((m) => segmentOfManager(m.pmName) === segment);
+
+  function toggleManager(name: string) {
+    const next = new Set(expanded);
+    if (next.has(name)) next.delete(name); else next.add(name);
+    setExpanded(next);
+  }
+
+  if (!isLoading && !configured) {
+    return (
+      <div className="mt-4 rounded-xl border border-dashed border-gray-200 p-6 text-center text-sm text-gray-400">
+        <FileSpreadsheet size={20} className="mx-auto mb-2 text-gray-300" />
+        No Jira tickets loaded. Upload a Jira export using the banner above.
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-6 space-y-3">
+      <div className="flex items-center gap-2">
+        <FileSpreadsheet size={15} className="text-indigo-500" />
+        <span className="text-sm font-semibold text-gray-700">Jira Tickets — {segment} Board</span>
+        {uploadedAt && (
+          <span className="ml-auto text-xs text-gray-400">
+            Uploaded {new Date(uploadedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+            {' · '}{boardData?.data?.totalTickets ?? 0} total tickets
+          </span>
+        )}
+      </div>
+
+      {isLoading ? (
+        <div className="flex items-center gap-2 py-6 text-sm text-gray-400">
+          <Loader2 size={16} className="animate-spin" />
+          Loading Jira tickets…
+        </div>
+      ) : segmentManagers.length === 0 ? (
+        <div className="rounded-xl border border-gray-100 py-8 text-center text-sm text-gray-400">
+          No tickets found for {segment} managers in this export.
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {segmentManagers.map((m) => {
+            const isOpen = expanded.has(m.pmName);
+            return (
+              <div key={m.pmName} className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+                <button
+                  onClick={() => toggleManager(m.pmName)}
+                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors text-left"
+                >
+                  <span className="font-medium text-sm text-gray-800">{m.pmName}</span>
+                  <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-medium">
+                    {m.totalTickets} ticket{m.totalTickets !== 1 ? 's' : ''}
+                  </span>
+                  {m.breachedTickets > 0 && (
+                    <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium">
+                      {m.breachedTickets} breached ({m.breachRate}%)
+                    </span>
+                  )}
+                  <ChevronRight
+                    size={14}
+                    className={`ml-auto text-gray-400 transition-transform duration-150 ${isOpen ? 'rotate-90' : ''}`}
+                  />
+                </button>
+
+                {isOpen && (
+                  <div className="border-t border-gray-100 overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="bg-gray-50 text-gray-500">
+                          <th className="px-4 py-2 text-left font-medium whitespace-nowrap">Key</th>
+                          <th className="px-3 py-2 text-left font-medium">Summary</th>
+                          <th className="px-3 py-2 text-left font-medium whitespace-nowrap">Customer</th>
+                          <th className="px-3 py-2 text-left font-medium whitespace-nowrap">Assignee</th>
+                          <th className="px-3 py-2 text-left font-medium whitespace-nowrap">Status</th>
+                          <th className="px-3 py-2 text-center font-medium whitespace-nowrap">FR Breach</th>
+                          <th className="px-3 py-2 text-center font-medium whitespace-nowrap">Res Breach</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50">
+                        {m.tickets.map((t: any) => (
+                          <tr key={t.key} className="hover:bg-indigo-50/30 transition-colors">
+                            <td className="px-4 py-2 whitespace-nowrap">
+                              <a
+                                href={`${jiraBaseUrl}/browse/${t.key}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-indigo-600 hover:underline font-mono text-xs"
+                              >
+                                {t.key}
+                              </a>
+                            </td>
+                            <td className="px-3 py-2 max-w-[260px] truncate text-gray-700">{t.summary}</td>
+                            <td className="px-3 py-2 whitespace-nowrap text-gray-600">{t.customer}</td>
+                            <td className="px-3 py-2 whitespace-nowrap text-gray-600">{t.assignee}</td>
+                            <td className="px-3 py-2 whitespace-nowrap">
+                              <span className="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded text-xs">{t.status}</span>
+                            </td>
+                            <td className="px-3 py-2 text-center">
+                              {t.frBreached
+                                ? <span className="text-red-600 font-bold text-sm">✗</span>
+                                : <span className="text-green-600 text-sm">✓</span>}
+                            </td>
+                            <td className="px-3 py-2 text-center">
+                              {t.resBreached
+                                ? <span className="text-red-600 font-bold text-sm">✗</span>
+                                : <span className="text-green-600 text-sm">✓</span>}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ManagerDashboardPage() {
@@ -840,9 +975,9 @@ export default function ManagerDashboardPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-gray-200 overflow-x-auto">
-        {(['ENT', 'SMB', 'OBSERVATIONS', 'TICKETS'] as ActiveTab[]).map((tab) => {
+        {(['ENT', 'SMB', 'ENGINEERS', 'OBSERVATIONS', 'TICKETS'] as ActiveTab[]).map((tab) => {
           const labels: Record<ActiveTab, string> = {
-            ENT: 'ENT', SMB: 'SMB',
+            ENT: 'ENT', SMB: 'SMB', ENGINEERS: 'Engineers',
             OBSERVATIONS: 'Observations', TICKETS: 'Tickets',
           };
           return (
@@ -873,8 +1008,11 @@ export default function ManagerDashboardPage() {
       {/* Tickets tab */}
       {activeTab === 'TICKETS' && <TicketsView />}
 
+      {/* Engineers tab */}
+      {activeTab === 'ENGINEERS' && <EngineersView />}
+
       {/* Manager stats table (ENT / SMB) */}
-      {activeTab !== 'OBSERVATIONS' && activeTab !== 'TICKETS' && (
+      {activeTab !== 'OBSERVATIONS' && activeTab !== 'TICKETS' && activeTab !== 'ENGINEERS' && (
         <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
           {statsLoading ? (
             <div className="flex justify-center py-16">
@@ -892,6 +1030,7 @@ export default function ManagerDashboardPage() {
                   <th className="px-5 py-3 text-left min-w-[140px]">% On Time</th>
                   <th className="px-5 py-3 text-center whitespace-nowrap">Avg Delay (Days, Late Only)</th>
                   <th className="px-3 py-3 w-8" />
+
                 </tr>
               </thead>
               <tbody>
@@ -918,10 +1057,191 @@ export default function ManagerDashboardPage() {
           )}
         </div>
       )}
+
+      {/* Jira Tickets by Manager (ENT / SMB) */}
+      {(activeTab === 'ENT' || activeTab === 'SMB') && (
+        <JiraBoardSection segment={activeSegment} />
+      )}
     </div>
   );
 }
 
+
+// ─── Engineers tab ────────────────────────────────────────────────────────────
+
+function EngineersView() {
+  const { data: engineersData, isLoading, isError } = useJiraEngineers();
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [search, setSearch] = useState('');
+
+  const configured: boolean = engineersData?.configured ?? false;
+  const jiraBaseUrl: string = engineersData?.jiraBaseUrl ?? JIRA_BASE_URL;
+  const rawEngineers: any[] = engineersData?.data?.engineers ?? [];
+  const totalTickets: number = engineersData?.data?.totalTickets ?? 0;
+  const totalBreached: number = engineersData?.data?.totalBreached ?? 0;
+
+  const engineers = rawEngineers.filter((e) =>
+    !search || e.engineerName.toLowerCase().includes(search.toLowerCase())
+  );
+
+  function toggle(name: string) {
+    const next = new Set(expanded);
+    if (next.has(name)) next.delete(name); else next.add(name);
+    setExpanded(next);
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="animate-spin text-indigo-500" size={28} />
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+        <AlertCircle size={16} />
+        Failed to load engineer data. Check that the backend is running.
+      </div>
+    );
+  }
+
+  if (!configured) {
+    return (
+      <div className="rounded-xl border border-dashed border-gray-200 p-12 text-center text-sm text-gray-400">
+        <FileSpreadsheet size={28} className="mx-auto mb-3 text-gray-300" />
+        <p className="font-medium text-gray-500 mb-1">No Jira data loaded</p>
+        <p>Upload a Jira export using the banner above to populate engineer tickets.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* KPI row */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="bg-indigo-50 rounded-xl p-4 border border-white">
+          <div className="text-2xl font-bold text-indigo-700">{rawEngineers.length}</div>
+          <div className="text-xs text-indigo-500 mt-0.5">Engineers</div>
+        </div>
+        <div className="bg-blue-50 rounded-xl p-4 border border-white">
+          <div className="text-2xl font-bold text-blue-700">{totalTickets}</div>
+          <div className="text-xs text-blue-500 mt-0.5">Total Tickets</div>
+        </div>
+        <div className="bg-red-50 rounded-xl p-4 border border-white">
+          <div className="text-2xl font-bold text-red-700">{totalBreached}</div>
+          <div className="text-xs text-red-500 mt-0.5">Breached Tickets</div>
+        </div>
+        <div className="bg-green-50 rounded-xl p-4 border border-white">
+          <div className="text-2xl font-bold text-green-700">
+            {totalTickets > 0 ? Math.round(((totalTickets - totalBreached) / totalTickets) * 100) : 100}%
+          </div>
+          <div className="text-xs text-green-500 mt-0.5">SLA Compliance</div>
+        </div>
+      </div>
+
+      {/* Search */}
+      <div className="flex items-center gap-2">
+        <Search size={14} className="text-gray-400 shrink-0" />
+        <input
+          type="text"
+          placeholder="Search engineer…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="w-full sm:w-64 px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-300"
+        />
+      </div>
+
+      {/* Engineer list */}
+      <div className="space-y-2">
+        {engineers.length === 0 ? (
+          <div className="text-center py-10 text-sm text-gray-400">No engineers match your search.</div>
+        ) : (
+          engineers.map((eng: any) => {
+            const isOpen = expanded.has(eng.engineerName);
+            const breached: boolean = eng.breachedTickets > 0;
+            return (
+              <div key={eng.engineerName} className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+                <button
+                  onClick={() => toggle(eng.engineerName)}
+                  className="w-full flex items-center gap-3 px-5 py-3.5 hover:bg-gray-50 transition-colors text-left"
+                >
+                  <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-xs font-bold shrink-0">
+                    {eng.engineerName.split(' ').map((w: string) => w[0]?.toUpperCase() ?? '').join('').slice(0, 2)}
+                  </div>
+                  <span className="font-medium text-sm text-gray-800">{eng.engineerName}</span>
+                  <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-medium">
+                    {eng.totalTickets} ticket{eng.totalTickets !== 1 ? 's' : ''}
+                  </span>
+                  {breached ? (
+                    <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium">
+                      {eng.breachedTickets} breached · {eng.breachRate}%
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1 text-xs text-green-600">
+                      <CheckCircle size={12} /> All clear
+                    </span>
+                  )}
+                  <ChevronRight
+                    size={14}
+                    className={`ml-auto text-gray-400 transition-transform duration-150 ${isOpen ? 'rotate-90' : ''}`}
+                  />
+                </button>
+
+                {isOpen && (
+                  <div className="border-t border-gray-100 overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="bg-gray-50 text-gray-500">
+                          <th className="px-4 py-2 text-left font-medium whitespace-nowrap">Key</th>
+                          <th className="px-3 py-2 text-left font-medium">Summary</th>
+                          <th className="px-3 py-2 text-left font-medium whitespace-nowrap">Customer</th>
+                          <th className="px-3 py-2 text-left font-medium whitespace-nowrap">Project Manager</th>
+                          <th className="px-3 py-2 text-left font-medium whitespace-nowrap">Status</th>
+                          <th className="px-3 py-2 text-center font-medium whitespace-nowrap">FR Breach</th>
+                          <th className="px-3 py-2 text-center font-medium whitespace-nowrap">Res Breach</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50">
+                        {eng.tickets.map((t: any) => (
+                          <tr key={t.key} className="hover:bg-indigo-50/30 transition-colors">
+                            <td className="px-4 py-2 whitespace-nowrap">
+                              <a
+                                href={`${jiraBaseUrl}/browse/${t.key}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-indigo-600 hover:underline font-mono"
+                              >
+                                {t.key}
+                              </a>
+                            </td>
+                            <td className="px-3 py-2 max-w-[260px] truncate text-gray-700">{t.summary}</td>
+                            <td className="px-3 py-2 whitespace-nowrap text-gray-600">{t.customer}</td>
+                            <td className="px-3 py-2 whitespace-nowrap text-gray-600">{t.projectManager || '—'}</td>
+                            <td className="px-3 py-2 whitespace-nowrap">
+                              <span className="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">{t.status}</span>
+                            </td>
+                            <td className="px-3 py-2 text-center">
+                              {t.frBreached ? <span className="text-red-600 font-bold text-sm">✗</span> : <span className="text-green-600 text-sm">✓</span>}
+                            </td>
+                            <td className="px-3 py-2 text-center">
+                              {t.resBreached ? <span className="text-red-600 font-bold text-sm">✗</span> : <span className="text-green-600 text-sm">✓</span>}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
 
 // ─── Observations tab ─────────────────────────────────────────────────────────
 
