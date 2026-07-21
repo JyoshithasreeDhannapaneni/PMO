@@ -138,6 +138,7 @@ export default function AuditDashboardPage() {
   const emailHygieneResult = emailHygieneData?.data ?? {};
   const emailMetrics: any[] = emailHygieneResult.metrics ?? [];
   const emailHygieneConfigured: boolean = emailHygieneResult.isConfigured ?? false;
+  const emailHygieneAuthError: string | undefined = emailHygieneResult.authError;
   const emailHygienePeriodStart: string = emailHygieneResult.periodStart ?? '';
   const emailHygienePeriodEnd: string = emailHygieneResult.periodEnd ?? '';
   const emailHygieneComputedAt: string = emailHygieneResult.computedAt ?? '';
@@ -1379,8 +1380,8 @@ export default function AuditDashboardPage() {
 
         {/* ── Email Hygiene Tab ───────────────────────────────────── */}
         {hygieneTab === 'email' && (<>
-          {/* Not configured */}
-          {!isEmailHygieneLoading && !emailHygieneConfigured && (
+          {/* Credentials missing */}
+          {!isEmailHygieneLoading && !emailHygieneConfigured && !emailHygieneAuthError && (
             <Card>
               <div className="py-12 text-center space-y-3">
                 <Mail size={32} className="mx-auto text-gray-300" />
@@ -1392,6 +1393,27 @@ export default function AuditDashboardPage() {
                   <code className="bg-gray-100 px-1 rounded font-mono text-xs">backend/.env</code>.
                   The Azure AD app needs <strong>Mail.Read</strong> and <strong>User.Read.All</strong> application permissions with admin consent.
                 </p>
+              </div>
+            </Card>
+          )}
+
+          {/* Credentials present but Graph API authentication failed */}
+          {!isEmailHygieneLoading && emailHygieneConfigured && emailHygieneAuthError && (
+            <Card>
+              <div className="py-12 text-center space-y-3">
+                <AlertCircle size={32} className="mx-auto text-red-400" />
+                <p className="font-semibold text-gray-700">Microsoft Graph API authentication failed</p>
+                <p className="text-sm text-gray-500 max-w-xl mx-auto font-mono bg-red-50 border border-red-100 rounded p-3 text-left break-all">
+                  {emailHygieneAuthError}
+                </p>
+                <div className="text-sm text-gray-400 max-w-lg mx-auto leading-relaxed space-y-1">
+                  <p>Common causes:</p>
+                  <ul className="text-left list-disc list-inside space-y-1">
+                    <li>The client secret in <code className="bg-gray-100 px-1 rounded font-mono text-xs">backend/.env</code> has expired — generate a new one in Azure Portal → App registrations → Certificates &amp; secrets</li>
+                    <li><strong>Mail.Read</strong> and <strong>User.Read.All</strong> application permissions need admin consent — go to Azure Portal → App registrations → API permissions → Grant admin consent</li>
+                    <li>Wrong <code className="bg-gray-100 px-1 rounded font-mono text-xs">MS_GRAPH_TENANT_ID</code> or <code className="bg-gray-100 px-1 rounded font-mono text-xs">MS_GRAPH_CLIENT_ID</code></li>
+                  </ul>
+                </div>
               </div>
             </Card>
           )}

@@ -294,6 +294,54 @@ export function getExcelSlaByManager(managerName: string, store: ExcelDataStore)
   };
 }
 
+// ── Board view — all tickets grouped by PM ────────────────────────────────────
+
+export interface BoardPmEntry {
+  pmName: string;
+  totalTickets: number;
+  breachedTickets: number;
+  breachRate: number;
+  tickets: ParsedTicket[];
+}
+
+export interface BoardResult {
+  managers: BoardPmEntry[];
+  totalTickets: number;
+  totalBreached: number;
+  uploadedAt: string;
+  source: 'excel';
+}
+
+export function getBoardData(store: ExcelDataStore): BoardResult {
+  const grouped: Record<string, { total: number; breached: number; tickets: ParsedTicket[] }> = {};
+
+  for (const t of store.tickets) {
+    const name = t.projectManager || 'Unassigned';
+    if (!grouped[name]) grouped[name] = { total: 0, breached: 0, tickets: [] };
+    grouped[name].total++;
+    grouped[name].tickets.push(t);
+    if (t.frBreached || t.resBreached) grouped[name].breached++;
+  }
+
+  const managers = Object.entries(grouped)
+    .map(([pmName, s]) => ({
+      pmName,
+      totalTickets: s.total,
+      breachedTickets: s.breached,
+      breachRate: s.total > 0 ? parseFloat(((s.breached / s.total) * 100).toFixed(1)) : 0,
+      tickets: s.tickets,
+    }))
+    .sort((a, b) => b.totalTickets - a.totalTickets);
+
+  return {
+    managers,
+    totalTickets: managers.reduce((n, m) => n + m.totalTickets, 0),
+    totalBreached: managers.reduce((n, m) => n + m.breachedTickets, 0),
+    uploadedAt: store.uploadedAt,
+    source: 'excel',
+  };
+}
+
 export function getExcelEngineerStats(store: ExcelDataStore): ExcelEngineerResult {
   const period = {
     startDate: store.uploadedAt.slice(0, 10),

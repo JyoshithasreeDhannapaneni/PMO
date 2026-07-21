@@ -93,6 +93,11 @@ export const projectsApi = {
     const { data } = await api.get('/projects/client-summary', { params: { clientName } });
     return data;
   },
+
+  deleteClient: async (clientName: string): Promise<ApiResponse<void>> => {
+    const { data } = await api.delete(`/projects/by-client/${encodeURIComponent(clientName)}`);
+    return data;
+  },
 };
 
 // Dashboard API
