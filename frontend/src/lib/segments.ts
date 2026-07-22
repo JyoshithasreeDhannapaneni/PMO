@@ -1,9 +1,16 @@
 export type Segment = 'ENT' | 'SMB';
 
 export const SEGMENT_CONFIG: { label: Segment; managers: string[] }[] = [
-  { label: 'ENT', managers: ['Abhishek Sakala', 'Lakshmi Prasanna', 'Pranavi'] },
-  { label: 'SMB', managers: ['Ajay Singh', 'Abhishikth', 'Harika', 'Sravan', 'Raghu Yellani'] },
+  { label: 'ENT', managers: ['Abhishek', 'Lakshmi Prasanna', 'Pranavi'] },
+  { label: 'SMB', managers: ['Ajay Singh', 'Abhishikth', 'Harika', 'Sravan', 'Raghu'] },
 ];
+
+// When a manager's tickets are split across multiple PM names in NTA, list all
+// names here (comma-separated). The API uses exact matching for comma lists.
+export const MANAGER_QUERY_NAMES: Record<string, string> = {
+  'Abhishek': 'Abhishek,Chandra Mouli',
+  'Raghu':    'Raghu,Sri Ram',
+};
 
 export function segmentOfManager(name: string | null | undefined): Segment | null {
   if (!name) return null;

@@ -23,6 +23,27 @@ import {
 
 type StatusFilter = 'all' | 'ACTIVE' | 'ON_HOLD' | 'COMPLETED';
 
+function getMigrationScopes(migrationTypes: string | null | undefined): string[] {
+  if (!migrationTypes) return [];
+  const MESSAGING = ['slack', 'teams', 'chat', 'meta', 'viva', 'cisco', 'zoom', 'skype', 'webex', 'ringcentral'];
+  const EMAIL = ['gmail', 'outlook', 'exchange', 'gsuite', 'google workspace', 'lotus', 'notes', 'imap', 'zimbra', 'kerio'];
+  const scopes = new Set<string>();
+  for (const t of migrationTypes.split(',')) {
+    const lower = t.trim().toLowerCase();
+    if (!lower) continue;
+    if (MESSAGING.some((k) => lower.includes(k))) scopes.add('Messaging');
+    else if (EMAIL.some((k) => lower.includes(k))) scopes.add('Email');
+    else scopes.add('Content');
+  }
+  return [...scopes];
+}
+
+const SCOPE_STYLE: Record<string, string> = {
+  'Content':   'bg-blue-100 text-blue-700',
+  'Email':     'bg-green-100 text-green-700',
+  'Messaging': 'bg-purple-100 text-purple-700',
+};
+
 export default function ClientProfilePage() {
   const params = useParams();
   const router = useRouter();
@@ -231,9 +252,14 @@ export default function ClientProfilePage() {
                     <StatusBadge status={project.status} />
                   </div>
 
-                  {/* Migration type */}
+                  {/* Migration scope chips */}
                   {project.migrationTypes && (
-                    <div className="text-xs text-gray-500 mb-2">{project.migrationTypes}</div>
+                    <div className="flex flex-wrap gap-1 mb-2">
+                      {getMigrationScopes(project.migrationTypes).map((s) => (
+                        <span key={s} className={`text-xs px-2 py-0.5 rounded-full font-medium ${SCOPE_STYLE[s] || 'bg-gray-100 text-gray-500'}`}>{s}</span>
+                      ))}
+                      <span className="text-xs text-gray-400">{project.migrationTypes}</span>
+                    </div>
                   )}
 
                   {/* Source → Target */}

@@ -136,32 +136,34 @@ export default function ProjectsPage() {
 
   const clientGroups = useMemo(() => {
     const grouped = new Map<string, any[]>();
-    const ungrouped: any[] = [];
     for (const p of displayProjects) {
-      if (p.clientName) {
-        if (!grouped.has(p.clientName)) grouped.set(p.clientName, []);
-        grouped.get(p.clientName)!.push(p);
-      } else {
-        ungrouped.push(p);
-      }
+      const key = p.clientName?.trim() || p.name?.trim() || 'Unnamed';
+      if (!grouped.has(key)) grouped.set(key, []);
+      grouped.get(key)!.push(p);
     }
-    return { grouped, ungrouped };
+    return { grouped, ungrouped: [] as any[] };
   }, [displayProjects]);
 
-  // Map migration type name → category so grouped rows can show scope chips
-  const typeToCategory = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const mt of settings.migrationTypes) {
-      map.set(mt.name, mt.category || 'Other');
+  function getMigrationScopes(migrationTypes: string | null | undefined): string[] {
+    if (!migrationTypes) return [];
+    const MESSAGING = ['slack', 'teams', 'chat', 'meta', 'viva', 'cisco', 'zoom', 'skype', 'webex', 'ringcentral'];
+    const EMAIL = ['gmail', 'outlook', 'exchange', 'gsuite', 'google workspace', 'lotus', 'notes', 'imap', 'zimbra', 'kerio'];
+    const scopes = new Set<string>();
+    for (const t of migrationTypes.split(',')) {
+      const lower = t.trim().toLowerCase();
+      if (!lower) continue;
+      if (MESSAGING.some((k) => lower.includes(k))) scopes.add('Messaging');
+      else if (EMAIL.some((k) => lower.includes(k))) scopes.add('Email');
+      else scopes.add('Content');
     }
-    return map;
-  }, [settings.migrationTypes]);
-
-  function getProjectScope(project: any): string {
-    if (!project.migrationTypes) return 'Other';
-    const firstName = project.migrationTypes.split(',')[0].trim();
-    return typeToCategory.get(firstName) || 'Other';
+    return [...scopes];
   }
+
+  const SCOPE_STYLE: Record<string, string> = {
+    'Content':   'bg-blue-100 text-blue-700',
+    'Email':     'bg-green-100 text-green-700',
+    'Messaging': 'bg-purple-100 text-purple-700',
+  };
 
   const exportToCSV = async () => {
     if (!segmentProjects.length) return;
@@ -696,7 +698,7 @@ export default function ProjectsPage() {
                           <th className="py-3 px-4 font-semibold text-gray-600 text-xs uppercase tracking-wider whitespace-nowrap sticky left-0 z-20 bg-blue-50/60 border-r border-gray-200 shadow-[2px_0_4px_-1px_rgba(0,0,0,0.06)]">Client / Account</th>
                           <th className="py-3 px-4 font-semibold text-gray-600 text-xs uppercase tracking-wider whitespace-nowrap">Project Manager</th>
                           <th className="py-3 px-4 font-semibold text-gray-600 text-xs uppercase tracking-wider whitespace-nowrap">Account Manager</th>
-                          <th className="py-3 px-4 font-semibold text-gray-600 text-xs uppercase tracking-wider whitespace-nowrap">Migration Combinations</th>
+                          <th className="py-3 px-4 font-semibold text-gray-600 text-xs uppercase tracking-wider whitespace-nowrap">Migration Scope</th>
                           <th className="py-3 px-4 font-semibold text-gray-600 text-xs uppercase tracking-wider whitespace-nowrap">Budget</th>
                           <th className="py-3 px-4 font-semibold text-gray-600 text-xs uppercase tracking-wider whitespace-nowrap">Plan</th>
                           <th className="py-3 px-4 font-semibold text-gray-600 text-xs uppercase tracking-wider whitespace-nowrap">Status</th>
@@ -711,12 +713,6 @@ export default function ProjectsPage() {
                           // Aggregations across all client projects
                           const pms = [...new Set(projs.map((p: any) => p.projectManager).filter(Boolean))].join(', ');
                           const ams = [...new Set(projs.map((p: any) => p.accountManager).filter(Boolean))].join(', ');
-
-                          // All distinct migration types across every project
-                          const allTypes = projs.flatMap((p: any) =>
-                            p.migrationTypes ? p.migrationTypes.split(',').map((t: string) => t.trim()).filter(Boolean) : []
-                          );
-                          const uniqueTypes = [...new Set(allTypes)] as string[];
 
                           // Budget — sum of estimatedCost
                           const totalBudget = projs.reduce((sum: number, p: any) =>
@@ -766,18 +762,18 @@ export default function ProjectsPage() {
                               {/* Account Manager */}
                               <td className="py-3.5 px-4 text-xs text-gray-700 whitespace-nowrap">{ams || '—'}</td>
 
-                              {/* Migration Combinations */}
+                              {/* Migration Scope */}
                               <td className="py-3.5 px-4">
-                                <div className="flex flex-wrap gap-1 min-w-[120px]">
-                                  {uniqueTypes.length > 0
-                                    ? uniqueTypes.map(t => {
-                                        const mt = settings.migrationTypes.find(m => m.code === t.toUpperCase() || m.name.toLowerCase() === t.toLowerCase());
-                                        return mt
-                                          ? <span key={t} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs font-medium text-white" style={{ backgroundColor: mt.color }}>{mt.icon} {mt.name}</span>
-                                          : <span key={t} className="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">{t}</span>;
-                                      })
-                                    : <span className="text-xs text-gray-400">—</span>
-                                  }
+                                <div className="flex flex-wrap gap-1 min-w-[100px]">
+                                  {(() => {
+                                    const allMigTypes = projs.map((p: any) => p.migrationTypes).join(',');
+                                    const scopes = getMigrationScopes(allMigTypes);
+                                    return scopes.length > 0
+                                      ? scopes.map((s) => (
+                                          <span key={s} className={`text-xs px-2 py-0.5 rounded-full font-medium ${SCOPE_STYLE[s] || 'bg-gray-100 text-gray-600'}`}>{s}</span>
+                                        ))
+                                      : <span className="text-xs text-gray-400">—</span>;
+                                  })()}
                                 </div>
                               </td>
 
@@ -831,17 +827,6 @@ export default function ProjectsPage() {
                     </table>
                   </div>
 
-                  {/* Ungrouped projects below */}
-                  {clientGroups.ungrouped.length > 0 && (
-                    <>
-                      <div className="flex items-center gap-2 px-4 py-2 bg-amber-50 border-y border-amber-100">
-                        <span className="text-xs text-amber-700 font-medium">
-                          Individual Projects ({clientGroups.ungrouped.length}) — no client assigned
-                        </span>
-                      </div>
-                      <ProjectsTable projects={clientGroups.ungrouped} onDelete={handleDelete} />
-                    </>
-                  )}
                 </>
               ) : (
                 <ProjectsTable projects={segmentProjects} onDelete={handleDelete} />

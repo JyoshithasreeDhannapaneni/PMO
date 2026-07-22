@@ -840,6 +840,17 @@ export function useNtaDepartments() {
   });
 }
 
+export function useNtaByManagers(managers: string[]) {
+  const pm = managers.join(',');
+  return useQuery({
+    queryKey: ['ntaByManagers', pm],
+    queryFn: () => ntaFetch(`/search?projectManager=${encodeURIComponent(pm)}`),
+    enabled: managers.length > 0,
+    staleTime: 60_000,
+    ...NTA_QUERY_OPTS,
+  });
+}
+
 export function useNtaIssues(params: { page?: number; limit?: number; spaces?: string }) {
   return useQuery({
     queryKey: ['ntaIssues', params],

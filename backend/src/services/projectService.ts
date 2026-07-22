@@ -314,7 +314,8 @@ class ProjectService {
       params.push(filters.segment);
     }
     if (filters.clientName) {
-      conditions.push(`client_name ILIKE $${params.length + 1}`);
+      const idx = params.length + 1;
+      conditions.push(`(client_name ILIKE $${idx} OR (TRIM(COALESCE(client_name,''))='' AND name ILIKE $${idx}))`);
       params.push(`%${filters.clientName}%`);
     }
 
@@ -920,7 +921,7 @@ class ProjectService {
          STRING_AGG(DISTINCT project_manager, ', ' ORDER BY project_manager) as managers,
          STRING_AGG(DISTINCT account_manager, ', ' ORDER BY account_manager) FILTER (WHERE account_manager IS NOT NULL) as account_managers
        FROM projects
-       WHERE client_name ILIKE $1`,
+       WHERE (client_name ILIKE $1 OR (TRIM(COALESCE(client_name,''))='' AND name ILIKE $1))`,
       [`%${clientName}%`]
     );
     const row = result.rows[0];

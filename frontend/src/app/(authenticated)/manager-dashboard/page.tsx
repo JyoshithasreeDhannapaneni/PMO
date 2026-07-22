@@ -4,7 +4,7 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
-import { useManagerGoalsWithStats, useEscalatedProjects, useNtaStats, useNtaSpaces, useNtaIssues, useNtaSearch, useNtaTrends, useNtaAssignees, useNtaReporters, useNtaProjectManagers, useNtaDepartments, useNtaCustomerTickets, useJiraExcelStatus, useJiraBoardTickets, useJiraEngineers } from '@/hooks/useProjects';
+import { useManagerGoalsWithStats, useEscalatedProjects, useNtaStats, useNtaSpaces, useNtaIssues, useNtaSearch, useNtaTrends, useNtaAssignees, useNtaReporters, useNtaProjectManagers, useNtaDepartments, useJiraExcelStatus, useNtaByManagers } from '@/hooks/useProjects';
 import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import {
@@ -13,7 +13,7 @@ import {
   ArrowLeft, ExternalLink, Upload, FileSpreadsheet, Trash2,
 } from 'lucide-react';
 import api from '@/services/api';
-import { SEGMENT_CONFIG, segmentOfManager, type Segment } from '@/lib/segments';
+import { SEGMENT_CONFIG, MANAGER_QUERY_NAMES, segmentOfManager, type Segment } from '@/lib/segments';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -211,131 +211,6 @@ function ExcelUploadBanner() {
           </button>
           <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFileChange} />
         </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── NTA tickets section per manager ─────────────────────────────────────────
-
-function NtaManagerSection({ customerNames }: { customerNames: string[] }) {
-  const [expanded, setExpanded] = useState(false);
-  const { data, isLoading } = useNtaCustomerTickets(customerNames);
-
-  const tickets: any[] = data?.data || [];
-  const total = data?.total ?? 0;
-  const truncated: boolean = data?.truncated ?? false;
-  const scanned: number = data?.scanned ?? 0;
-
-  const open       = tickets.filter((t) => t.status?.category === 'todo').length;
-  const inProgress = tickets.filter((t) => t.status?.category === 'in-progress').length;
-  const done       = tickets.filter((t) => t.status?.category === 'done').length;
-  const highPri    = tickets.filter((t) => ['high','urgent'].includes((t.priority || '').toLowerCase())).length;
-
-  if (isLoading) {
-    return (
-      <div className="border border-gray-100 rounded-xl p-4 flex items-center gap-3">
-        <Loader2 size={15} className="animate-spin text-primary-500 flex-shrink-0" />
-        <p className="text-sm text-gray-500">Loading tickets from Neutara…</p>
-      </div>
-    );
-  }
-
-  if (!isLoading && customerNames.length === 0) {
-    return (
-      <div className="border border-dashed border-gray-200 rounded-xl p-4 bg-gray-50 flex items-start gap-3">
-        <AlertCircle size={16} className="text-gray-400 flex-shrink-0 mt-0.5" />
-        <p className="text-sm text-gray-500">No projects found — Neutara ticket matching requires at least one active customer.</p>
-      </div>
-    );
-  }
-
-  if (!isLoading && total === 0) {
-    return (
-      <div className="border border-dashed border-gray-200 rounded-xl p-4 bg-gray-50 flex items-start gap-3">
-        <AlertCircle size={16} className="text-gray-400 flex-shrink-0 mt-0.5" />
-        <div>
-          <p className="text-sm font-medium text-gray-600">Neutara Tickets — No matches found</p>
-          <p className="text-xs text-gray-400 mt-0.5">Searched {scanned} tickets by customer name from this manager's projects.</p>
-        </div>
-      </div>
-    );
-  }
-
-  const sorted = [...tickets].sort((a, b) => {
-    const order: Record<string,number> = { urgent: 0, high: 1, medium: 2, low: 3 };
-    return (order[(a.priority||'low').toLowerCase()] ?? 3) - (order[(b.priority||'low').toLowerCase()] ?? 3);
-  });
-
-  return (
-    <div className="space-y-3">
-      {/* KPI cards */}
-      <div className="grid grid-cols-5 gap-3">
-        {[
-          { label: 'Total',       value: total,      bg: 'bg-gray-50',    text: 'text-gray-700'   },
-          { label: 'Open',        value: open,       bg: 'bg-sky-50',     text: 'text-sky-700'    },
-          { label: 'In Progress', value: inProgress, bg: 'bg-blue-50',    text: 'text-blue-700'   },
-          { label: 'Done',        value: done,       bg: 'bg-green-50',   text: 'text-green-700'  },
-          { label: 'High / Urgent', value: highPri,  bg: 'bg-red-50',     text: 'text-red-700'    },
-        ].map((k) => (
-          <div key={k.label} className={`${k.bg} rounded-xl px-3 py-2.5`}>
-            <p className={`text-xl font-bold ${k.text}`}>{k.value}</p>
-            <p className="text-xs text-gray-500 mt-0.5">{k.label}</p>
-          </div>
-        ))}
-      </div>
-
-      {/* Expandable ticket table */}
-      <div className="border border-gray-200 rounded-xl overflow-hidden">
-        <button
-          className="w-full flex items-center justify-between px-4 py-2.5 bg-gray-50 hover:bg-gray-100 transition text-left"
-          onClick={() => setExpanded((v) => !v)}
-        >
-          <span className="text-sm font-medium text-gray-700">
-            Neutara Tickets ({total})
-            {truncated && <span className="ml-2 text-xs text-amber-600 font-normal">· scanned first {scanned} tickets</span>}
-          </span>
-          <ChevronRight size={15} className={`text-gray-400 transition-transform ${expanded ? 'rotate-90' : ''}`} />
-        </button>
-
-        {expanded && (
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="bg-[#1b4f72] text-white text-xs font-semibold">
-                  <th className="px-3 py-2 text-left">Key</th>
-                  <th className="px-3 py-2 text-left">Summary</th>
-                  <th className="px-3 py-2 text-left">Status</th>
-                  <th className="px-3 py-2 text-left">Priority</th>
-                  <th className="px-3 py-2 text-left">Customer</th>
-                  <th className="px-3 py-2 text-left">Assignee</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {sorted.map((t) => {
-                  const cat = (t.status?.category || 'todo').toLowerCase();
-                  const pri = (t.priority || 'low').toLowerCase();
-                  const catCls: Record<string,string> = { todo: 'bg-gray-100 text-gray-600', 'in-progress': 'bg-blue-100 text-blue-700', done: 'bg-green-100 text-green-700' };
-                  const priCls: Record<string,string> = { urgent: 'bg-red-100 text-red-700', high: 'bg-orange-100 text-orange-700', medium: 'bg-yellow-100 text-yellow-700', low: 'bg-gray-100 text-gray-500' };
-                  return (
-                    <tr key={t.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-3 py-2 font-mono text-primary-700 whitespace-nowrap">{t.key}</td>
-                      <td className="px-3 py-2 max-w-[200px]"><p className="truncate" title={t.summary}>{t.summary}</p></td>
-                      <td className="px-3 py-2">
-                        <span className={`px-1.5 py-0.5 rounded-full text-xs font-medium ${catCls[cat] || 'bg-gray-100 text-gray-600'}`}>{t.status?.name || cat}</span>
-                      </td>
-                      <td className="px-3 py-2">
-                        <span className={`px-1.5 py-0.5 rounded-full text-xs font-medium capitalize ${priCls[pri] || 'bg-gray-100 text-gray-500'}`}>{pri}</span>
-                      </td>
-                      <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{t.customerName || t.clientName || '—'}</td>
-                      <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{t.assignee?.displayName || t.assignee?.name || '—'}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
       </div>
     </div>
   );
@@ -648,11 +523,10 @@ function ManagerDetailView({
 
       {/* NTA tickets for this manager */}
       {!isOthers && (
-        <NtaManagerSection
-          customerNames={Array.from(new Set(
-            projects.map((p: any) => p.customerName).filter(Boolean)
-          ))}
-        />
+        <div className="mt-4">
+          <p className="text-sm font-semibold text-gray-700 mb-2">Tickets</p>
+          <ManagerTicketAccordion name={stat.manager} />
+        </div>
       )}
 
     </div>
@@ -750,137 +624,118 @@ function ManagerRow({
   );
 }
 
+// ─── Per-manager ticket accordion (one hook call per manager) ────────────────
+
+function ManagerTicketAccordion({ name }: { name: string }) {
+  const query = MANAGER_QUERY_NAMES[name] ?? name;
+  const { data, isLoading } = useNtaSearch({ projectManager: query });
+  const [isOpen, setIsOpen] = useState(false);
+  const tickets: any[] = data?.data ?? [];
+
+  const open   = tickets.filter((t: any) => (t.status?.category || '').toLowerCase() === 'todo').length;
+  const inProg = tickets.filter((t: any) => (t.status?.category || '').toLowerCase() === 'in-progress').length;
+  const done   = tickets.filter((t: any) => (t.status?.category || '').toLowerCase() === 'done').length;
+
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+      <button
+        onClick={() => setIsOpen((v) => !v)}
+        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors text-left"
+      >
+        <span className="font-medium text-sm text-gray-800">{name}</span>
+        {isLoading ? (
+          <Loader2 size={12} className="animate-spin text-gray-400" />
+        ) : (
+          <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-medium">
+            {tickets.length} ticket{tickets.length !== 1 ? 's' : ''}
+          </span>
+        )}
+        {!isLoading && open > 0 && <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{open} open</span>}
+        {!isLoading && inProg > 0 && <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">{inProg} in progress</span>}
+        {!isLoading && done > 0 && <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">{done} done</span>}
+        <ChevronRight size={14} className={`ml-auto text-gray-400 transition-transform duration-150 ${isOpen ? 'rotate-90' : ''}`} />
+      </button>
+      {isOpen && !isLoading && tickets.length === 0 && (
+        <div className="border-t border-gray-100 py-6 text-center text-sm text-gray-400">No tickets found for this manager.</div>
+      )}
+      {isOpen && tickets.length > 0 && <TicketTable tickets={tickets} />}
+    </div>
+  );
+}
+
 // ─── Jira Board Section (ENT / SMB tickets by manager) ───────────────────────
 
-const JIRA_BASE_URL = 'https://cf2020.atlassian.net';
+const STATUS_CAT_STYLE: Record<string, string> = {
+  'todo':        'bg-gray-100 text-gray-600',
+  'in-progress': 'bg-blue-100 text-blue-700',
+  'done':        'bg-green-100 text-green-700',
+};
 
-function JiraBoardSection({ segment }: { segment: Segment }) {
-  const { data: boardData, isLoading } = useJiraBoardTickets();
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+const PRIORITY_STYLE: Record<string, string> = {
+  urgent: 'bg-red-100 text-red-700',
+  high:   'bg-orange-100 text-orange-700',
+  medium: 'bg-yellow-100 text-yellow-700',
+  low:    'bg-gray-100 text-gray-500',
+};
 
-  const configured: boolean = boardData?.configured ?? false;
-  const jiraBaseUrl: string = boardData?.jiraBaseUrl ?? JIRA_BASE_URL;
-  const allManagers: any[] = boardData?.data?.managers ?? [];
-  const uploadedAt: string = boardData?.data?.uploadedAt ?? '';
+function TicketTable({ tickets }: { tickets: any[] }) {
+  return (
+    <div className="border-t border-gray-100 overflow-x-auto">
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="bg-gray-50 text-gray-500">
+            <th className="px-4 py-2 text-left font-medium whitespace-nowrap">Key</th>
+            <th className="px-3 py-2 text-left font-medium">Summary</th>
+            <th className="px-3 py-2 text-left font-medium whitespace-nowrap">Customer</th>
+            <th className="px-3 py-2 text-left font-medium whitespace-nowrap">Assignee</th>
+            <th className="px-3 py-2 text-left font-medium whitespace-nowrap">Status</th>
+            <th className="px-3 py-2 text-left font-medium whitespace-nowrap">Priority</th>
+            <th className="px-3 py-2 text-left font-medium whitespace-nowrap">Created</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-50">
+          {tickets.map((t: any) => {
+            const cat = (t.status?.category || 'todo').toLowerCase();
+            const pri = (t.priority || 'low').toLowerCase();
+            return (
+              <tr key={t.id || t.key} className="hover:bg-indigo-50/30 transition-colors">
+                <td className="px-4 py-2 whitespace-nowrap font-mono text-indigo-600">{t.key || '—'}</td>
+                <td className="px-3 py-2 max-w-[260px] truncate text-gray-700" title={t.summary}>{t.summary}</td>
+                <td className="px-3 py-2 whitespace-nowrap text-gray-600">{t.customerName || t.clientName || '—'}</td>
+                <td className="px-3 py-2 whitespace-nowrap text-gray-600">{t.assignee?.displayName || t.assignee?.name || '—'}</td>
+                <td className="px-3 py-2 whitespace-nowrap">
+                  <span className={`px-1.5 py-0.5 rounded font-medium ${STATUS_CAT_STYLE[cat] || 'bg-gray-100 text-gray-600'}`}>
+                    {t.status?.name || cat}
+                  </span>
+                </td>
+                <td className="px-3 py-2 whitespace-nowrap">
+                  <span className={`px-1.5 py-0.5 rounded font-medium capitalize ${PRIORITY_STYLE[pri] || 'bg-gray-100 text-gray-500'}`}>
+                    {pri}
+                  </span>
+                </td>
+                <td className="px-3 py-2 whitespace-nowrap text-gray-500">
+                  {t.createdAt ? new Date(t.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
-  const segmentManagers = allManagers.filter((m) => segmentOfManager(m.pmName) === segment);
-
-  function toggleManager(name: string) {
-    const next = new Set(expanded);
-    if (next.has(name)) next.delete(name); else next.add(name);
-    setExpanded(next);
-  }
-
-  if (!isLoading && !configured) {
-    return (
-      <div className="mt-4 rounded-xl border border-dashed border-gray-200 p-6 text-center text-sm text-gray-400">
-        <FileSpreadsheet size={20} className="mx-auto mb-2 text-gray-300" />
-        No Jira tickets loaded. Upload a Jira export using the banner above.
-      </div>
-    );
-  }
+function NtaBoardSection({ segment }: { segment: Segment }) {
+  const managers = SEGMENT_CONFIG.find((s) => s.label === segment)?.managers ?? [];
 
   return (
     <div className="mt-6 space-y-3">
-      <div className="flex items-center gap-2">
-        <FileSpreadsheet size={15} className="text-indigo-500" />
-        <span className="text-sm font-semibold text-gray-700">Jira Tickets — {segment} Board</span>
-        {uploadedAt && (
-          <span className="ml-auto text-xs text-gray-400">
-            Uploaded {new Date(uploadedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-            {' · '}{boardData?.data?.totalTickets ?? 0} total tickets
-          </span>
-        )}
+      <span className="text-sm font-semibold text-gray-700">Tickets — {segment} Board</span>
+      <div className="space-y-2">
+        {managers.map((name) => (
+          <ManagerTicketAccordion key={name} name={name} />
+        ))}
       </div>
-
-      {isLoading ? (
-        <div className="flex items-center gap-2 py-6 text-sm text-gray-400">
-          <Loader2 size={16} className="animate-spin" />
-          Loading Jira tickets…
-        </div>
-      ) : segmentManagers.length === 0 ? (
-        <div className="rounded-xl border border-gray-100 py-8 text-center text-sm text-gray-400">
-          No tickets found for {segment} managers in this export.
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {segmentManagers.map((m) => {
-            const isOpen = expanded.has(m.pmName);
-            return (
-              <div key={m.pmName} className="rounded-xl border border-gray-200 bg-white overflow-hidden">
-                <button
-                  onClick={() => toggleManager(m.pmName)}
-                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors text-left"
-                >
-                  <span className="font-medium text-sm text-gray-800">{m.pmName}</span>
-                  <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-medium">
-                    {m.totalTickets} ticket{m.totalTickets !== 1 ? 's' : ''}
-                  </span>
-                  {m.breachedTickets > 0 && (
-                    <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium">
-                      {m.breachedTickets} breached ({m.breachRate}%)
-                    </span>
-                  )}
-                  <ChevronRight
-                    size={14}
-                    className={`ml-auto text-gray-400 transition-transform duration-150 ${isOpen ? 'rotate-90' : ''}`}
-                  />
-                </button>
-
-                {isOpen && (
-                  <div className="border-t border-gray-100 overflow-x-auto">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="bg-gray-50 text-gray-500">
-                          <th className="px-4 py-2 text-left font-medium whitespace-nowrap">Key</th>
-                          <th className="px-3 py-2 text-left font-medium">Summary</th>
-                          <th className="px-3 py-2 text-left font-medium whitespace-nowrap">Customer</th>
-                          <th className="px-3 py-2 text-left font-medium whitespace-nowrap">Assignee</th>
-                          <th className="px-3 py-2 text-left font-medium whitespace-nowrap">Status</th>
-                          <th className="px-3 py-2 text-center font-medium whitespace-nowrap">FR Breach</th>
-                          <th className="px-3 py-2 text-center font-medium whitespace-nowrap">Res Breach</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-50">
-                        {m.tickets.map((t: any) => (
-                          <tr key={t.key} className="hover:bg-indigo-50/30 transition-colors">
-                            <td className="px-4 py-2 whitespace-nowrap">
-                              <a
-                                href={`${jiraBaseUrl}/browse/${t.key}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-indigo-600 hover:underline font-mono text-xs"
-                              >
-                                {t.key}
-                              </a>
-                            </td>
-                            <td className="px-3 py-2 max-w-[260px] truncate text-gray-700">{t.summary}</td>
-                            <td className="px-3 py-2 whitespace-nowrap text-gray-600">{t.customer}</td>
-                            <td className="px-3 py-2 whitespace-nowrap text-gray-600">{t.assignee}</td>
-                            <td className="px-3 py-2 whitespace-nowrap">
-                              <span className="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded text-xs">{t.status}</span>
-                            </td>
-                            <td className="px-3 py-2 text-center">
-                              {t.frBreached
-                                ? <span className="text-red-600 font-bold text-sm">✗</span>
-                                : <span className="text-green-600 text-sm">✓</span>}
-                            </td>
-                            <td className="px-3 py-2 text-center">
-                              {t.resBreached
-                                ? <span className="text-red-600 font-bold text-sm">✗</span>
-                                : <span className="text-green-600 text-sm">✓</span>}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
     </div>
   );
 }
@@ -1058,9 +913,9 @@ export default function ManagerDashboardPage() {
         </div>
       )}
 
-      {/* Jira Tickets by Manager (ENT / SMB) */}
+      {/* NTA Tickets by Manager (ENT / SMB) */}
       {(activeTab === 'ENT' || activeTab === 'SMB') && (
-        <JiraBoardSection segment={activeSegment} />
+        <NtaBoardSection segment={activeSegment} />
       )}
     </div>
   );
@@ -1069,20 +924,31 @@ export default function ManagerDashboardPage() {
 
 // ─── Engineers tab ────────────────────────────────────────────────────────────
 
+const ALL_MANAGERS = SEGMENT_CONFIG.flatMap((s) => s.managers).flatMap((m) =>
+  (MANAGER_QUERY_NAMES[m] ?? m).split(',').map((n) => n.trim())
+);
+
 function EngineersView() {
-  const { data: engineersData, isLoading, isError } = useJiraEngineers();
+  const { data, isLoading, isError } = useNtaByManagers(ALL_MANAGERS);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState('');
 
-  const configured: boolean = engineersData?.configured ?? false;
-  const jiraBaseUrl: string = engineersData?.jiraBaseUrl ?? JIRA_BASE_URL;
-  const rawEngineers: any[] = engineersData?.data?.engineers ?? [];
-  const totalTickets: number = engineersData?.data?.totalTickets ?? 0;
-  const totalBreached: number = engineersData?.data?.totalBreached ?? 0;
+  const allTickets: any[] = data?.data ?? [];
 
-  const engineers = rawEngineers.filter((e) =>
-    !search || e.engineerName.toLowerCase().includes(search.toLowerCase())
-  );
+  // Group by assignee
+  const grouped: Record<string, any[]> = {};
+  for (const t of allTickets) {
+    const name = t.assignee?.displayName || t.assignee?.name || 'Unassigned';
+    if (!grouped[name]) grouped[name] = [];
+    grouped[name].push(t);
+  }
+
+  const engineers = Object.entries(grouped)
+    .map(([name, tickets]) => ({ name, tickets }))
+    .sort((a, b) => b.tickets.length - a.tickets.length)
+    .filter(({ name }) => !search || name.toLowerCase().includes(search.toLowerCase()));
+
+  const totalTickets = allTickets.length;
 
   function toggle(name: string) {
     const next = new Set(expanded);
@@ -1102,17 +968,16 @@ function EngineersView() {
     return (
       <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
         <AlertCircle size={16} />
-        Failed to load engineer data. Check that the backend is running.
+        Could not reach the ticketing service. Check NTA_API_KEY in backend/.env.
       </div>
     );
   }
 
-  if (!configured) {
+  if (allTickets.length === 0) {
     return (
       <div className="rounded-xl border border-dashed border-gray-200 p-12 text-center text-sm text-gray-400">
-        <FileSpreadsheet size={28} className="mx-auto mb-3 text-gray-300" />
-        <p className="font-medium text-gray-500 mb-1">No Jira data loaded</p>
-        <p>Upload a Jira export using the banner above to populate engineer tickets.</p>
+        <p className="font-medium text-gray-500 mb-1">No tickets found</p>
+        <p>No tickets were found for the configured managers.</p>
       </div>
     );
   }
@@ -1120,24 +985,20 @@ function EngineersView() {
   return (
     <div className="space-y-4">
       {/* KPI row */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <div className="bg-indigo-50 rounded-xl p-4 border border-white">
-          <div className="text-2xl font-bold text-indigo-700">{rawEngineers.length}</div>
-          <div className="text-xs text-indigo-500 mt-0.5">Engineers</div>
+          <div className="text-2xl font-bold text-indigo-700">{Object.keys(grouped).length}</div>
+          <div className="text-xs text-indigo-500 mt-0.5">Assignees</div>
         </div>
         <div className="bg-blue-50 rounded-xl p-4 border border-white">
           <div className="text-2xl font-bold text-blue-700">{totalTickets}</div>
           <div className="text-xs text-blue-500 mt-0.5">Total Tickets</div>
         </div>
-        <div className="bg-red-50 rounded-xl p-4 border border-white">
-          <div className="text-2xl font-bold text-red-700">{totalBreached}</div>
-          <div className="text-xs text-red-500 mt-0.5">Breached Tickets</div>
-        </div>
         <div className="bg-green-50 rounded-xl p-4 border border-white">
           <div className="text-2xl font-bold text-green-700">
-            {totalTickets > 0 ? Math.round(((totalTickets - totalBreached) / totalTickets) * 100) : 100}%
+            {allTickets.filter((t: any) => (t.status?.category || '').toLowerCase() === 'done').length}
           </div>
-          <div className="text-xs text-green-500 mt-0.5">SLA Compliance</div>
+          <div className="text-xs text-green-500 mt-0.5">Done</div>
         </div>
       </div>
 
@@ -1146,7 +1007,7 @@ function EngineersView() {
         <Search size={14} className="text-gray-400 shrink-0" />
         <input
           type="text"
-          placeholder="Search engineer…"
+          placeholder="Search assignee…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="w-full sm:w-64 px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-300"
@@ -1156,88 +1017,34 @@ function EngineersView() {
       {/* Engineer list */}
       <div className="space-y-2">
         {engineers.length === 0 ? (
-          <div className="text-center py-10 text-sm text-gray-400">No engineers match your search.</div>
-        ) : (
-          engineers.map((eng: any) => {
-            const isOpen = expanded.has(eng.engineerName);
-            const breached: boolean = eng.breachedTickets > 0;
-            return (
-              <div key={eng.engineerName} className="rounded-xl border border-gray-200 bg-white overflow-hidden">
-                <button
-                  onClick={() => toggle(eng.engineerName)}
-                  className="w-full flex items-center gap-3 px-5 py-3.5 hover:bg-gray-50 transition-colors text-left"
-                >
-                  <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-xs font-bold shrink-0">
-                    {eng.engineerName.split(' ').map((w: string) => w[0]?.toUpperCase() ?? '').join('').slice(0, 2)}
-                  </div>
-                  <span className="font-medium text-sm text-gray-800">{eng.engineerName}</span>
-                  <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-medium">
-                    {eng.totalTickets} ticket{eng.totalTickets !== 1 ? 's' : ''}
-                  </span>
-                  {breached ? (
-                    <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium">
-                      {eng.breachedTickets} breached · {eng.breachRate}%
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-1 text-xs text-green-600">
-                      <CheckCircle size={12} /> All clear
-                    </span>
-                  )}
-                  <ChevronRight
-                    size={14}
-                    className={`ml-auto text-gray-400 transition-transform duration-150 ${isOpen ? 'rotate-90' : ''}`}
-                  />
-                </button>
-
-                {isOpen && (
-                  <div className="border-t border-gray-100 overflow-x-auto">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="bg-gray-50 text-gray-500">
-                          <th className="px-4 py-2 text-left font-medium whitespace-nowrap">Key</th>
-                          <th className="px-3 py-2 text-left font-medium">Summary</th>
-                          <th className="px-3 py-2 text-left font-medium whitespace-nowrap">Customer</th>
-                          <th className="px-3 py-2 text-left font-medium whitespace-nowrap">Project Manager</th>
-                          <th className="px-3 py-2 text-left font-medium whitespace-nowrap">Status</th>
-                          <th className="px-3 py-2 text-center font-medium whitespace-nowrap">FR Breach</th>
-                          <th className="px-3 py-2 text-center font-medium whitespace-nowrap">Res Breach</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-50">
-                        {eng.tickets.map((t: any) => (
-                          <tr key={t.key} className="hover:bg-indigo-50/30 transition-colors">
-                            <td className="px-4 py-2 whitespace-nowrap">
-                              <a
-                                href={`${jiraBaseUrl}/browse/${t.key}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-indigo-600 hover:underline font-mono"
-                              >
-                                {t.key}
-                              </a>
-                            </td>
-                            <td className="px-3 py-2 max-w-[260px] truncate text-gray-700">{t.summary}</td>
-                            <td className="px-3 py-2 whitespace-nowrap text-gray-600">{t.customer}</td>
-                            <td className="px-3 py-2 whitespace-nowrap text-gray-600">{t.projectManager || '—'}</td>
-                            <td className="px-3 py-2 whitespace-nowrap">
-                              <span className="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">{t.status}</span>
-                            </td>
-                            <td className="px-3 py-2 text-center">
-                              {t.frBreached ? <span className="text-red-600 font-bold text-sm">✗</span> : <span className="text-green-600 text-sm">✓</span>}
-                            </td>
-                            <td className="px-3 py-2 text-center">
-                              {t.resBreached ? <span className="text-red-600 font-bold text-sm">✗</span> : <span className="text-green-600 text-sm">✓</span>}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            );
-          })
-        )}
+          <div className="text-center py-10 text-sm text-gray-400">No assignees match your search.</div>
+        ) : engineers.map(({ name, tickets }) => {
+          const isOpen = expanded.has(name);
+          const open   = tickets.filter((t: any) => (t.status?.category || '').toLowerCase() === 'todo').length;
+          const inProg = tickets.filter((t: any) => (t.status?.category || '').toLowerCase() === 'in-progress').length;
+          const done   = tickets.filter((t: any) => (t.status?.category || '').toLowerCase() === 'done').length;
+          return (
+            <div key={name} className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+              <button
+                onClick={() => toggle(name)}
+                className="w-full flex items-center gap-3 px-5 py-3.5 hover:bg-gray-50 transition-colors text-left"
+              >
+                <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-xs font-bold shrink-0">
+                  {name.split(' ').map((w: string) => w[0]?.toUpperCase() ?? '').join('').slice(0, 2)}
+                </div>
+                <span className="font-medium text-sm text-gray-800">{name}</span>
+                <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-medium">
+                  {tickets.length} ticket{tickets.length !== 1 ? 's' : ''}
+                </span>
+                {open > 0 && <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{open} open</span>}
+                {inProg > 0 && <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">{inProg} in progress</span>}
+                {done > 0 && <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">{done} done</span>}
+                <ChevronRight size={14} className={`ml-auto text-gray-400 transition-transform duration-150 ${isOpen ? 'rotate-90' : ''}`} />
+              </button>
+              {isOpen && <TicketTable tickets={tickets} />}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -1380,19 +1187,6 @@ const OBS_ICONS: Record<string, string> = {
 };
 
 // ─── Tickets View (NTA) ───────────────────────────────────────────────────────
-
-const PRIORITY_STYLE: Record<string, string> = {
-  urgent: 'bg-red-100 text-red-700',
-  high:   'bg-orange-100 text-orange-700',
-  medium: 'bg-yellow-100 text-yellow-700',
-  low:    'bg-gray-100 text-gray-500',
-};
-
-const STATUS_CAT_STYLE: Record<string, string> = {
-  'todo':        'bg-gray-100 text-gray-600',
-  'in-progress': 'bg-blue-100 text-blue-700',
-  'done':        'bg-green-100 text-green-700',
-};
 
 // Multi-select dropdown for the Assignee/Reporter/Project Manager column filters
 // — replaces free-text entry so managers can pick one or several real people
