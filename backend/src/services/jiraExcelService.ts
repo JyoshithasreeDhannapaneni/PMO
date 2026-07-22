@@ -128,17 +128,16 @@ export function parseJiraExcel(buffer: Buffer, filename: string): ExcelDataStore
 
   logger.info(`[Excel] All headers (${rawHeaders.length}): ${rawHeaders.join(" | ")}`);
 
-  // Exact Jira export column names only — no aliases
   const idxKey      = findColIdx(rawHeaders, "Key", "Issue Key", "Issue key", "issue key", "Ticket Key", "Issue id", "Issue ID");
   const idxSummary  = findColIdx(rawHeaders, "Summary");
   const idxAssignee = findColIdx(rawHeaders, "Assignee");
-  const idxPm       = findColIdx(rawHeaders, "Project Manager");
-  const idxCust     = findColIdx(rawHeaders, "Customer Name");
+  const idxPm       = findColIdx(rawHeaders, "Project Manager", "PM", "Project manager", "project manager");
+  const idxCust     = findColIdx(rawHeaders, "Customer Name", "Customer", "customer name", "customer", "Account Name", "Client");
   const idxStatus   = findColIdx(rawHeaders, "Status");
   const idxCreated  = findColIdx(rawHeaders, "Created");
   const idxUpdated  = findColIdx(rawHeaders, "Updated");
-  const idxFrSla    = findColIdx(rawHeaders, "First Response SLA Breach");
-  const idxResSla   = findColIdx(rawHeaders, "Resolution SLA Breach");
+  const idxFrSla    = findColIdx(rawHeaders, "First Response SLA Breach", "First Response Breach", "FR Breach", "FR SLA Breach");
+  const idxResSla   = findColIdx(rawHeaders, "Resolution SLA Breach", "Resolution Breach", "Res Breach", "Res SLA Breach");
 
   const columnMap: Record<string, string> = {
     key:      idxKey >= 0      ? rawHeaders[idxKey]      : "NOT FOUND",
