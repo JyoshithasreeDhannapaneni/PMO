@@ -85,6 +85,8 @@ export interface CreateProjectDTO {
   pocErrorRate?: number | null;
   customerContact?: string | null;
   clientName?: string | null;
+  zenopDocId?: string | null;
+  phaseCompletionPct?: number | null;
 }
 
 export interface UpdateProjectDTO extends Partial<CreateProjectDTO> {}
@@ -160,6 +162,8 @@ function mapProjectRow(row: any) {
     name: row.name,
     customerName: row.customer_name,
     clientName: row.client_name ?? null,
+    zenopDocId: row.zenop_doc_id ?? null,
+    phaseCompletionPct: row.phase_completion_pct ?? 0,
     projectManager: row.project_manager,
     accountManager: row.account_manager,
     planType: row.plan_type,
@@ -480,6 +484,9 @@ class ProjectService {
     if (data.clientName !== undefined) {
       try { await execute(`UPDATE projects SET client_name = $1 WHERE id = $2`, [data.clientName ?? null, projectId]); } catch {}
     }
+    if (data.zenopDocId) {
+      try { await execute(`UPDATE projects SET zenop_doc_id = $1 WHERE id = $2`, [data.zenopDocId, projectId]); } catch {}
+    }
 
     if (data.isAtRisk) {
       try {
@@ -694,6 +701,7 @@ class ProjectService {
     if (data.phase !== undefined) {
       updates.push(`phase = $${params.length + 1}`); params.push(data.phase.toUpperCase());
     }
+    if (data.phaseCompletionPct !== undefined) { updates.push(`phase_completion_pct = $${params.length + 1}`); params.push(Math.min(100, Math.max(0, data.phaseCompletionPct ?? 0))); }
     if (data.status !== undefined) { updates.push(`status = $${params.length + 1}`); params.push(data.status); }
     if (data.plannedStart !== undefined) { updates.push(`planned_start = $${params.length + 1}`); params.push(new Date(data.plannedStart)); }
     if (data.plannedEnd !== undefined) { updates.push(`planned_end = $${params.length + 1}`); params.push(new Date(data.plannedEnd)); }

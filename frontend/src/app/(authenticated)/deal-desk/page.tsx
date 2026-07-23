@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useDealDeskDeals, useDealDeskStats, useDealDeskConfig, useTriggerDealDeskPoll, useImportSendGridHistory } from '@/hooks/useProjects';
+import { useDealDeskDeals, useDealDeskStats, useDealDeskConfig, useTriggerDealDeskPoll, useImportSendGridHistory, useDocsDocuments, useDocsQuotes, useProcessDocsDocument } from '@/hooks/useProjects';
 import { RefreshCw, FileText, CheckCircle, AlertCircle, DollarSign, ChevronDown, ChevronRight } from 'lucide-react';
 import { format } from 'date-fns';
 import { useAuth } from '@/context/AuthContext';
@@ -88,11 +88,20 @@ export default function DealDeskPage() {
   const [importError, setImportError] = useState<string | null>(null);
   const [importDays, setImportDays] = useState(0);
 
+  const [docsTab, setDocsTab] = useState<'documents' | 'quotes'>('documents');
+  const [expandedDocId, setExpandedDocId] = useState<string | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [processResults, setProcessResults] = useState<Record<string, { status: string; projectId?: string; error?: string }>>({});
+  const [docsSearch, setDocsSearch] = useState('');
+
   const configQuery = useDealDeskConfig();
   const statsQuery = useDealDeskStats();
   const dealsQuery = useDealDeskDeals({ page, limit: 25, search, status: statusFilter, matchType: matchFilter });
   const triggerPoll = useTriggerDealDeskPoll();
   const importHistory = useImportSendGridHistory();
+  const docsQuery = useDocsDocuments();
+  const quotesQuery = useDocsQuotes();
+  const processDocMutation = useProcessDocsDocument();
 
   const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -179,6 +188,55 @@ export default function DealDeskPage() {
   function toggleExpand(id: string) {
     setExpandedId(prev => prev === id ? null : id);
   }
+
+  async function handleDownloadDoc(id: string, fileName: string) {
+    setDownloadingId(id);
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
+      const res = await fetch(`${API_BASE}/api/docs/documents/${id}/download`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName || `${id}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      // silently fail — user sees no change
+    } finally {
+      setDownloadingId(null);
+    }
+  }
+
+  const isProjectManager = user?.role === 'PROJECT_MANAGER' || user?.role === 'ADMIN';
+
+  async function handleProcessDoc(docId: string) {
+    if (!user?.name) return;
+    try {
+      const res = await processDocMutation.mutateAsync({ docId, projectManagerName: user.name });
+      const result = (res as any)?.data;
+      setProcessResults(prev => ({ ...prev, [docId]: { status: result.status, projectId: result.projectId, error: result.error } }));
+    } catch (e: any) {
+      setProcessResults(prev => ({ ...prev, [docId]: { status: 'error', error: e.message } }));
+    }
+  }
+
+  const zenopDocs: any[] = (docsQuery.data as any)?.data ?? [];
+  const zenopQuotes: any[] = (quotesQuery.data as any)?.data ?? [];
+
+  const docsSearchLower = docsSearch.toLowerCase();
+  const filteredDocs = docsSearchLower
+    ? zenopDocs.filter((d: any) =>
+        (d.company ?? '').toLowerCase().includes(docsSearchLower) ||
+        (d.clientName ?? '').toLowerCase().includes(docsSearchLower) ||
+        (d.templateName ?? '').toLowerCase().includes(docsSearchLower) ||
+        (d.metadata?.migrationType ?? '').toLowerCase().includes(docsSearchLower) ||
+        (d.status ?? '').toLowerCase().includes(docsSearchLower)
+      )
+    : zenopDocs;
 
   return (
     <div className="p-6 space-y-6">
@@ -611,6 +669,225 @@ export default function DealDeskPage() {
               </button>
             </div>
           </div>
+        )}
+      </div>
+
+      {/* ── Zenop CPQ Documents ─────────────────────────────────────────── */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+        <div className="p-4 border-b border-gray-100 space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-semibold text-gray-900">CPQ Documents</h2>
+              <p className="text-xs text-gray-500 mt-0.5">Quotes &amp; proposals from Zenop.ai</p>
+            </div>
+            <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+              <button
+                onClick={() => setDocsTab('documents')}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${docsTab === 'documents' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                Documents ({zenopDocs.length})
+              </button>
+              <button
+                onClick={() => setDocsTab('quotes')}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${docsTab === 'quotes' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                Quotes ({zenopQuotes.length})
+              </button>
+            </div>
+          </div>
+          {docsTab === 'documents' && (
+            <input
+              type="text"
+              placeholder="Search by company, client, template, migration type…"
+              value={docsSearch}
+              onChange={e => setDocsSearch(e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          )}
+        </div>
+
+        {docsTab === 'documents' && (
+          docsQuery.isLoading ? (
+            <div className="py-12 text-center text-sm text-gray-500">Loading documents…</div>
+          ) : filteredDocs.length === 0 ? (
+            <div className="py-12 text-center">
+              <FileText size={36} className="text-gray-300 mx-auto mb-2" />
+              <p className="text-sm text-gray-500">{docsSearch ? 'No documents match your search' : 'No documents found'}</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 text-left">
+                    <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide w-8"></th>
+                    <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Company</th>
+                    <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Client</th>
+                    <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Template</th>
+                    <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Migration</th>
+                    <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
+                    <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Cost</th>
+                    <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Generated</th>
+                    <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {filteredDocs.map((doc: any) => (
+                    <React.Fragment key={doc.id}>
+                      <tr
+                        className="hover:bg-gray-50 cursor-pointer"
+                        onClick={() => setExpandedDocId(prev => prev === doc.id ? null : doc.id)}
+                      >
+                        <td className="px-4 py-3 text-gray-400">
+                          {expandedDocId === doc.id ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                        </td>
+                        <td className="px-4 py-3 font-medium text-gray-900">
+                          {doc.company || <span className="text-gray-400 italic">—</span>}
+                        </td>
+                        <td className="px-4 py-3 text-gray-700">
+                          <div>{doc.clientName || '—'}</div>
+                          {doc.clientEmail && <div className="text-xs text-gray-400">{doc.clientEmail}</div>}
+                        </td>
+                        <td className="px-4 py-3 text-gray-600 text-xs">{doc.templateName || '—'}</td>
+                        <td className="px-4 py-3 text-gray-600 text-xs">{doc.metadata?.migrationType || '—'}</td>
+                        <td className="px-4 py-3">
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[doc.status] || 'bg-gray-100 text-gray-600'}`}>
+                            {doc.status || '—'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 font-medium text-gray-900 whitespace-nowrap">
+                          {formatCurrency(doc.metadata?.totalCost)}
+                        </td>
+                        <td className="px-4 py-3 text-gray-500 whitespace-nowrap text-xs">
+                          {formatDate(doc.generatedDate || doc.createdAt)}
+                        </td>
+                        <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+                          <div className="flex flex-col gap-1.5">
+                            <button
+                              onClick={() => handleDownloadDoc(doc.id, doc.fileName)}
+                              disabled={downloadingId === doc.id}
+                              className="flex items-center gap-1 px-2 py-1 text-xs text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 disabled:opacity-50 transition-colors"
+                            >
+                              <RefreshCw size={11} className={downloadingId === doc.id ? 'animate-spin' : 'hidden'} />
+                              {downloadingId === doc.id ? 'Downloading…' : 'Download PDF'}
+                            </button>
+                            {isProjectManager && (() => {
+                              const pr = processResults[doc.id];
+                              if (pr?.status === 'created') {
+                                return (
+                                  <span className="px-2 py-1 text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg">
+                                    Project created
+                                  </span>
+                                );
+                              }
+                              if (pr?.status === 'skipped') {
+                                return (
+                                  <span className="px-2 py-1 text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg">
+                                    Already exists
+                                  </span>
+                                );
+                              }
+                              if (pr?.status === 'error') {
+                                return (
+                                  <span className="px-2 py-1 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg" title={pr.error}>
+                                    Error
+                                  </span>
+                                );
+                              }
+                              return (
+                                <button
+                                  onClick={() => handleProcessDoc(doc.id)}
+                                  disabled={processDocMutation.isPending}
+                                  className="flex items-center gap-1 px-2 py-1 text-xs text-indigo-600 border border-indigo-200 rounded-lg hover:bg-indigo-50 disabled:opacity-50 transition-colors"
+                                >
+                                  <CheckCircle size={11} />
+                                  Create Project
+                                </button>
+                              );
+                            })()}
+                          </div>
+                        </td>
+                      </tr>
+                      {expandedDocId === doc.id && (
+                        <tr key={`${doc.id}-detail`}>
+                          <td colSpan={9} className="px-6 py-4 bg-gray-50 border-b border-gray-200">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-sm">
+                              <div className="space-y-1">
+                                <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Document Details</h4>
+                                <div><span className="text-gray-500">File: </span><span className="text-gray-800 text-xs font-mono">{doc.fileName}</span></div>
+                                <div><span className="text-gray-500">Size: </span><span className="text-gray-800">{doc.fileSize ? `${Math.round(doc.fileSize / 1024)} KB` : '—'}</span></div>
+                                <div><span className="text-gray-500">Quote ID: </span><span className="text-gray-800 font-mono text-xs">{doc.quoteId || '—'}</span></div>
+                                <div><span className="text-gray-500">Users: </span><span className="text-gray-800">{doc.metadata?.numberOfUsers ?? '—'}</span></div>
+                                <div><span className="text-gray-500">Duration: </span><span className="text-gray-800">{doc.metadata?.duration ? `${doc.metadata.duration} days` : '—'}</span></div>
+                              </div>
+                              <div className="space-y-1">
+                                <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Dates</h4>
+                                <div><span className="text-gray-500">Project Start: </span><span className="text-gray-800">{formatDate(doc.dates?.projectStartDate)}</span></div>
+                                <div><span className="text-gray-500">Effective: </span><span className="text-gray-800">{formatDate(doc.dates?.effectiveDate)}</span></div>
+                                <div><span className="text-gray-500">Quote Expiry: </span><span className="text-gray-800">{formatDate(doc.dates?.quoteExpiryDate)}</span></div>
+                                <div><span className="text-gray-500">Created: </span><span className="text-gray-800">{formatDate(doc.createdAt)}</span></div>
+                              </div>
+                              <div className="space-y-1">
+                                <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Financials</h4>
+                                <div><span className="text-gray-500">Total Cost: </span><span className="text-gray-800 font-semibold">{formatCurrency(doc.metadata?.totalCost)}</span></div>
+                                <div><span className="text-gray-500">Migration Type: </span><span className="text-gray-800">{doc.metadata?.migrationType || '—'}</span></div>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
+        )}
+
+        {docsTab === 'quotes' && (
+          quotesQuery.isLoading ? (
+            <div className="py-12 text-center text-sm text-gray-500">Loading quotes…</div>
+          ) : zenopQuotes.length === 0 ? (
+            <div className="py-12 text-center">
+              <DollarSign size={36} className="text-gray-300 mx-auto mb-2" />
+              <p className="text-sm text-gray-500">No quotes found</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 text-left">
+                    <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Company</th>
+                    <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Client</th>
+                    <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Total Cost</th>
+                    <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">User Cost</th>
+                    <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Data Cost</th>
+                    <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
+                    <th className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Created</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {zenopQuotes.map((q: any, i: number) => (
+                    <tr key={q.id ?? i} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 font-medium text-gray-900">{q.company || '—'}</td>
+                      <td className="px-4 py-3 text-gray-700">
+                        <div>{q.client_name || '—'}</div>
+                        {q.client_email && <div className="text-xs text-gray-400">{q.client_email}</div>}
+                      </td>
+                      <td className="px-4 py-3 font-semibold text-gray-900">{formatCurrency(q.calculation?.totalCost)}</td>
+                      <td className="px-4 py-3 text-gray-600">{formatCurrency(q.calculation?.userCost)}</td>
+                      <td className="px-4 py-3 text-gray-600">{formatCurrency(q.calculation?.dataCost)}</td>
+                      <td className="px-4 py-3">
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[q.status] || 'bg-gray-100 text-gray-600'}`}>
+                          {q.status || '—'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{formatDate(q.created_at)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
         )}
       </div>
     </div>

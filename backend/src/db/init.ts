@@ -515,6 +515,10 @@ CREATE TABLE IF NOT EXISTS smtp_settings (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS zenop_doc_id VARCHAR(255);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_projects_zenop_doc_id ON projects(zenop_doc_id) WHERE zenop_doc_id IS NOT NULL;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS phase_completion_pct SMALLINT DEFAULT 0;
+
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN

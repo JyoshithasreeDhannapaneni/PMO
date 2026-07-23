@@ -314,9 +314,10 @@ export function useProjectsByMigrationType(type: string | null) {
 }
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-const authFetch = (url: string) => {
+const authFetch = (url: string, opts?: RequestInit) => {
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
-  return fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} }).then(r => r.json());
+  const authHeader = token ? { Authorization: `Bearer ${token}` } : {};
+  return fetch(url, { ...opts, headers: { ...authHeader, ...(opts?.headers ?? {}) } }).then(r => r.json());
 };
 
 export function useAllUsers() {
@@ -1003,5 +1004,45 @@ export function useEmailHygiene(enabled = true) {
     staleTime: 2 * 60 * 60 * 1000,
     gcTime: 2 * 60 * 60 * 1000,
     retry: 0, // First fetch can take 2-4 min — don't retry on timeout
+  });
+}
+
+// ─── Zenop Docs ───────────────────────────────────────────────────────────────
+
+export function useDocsDocuments() {
+  return useQuery({
+    queryKey: ['docs-documents'],
+    queryFn: () => authFetch('/api/docs/documents'),
+    staleTime: 60_000,
+  });
+}
+
+export function useDocsDocument(id: string | null) {
+  return useQuery({
+    queryKey: ['docs-document', id],
+    queryFn: () => authFetch(`/api/docs/documents/${id}`),
+    enabled: !!id,
+    staleTime: 300_000,
+  });
+}
+
+export function useDocsQuotes() {
+  return useQuery({
+    queryKey: ['docs-quotes'],
+    queryFn: () => authFetch('/api/docs/quotes'),
+    staleTime: 60_000,
+  });
+}
+
+export function useProcessDocsDocument() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ docId, projectManagerName }: { docId: string; projectManagerName: string }) =>
+      authFetch(`/api/docs/documents/${docId}/process`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectManagerName }),
+      }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['docs-documents'] }); },
   });
 }
