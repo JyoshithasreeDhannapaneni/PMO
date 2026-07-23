@@ -471,25 +471,43 @@ const WORK_PATTERNS = ['Mon – Fri', 'Mon – Sat', 'Tue – Sat'];
 const MTYPE_COLORS: Record<string, string> = { C: 'bg-blue-500', M: 'bg-purple-500', E: 'bg-green-500', D: 'bg-orange-500' };
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
-function enrichMember(m: any, i: number, all: any[]) {
-  // Resolve shift object from stored shift name, fallback to simulated
-  const storedShift = SHIFTS.find(s => m.shift === s.name || m.shiftTimezone === s.tz);
-  const shift = storedShift ?? SHIFTS[i % 2];
+// Real dates for the current week (Mon–Sun), used by the Calendar sub-tab —
+// previously this rendered fabricated day numbers unrelated to any real week.
+function currentWeekDates(): number[] {
+  const now = new Date();
+  const day = now.getDay(); // 0=Sun..6=Sat
+  const mondayOffset = day === 0 ? -6 : 1 - day;
+  const monday = new Date(now);
+  monday.setDate(now.getDate() + mondayOffset);
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    return d.getDate();
+  });
+}
+
+function enrichMember(m: any) {
+  // No more fake fallbacks (round-robin shift, default working pattern, sample
+  // migration types, first-member-as-manager, random capacity) — every field
+  // below reflects exactly what's stored for this member, or an honest "not set".
+  const shift = SHIFTS.find(s => m.shift === s.name || m.shiftTimezone === s.tz) ?? null;
+  const workingPattern = m.workingPattern || null;
+  const migrationTypes = m.migrationTypes
+    ? m.migrationTypes.split(',').map((t: string) => t.trim()).filter(Boolean)
+    : [];
   return {
     ...m,
     shift,
-    workingPattern: m.workingPattern || WORK_PATTERNS[i % 3],
-    migrationTypes: m.migrationTypes
-      ? m.migrationTypes.split(',').map((t: string) => t.trim()).filter(Boolean)
-      : ['C', 'M', 'E'].slice(0, (i % 3) + 1),
-    reportingTo: m.reportingTo || (i === 0 ? null : all[0]?.name || null),
-    capacity: m.capacity ?? Math.round(70 + (i % 4) * 7),
-    projects: Math.round(8 + (i % 5) * 2),
+    workingPattern,
+    migrationTypes,
+    reportingTo: m.reportingTo || null,
+    capacity: m.capacity ?? 100,
+    isActive: m.isActive !== false,
     calendar: DAYS.map((d, di) => {
-      const pat = m.workingPattern || WORK_PATTERNS[i % 3];
-      if (pat === 'Mon – Fri') return di >= 5 ? 'off' : 'work';
-      if (pat === 'Mon – Sat') return di === 6 ? 'off' : di === 5 ? 'half' : 'work';
-      if (pat === 'Tue – Sat') return di === 0 ? 'off' : di === 6 ? 'off' : 'work';
+      if (!workingPattern) return 'unknown';
+      if (workingPattern === 'Mon – Fri') return di >= 5 ? 'off' : 'work';
+      if (workingPattern === 'Mon – Sat') return di === 6 ? 'off' : di === 5 ? 'half' : 'work';
+      if (workingPattern === 'Tue – Sat') return di === 0 ? 'off' : di === 6 ? 'off' : 'work';
       return di >= 5 ? 'off' : 'work';
     }),
   };
@@ -506,12 +524,17 @@ const B_TABS: { id: BSubTab; label: string }[] = [
   { id: 'reports', label: 'Reports' },
 ];
 
-function OptionBPreview({ team }: { team: any[] }) {
+function OptionBPreview({ team, isViewer, onEdit, onDelete, onAddClick }: { team: any[]; isViewer: boolean; onEdit: (m: any) => void; onDelete: (id: string) => void; onAddClick: () => void }) {
   const [sub, setSub] = useState<BSubTab>('tree');
-  const enriched = team.map((m, i) => enrichMember(m, i, team));
+  const enriched = team.map((m) => enrichMember(m));
+  const unassignedShift = enriched.filter(m => !m.shift);
   const avgCap = enriched.length ? Math.round(enriched.reduce((s, m) => s + m.capacity, 0) / enriched.length) : 0;
-  const shiftA = enriched.filter(m => m.shift.id === 'A');
-  const shiftB = enriched.filter(m => m.shift.id === 'B');
+  const weekDates = currentWeekDates();
+  const PATTERN_DAY_COUNT: Record<string, number> = { 'Mon – Fri': 5, 'Mon – Sat': 6, 'Tue – Sat': 5 };
+  const withPattern = enriched.filter(m => m.workingPattern);
+  const avgWorkingDays = withPattern.length
+    ? withPattern.reduce((s, m) => s + (PATTERN_DAY_COUNT[m.workingPattern] ?? 5), 0) / withPattern.length
+    : null;
 
   const avatarColors = ['bg-blue-500','bg-purple-500','bg-green-500','bg-amber-500','bg-red-500','bg-indigo-500','bg-pink-500','bg-teal-500'];
   const getAV = (name: string) => avatarColors[name.charCodeAt(0) % avatarColors.length];
@@ -534,23 +557,21 @@ function OptionBPreview({ team }: { team: any[] }) {
               <div className="text-xs text-gray-400">Team Management</div>
             </div>
           </div>
-          <div className="flex gap-2">
-            <button className="px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 flex items-center gap-1.5">
-              <Users size={13} /> Team Dashboard
-            </button>
-            <button className="px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50">Export</button>
-            <button className="px-3 py-1.5 text-xs font-medium bg-primary-600 text-white rounded-lg hover:bg-primary-700 flex items-center gap-1.5">
-              <Plus size={13} /> Add Member
-            </button>
-          </div>
+          {!isViewer && (
+            <div className="flex gap-2">
+              <button onClick={onAddClick} className="px-3 py-1.5 text-xs font-medium bg-primary-600 text-white rounded-lg hover:bg-primary-700 flex items-center gap-1.5">
+                <Plus size={13} /> Add Member
+              </button>
+            </div>
+          )}
         </div>
 
         {/* KPI cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
           {[
             { icon: Users, label: 'Team Members', value: enriched.length, sub: 'Total', c: 'text-blue-600 bg-blue-50' },
-            { icon: Clock, label: 'Shifts', value: SHIFTS.length, sub: 'Active', c: 'text-purple-600 bg-purple-50' },
-            { icon: BarChart3, label: 'Working Days', value: '5.5', sub: 'Avg/Week', c: 'text-green-600 bg-green-50' },
+            { icon: Clock, label: 'Shifts', value: new Set(enriched.filter(m => m.shift).map(m => m.shift.id)).size, sub: 'In Use', c: 'text-purple-600 bg-purple-50' },
+            { icon: BarChart3, label: 'Working Days', value: avgWorkingDays !== null ? avgWorkingDays.toFixed(1) : '—', sub: 'Avg/Week', c: 'text-green-600 bg-green-50' },
             { icon: Shield, label: 'Avg. Capacity', value: `${avgCap}%`, sub: 'Overall', c: 'text-amber-600 bg-amber-50' },
           ].map(({ icon: Icon, label, value, sub: s, c }) => (
             <div key={label} className="border border-gray-200 rounded-xl px-4 py-3 flex items-center gap-3 bg-white shadow-sm">
@@ -577,6 +598,14 @@ function OptionBPreview({ team }: { team: any[] }) {
 
       {/* Sub-tab content */}
       <div className="bg-gray-50 p-4">
+
+        {enriched.length === 0 ? (
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-12 text-center">
+            <Users className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+            <p className="text-gray-500 font-medium">No team members assigned yet</p>
+            <p className="text-sm text-gray-400 mt-1">Use "Add Member" above to start staffing this project</p>
+          </div>
+        ) : <>
 
         {/* ── TREE VIEW ── */}
         {sub === 'tree' && (
@@ -605,7 +634,7 @@ function OptionBPreview({ team }: { team: any[] }) {
                 ))}
                 {/* Shifts */}
                 {SHIFTS.map(shift => {
-                  const shiftMembers = enriched.filter(m => m.shift.id === shift.id && m.role !== 'PROJECT_MANAGER');
+                  const shiftMembers = enriched.filter(m => m.shift?.id === shift.id && m.role !== 'PROJECT_MANAGER');
                   if (!shiftMembers.length) return null;
                   // Group by department within shift
                   const depts = [...new Set(shiftMembers.map(m => m.department || 'General'))];
@@ -638,6 +667,22 @@ function OptionBPreview({ team }: { team: any[] }) {
                     </div>
                   );
                 })}
+                {/* Members with no shift assigned yet */}
+                {enriched.filter(m => !m.shift && m.role !== 'PROJECT_MANAGER').length > 0 && (
+                  <div className="ml-3 border-l-2 border-gray-200 pl-3 mb-2">
+                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg mb-1 bg-gray-100 text-gray-500">
+                      <span className="text-xs font-bold">No Shift Assigned</span>
+                      <span className="ml-auto text-xs font-bold">{enriched.filter(m => !m.shift && m.role !== 'PROJECT_MANAGER').length} Members</span>
+                    </div>
+                    {enriched.filter(m => !m.shift && m.role !== 'PROJECT_MANAGER').map(m => (
+                      <div key={m.id} className="flex items-center gap-2 py-1 px-3 hover:bg-gray-50 rounded">
+                        <div className={`w-5 h-5 rounded-full ${getAV(m.name)} text-white text-xs font-bold flex items-center justify-center shrink-0`}>{m.name.charAt(0)}</div>
+                        <span className="text-xs text-gray-700 flex-1 truncate">{m.name}</span>
+                        <span className="text-xs font-semibold text-gray-500">{m.allocation}%</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -655,7 +700,7 @@ function OptionBPreview({ team }: { team: any[] }) {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
-                      {enriched.slice(0, 8).map(m => (
+                      {enriched.map(m => (
                         <tr key={m.id} className="hover:bg-gray-50">
                           <td className="px-3 py-2.5">
                             <div className="flex items-center gap-2">
@@ -665,15 +710,19 @@ function OptionBPreview({ team }: { team: any[] }) {
                           </td>
                           <td className="px-3 py-2.5 text-gray-600 whitespace-nowrap">{ROLE_LABELS[m.role] || m.role}</td>
                           <td className="px-3 py-2.5">
-                            <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${m.shift.color}`}>{m.shift.tz}</span>
+                            {m.shift ? (
+                              <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${m.shift.color}`}>{m.shift.tz}</span>
+                            ) : <span className="text-gray-300">—</span>}
                           </td>
-                          <td className="px-3 py-2.5 text-gray-500 whitespace-nowrap">{m.workingPattern}</td>
+                          <td className="px-3 py-2.5 text-gray-500 whitespace-nowrap">{m.workingPattern || <span className="text-gray-300">—</span>}</td>
                           <td className="px-3 py-2.5">
-                            <div className="flex gap-0.5">
-                              {m.migrationTypes.map((t: string) => (
-                                <span key={t} className={`w-5 h-5 rounded-full ${MTYPE_COLORS[t] || 'bg-gray-400'} text-white text-xs font-bold flex items-center justify-center`}>{t}</span>
-                              ))}
-                            </div>
+                            {m.migrationTypes.length > 0 ? (
+                              <div className="flex gap-0.5">
+                                {m.migrationTypes.map((t: string) => (
+                                  <span key={t} className={`w-5 h-5 rounded-full ${MTYPE_COLORS[t] || 'bg-gray-400'} text-white text-xs font-bold flex items-center justify-center`}>{t}</span>
+                                ))}
+                              </div>
+                            ) : <span className="text-gray-300">—</span>}
                           </td>
                           <td className="px-3 py-2.5 font-semibold text-gray-700">{m.allocation}%</td>
                           <td className="px-3 py-2.5">
@@ -685,14 +734,16 @@ function OptionBPreview({ team }: { team: any[] }) {
                             </div>
                           </td>
                           <td className="px-3 py-2.5">
-                            <span className="px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 font-medium text-xs">Active</span>
+                            <span className={`px-1.5 py-0.5 rounded-full font-medium text-xs ${m.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                              {m.isActive ? 'Active' : 'Inactive'}
+                            </span>
                           </td>
                           <td className="px-3 py-2.5 text-gray-500 whitespace-nowrap">{m.reportingTo || '—'}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
-                  {enriched.length > 8 && <div className="px-4 py-2 text-xs text-gray-400 border-t bg-gray-50">1–8 of {enriched.length} · 10 / page</div>}
+                  <div className="px-4 py-2 text-xs text-gray-400 border-t bg-gray-50">{enriched.length} member{enriched.length !== 1 ? 's' : ''}</div>
                 </div>
               </div>
 
@@ -706,7 +757,7 @@ function OptionBPreview({ team }: { team: any[] }) {
                     </tr></thead>
                     <tbody className="divide-y divide-gray-50">
                       {SHIFTS.map(sh => {
-                        const sm = enriched.filter(m => m.shift.id === sh.id);
+                        const sm = enriched.filter(m => m.shift?.id === sh.id);
                         const ac = sm.length ? Math.round(sm.reduce((s, m) => s + m.capacity, 0) / sm.length) : 0;
                         return (
                           <tr key={sh.id}>
@@ -718,21 +769,34 @@ function OptionBPreview({ team }: { team: any[] }) {
                                 <span className="text-gray-600">{ac}%</span>
                               </div>
                             </td>
-                            <td className="py-2"><span className="px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-medium">Active</span></td>
+                            <td className="py-2">
+                              <span className={`px-1.5 py-0.5 rounded-full text-xs font-medium ${sm.length > 0 ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                                {sm.length > 0 ? 'In Use' : 'No Members'}
+                              </span>
+                            </td>
                           </tr>
                         );
                       })}
+                      {unassignedShift.length > 0 && (
+                        <tr>
+                          <td className="py-2 font-medium text-gray-500">Not Assigned</td>
+                          <td className="py-2 text-gray-600">{unassignedShift.length}</td>
+                          <td className="py-2 text-gray-400">—</td>
+                          <td className="py-2"><span className="px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500 text-xs font-medium">Unassigned</span></td>
+                        </tr>
+                      )}
                     </tbody>
                   </table>
                 </div>
                 <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
                   <div className="text-xs font-semibold text-gray-700 mb-3">Working Days Overview</div>
-                  {WORK_PATTERNS.map(pat => {
+                  {[...WORK_PATTERNS, null].map(pat => {
                     const cnt = enriched.filter(m => m.workingPattern === pat).length;
+                    if (pat === null && cnt === 0) return null;
                     const pct = enriched.length ? Math.round((cnt / enriched.length) * 100) : 0;
                     return (
-                      <div key={pat} className="flex items-center gap-2 mb-2">
-                        <span className="text-xs text-gray-600 w-20 shrink-0">{pat}</span>
+                      <div key={pat ?? 'unset'} className="flex items-center gap-2 mb-2">
+                        <span className="text-xs text-gray-600 w-20 shrink-0">{pat ?? 'Not Set'}</span>
                         <div className="flex-1 bg-gray-100 rounded-full h-2"><div className="h-2 rounded-full bg-blue-500" style={{ width: `${pct}%` }} /></div>
                         <span className="text-xs text-gray-500 w-16 shrink-0">{cnt} ({pct}%)</span>
                         <div className="flex gap-0.5">
@@ -768,13 +832,13 @@ function OptionBPreview({ team }: { team: any[] }) {
                     {DAYS.map((d, i) => (
                       <th key={d} className={`px-3 py-3 text-center font-semibold ${i >= 5 ? 'text-red-400' : 'text-gray-600'}`}>
                         <div>{d}</div>
-                        <div className="text-gray-400 font-normal">{19 + i}</div>
+                        <div className="text-gray-400 font-normal">{weekDates[i]}</div>
                       </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {enriched.slice(0, 6).map(m => (
+                  {enriched.map(m => (
                     <tr key={m.id} className="hover:bg-gray-50">
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
@@ -787,6 +851,7 @@ function OptionBPreview({ team }: { team: any[] }) {
                           {day === 'work' && <span className="inline-flex w-6 h-6 rounded-full bg-green-500 items-center justify-center text-white text-xs">✓</span>}
                           {day === 'half' && <span className="inline-flex w-6 h-6 rounded-full bg-blue-300 items-center justify-center text-white text-xs">½</span>}
                           {day === 'off' && <span className="inline-flex w-6 h-6 rounded-full bg-red-400 items-center justify-center text-white text-xs">✕</span>}
+                          {day === 'unknown' && <span className="text-gray-300">—</span>}
                         </td>
                       ))}
                     </tr>
@@ -801,7 +866,8 @@ function OptionBPreview({ team }: { team: any[] }) {
         {sub === 'shift' && (
           <div className="space-y-4">
             {SHIFTS.map(shift => {
-              const sm = enriched.filter(m => m.shift.id === shift.id);
+              const sm = enriched.filter(m => m.shift?.id === shift.id);
+              if (!sm.length) return null;
               return (
                 <div key={shift.id} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
                   <div className={`px-5 py-3 flex items-center gap-3 ${shift.color} border-b border-gray-100`}>
@@ -824,6 +890,26 @@ function OptionBPreview({ team }: { team: any[] }) {
                 </div>
               );
             })}
+            {unassignedShift.length > 0 && (
+              <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                <div className="px-5 py-3 flex items-center gap-3 bg-gray-100 text-gray-500 border-b border-gray-100">
+                  <span className="font-bold text-sm">No Shift Assigned</span>
+                  <span className="ml-auto text-xs font-bold">{unassignedShift.length} Members</span>
+                </div>
+                <div className="p-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                  {unassignedShift.map(m => (
+                    <div key={m.id} className="flex items-center gap-2 p-3 border border-gray-100 rounded-lg hover:bg-gray-50">
+                      <div className={`w-8 h-8 rounded-full ${getAV(m.name)} text-white text-xs font-bold flex items-center justify-center shrink-0`}>{m.name.charAt(0)}</div>
+                      <div>
+                        <div className="text-xs font-semibold text-gray-800">{m.name}</div>
+                        <div className="text-xs text-gray-400">{ROLE_LABELS[m.role] || m.role}</div>
+                        <div className="text-xs text-green-600 font-medium">{m.allocation}%</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -842,7 +928,6 @@ function OptionBPreview({ team }: { team: any[] }) {
                     <div className="h-4 rounded-full transition-all" style={{ width: `${m.capacity}%`, backgroundColor: m.capacity >= 90 ? '#22c55e' : m.capacity >= 70 ? '#f59e0b' : '#ef4444' }} />
                     <span className="absolute inset-0 flex items-center justify-center text-xs font-semibold text-white">{m.capacity}%</span>
                   </div>
-                  <span className="text-xs text-gray-500 w-24 shrink-0">{m.projects} projects</span>
                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium w-16 text-center ${m.capacity >= 90 ? 'bg-green-100 text-green-700' : m.capacity >= 70 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>
                     {m.capacity >= 90 ? 'Optimal' : m.capacity >= 70 ? 'Moderate' : 'Low'}
                   </span>
@@ -856,7 +941,8 @@ function OptionBPreview({ team }: { team: any[] }) {
         {sub === 'overview' && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {SHIFTS.map(sh => {
-              const sm = enriched.filter(m => m.shift.id === sh.id);
+              const sm = enriched.filter(m => m.shift?.id === sh.id);
+              if (!sm.length) return null;
               const ac = sm.length ? Math.round(sm.reduce((s, m) => s + m.capacity, 0) / sm.length) : 0;
               return (
                 <div key={sh.id} className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
@@ -887,8 +973,8 @@ function OptionBPreview({ team }: { team: any[] }) {
                 {[
                   { l: 'Total Members', v: enriched.length },
                   { l: 'Avg Capacity', v: `${avgCap}%` },
-                  { l: 'Active Shifts', v: SHIFTS.length },
-                  { l: 'Work Patterns', v: WORK_PATTERNS.length },
+                  { l: 'Shifts In Use', v: new Set(enriched.filter(m => m.shift).map(m => m.shift.id)).size },
+                  { l: 'Work Patterns In Use', v: new Set(enriched.filter(m => m.workingPattern).map(m => m.workingPattern)).size },
                 ].map(({ l, v }) => (
                   <div key={l} className="flex justify-between text-sm"><span className="text-gray-500">{l}</span><span className="font-semibold text-gray-800">{v}</span></div>
                 ))}
@@ -904,7 +990,7 @@ function OptionBPreview({ team }: { team: any[] }) {
               <table className="w-full text-xs">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-200">
-                    {['#', 'Employee', 'Role', 'Shift', 'Working Days', 'Migration Types', 'Allocation', 'Capacity', 'Status', 'Reporting To'].map(h => (
+                    {['#', 'Employee', 'Role', 'Shift', 'Working Days', 'Migration Types', 'Allocation', 'Capacity', 'Status', 'Reporting To', ...(isViewer ? [] : ['Actions'])].map(h => (
                       <th key={h} className="px-3 py-3 text-left font-semibold text-gray-500 whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
@@ -920,13 +1006,37 @@ function OptionBPreview({ team }: { team: any[] }) {
                         </div>
                       </td>
                       <td className="px-3 py-3 text-gray-600 whitespace-nowrap">{ROLE_LABELS[m.role] || m.role}</td>
-                      <td className="px-3 py-3"><span className={`px-1.5 py-0.5 rounded text-xs font-medium ${m.shift.color}`}>{m.shift.tz}</span></td>
-                      <td className="px-3 py-3 text-gray-500 whitespace-nowrap">{m.workingPattern}</td>
-                      <td className="px-3 py-3"><div className="flex gap-0.5">{m.migrationTypes.map((t: string) => (<span key={t} className={`w-5 h-5 rounded-full ${MTYPE_COLORS[t]} text-white text-xs font-bold flex items-center justify-center`}>{t}</span>))}</div></td>
+                      <td className="px-3 py-3">
+                        {m.shift ? (
+                          <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${m.shift.color}`}>{m.shift.tz}</span>
+                        ) : <span className="text-gray-300">—</span>}
+                      </td>
+                      <td className="px-3 py-3 text-gray-500 whitespace-nowrap">{m.workingPattern || <span className="text-gray-300">—</span>}</td>
+                      <td className="px-3 py-3">
+                        {m.migrationTypes.length > 0 ? (
+                          <div className="flex gap-0.5">{m.migrationTypes.map((t: string) => (<span key={t} className={`w-5 h-5 rounded-full ${MTYPE_COLORS[t] || 'bg-gray-400'} text-white text-xs font-bold flex items-center justify-center`}>{t}</span>))}</div>
+                        ) : <span className="text-gray-300">—</span>}
+                      </td>
                       <td className="px-3 py-3 font-semibold text-gray-700">{m.allocation}%</td>
                       <td className="px-3 py-3"><div className="flex items-center gap-1"><div className="w-14 bg-gray-100 rounded-full h-1.5"><div className="h-1.5 rounded-full bg-green-500" style={{ width: `${m.capacity}%` }} /></div><span>{m.capacity}%</span></div></td>
-                      <td className="px-3 py-3"><span className="px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">Active</span></td>
+                      <td className="px-3 py-3">
+                        <span className={`px-1.5 py-0.5 rounded-full font-medium ${m.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                          {m.isActive ? 'Active' : 'Inactive'}
+                        </span>
+                      </td>
                       <td className="px-3 py-3 text-gray-500">{m.reportingTo || '—'}</td>
+                      {!isViewer && (
+                        <td className="px-3 py-3">
+                          <div className="flex items-center gap-1">
+                            <button onClick={() => onEdit(m)} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Edit">
+                              <Pencil size={13} />
+                            </button>
+                            <button onClick={() => onDelete(m.id)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Remove">
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -940,6 +1050,7 @@ function OptionBPreview({ team }: { team: any[] }) {
             Team reports will show capacity trends, shift utilization charts, and workload history over time.
           </div>
         )}
+        </>}
       </div>
     </div>
   );
@@ -948,9 +1059,6 @@ function OptionBPreview({ team }: { team: any[] }) {
 // Team Tab Component
 function TeamTab({ team, projectId, onRefresh, onDelete, isViewer }: any) {
   const [showForm, setShowForm] = useState(false);
-  const [showOptionB, setShowOptionB] = useState(false);
-  const [viewMode, setViewMode] = useState<'table' | 'tree'>('table');
-  const [searchQuery, setSearchQuery] = useState('');
   const [formData, setFormData] = useState({ name: '', email: '', role: 'TEAM_MEMBER', department: '', allocation: 100, shift: '', shiftTimezone: '', workingPattern: 'Mon – Fri', migrationTypes: '', capacity: 100, reportingTo: '' });
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editData, setEditData] = useState<any>({});
@@ -967,49 +1075,10 @@ function TeamTab({ team, projectId, onRefresh, onDelete, isViewer }: any) {
     STAKEHOLDER: 'Stakeholder',
   };
 
-  const roleColors: Record<string, string> = {
-    PROJECT_MANAGER: 'bg-purple-100 text-purple-700',
-    TECHNICAL_LEAD: 'bg-blue-100 text-blue-700',
-    DEVELOPER: 'bg-indigo-100 text-indigo-700',
-    QA_ENGINEER: 'bg-green-100 text-green-700',
-    BUSINESS_ANALYST: 'bg-amber-100 text-amber-700',
-    ARCHITECT: 'bg-cyan-100 text-cyan-700',
-    TEAM_MEMBER: 'bg-gray-100 text-gray-700',
-    STAKEHOLDER: 'bg-pink-100 text-pink-700',
-  };
-
-  const avatarColors = ['bg-blue-500', 'bg-purple-500', 'bg-green-500', 'bg-amber-500', 'bg-red-500', 'bg-indigo-500', 'bg-pink-500', 'bg-teal-500'];
-
-  function getAvatarColor(name: string) {
-    const idx = name.charCodeAt(0) % avatarColors.length;
-    return avatarColors[idx];
-  }
-
   const totalMembers = team.length;
   const avgAllocation = totalMembers > 0 ? Math.round(team.reduce((s: number, m: any) => s + (m.allocation ?? 100), 0) / totalMembers) : 0;
   const uniqueRoles = new Set(team.map((m: any) => m.role)).size;
   const uniqueDepts = new Set(team.map((m: any) => m.department).filter(Boolean)).size;
-
-  const filteredTeam = team.filter((m: any) =>
-    !searchQuery || m.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    m.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    m.role?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    m.department?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  // Group by role for tree view
-  const grouped = filteredTeam.reduce((acc: Record<string, any[]>, m: any) => {
-    const key = m.role || 'TEAM_MEMBER';
-    if (!acc[key]) acc[key] = [];
-    acc[key].push(m);
-    return acc;
-  }, {} as Record<string, any[]>);
-
-  const roleOrder = ['PROJECT_MANAGER', 'TECHNICAL_LEAD', 'ARCHITECT', 'BUSINESS_ANALYST', 'DEVELOPER', 'QA_ENGINEER', 'TEAM_MEMBER', 'STAKEHOLDER'];
-  const sortedGroups = (Object.entries(grouped) as [string, any[]][]).sort(([a], [b]) => roleOrder.indexOf(a) - roleOrder.indexOf(b));
-
-  // Role distribution for summary
-  const roleDist = roleOrder.map(r => ({ role: r, label: roleLabels[r] || r, count: team.filter((m: any) => m.role === r).length })).filter(r => r.count > 0);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1049,26 +1118,6 @@ function TeamTab({ team, projectId, onRefresh, onDelete, isViewer }: any) {
   return (
     <div className="space-y-5">
 
-      {/* ── View toggle: Option A / Option B Preview ── */}
-      <div className="flex items-center justify-between">
-        <div className="flex rounded-lg border border-gray-200 overflow-hidden bg-white shadow-sm">
-          <button onClick={() => setShowOptionB(false)}
-            className={`px-4 py-2 text-xs font-medium transition-colors flex items-center gap-1.5 ${!showOptionB ? 'bg-primary-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>
-            Current View
-          </button>
-          <button onClick={() => setShowOptionB(true)}
-            className={`px-4 py-2 text-xs font-medium transition-colors flex items-center gap-1.5 ${showOptionB ? 'bg-primary-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>
-            Advanced View
-          </button>
-        </div>
-      </div>
-
-      {/* ── Option B Preview ── */}
-      {showOptionB && <OptionBPreview team={team} />}
-
-      {/* ── Current View (Option A) ── */}
-      {!showOptionB && <>
-
       {/* ── KPI Cards ── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
@@ -1088,39 +1137,6 @@ function TeamTab({ team, projectId, onRefresh, onDelete, isViewer }: any) {
             </div>
           </div>
         ))}
-      </div>
-
-      {/* ── Toolbar ── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          {/* View toggle */}
-          <div className="flex rounded-lg border border-gray-200 overflow-hidden bg-white">
-            {(['table', 'tree'] as const).map(v => (
-              <button key={v} onClick={() => setViewMode(v)}
-                className={`px-3 py-1.5 text-xs font-medium transition-colors ${viewMode === v ? 'bg-primary-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>
-                {v === 'table' ? 'Table View' : 'Tree View'}
-              </button>
-            ))}
-          </div>
-          {/* Search */}
-          <div className="relative">
-            <input
-              type="text"
-              placeholder="Search team member..."
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              className="pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-primary-500 w-48 bg-white"
-            />
-            <svg className="absolute left-2.5 top-2 w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-          </div>
-        </div>
-        {!isViewer && (
-          <Button onClick={() => setShowForm(!showForm)}>
-            <Plus size={16} className="mr-1.5" /> Add Member
-          </Button>
-        )}
       </div>
 
       {/* ── Add Member Form ── */}
@@ -1208,329 +1224,100 @@ function TeamTab({ team, projectId, onRefresh, onDelete, isViewer }: any) {
         </Card>
       )}
 
-      {team.length === 0 ? (
-        <Card className="p-12 text-center">
-          <Users className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-          <p className="text-gray-500 font-medium">No team members assigned</p>
-          <p className="text-sm text-gray-400 mt-1">Add team members to get started</p>
+      {/* ── Edit Member Form ── */}
+      {!isViewer && editingId && (
+        <Card className="p-5 border-blue-200 bg-blue-50/30">
+          <h4 className="text-sm font-semibold text-gray-800 mb-4">Edit Team Member</h4>
+          <form onSubmit={handleEditSave} className="flex flex-wrap items-end gap-3">
+            <div>
+              <label className="block text-xs text-gray-500 mb-0.5">Name</label>
+              <input type="text" required value={editData.name}
+                onChange={e => setEditData({ ...editData, name: e.target.value })}
+                className="px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 w-36" />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-0.5">Email</label>
+              <input type="email" required value={editData.email}
+                onChange={e => setEditData({ ...editData, email: e.target.value })}
+                className="px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 w-44" />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-0.5">Role</label>
+              <select value={editData.role} onChange={e => setEditData({ ...editData, role: e.target.value })}
+                className="px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500">
+                {Object.entries(roleLabels).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-0.5">Department</label>
+              <input type="text" value={editData.department}
+                onChange={e => setEditData({ ...editData, department: e.target.value })}
+                className="px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 w-28" />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-0.5">Allocation %</label>
+              <input type="number" min="0" max="100" value={editData.allocation}
+                onChange={e => setEditData({ ...editData, allocation: parseInt(e.target.value) || 0 })}
+                className="px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 w-20" />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-0.5">Shift</label>
+              <select value={editData.shift} onChange={e => {
+                const s = SHIFTS.find(sh => sh.name === e.target.value);
+                setEditData({ ...editData, shift: e.target.value, shiftTimezone: s?.tz || '' });
+              }} className="px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500">
+                <option value="">— None —</option>
+                {SHIFTS.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-0.5">Working Pattern</label>
+              <select value={editData.workingPattern} onChange={e => setEditData({ ...editData, workingPattern: e.target.value })}
+                className="px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500">
+                <option value="">— None —</option>
+                {WORK_PATTERNS.map(p => <option key={p} value={p}>{p}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-0.5">Capacity %</label>
+              <input type="number" min="0" max="100" value={editData.capacity}
+                onChange={e => setEditData({ ...editData, capacity: parseInt(e.target.value) || 0 })}
+                className="px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 w-20" />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-0.5">Mig. Types</label>
+              <input type="text" placeholder="C,M,E" value={editData.migrationTypes}
+                onChange={e => setEditData({ ...editData, migrationTypes: e.target.value })}
+                className="px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 w-20" />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-0.5">Reporting To</label>
+              <input type="text" value={editData.reportingTo}
+                onChange={e => setEditData({ ...editData, reportingTo: e.target.value })}
+                className="px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 w-28" />
+            </div>
+            <div className="flex gap-2">
+              <button type="submit" disabled={editSaving}
+                className="px-3 py-1.5 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-60 font-medium flex items-center gap-1">
+                <Check size={13} />{editSaving ? 'Saving…' : 'Save'}
+              </button>
+              <button type="button" onClick={() => setEditingId(null)}
+                className="px-3 py-1.5 text-sm border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 flex items-center gap-1">
+                <X size={13} />Cancel
+              </button>
+            </div>
+          </form>
         </Card>
-      ) : (
-        <>
-          {/* ── TABLE VIEW ── */}
-          {viewMode === 'table' && (
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-gray-50 border-b border-gray-200">
-                      {['Employee', 'Role', 'Department', 'Allocation', 'Capacity', 'Status', 'Actions'].map(h => (
-                        <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {filteredTeam.length === 0 ? (
-                      <tr><td colSpan={7} className="text-center py-8 text-gray-400 text-sm">No members match your search</td></tr>
-                    ) : filteredTeam.map((member: any, idx: number) => (
-                      <tr key={member.id} className="hover:bg-gray-50 transition-colors">
-                        {editingId === member.id ? (
-                          <td colSpan={7} className="px-4 py-3">
-                            <form onSubmit={handleEditSave} className="flex flex-wrap items-end gap-3">
-                              <div>
-                                <label className="block text-xs text-gray-500 mb-0.5">Name</label>
-                                <input type="text" required value={editData.name}
-                                  onChange={e => setEditData({ ...editData, name: e.target.value })}
-                                  className="px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 w-36" />
-                              </div>
-                              <div>
-                                <label className="block text-xs text-gray-500 mb-0.5">Email</label>
-                                <input type="email" required value={editData.email}
-                                  onChange={e => setEditData({ ...editData, email: e.target.value })}
-                                  className="px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 w-44" />
-                              </div>
-                              <div>
-                                <label className="block text-xs text-gray-500 mb-0.5">Role</label>
-                                <select value={editData.role} onChange={e => setEditData({ ...editData, role: e.target.value })}
-                                  className="px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500">
-                                  {Object.entries(roleLabels).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                                </select>
-                              </div>
-                              <div>
-                                <label className="block text-xs text-gray-500 mb-0.5">Department</label>
-                                <input type="text" value={editData.department}
-                                  onChange={e => setEditData({ ...editData, department: e.target.value })}
-                                  className="px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 w-28" />
-                              </div>
-                              <div>
-                                <label className="block text-xs text-gray-500 mb-0.5">Allocation %</label>
-                                <input type="number" min="0" max="100" value={editData.allocation}
-                                  onChange={e => setEditData({ ...editData, allocation: parseInt(e.target.value) || 0 })}
-                                  className="px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 w-20" />
-                              </div>
-                              <div>
-                                <label className="block text-xs text-gray-500 mb-0.5">Shift</label>
-                                <select value={editData.shift} onChange={e => {
-                                  const s = SHIFTS.find(sh => sh.name === e.target.value);
-                                  setEditData({ ...editData, shift: e.target.value, shiftTimezone: s?.tz || '' });
-                                }} className="px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500">
-                                  <option value="">— None —</option>
-                                  {SHIFTS.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
-                                </select>
-                              </div>
-                              <div>
-                                <label className="block text-xs text-gray-500 mb-0.5">Working Pattern</label>
-                                <select value={editData.workingPattern} onChange={e => setEditData({ ...editData, workingPattern: e.target.value })}
-                                  className="px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500">
-                                  {WORK_PATTERNS.map(p => <option key={p} value={p}>{p}</option>)}
-                                </select>
-                              </div>
-                              <div>
-                                <label className="block text-xs text-gray-500 mb-0.5">Capacity %</label>
-                                <input type="number" min="0" max="100" value={editData.capacity}
-                                  onChange={e => setEditData({ ...editData, capacity: parseInt(e.target.value) || 0 })}
-                                  className="px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 w-20" />
-                              </div>
-                              <div>
-                                <label className="block text-xs text-gray-500 mb-0.5">Mig. Types</label>
-                                <input type="text" placeholder="C,M,E" value={editData.migrationTypes}
-                                  onChange={e => setEditData({ ...editData, migrationTypes: e.target.value })}
-                                  className="px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 w-20" />
-                              </div>
-                              <div>
-                                <label className="block text-xs text-gray-500 mb-0.5">Reporting To</label>
-                                <input type="text" value={editData.reportingTo}
-                                  onChange={e => setEditData({ ...editData, reportingTo: e.target.value })}
-                                  className="px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 w-28" />
-                              </div>
-                              <div className="flex gap-2">
-                                <button type="submit" disabled={editSaving}
-                                  className="px-3 py-1.5 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-60 font-medium flex items-center gap-1">
-                                  <Check size={13} />{editSaving ? 'Saving…' : 'Save'}
-                                </button>
-                                <button type="button" onClick={() => setEditingId(null)}
-                                  className="px-3 py-1.5 text-sm border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 flex items-center gap-1">
-                                  <X size={13} />Cancel
-                                </button>
-                              </div>
-                            </form>
-                          </td>
-                        ) : (
-                          <>
-                            {/* Employee */}
-                            <td className="px-4 py-3">
-                              <div className="flex items-center gap-3">
-                                <div className={`w-8 h-8 rounded-full ${getAvatarColor(member.name || '')} text-white text-xs font-bold flex items-center justify-center shrink-0`}>
-                                  {(member.name || '?').charAt(0).toUpperCase()}
-                                </div>
-                                <div>
-                                  <div className="font-medium text-gray-900 text-sm">{member.name}</div>
-                                  <div className="text-xs text-gray-400">{member.email}</div>
-                                </div>
-                              </div>
-                            </td>
-                            {/* Role */}
-                            <td className="px-4 py-3">
-                              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${roleColors[member.role] || 'bg-gray-100 text-gray-700'}`}>
-                                {roleLabels[member.role] || member.role}
-                              </span>
-                            </td>
-                            {/* Department */}
-                            <td className="px-4 py-3 text-sm text-gray-600">{member.department || <span className="text-gray-300">—</span>}</td>
-                            {/* Allocation */}
-                            <td className="px-4 py-3">
-                              <div className="flex items-center gap-2">
-                                <div className="w-16 bg-gray-100 rounded-full h-1.5">
-                                  <div className="h-1.5 rounded-full" style={{ width: `${member.allocation ?? 100}%`, backgroundColor: (member.allocation ?? 100) >= 90 ? '#22c55e' : (member.allocation ?? 100) >= 60 ? '#f59e0b' : '#ef4444' }} />
-                                </div>
-                                <span className="text-xs font-semibold text-gray-700">{member.allocation ?? 100}%</span>
-                              </div>
-                            </td>
-                            {/* Capacity */}
-                            <td className="px-4 py-3">
-                              <div className="flex items-center gap-2">
-                                <div className="w-16 bg-gray-100 rounded-full h-1.5">
-                                  <div className="h-1.5 rounded-full bg-blue-500" style={{ width: `${member.allocation ?? 100}%` }} />
-                                </div>
-                                <span className="text-xs text-gray-600">{member.allocation ?? 100}%</span>
-                              </div>
-                            </td>
-                            {/* Status */}
-                            <td className="px-4 py-3">
-                              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${(member.allocation ?? 100) > 0 ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                                {(member.allocation ?? 100) > 0 ? 'Active' : 'Inactive'}
-                              </span>
-                            </td>
-                            {/* Actions */}
-                            <td className="px-4 py-3">
-                              {!isViewer && (
-                                <div className="flex items-center gap-1">
-                                  <button onClick={() => startEdit(member)} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Edit">
-                                    <Pencil size={14} />
-                                  </button>
-                                  <button onClick={() => onDelete(member.id)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Remove">
-                                    <Trash2 size={14} />
-                                  </button>
-                                </div>
-                              )}
-                            </td>
-                          </>
-                        )}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <div className="px-4 py-2 border-t border-gray-100 text-xs text-gray-400 bg-gray-50">
-                {filteredTeam.length} of {totalMembers} member{totalMembers !== 1 ? 's' : ''}
-              </div>
-            </div>
-          )}
-
-          {/* ── TREE VIEW ── */}
-          {viewMode === 'tree' && (
-            <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
-              {/* Tree panel */}
-              <div className="lg:col-span-2 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
-                  <span className="text-sm font-semibold text-gray-700">Team Structure</span>
-                  <span className="text-xs text-gray-400">{totalMembers} members</span>
-                </div>
-                <div className="p-3 space-y-1 overflow-y-auto max-h-[520px]">
-                  {sortedGroups.map(([role, members]) => (
-                    <div key={role} className="rounded-lg overflow-hidden">
-                      {/* Role group header */}
-                      <div className={`flex items-center gap-2 px-3 py-2 rounded-lg mb-1 ${roleColors[role] || 'bg-gray-100 text-gray-700'}`}>
-                        <Users size={13} />
-                        <span className="text-xs font-semibold">{roleLabels[role] || role}</span>
-                        <span className="ml-auto text-xs font-bold">{members.length}</span>
-                      </div>
-                      {/* Members under this role */}
-                      <div className="ml-4 border-l-2 border-gray-100 pl-3 space-y-1 mb-2">
-                        {members.map((member: any) => (
-                          <div key={member.id} className="flex items-center gap-2 py-1.5 px-2 rounded-lg hover:bg-gray-50 group">
-                            <div className={`w-6 h-6 rounded-full ${getAvatarColor(member.name || '')} text-white text-xs font-bold flex items-center justify-center shrink-0`}>
-                              {(member.name || '?').charAt(0).toUpperCase()}
-                            </div>
-                            <span className="text-xs text-gray-800 flex-1 truncate">{member.name}</span>
-                            <span className={`text-xs font-semibold ${(member.allocation ?? 100) >= 90 ? 'text-green-600' : 'text-amber-600'}`}>
-                              {member.allocation ?? 100}%
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Right panel: member details table */}
-              <div className="lg:col-span-3 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
-                  <span className="text-sm font-semibold text-gray-700">Team Members</span>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-gray-100">
-                        {['Employee', 'Role', 'Department', 'Allocation', 'Status', 'Actions'].map(h => (
-                          <th key={h} className="px-3 py-2.5 text-left text-xs font-medium text-gray-500 whitespace-nowrap">{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-50">
-                      {filteredTeam.map((member: any) => (
-                        <tr key={member.id} className="hover:bg-gray-50">
-                          <td className="px-3 py-2.5">
-                            <div className="flex items-center gap-2">
-                              <div className={`w-7 h-7 rounded-full ${getAvatarColor(member.name || '')} text-white text-xs font-bold flex items-center justify-center shrink-0`}>
-                                {(member.name || '?').charAt(0).toUpperCase()}
-                              </div>
-                              <div>
-                                <div className="text-xs font-medium text-gray-900">{member.name}</div>
-                                <div className="text-xs text-gray-400 truncate max-w-[120px]">{member.email}</div>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-3 py-2.5">
-                            <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${roleColors[member.role] || 'bg-gray-100 text-gray-700'}`}>
-                              {roleLabels[member.role] || member.role}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2.5 text-xs text-gray-500">{member.department || '—'}</td>
-                          <td className="px-3 py-2.5">
-                            <div className="flex items-center gap-1.5">
-                              <div className="w-12 bg-gray-100 rounded-full h-1.5">
-                                <div className="h-1.5 rounded-full bg-blue-500" style={{ width: `${member.allocation ?? 100}%` }} />
-                              </div>
-                              <span className="text-xs font-medium text-gray-700">{member.allocation ?? 100}%</span>
-                            </div>
-                          </td>
-                          <td className="px-3 py-2.5">
-                            <span className="text-xs px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">Active</span>
-                          </td>
-                          <td className="px-3 py-2.5">
-                            {!isViewer && (
-                              <div className="flex gap-1">
-                                <button onClick={() => startEdit(member)} className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"><Pencil size={12} /></button>
-                                <button onClick={() => onDelete(member.id)} className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"><Trash2 size={12} /></button>
-                              </div>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ── Role Distribution Summary ── */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* Role breakdown */}
-            <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
-              <h4 className="text-sm font-semibold text-gray-700 mb-4">Role Distribution</h4>
-              <div className="space-y-3">
-                {roleDist.map(({ role, label, count }) => (
-                  <div key={role} className="flex items-center gap-3">
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium w-36 text-center ${roleColors[role] || 'bg-gray-100 text-gray-700'}`}>{label}</span>
-                    <div className="flex-1 bg-gray-100 rounded-full h-2">
-                      <div className="h-2 rounded-full bg-primary-500" style={{ width: `${Math.round((count / totalMembers) * 100)}%` }} />
-                    </div>
-                    <span className="text-xs font-semibold text-gray-700 w-6 text-right">{count}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Allocation summary */}
-            <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
-              <h4 className="text-sm font-semibold text-gray-700 mb-4">Allocation Summary</h4>
-              <div className="space-y-3">
-                {[
-                  { label: 'Full (90–100%)', members: team.filter((m: any) => (m.allocation ?? 100) >= 90), color: 'bg-green-500' },
-                  { label: 'Partial (50–89%)', members: team.filter((m: any) => (m.allocation ?? 100) >= 50 && (m.allocation ?? 100) < 90), color: 'bg-amber-400' },
-                  { label: 'Low (< 50%)', members: team.filter((m: any) => (m.allocation ?? 100) < 50), color: 'bg-red-400' },
-                ].map(({ label, members, color }) => (
-                  <div key={label} className="flex items-center gap-3">
-                    <span className="text-xs text-gray-500 w-36 shrink-0">{label}</span>
-                    <div className="flex-1 bg-gray-100 rounded-full h-2">
-                      <div className={`h-2 rounded-full ${color}`} style={{ width: totalMembers ? `${Math.round((members.length / totalMembers) * 100)}%` : '0%' }} />
-                    </div>
-                    <span className="text-xs font-semibold text-gray-700 w-6 text-right">{members.length}</span>
-                  </div>
-                ))}
-                <div className="pt-2 border-t border-gray-100 flex justify-between text-sm">
-                  <span className="text-gray-500">Average Allocation</span>
-                  <span className="font-bold text-primary-600">{avgAllocation}%</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </>
       )}
 
-      </> /* end Option A */}
+      <OptionBPreview
+        team={team}
+        isViewer={isViewer}
+        onEdit={startEdit}
+        onDelete={onDelete}
+        onAddClick={() => setShowForm(true)}
+      />
+
     </div>
   );
 }
@@ -1780,22 +1567,18 @@ function ReportsTab({ reports, onGenerate, onDelete, isViewer }: any) {
 
               {/* RAG Status */}
               <div className="grid grid-cols-4 gap-4 mb-4">
-                <div className="text-center">
-                  <div className={`w-8 h-8 rounded-full mx-auto mb-1 ${getStatusColor(report.overallStatus)}`} />
-                  <p className="text-xs text-gray-500">Overall</p>
-                </div>
-                <div className="text-center">
-                  <div className={`w-8 h-8 rounded-full mx-auto mb-1 ${getStatusColor(report.scheduleStatus)}`} />
-                  <p className="text-xs text-gray-500">Schedule</p>
-                </div>
-                <div className="text-center">
-                  <div className={`w-8 h-8 rounded-full mx-auto mb-1 ${getStatusColor(report.budgetStatus)}`} />
-                  <p className="text-xs text-gray-500">Budget</p>
-                </div>
-                <div className="text-center">
-                  <div className={`w-8 h-8 rounded-full mx-auto mb-1 ${getStatusColor(report.resourceStatus)}`} />
-                  <p className="text-xs text-gray-500">Resources</p>
-                </div>
+                {[
+                  { key: 'overallStatus', label: 'Overall' },
+                  { key: 'scheduleStatus', label: 'Schedule' },
+                  { key: 'budgetStatus', label: 'Budget' },
+                  { key: 'resourceStatus', label: 'Resources' },
+                ].map(({ key, label }) => (
+                  <div key={key} className="text-center">
+                    <div className={`w-8 h-8 rounded-full mx-auto mb-1 ${getStatusColor(report[key])}`} />
+                    <p className="text-xs text-gray-500">{label}</p>
+                    {report[key] === 'GRAY' && <p className="text-[10px] text-gray-400">Unknown</p>}
+                  </div>
+                ))}
               </div>
 
               {/* Report Sections */}
