@@ -2,11 +2,12 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Card } from '@/components/ui/Card';
+import { MultiSelectDropdown } from '@/components/ui/MultiSelectDropdown';
 import { useAuth } from '@/context/AuthContext';
 import { useAccountManagerView, useHubspotSignals } from '@/hooks/useProjects';
 import type { AccountView, HubspotSignalsData, HubspotCustomerDeals, HubspotDealCategory } from '@/types';
 import {
-  Building2, ChevronDown, Loader2, AlertTriangle,
+  Building2, Loader2, AlertTriangle,
   FlaskConical, FolderKanban, RefreshCw, Calendar,
   Search, SlidersHorizontal, X, ChevronsUpDown,
   ArrowUp, ArrowDown, CalendarDays,
@@ -56,30 +57,6 @@ type SortDir = 'asc' | 'desc';
 
 function scrollTo(ref: React.RefObject<HTMLDivElement>) {
   ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
-
-function FilterDropdown({
-  value, onChange, placeholder, options,
-}: { value: string; onChange: (v: string) => void; placeholder: string; options: string[] }) {
-  return (
-    <div className="relative">
-      <select
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        className="appearance-none pl-3 pr-7 py-1.5 border border-gray-200 rounded-lg text-xs bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-      >
-        <option value="">{placeholder}</option>
-        {options.map(o => <option key={o} value={o}>{o.replace(/_/g, ' ')}</option>)}
-      </select>
-      {value ? (
-        <button onClick={() => onChange('')} className="absolute right-1.5 top-1/2 -translate-y-1/2">
-          <X className="w-3 h-3 text-gray-400 hover:text-gray-600" />
-        </button>
-      ) : (
-        <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none" />
-      )}
-    </div>
-  );
 }
 
 function SortTh({
@@ -320,16 +297,25 @@ export default function AccountManagerPage() {
   const allPMs = Array.from(new Set(allRows.map(r => r.projectManager).filter(Boolean))).sort() as string[];
   const allAMs = Array.from(new Set(allRows.map(r => r.accountManager).filter(Boolean))).sort() as string[];
 
-  // Filter
+  // Filter — each *Filter value is a comma-separated list (MultiSelectDropdown's shape); empty means "no filter"
   const filteredRows = allRows.filter(row => {
-    if (attentionFilter === 'attention' && !row.needsAttention) return false;
-    if (attentionFilter === 'ok'        &&  row.needsAttention) return false;
-    if (statusFilter && row.status       !== statusFilter) return false;
-    if (phaseFilter  && row.phase        !== phaseFilter)  return false;
-    if (delayFilter  && row.delayStatus  !== delayFilter)  return false;
-    if (planFilter   && row.planType     !== planFilter)   return false;
-    if (pmFilter     && row.projectManager !== pmFilter)   return false;
-    if (amFilter     && row.accountManager !== amFilter)   return false;
+    const attentionSel = attentionFilter ? attentionFilter.split(',').filter(Boolean) : [];
+    if (attentionSel.length) {
+      const matchesAttention = attentionSel.some(v => (v === 'attention' ? row.needsAttention : !row.needsAttention));
+      if (!matchesAttention) return false;
+    }
+    const statusSel = statusFilter ? statusFilter.split(',').filter(Boolean) : [];
+    if (statusSel.length && !statusSel.includes(row.status)) return false;
+    const phaseSel = phaseFilter ? phaseFilter.split(',').filter(Boolean) : [];
+    if (phaseSel.length && !phaseSel.includes(row.phase)) return false;
+    const delaySel = delayFilter ? delayFilter.split(',').filter(Boolean) : [];
+    if (delaySel.length && !delaySel.includes(row.delayStatus)) return false;
+    const planSel = planFilter ? planFilter.split(',').filter(Boolean) : [];
+    if (planSel.length && !planSel.includes(row.planType)) return false;
+    const pmSel = pmFilter ? pmFilter.split(',').filter(Boolean) : [];
+    if (pmSel.length && !pmSel.includes(row.projectManager)) return false;
+    const amSel = amFilter ? amFilter.split(',').filter(Boolean) : [];
+    if (amSel.length && !amSel.includes(row.accountManager)) return false;
     if (search) {
       const q = search.toLowerCase();
       if (
@@ -480,31 +466,57 @@ export default function AccountManagerPage() {
 
         {showFilters && (
           <div className="flex flex-wrap gap-2 p-3 bg-gray-50 rounded-lg border border-gray-100">
-            <FilterDropdown value={statusFilter}    onChange={setStatusFilter}    placeholder="Status"          options={['ACTIVE','INACTIVE','ON_HOLD','CANCELLED','COMPLETED']} />
-            <FilterDropdown value={phaseFilter}     onChange={setPhaseFilter}     placeholder="Phase"           options={['KICKOFF','CLOUD_ADDING','PILOT_MIGRATION','ONETIME_MIGRATION','DELTA','FINAL_VALIDATION','COMPLETED']} />
-            <FilterDropdown value={delayFilter}     onChange={setDelayFilter}     placeholder="Delay Status"    options={['NOT_DELAYED','AT_RISK','DELAYED']} />
-            <FilterDropdown value={planFilter}      onChange={setPlanFilter}      placeholder="Plan Type"       options={['BRONZE','SILVER','GOLD','PLATINUM']} />
-            <FilterDropdown value={pmFilter}        onChange={setPmFilter}        placeholder="Project Manager" options={allPMs} />
-            <FilterDropdown value={amFilter}        onChange={setAmFilter}        placeholder="Account Manager" options={allAMs} />
-            <FilterDropdown value={attentionFilter} onChange={setAttentionFilter} placeholder="Attention"       options={['attention','ok']} />
+            <div className="w-40">
+              <MultiSelectDropdown label="" value={statusFilter} onChange={setStatusFilter} placeholder="Status"
+                options={['ACTIVE','INACTIVE','ON_HOLD','CANCELLED','COMPLETED'].map(o => ({ value: o, label: o.replace(/_/g, ' ') }))} />
+            </div>
+            <div className="w-44">
+              <MultiSelectDropdown label="" value={phaseFilter} onChange={setPhaseFilter} placeholder="Phase"
+                options={['KICKOFF','CLOUD_ADDING','PILOT_MIGRATION','ONETIME_MIGRATION','DELTA','FINAL_VALIDATION','COMPLETED'].map(o => ({ value: o, label: o.replace(/_/g, ' ') }))} />
+            </div>
+            <div className="w-40">
+              <MultiSelectDropdown label="" value={delayFilter} onChange={setDelayFilter} placeholder="Delay Status"
+                options={['NOT_DELAYED','AT_RISK','DELAYED'].map(o => ({ value: o, label: o.replace(/_/g, ' ') }))} />
+            </div>
+            <div className="w-40">
+              <MultiSelectDropdown label="" value={planFilter} onChange={setPlanFilter} placeholder="Plan Type"
+                options={['BRONZE','SILVER','GOLD','PLATINUM'].map(o => ({ value: o, label: o }))} />
+            </div>
+            <div className="w-44">
+              <MultiSelectDropdown label="" value={pmFilter} onChange={setPmFilter} placeholder="Project Manager"
+                options={allPMs.map(o => ({ value: o, label: o }))} searchable />
+            </div>
+            <div className="w-44">
+              <MultiSelectDropdown label="" value={amFilter} onChange={setAmFilter} placeholder="Account Manager"
+                options={allAMs.map(o => ({ value: o, label: o }))} searchable />
+            </div>
+            <div className="w-36">
+              <MultiSelectDropdown label="" value={attentionFilter} onChange={setAttentionFilter} placeholder="Attention"
+                options={[{ value: 'attention', label: 'Needs Attention' }, { value: 'ok', label: 'OK' }]} />
+            </div>
           </div>
         )}
 
         {activeFilterCount > 0 && (
           <div className="flex flex-wrap gap-1.5">
+            {search && (
+              <span className="flex items-center gap-1 px-2 py-0.5 bg-blue-50 border border-blue-100 text-blue-700 rounded-full text-xs font-medium">
+                Search: {search}
+                <button onClick={() => setSearch('')}><X className="w-3 h-3" /></button>
+              </span>
+            )}
             {[
-              { label: search,          clear: () => setSearch(''),          prefix: 'Search' },
-              { label: statusFilter,    clear: () => setStatusFilter(''),    prefix: 'Status' },
-              { label: phaseFilter,     clear: () => setPhaseFilter(''),     prefix: 'Phase' },
-              { label: delayFilter,     clear: () => setDelayFilter(''),     prefix: 'Delay' },
-              { label: planFilter,      clear: () => setPlanFilter(''),      prefix: 'Plan' },
-              { label: pmFilter,        clear: () => setPmFilter(''),        prefix: 'PM' },
-              { label: amFilter,        clear: () => setAmFilter(''),        prefix: 'AM' },
-              { label: attentionFilter, clear: () => setAttentionFilter(''), prefix: 'Attention' },
-            ].filter(f => f.label).map(f => (
-              <span key={f.prefix} className="flex items-center gap-1 px-2 py-0.5 bg-blue-50 border border-blue-100 text-blue-700 rounded-full text-xs font-medium">
-                {f.prefix}: {f.label.replace(/_/g, ' ')}
-                <button onClick={f.clear}><X className="w-3 h-3" /></button>
+              { values: statusFilter,    set: setStatusFilter,    prefix: 'Status' },
+              { values: phaseFilter,     set: setPhaseFilter,     prefix: 'Phase' },
+              { values: delayFilter,     set: setDelayFilter,     prefix: 'Delay' },
+              { values: planFilter,      set: setPlanFilter,      prefix: 'Plan' },
+              { values: pmFilter,        set: setPmFilter,        prefix: 'PM' },
+              { values: amFilter,        set: setAmFilter,        prefix: 'AM' },
+              { values: attentionFilter, set: setAttentionFilter, prefix: 'Attention' },
+            ].flatMap(f => (f.values ? f.values.split(',').filter(Boolean) : []).map(v => ({ ...f, v }))).map((f, i) => (
+              <span key={`${f.prefix}-${i}`} className="flex items-center gap-1 px-2 py-0.5 bg-blue-50 border border-blue-100 text-blue-700 rounded-full text-xs font-medium">
+                {f.prefix}: {f.v.replace(/_/g, ' ')}
+                <button onClick={() => f.set(f.values.split(',').filter(x => x !== f.v).join(','))}><X className="w-3 h-3" /></button>
               </span>
             ))}
           </div>

@@ -3,7 +3,7 @@ import { logger } from '../utils/logger';
 import { v4 as uuidv4 } from 'uuid';
 
 type ReportType = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'MILESTONE' | 'ADHOC';
-type HealthStatus = 'GREEN' | 'YELLOW' | 'RED';
+type HealthStatus = 'GREEN' | 'YELLOW' | 'RED' | 'GRAY';
 
 interface CreateReportInput {
   projectId: string;
@@ -198,15 +198,17 @@ class StatusReportService {
 
     const project = projectResult.rows[0];
 
-    const [tasksResult, risksResult, phasesResult] = await Promise.all([
+    const [tasksResult, risksResult, phasesResult, teamResult] = await Promise.all([
       query(`SELECT * FROM project_tasks WHERE project_id = $1`, [projectId]),
       query(`SELECT * FROM project_risks WHERE project_id = $1 AND status IN ('OPEN', 'MITIGATING')`, [projectId]),
       query(`SELECT * FROM project_phases WHERE project_id = $1 ORDER BY order_index ASC`, [projectId]),
+      query(`SELECT * FROM project_team_members WHERE project_id = $1 AND is_active = true`, [projectId]),
     ]);
 
     const tasks = tasksResult.rows;
     const risks = risksResult.rows;
     const phases = phasesResult.rows;
+    const team = teamResult.rows;
 
     const tasksCompleted = tasks.filter((t) => t.status === 'DONE').length;
     const tasksTotal = tasks.length;
@@ -216,16 +218,32 @@ class StatusReportService {
     if (project.delay_status === 'DELAYED') scheduleStatus = 'RED';
     else if (project.delay_status === 'AT_RISK') scheduleStatus = 'YELLOW';
 
-    const budgetStatus: HealthStatus =
-      project.actual_cost && project.estimated_cost &&
-      Number(project.actual_cost) > Number(project.estimated_cost) * 1.1 ? 'RED' :
-      project.actual_cost && project.estimated_cost &&
-      Number(project.actual_cost) > Number(project.estimated_cost) * 0.9 ? 'YELLOW' : 'GREEN';
+    // GRAY (not GREEN) when nothing has actually been spent/recorded yet — an
+    // untracked budget isn't the same as a healthy one, and defaulting to
+    // GREEN here was misleadingly reassuring on projects with no cost data.
+    const hasBudgetData = project.estimated_cost != null && project.actual_cost != null;
+    let budgetStatus: HealthStatus = 'GRAY';
+    if (hasBudgetData) {
+      const ratio = Number(project.actual_cost) / Number(project.estimated_cost);
+      budgetStatus = ratio > 1.1 ? 'RED' : ratio > 0.9 ? 'YELLOW' : 'GREEN';
+    }
+
+    // Resources is now actually computed from the Team tab's allocation data
+    // instead of being hardcoded to GREEN on every report.
+    const avgAllocation = team.length > 0
+      ? team.reduce((sum: number, m: any) => sum + (m.allocation ?? 100), 0) / team.length
+      : null;
+    let resourceStatus: HealthStatus = 'GRAY';
+    if (avgAllocation !== null) {
+      resourceStatus = avgAllocation > 110 ? 'RED' : avgAllocation < 50 ? 'YELLOW' : 'GREEN';
+    }
 
     const highRisks = risks.filter((r) => r.impact === 'HIGH' || r.impact === 'CRITICAL');
+    const unknownCount = [budgetStatus, resourceStatus].filter((s) => s === 'GRAY').length;
     const overallStatus: HealthStatus =
-      scheduleStatus === 'RED' || budgetStatus === 'RED' || highRisks.length > 2 ? 'RED' :
-      scheduleStatus === 'YELLOW' || budgetStatus === 'YELLOW' || highRisks.length > 0 ? 'YELLOW' : 'GREEN';
+      scheduleStatus === 'RED' || budgetStatus === 'RED' || resourceStatus === 'RED' || highRisks.length > 2 ? 'RED' :
+      scheduleStatus === 'YELLOW' || budgetStatus === 'YELLOW' || resourceStatus === 'YELLOW' || highRisks.length > 0 || unknownCount > 0 ? 'YELLOW' :
+      'GREEN';
 
     const oneWeekAgo = new Date();
     oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
@@ -233,10 +251,17 @@ class StatusReportService {
     const recentlyCompleted = tasks.filter(
       (t) => t.status === 'DONE' && t.actual_end && new Date(t.actual_end) >= oneWeekAgo
     );
+    const recentlyCompletedPhases = phases.filter(
+      (p) => p.status === 'COMPLETED' && p.actual_end && new Date(p.actual_end) >= oneWeekAgo
+    );
 
-    const accomplishments = recentlyCompleted.length > 0
-      ? recentlyCompleted.map((t) => `• ${t.name}`).join('\n')
-      : '• No tasks completed this week';
+    const accomplishmentLines = [
+      ...recentlyCompleted.map((t) => `• ${t.name}`),
+      ...recentlyCompletedPhases.map((p) => `• Phase completed: ${p.phase_name}`),
+    ];
+    const accomplishments = accomplishmentLines.length > 0
+      ? accomplishmentLines.join('\n')
+      : (tasksTotal === 0 ? '• No tasks logged for this project yet' : '• No tasks completed this week');
 
     const upcomingTasks = tasks.filter(
       (t) => t.status === 'TODO' || t.status === 'IN_PROGRESS'
@@ -244,16 +269,25 @@ class StatusReportService {
 
     const plannedActivities = upcomingTasks.length > 0
       ? upcomingTasks.map((t) => `• ${t.name} (${t.status})`).join('\n')
-      : '• No upcoming tasks';
+      : (tasksTotal === 0 ? '• No tasks logged for this project yet' : '• No upcoming tasks');
 
     const risksSummary = risks.length > 0
       ? risks.map((r) => `• ${r.title} - ${r.impact} impact, ${r.probability} probability`).join('\n')
       : '• No open risks';
 
     const currentPhase = phases.find((p) => p.status === 'IN_PROGRESS');
-    const issues = currentPhase
-      ? `Current Phase: ${currentPhase.phase_name}\nProgress: ${currentPhase.progress}%`
-      : 'No active phase';
+    const nextPhase = !currentPhase ? phases.find((p) => p.status === 'PENDING') : null;
+    const issueLines: string[] = [];
+    if (currentPhase) {
+      issueLines.push(`Current Phase: ${currentPhase.phase_name}\nProgress: ${currentPhase.progress}%`);
+    } else if (nextPhase) {
+      issueLines.push(`No phase currently in progress — next up: ${nextPhase.phase_name} (Pending)`);
+    } else {
+      issueLines.push('No active or pending phase found');
+    }
+    if (!hasBudgetData) issueLines.push('Budget: no estimated/actual cost recorded yet — status cannot be verified');
+    if (team.length === 0) issueLines.push('Resources: no active team members assigned to this project');
+    const issues = issueLines.join('\n');
 
     return this.create({
       projectId,
@@ -261,7 +295,7 @@ class StatusReportService {
       overallStatus,
       scheduleStatus,
       budgetStatus,
-      resourceStatus: 'GREEN',
+      resourceStatus,
       accomplishments,
       plannedActivities,
       issues,
