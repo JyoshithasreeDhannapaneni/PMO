@@ -55,6 +55,7 @@ import clientReviewRoutes from './routes/clientReviewRoutes';
 import platformReviewRoutes from './routes/platformReviewRoutes';
 import overageRoutes from './routes/overageRoutes';
 import dealDeskRoutes from './routes/dealDeskRoutes';
+import docsRoutes from './routes/docsRoutes';
 import ticketingRoutes from './routes/ticketingRoutes';
 import emailHygieneRoutes from './routes/emailHygieneRoutes';
 import { ntaSyncService, isNtaConfigured } from './services/ntaSyncService';
@@ -133,6 +134,7 @@ app.use('/api/hubspot', hubspotRoutes);
 app.use('/api/ps-engagements', psEngagementsRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/deal-desk', dealDeskRoutes);
+app.use('/api/docs', docsRoutes);
 app.use('/api/ticketing', ticketingRoutes);
 app.use('/api/email-hygiene', emailHygieneRoutes);
 
