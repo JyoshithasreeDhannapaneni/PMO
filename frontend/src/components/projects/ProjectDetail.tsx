@@ -1247,8 +1247,7 @@ export function ProjectDetail({ project }: ProjectDetailProps) {
   const canEdit = user?.role === 'ADMIN' || user?.role === 'PROJECT_MANAGER';
 
   const updateProject = useUpdateProject();
-  const [closeConfirm, setCloseConfirm] = useState(false);
-  const [pendingPhase, setPendingPhase] = useState<string>(project.phase);
+  const [pendingPhase, setPendingPhase] = useState<string>(project.status === 'COMPLETED' ? 'COMPLETED' : project.phase);
   const [pendingPct, setPendingPct] = useState<number>(project.onetimeProgress ?? 0);
   const [savingPhase, setSavingPhase] = useState(false);
 
@@ -1258,34 +1257,32 @@ export function ProjectDetail({ project }: ProjectDetailProps) {
     .map(p => ({ value: p.code || p.name.toUpperCase().replace(/\s+/g, '_'), label: p.name }));
 
   const phaseLabel = (phase: string) => {
+    if (phase === 'COMPLETED') return 'Completed';
     const opt = phaseOptions.find(p => p.value === phase || p.value === phase.toUpperCase());
     return opt?.label ?? phase;
   };
 
   const savePhaseUpdate = async () => {
-    const phaseSame = pendingPhase === project.phase;
+    const currentPhaseKey = project.status === 'COMPLETED' ? 'COMPLETED' : project.phase;
+    const phaseSame = pendingPhase === currentPhaseKey;
     const pctSame = pendingPct === (project.onetimeProgress ?? 0);
     if (phaseSame && pctSame) return;
     setSavingPhase(true);
     try {
-      const payload: Record<string, unknown> = { phase: pendingPhase };
-      if (pendingPhase === 'ONETIME_MIGRATION') payload.onetimeProgress = pendingPct;
+      const payload: Record<string, unknown> = {};
+      if (pendingPhase === 'COMPLETED') {
+        payload.status = 'COMPLETED';
+        payload.actualEnd = new Date().toISOString();
+      } else {
+        payload.phase = pendingPhase;
+        if (pendingPhase === 'ONETIME_MIGRATION') payload.onetimeProgress = pendingPct;
+      }
       await updateProject.mutateAsync({ id: project.id, data: payload });
-      showToast('success', 'Phase updated');
+      showToast('success', pendingPhase === 'COMPLETED' ? 'Project marked as completed' : 'Phase updated');
     } catch {
       showToast('error', 'Failed to update phase');
     } finally {
       setSavingPhase(false);
-    }
-  };
-
-  const handleCloseProject = async () => {
-    try {
-      await updateProject.mutateAsync({ id: project.id, data: { status: 'COMPLETED', actualEnd: new Date().toISOString() } });
-      showToast('success', 'Project closed successfully');
-      setCloseConfirm(false);
-    } catch {
-      showToast('error', 'Failed to close project');
     }
   };
 
@@ -1356,15 +1353,6 @@ export function ProjectDetail({ project }: ProjectDetailProps) {
                 <Settings size={14} /> Manage
               </Button>
             </Link>
-            {canEdit && project.status !== 'COMPLETED' && (
-              <Button
-                variant="outline"
-                className="text-sm flex items-center gap-1.5 text-red-600 border-red-200 hover:bg-red-50"
-                onClick={() => setCloseConfirm(true)}
-              >
-                <X size={14} /> Close Project
-              </Button>
-            )}
             {canEdit && (
               <Link href={`/projects/${project.id}/edit`}>
                 <Button variant="primary" className="text-sm flex items-center gap-1.5">
@@ -1415,7 +1403,9 @@ export function ProjectDetail({ project }: ProjectDetailProps) {
               Save Phase
             </button>
             <div className="text-xs text-blue-500 ml-auto self-center">
-              Current: <span className="font-semibold text-blue-700">{phaseLabel(project.phase)}</span>
+              Current: <span className="font-semibold text-blue-700">
+                {project.status === 'COMPLETED' ? 'Completed' : phaseLabel(project.phase)}
+              </span>
               {project.onetimeProgress != null && project.phase === 'ONETIME_MIGRATION' && (
                 <span className="ml-1">({project.onetimeProgress}%)</span>
               )}
@@ -1454,38 +1444,6 @@ export function ProjectDetail({ project }: ProjectDetailProps) {
         {activeTab === 'audit' && <AuditHistoryTab project={project} />}
       </div>
 
-      {/* ── Close Project Confirmation Modal ── */}
-      {closeConfirm && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0">
-                <X size={20} className="text-red-600" />
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900">Close Project</h3>
-            </div>
-            <p className="text-sm text-gray-600 mb-6">
-              Are you sure you want to close <strong>{project.name}</strong>? This will mark it as <strong>Completed</strong> and set the actual end date to today.
-            </p>
-            <div className="flex gap-3 justify-end">
-              <button
-                onClick={() => setCloseConfirm(false)}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleCloseProject}
-                disabled={updateProject.isPending}
-                className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50 flex items-center gap-1.5"
-              >
-                {updateProject.isPending ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
-                Close Project
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
