@@ -776,4 +776,77 @@ export const auditApi = {
   },
 };
 
+// Escalation Mails API
+export const escalationMailsApi = {
+  getAll: async (params?: { owner?: string; issueType?: string; status?: string }) => {
+    const { data } = await api.get('/escalation-mails', { params });
+    return data;
+  },
+  getStats: async () => {
+    const { data } = await api.get('/escalation-mails/stats');
+    return data;
+  },
+  getConfig: async () => {
+    const { data } = await api.get('/escalation-mails/config');
+    return data;
+  },
+  // Parse an uploaded .eml/.msg file OR pasted raw text into a draft (no save).
+  parseFile: async (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const { data } = await api.post('/escalation-mails/parse', formData, {
+      headers: { 'Content-Type': undefined },
+    });
+    return data;
+  },
+  parseText: async (rawMail: string) => {
+    const { data } = await api.post('/escalation-mails/parse', { rawMail });
+    return data;
+  },
+  create: async (payload: Record<string, unknown>) => {
+    const { data } = await api.post('/escalation-mails', payload);
+    return data;
+  },
+  updateStatus: async (id: string, status: string) => {
+    const { data } = await api.patch(`/escalation-mails/${id}/status`, { status });
+    return data;
+  },
+  updateOwner: async (id: string, escalationOwner: string) => {
+    const { data } = await api.patch(`/escalation-mails/${id}/owner`, { escalationOwner });
+    return data;
+  },
+  updateReceivedAt: async (id: string, receivedAt: string) => {
+    const { data } = await api.patch(`/escalation-mails/${id}/received-at`, { receivedAt });
+    return data;
+  },
+  resolve: async (id: string, payload: { resolvedAt: string; rca: string; rcaDocs?: { url: string; name: string }[] }) => {
+    const { data } = await api.patch(`/escalation-mails/${id}/resolve`, payload);
+    return data;
+  },
+  updateResolution: async (id: string, payload: { resolvedAt?: string; rca?: string; rcaDocs?: { url: string; name: string }[] }) => {
+    const { data } = await api.patch(`/escalation-mails/${id}/resolution`, payload);
+    return data;
+  },
+  uploadRcaDocs: async (files: File[]) => {
+    const formData = new FormData();
+    files.forEach((f) => formData.append('files', f));
+    const { data } = await api.post('/escalation-mails/rca-docs', formData, {
+      headers: { 'Content-Type': undefined },
+    });
+    return data;
+  },
+  uploadMedia: async (files: File[]) => {
+    const formData = new FormData();
+    files.forEach((f) => formData.append('files', f));
+    const { data } = await api.post('/escalation-mails/media', formData, {
+      headers: { 'Content-Type': undefined },
+    });
+    return data;
+  },
+  delete: async (id: string) => {
+    const { data } = await api.delete(`/escalation-mails/${id}`);
+    return data;
+  },
+};
+
 export default api;

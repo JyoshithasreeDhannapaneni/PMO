@@ -2,7 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect } from 'react';
-import { projectsApi, dashboardApi, statusReportsApi, managerGoalsApi, migrationTypeApi, pocProjectsApi, accountManagerApi, customerSuccessApi, hubspotApi, psEngagementsApi, kbArticlesApi, emailHygieneApi } from '@/services/api';
+import { projectsApi, dashboardApi, statusReportsApi, managerGoalsApi, migrationTypeApi, pocProjectsApi, accountManagerApi, customerSuccessApi, hubspotApi, psEngagementsApi, kbArticlesApi, emailHygieneApi, escalationMailsApi } from '@/services/api';
 import type { CreateProjectInput, UpdateProjectInput } from '@/types';
 
 export function useProjects(params?: {
@@ -1044,5 +1044,107 @@ export function useProcessDocsDocument() {
         body: JSON.stringify({ projectManagerName }),
       }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['docs-documents'] }); },
+  });
+}
+
+// ── Escalation Mails ──────────────────────────────────────────────────────────
+export function useEscalationMails(params?: { owner?: string; issueType?: string; status?: string }) {
+  return useQuery({
+    queryKey: ['escalation-mails', params],
+    queryFn: () => escalationMailsApi.getAll(params),
+    staleTime: 30_000,
+  });
+}
+
+export function useEscalationStats() {
+  return useQuery({
+    queryKey: ['escalation-mails', 'stats'],
+    queryFn: () => escalationMailsApi.getStats(),
+    staleTime: 30_000,
+  });
+}
+
+export function useEscalationConfig() {
+  return useQuery({
+    queryKey: ['escalation-mails', 'config'],
+    queryFn: () => escalationMailsApi.getConfig(),
+    staleTime: 60_000,
+  });
+}
+
+export function useParseEscalationMail() {
+  return useMutation({
+    mutationFn: (input: { file?: File; rawMail?: string }) =>
+      input.file ? escalationMailsApi.parseFile(input.file) : escalationMailsApi.parseText(input.rawMail || ''),
+  });
+}
+
+export function useCreateEscalationMail() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: Record<string, unknown>) => escalationMailsApi.create(payload),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['escalation-mails'] }); },
+  });
+}
+
+export function useUpdateEscalationStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, status }: { id: string; status: string }) => escalationMailsApi.updateStatus(id, status),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['escalation-mails'] }); },
+  });
+}
+
+export function useUpdateEscalationReceivedAt() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, receivedAt }: { id: string; receivedAt: string }) => escalationMailsApi.updateReceivedAt(id, receivedAt),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['escalation-mails'] }); },
+  });
+}
+
+type RcaDoc = { url: string; name: string };
+
+export function useResolveEscalation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, resolvedAt, rca, rcaDocs }: { id: string; resolvedAt: string; rca: string; rcaDocs?: RcaDoc[] }) => escalationMailsApi.resolve(id, { resolvedAt, rca, rcaDocs }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['escalation-mails'] }); },
+  });
+}
+
+export function useUpdateEscalationResolution() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, resolvedAt, rca, rcaDocs }: { id: string; resolvedAt?: string; rca?: string; rcaDocs?: RcaDoc[] }) => escalationMailsApi.updateResolution(id, { resolvedAt, rca, rcaDocs }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['escalation-mails'] }); },
+  });
+}
+
+export function useUploadRcaDocs() {
+  return useMutation({
+    mutationFn: (files: File[]) => escalationMailsApi.uploadRcaDocs(files),
+  });
+}
+
+export function useUploadEscalationMedia() {
+  return useMutation({
+    mutationFn: (files: File[]) => escalationMailsApi.uploadMedia(files),
+  });
+}
+
+export function useUpdateEscalationOwner() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, escalationOwner }: { id: string; escalationOwner: string }) => escalationMailsApi.updateOwner(id, escalationOwner),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['escalation-mails'] }); },
+  });
+}
+
+export function useDeleteEscalationMail() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => escalationMailsApi.delete(id),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['escalation-mails'] }); },
   });
 }

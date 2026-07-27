@@ -24,6 +24,7 @@ const allNavigation = [
   { name: 'Migration Validation', href: '/migration-runbooks',     icon: ShieldCheck,     color: '#059669', adminOnly: false },
   { name: 'Overage Projects',     href: '/overage-projects',       icon: Gauge,           color: '#dc2626', adminOnly: false },
   { name: 'Escalated Projects',   href: '/escalation-projects',    icon: Bell,            color: '#ea580c', adminOnly: false },
+  { name: 'Escalation Mails',     href: '/escalation-mails',       icon: Megaphone,       color: '#c2410c', adminOnly: false },
   { name: 'Reviews',              href: '/reviews',                icon: Star,            color: '#eab308', adminOnly: false },
   { name: 'Manager Dashboard',    href: '/manager-dashboard',      icon: Users,           color: '#0891b2', adminOnly: true },
   { name: 'Pre-sales',            href: '/poc-projects',           icon: Target,          color: '#db2777', adminOnly: false },

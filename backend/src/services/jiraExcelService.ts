@@ -231,7 +231,7 @@ function pmMatches(jiraValue: string, configuredName: string): boolean {
 
 // Strip spaces/underscores/hyphens and lowercase so "PDFSolution", "PDF Solution",
 // "pdf_solution", "PDF-Solution" all collapse to the same key.
-function normalizeCustomer(name: string): string {
+export function normalizeCustomer(name: string): string {
   return name.toLowerCase().replace(/[\s_\-]+/g, "");
 }
 

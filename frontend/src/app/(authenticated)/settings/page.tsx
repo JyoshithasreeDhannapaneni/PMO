@@ -295,7 +295,24 @@ const tabs = [
   { id: 'team', name: 'Team Management', icon: Users },
   { id: 'dashboard', name: 'Dashboard', icon: LayoutDashboard },
   { id: 'integrations', name: 'Integrations', icon: LinkIcon },
+  { id: 'escalation', name: 'Escalation Routing', icon: Shuffle },
 ];
+
+const ESCALATION_ISSUE_TYPES: { id: string; label: string }[] = [
+  { id: 'TECHNICAL', label: 'Technical / migration failure' },
+  { id: 'SLA', label: 'SLA / response breach' },
+  { id: 'COMMUNICATION', label: 'Communication / status' },
+  { id: 'BILLING', label: 'Billing / overage / commercial' },
+];
+
+const ESCALATION_OWNERS = ['Abhishek', 'Ajay', 'Ankit', 'Mayank'];
+
+const DEFAULT_ESCALATION_ROUTING: Record<string, string> = {
+  TECHNICAL: 'Ankit',
+  SLA: 'Ajay',
+  COMMUNICATION: 'Abhishek',
+  BILLING: 'Mayank',
+};
 
 export default function SettingsPage() {
   const { settings: ctxSettings, updateSettings } = useSettings();
@@ -420,6 +437,7 @@ export default function SettingsPage() {
     { value: 'monthly', label: 'Monthly (scheduled)' },
   ];
   const [customNotifTypes, setCustomNotifTypes] = useState<CustomNotifType[]>([]);
+  const [escalationRouting, setEscalationRouting] = useState<Record<string, string>>(DEFAULT_ESCALATION_ROUTING);
   const [showAddNotifModal, setShowAddNotifModal] = useState(false);
   const [newNotif, setNewNotif] = useState({ label: '', desc: '', icon: '🔔', trigger: 'project.status.changed' });
 
@@ -447,6 +465,7 @@ export default function SettingsPage() {
         if (parsed.testEmailRecipient) setTestEmailRecipient(parsed.testEmailRecipient);
         if (parsed.notifTypeConfigs) setNotifTypeConfigs((p) => ({ ...p, ...parsed.notifTypeConfigs }));
         if (parsed.customNotifTypes) setCustomNotifTypes(parsed.customNotifTypes);
+        if (parsed.escalationRouting) setEscalationRouting((p) => ({ ...p, ...parsed.escalationRouting }));
       }
     } catch (e) {
       console.error('Failed to load settings');
@@ -495,6 +514,7 @@ export default function SettingsPage() {
         testEmailRecipient,
         notifTypeConfigs,
         customNotifTypes,
+        escalationRouting,
       };
       localStorage.setItem('pmoSettings', JSON.stringify(fullData));
       // Save to API so all users see the changes
@@ -2162,6 +2182,48 @@ export default function SettingsPage() {
   );
   };
 
+  const renderEscalationTab = () => (
+    <div className="space-y-8">
+      <div>
+        <div className="flex items-center gap-2 mb-1">
+          <Shuffle size={18} className="text-primary-600" />
+          <h3 className="text-lg font-semibold text-gray-800">Escalation Routing</h3>
+        </div>
+        <p className="text-sm text-gray-500 max-w-2xl">
+          Escalation mails are auto-routed by the <span className="font-medium">type of issue</span> raised.
+          Choose who owns each issue type. This drives automatic assignment on the Escalation Mails page —
+          no manual selection needed.
+        </p>
+      </div>
+
+      <div className="space-y-3">
+        {ESCALATION_ISSUE_TYPES.map((t) => (
+          <div key={t.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 rounded-xl border border-gray-200 bg-white">
+            <div>
+              <div className="font-medium text-gray-800">{t.label}</div>
+              <div className="text-xs text-gray-400 font-mono mt-0.5">{t.id}</div>
+            </div>
+            <select
+              value={escalationRouting[t.id] || DEFAULT_ESCALATION_ROUTING[t.id]}
+              disabled={isViewer}
+              onChange={(e) => setEscalationRouting((prev) => ({ ...prev, [t.id]: e.target.value }))}
+              className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400 disabled:opacity-60 sm:w-56"
+            >
+              {ESCALATION_OWNERS.map((o) => (
+                <option key={o} value={o}>{o}</option>
+              ))}
+            </select>
+          </div>
+        ))}
+      </div>
+
+      <p className="text-xs text-gray-400">
+        Changes take effect after you click <span className="font-medium">Save</span>. Existing escalation records keep
+        their original owner; only new ones use the updated mapping.
+      </p>
+    </div>
+  );
+
   const renderTabContent = () => {
     try {
       switch (activeTab) {
@@ -2171,6 +2233,7 @@ export default function SettingsPage() {
         case 'team': return renderTeamTab();
         case 'dashboard': return renderDashboardTab();
         case 'integrations': return renderIntegrationsTab();
+        case 'escalation': return renderEscalationTab();
         default: return null;
       }
     } catch (err) {
