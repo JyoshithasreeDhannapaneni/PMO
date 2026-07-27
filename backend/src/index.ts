@@ -58,6 +58,7 @@ import dealDeskRoutes from './routes/dealDeskRoutes';
 import docsRoutes from './routes/docsRoutes';
 import ticketingRoutes from './routes/ticketingRoutes';
 import emailHygieneRoutes from './routes/emailHygieneRoutes';
+import escalationMailsRoutes from './routes/escalationMailsRoutes';
 import { ntaSyncService, isNtaConfigured } from './services/ntaSyncService';
 import { logger } from './utils/logger';
 import { authService } from './services/authService';
@@ -137,6 +138,7 @@ app.use('/api/deal-desk', dealDeskRoutes);
 app.use('/api/docs', docsRoutes);
 app.use('/api/ticketing', ticketingRoutes);
 app.use('/api/email-hygiene', emailHygieneRoutes);
+app.use('/api/escalation-mails', escalationMailsRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

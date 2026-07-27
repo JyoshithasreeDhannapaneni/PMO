@@ -162,7 +162,7 @@ class AuthService {
       await query(
         `INSERT INTO users (name, email, username, password, role) 
          VALUES ($1, $2, $3, $4, $5)`,
-        ['Administrator', 'admin@company.com', 'admin', this.hashPassword('admin2026'), 'ADMIN']
+        ['ADMIN', 'admin@company.com', 'admin', this.hashPassword('admin2026'), 'ADMIN']
       );
       logger.info('Default admin user created (admin / admin2026)');
     } else {
