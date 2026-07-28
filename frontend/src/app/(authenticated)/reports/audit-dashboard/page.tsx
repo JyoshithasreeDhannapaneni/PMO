@@ -1249,7 +1249,7 @@ export default function AuditDashboardPage() {
             <div className="text-center py-10 text-gray-400 text-sm">No project data available</div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm" style={{ minWidth: '1400px' }}>
+              <table className="w-full text-sm" style={{ minWidth: '1700px' }}>
                 <thead>
                   {/* Column-group labels */}
                   <tr className="border-b border-gray-100">
@@ -1257,7 +1257,9 @@ export default function AuditDashboardPage() {
                     <th colSpan={5} className="text-center text-xs font-semibold text-blue-600 py-1.5 bg-blue-50">Activity (last 30 days)</th>
                     <th colSpan={7} className="text-center text-xs font-semibold text-purple-600 py-1.5 bg-purple-50">Data Quality (active projects)</th>
                     <th colSpan={3} className="text-center text-xs font-semibold text-teal-600 py-1.5 bg-teal-50">Case Studies</th>
-                    <th colSpan={4} className="text-center text-xs font-medium text-gray-400 py-1.5" />
+                    <th colSpan={2} className="text-center text-xs font-semibold text-orange-600 py-1.5 bg-orange-50">Delay Accountability</th>
+                    <th colSpan={1} className="text-center text-xs font-semibold text-rose-600 py-1.5 bg-rose-50">Phase Date Integrity</th>
+                    <th colSpan={6} className="text-center text-xs font-medium text-gray-400 py-1.5" />
                   </tr>
                   <tr className="border-b border-gray-200 bg-gray-50/60">
                     {/* Identity */}
@@ -1282,10 +1284,17 @@ export default function AuditDashboardPage() {
                     <th className="text-center font-semibold text-teal-600 py-2.5 px-2 whitespace-nowrap text-xs bg-teal-50/70">Done</th>
                     <th className="text-center font-semibold text-teal-600 py-2.5 px-2 whitespace-nowrap text-xs bg-teal-50/70">Pending</th>
                     <th className="text-center font-semibold text-teal-600 py-2.5 px-2 whitespace-nowrap text-xs bg-teal-50/70">Missing</th>
+                    {/* Delay accountability */}
+                    <th className="text-center font-semibold text-orange-600 py-2.5 px-2 whitespace-nowrap text-xs bg-orange-50/70">Delayed Projects</th>
+                    <th className="text-center font-semibold text-orange-600 py-2.5 px-2 whitespace-nowrap text-xs bg-orange-50/70">Missing RCA</th>
+                    {/* Phase-date integrity */}
+                    <th className="text-center font-semibold text-rose-600 py-2.5 px-2 whitespace-nowrap text-xs bg-rose-50/70">Same-Day Violations</th>
                     {/* Scores */}
                     <th className="text-center font-semibold text-blue-700 py-2.5 px-2 whitespace-nowrap text-xs">Activity</th>
                     <th className="text-center font-semibold text-purple-700 py-2.5 px-2 whitespace-nowrap text-xs">Quality</th>
                     <th className="text-center font-semibold text-teal-700 py-2.5 px-2 whitespace-nowrap text-xs">CS Score</th>
+                    <th className="text-center font-semibold text-orange-700 py-2.5 px-2 whitespace-nowrap text-xs">Delay</th>
+                    <th className="text-center font-semibold text-rose-700 py-2.5 px-2 whitespace-nowrap text-xs">Date Integrity</th>
                     <th className="text-center font-semibold text-gray-800 py-2.5 px-3 whitespace-nowrap text-xs">Hygiene</th>
                   </tr>
                 </thead>
@@ -1343,6 +1352,11 @@ export default function AuditDashboardPage() {
                           <span className={pm.csPending > 0 ? 'text-yellow-600 font-semibold' : 'text-gray-300'}>{pm.csPending}</span>
                         </td>
                         <td className="py-3 px-2 text-center bg-teal-50/40"><span className={bad(pm.csMissing)}>{pm.csMissing}</span></td>
+                        {/* Delay accountability cols */}
+                        <td className="py-3 px-2 text-center bg-orange-50/40"><span className={bad(pm.delayedProjectsCount)}>{pm.delayedProjectsCount}</span></td>
+                        <td className="py-3 px-2 text-center bg-orange-50/40"><span className={bad(pm.missingRcaCount)}>{pm.missingRcaCount}</span></td>
+                        {/* Phase-date integrity col */}
+                        <td className="py-3 px-2 text-center bg-rose-50/40"><span className={bad(pm.dateViolationsCount)}>{pm.dateViolationsCount}</span></td>
                         {/* Score pills */}
                         <td className="py-3 px-2 text-center">
                           <span className="inline-block text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">{pm.activityScore}</span>
@@ -1352,6 +1366,12 @@ export default function AuditDashboardPage() {
                         </td>
                         <td className="py-3 px-2 text-center">
                           <span className="inline-block text-xs font-semibold px-2 py-0.5 rounded-full bg-teal-100 text-teal-700">{pm.caseStudyScore}</span>
+                        </td>
+                        <td className="py-3 px-2 text-center">
+                          <span className="inline-block text-xs font-semibold px-2 py-0.5 rounded-full bg-orange-100 text-orange-700">{pm.delayScore}</span>
+                        </td>
+                        <td className="py-3 px-2 text-center">
+                          <span className="inline-block text-xs font-semibold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700">{pm.dateIntegrityScore}</span>
                         </td>
                         <td className="py-3 px-3 text-center">
                           <span className={`inline-block text-sm font-bold px-3 py-1 rounded-full ring-1 ${sc.bg} ${sc.text} ${sc.ring}`}>
@@ -1372,7 +1392,7 @@ export default function AuditDashboardPage() {
               <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-green-400 inline-block" /> ≥80 Good</span>
               <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-yellow-400 inline-block" /> 60–79 Fair</span>
               <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-red-400 inline-block" /> &lt;60 Needs Attention</span>
-              <span className="ml-auto text-gray-400">Activity 35% · Data Quality 35% · Case Studies 30%</span>
+              <span className="ml-auto text-gray-400">Activity 25% · Data Quality 25% · Case Studies 15% · Delay Accountability 20% · Date Integrity 15%</span>
             </div>
           )}
         </Card>

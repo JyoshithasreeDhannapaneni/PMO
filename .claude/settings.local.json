@@ -1,5 +1,3 @@
-<<<<<<< HEAD
-=======
 {
   "permissions": {
     "allow": [
@@ -128,7 +126,9 @@
       "Bash(taskkill //F //PID 19292)",
       "Bash(findstr \":3001 \")",
       "Bash(taskkill //F //PID 47972)",
-      "Bash(grep -v \"//\\\\|logger\\\\|console\")"
+      "Bash(grep -v \"//\\\\|logger\\\\|console\")",
+      "Bash(node -e \"JSON.parse\\(require\\('fs'\\).readFileSync\\('.claude/settings.local.json','utf8'\\)\\); console.log\\('valid JSON'\\)\")",
+      "Bash(curl -s -o /dev/null -w \"backend /health: %{http_code}\\\\n\" http://localhost:3001/health)"
     ],
     "additionalDirectories": [
       "c:\\Users\\BharathTummaganti\\OneDrive - CloudFuze, Inc\\Documents\\PMO\\PMO",
@@ -136,4 +136,3 @@
     ]
   }
 }
->>>>>>> 13171bbcb8685f3415cc2ecb99ec1e18bc45a0e6
