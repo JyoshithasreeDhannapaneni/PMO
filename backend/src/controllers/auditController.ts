@@ -233,4 +233,46 @@ export const auditController = {
     const result = await hygieneScorecardService.sendDailyScorecard(true);
     res.json({ success: true, data: result });
   }),
+
+  scheduleHygieneScorecard: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const requestingUser = (req as any).user;
+    if (!requestingUser || requestingUser.role !== 'ADMIN') {
+      throw new AppError('Only admins can schedule the hygiene scorecard send', 403);
+    }
+    const { recipients, scheduledAt } = req.body;
+    if (!Array.isArray(recipients) || recipients.length === 0) {
+      throw new AppError('At least one recipient is required', 400);
+    }
+    if (!scheduledAt || Number.isNaN(new Date(scheduledAt).getTime())) {
+      throw new AppError('A valid scheduledAt date/time is required', 400);
+    }
+    const scheduledDate = new Date(scheduledAt);
+    if (scheduledDate.getTime() <= Date.now()) {
+      throw new AppError('Scheduled time must be in the future', 400);
+    }
+    const schedule = await hygieneScorecardService.createSchedule(
+      recipients,
+      scheduledDate,
+      requestingUser.email || requestingUser.id
+    );
+    res.json({ success: true, data: schedule });
+  }),
+
+  listHygieneScorecardSchedules: asyncHandler(async (_req: Request, res: Response): Promise<void> => {
+    const schedules = await hygieneScorecardService.listSchedules();
+    res.json({ success: true, data: schedules });
+  }),
+
+  cancelHygieneScorecardSchedule: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const requestingUser = (req as any).user;
+    if (!requestingUser || requestingUser.role !== 'ADMIN') {
+      throw new AppError('Only admins can cancel a scheduled send', 403);
+    }
+    const { id } = req.params;
+    const cancelled = await hygieneScorecardService.cancelSchedule(id);
+    if (!cancelled) {
+      throw new AppError('Schedule not found or already sent/cancelled', 404);
+    }
+    res.json({ success: true, data: cancelled });
+  }),
 };

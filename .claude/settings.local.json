@@ -128,7 +128,18 @@
       "Bash(taskkill //F //PID 47972)",
       "Bash(grep -v \"//\\\\|logger\\\\|console\")",
       "Bash(node -e \"JSON.parse\\(require\\('fs'\\).readFileSync\\('.claude/settings.local.json','utf8'\\)\\); console.log\\('valid JSON'\\)\")",
-      "Bash(curl -s -o /dev/null -w \"backend /health: %{http_code}\\\\n\" http://localhost:3001/health)"
+      "Bash(curl -s -o /dev/null -w \"backend /health: %{http_code}\\\\n\" http://localhost:3001/health)",
+      "Bash(timeout 20 npm run dev)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3001/api/audit/hygiene-scorecard/schedules)",
+      "Bash(curl -s -o /dev/null -w \"hygiene-board: %{http_code}\\\\n\" http://localhost:3001/api/audit/hygiene-board)",
+      "Bash(curl -s -o /dev/null -w \"run-now: %{http_code}\\\\n\" -X POST http://localhost:3001/api/audit/hygiene-scorecard/run-now)",
+      "Bash(curl -s http://localhost:3001/api/audit/hygiene-board)",
+      "Bash(curl -s -o /dev/null -w \"activity-summary: %{http_code}\\\\n\" \"http://localhost:3001/api/audit/activity-summary?startDate=2026-05-30&endDate=2026-07-29\")",
+      "Bash(curl -s -o /dev/null -w \"schedules: %{http_code}\\\\n\" http://localhost:3001/api/audit/hygiene-scorecard/schedules)",
+      "Bash(taskkill /PID 15600 /F)",
+      "Bash(powershell -Command \"Stop-Process -Id 15600 -Force\")",
+      "Bash(nohup npm run dev)",
+      "Bash(curl -s -o /dev/null -w \"schedule-post: %{http_code}\\\\n\" -X POST http://localhost:3001/api/audit/hygiene-scorecard/schedule)"
     ],
     "additionalDirectories": [
       "c:\\Users\\BharathTummaganti\\OneDrive - CloudFuze, Inc\\Documents\\PMO\\PMO",

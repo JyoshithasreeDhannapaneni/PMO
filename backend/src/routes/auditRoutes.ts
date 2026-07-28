@@ -15,6 +15,10 @@ router.get('/hygiene-board', requireAuth, auditController.getHygieneBoard);
 router.get('/export/hygiene-board', requireAuth, auditController.exportHygieneExcel);
 // Manual test trigger for the daily 6PM IST hygiene scorecard email — role check is inline (ADMIN only), see controller.
 router.post('/hygiene-scorecard/run-now', requireAuth, auditController.runHygieneScorecardNow);
+// Ad-hoc scheduled sends with a custom recipient list — role check is inline (ADMIN only), see controller.
+router.post('/hygiene-scorecard/schedule', requireAuth, auditController.scheduleHygieneScorecard);
+router.get('/hygiene-scorecard/schedules', requireAuth, auditController.listHygieneScorecardSchedules);
+router.delete('/hygiene-scorecard/schedules/:id', requireAuth, auditController.cancelHygieneScorecardSchedule);
 router.get('/export/log', requireAuth, auditController.exportLogExcel);
 router.get('/export/leaderboard', requireAuth, auditController.exportLeaderboardExcel);
 router.get('/', requireAuth, auditController.getAll);

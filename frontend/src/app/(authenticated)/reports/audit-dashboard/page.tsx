@@ -4,7 +4,9 @@ import { useState, useRef, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useProjects, useEmailHygiene } from '@/hooks/useProjects';
 import { useSettings } from '@/context/SettingsContext';
+import { useAuth } from '@/context/AuthContext';
 import { Card } from '@/components/ui/Card';
+import { cn } from '@/lib/utils';
 import Link from 'next/link';
 import {
   Activity, Download, RefreshCw, Calendar, Users, User,
@@ -12,12 +14,29 @@ import {
   ChevronDown, ChevronUp, FolderKanban, CheckCircle,
   AlertTriangle, TrendingUp, Plus, Camera,
   Layers, FolderOpen, MessageSquare, Mail, Flag,
-  UserX, ShieldCheck, FileSpreadsheet,
+  UserX, ShieldCheck, FileSpreadsheet, X, Send, Clock,
 } from 'lucide-react';
-import { auditApi, emailHygieneApi } from '@/services/api';
+import { auditApi, emailHygieneApi, authApi } from '@/services/api';
 import { format, subDays, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { toPng } from 'html-to-image';
 import type { Project } from '@/types';
+
+function ScorecardModal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm" onClick={onClose}>
+      <div
+        className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 sticky top-0 bg-white rounded-t-2xl">
+          <h2 className="font-bold text-slate-800">{title}</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
+        </div>
+        <div className="p-6">{children}</div>
+      </div>
+    </div>
+  );
+}
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -237,6 +256,106 @@ export default function AuditDashboardPage() {
       a.href = URL.createObjectURL(blob);
       a.download = `hygiene-board-${format(new Date(), 'yyyy-MM-dd')}.xlsx`;
       a.click();
+    } catch {}
+  }
+
+  // ── Hygiene scorecard email — send now / scheduled send ──────────
+  const { user: currentUser } = useAuth();
+  const isAdmin = currentUser?.role === 'ADMIN';
+
+  const [sendNowStatus, setSendNowStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+  const [sendNowError, setSendNowError] = useState('');
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [scheduleRecipients, setScheduleRecipients] = useState<Set<string>>(new Set());
+  const [scheduleDateTime, setScheduleDateTime] = useState('');
+  const [scheduleSubmitting, setScheduleSubmitting] = useState(false);
+  const [scheduleFormError, setScheduleFormError] = useState('');
+
+  const { data: allUsersData } = useQuery({
+    queryKey: ['allUsersForScorecard'],
+    queryFn: () => authApi.getUsers(),
+    enabled: showScheduleModal,
+  });
+  const scorecardCandidates: any[] = (allUsersData?.data ?? []).filter((u: any) => u.isActive && u.email);
+
+  const {
+    data: schedulesData,
+    refetch: refetchSchedules,
+  } = useQuery({
+    queryKey: ['hygieneScorecardSchedules'],
+    queryFn: () => auditApi.getHygieneScorecardSchedules(),
+    enabled: hygieneTab === 'project' && isAdmin,
+  });
+  const pendingSchedules: any[] = (schedulesData?.data ?? []).filter((s: any) => s.status === 'PENDING');
+
+  async function handleSendNow() {
+    setSendNowStatus('sending');
+    setSendNowError('');
+    try {
+      const res = await auditApi.runHygieneScorecardNow();
+      if (res?.data?.sent) {
+        setSendNowStatus('sent');
+      } else {
+        setSendNowStatus('error');
+        setSendNowError(res?.data?.skippedReason || 'Send was skipped');
+      }
+    } catch (err: any) {
+      setSendNowStatus('error');
+      setSendNowError(err?.response?.data?.error?.message || 'Failed to send scorecard');
+    } finally {
+      setTimeout(() => setSendNowStatus('idle'), 4000);
+    }
+  }
+
+  function handleOpenScheduleModal() {
+    setScheduleFormError('');
+    const defaultTime = new Date(Date.now() + 60 * 60 * 1000);
+    defaultTime.setSeconds(0, 0);
+    setScheduleDateTime(format(defaultTime, "yyyy-MM-dd'T'HH:mm"));
+    setScheduleRecipients(new Set());
+    setShowScheduleModal(true);
+  }
+
+  function toggleScheduleRecipient(email: string) {
+    setScheduleRecipients((prev) => {
+      const next = new Set(prev);
+      if (next.has(email)) next.delete(email);
+      else next.add(email);
+      return next;
+    });
+  }
+
+  async function handleCreateSchedule() {
+    if (scheduleRecipients.size === 0) {
+      setScheduleFormError('Select at least one participant.');
+      return;
+    }
+    if (!scheduleDateTime) {
+      setScheduleFormError('Pick a date and time.');
+      return;
+    }
+    const scheduledAt = new Date(scheduleDateTime);
+    if (scheduledAt.getTime() <= Date.now()) {
+      setScheduleFormError('Scheduled time must be in the future.');
+      return;
+    }
+    setScheduleSubmitting(true);
+    setScheduleFormError('');
+    try {
+      await auditApi.scheduleHygieneScorecard([...scheduleRecipients], scheduledAt.toISOString());
+      setShowScheduleModal(false);
+      refetchSchedules();
+    } catch (err: any) {
+      setScheduleFormError(err?.response?.data?.error?.message || 'Failed to schedule the send');
+    } finally {
+      setScheduleSubmitting(false);
+    }
+  }
+
+  async function handleCancelSchedule(id: string) {
+    try {
+      await auditApi.cancelHygieneScorecardSchedule(id);
+      refetchSchedules();
     } catch {}
   }
 
@@ -1179,6 +1298,28 @@ export default function AuditDashboardPage() {
               >
                 <FileSpreadsheet size={13} /> Excel
               </button>
+              {isAdmin && (<>
+                <button
+                  onClick={handleSendNow}
+                  disabled={sendNowStatus === 'sending' || !hygieneBoard.length}
+                  className={cn(
+                    'flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors disabled:opacity-50',
+                    sendNowStatus === 'sent' ? 'bg-green-600 text-white'
+                      : sendNowStatus === 'error' ? 'bg-red-600 text-white'
+                      : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                  )}
+                  title={sendNowStatus === 'error' ? sendNowError : 'Emails the PMO Hygiene & Score Card to all active managers right now'}
+                >
+                  {sendNowStatus === 'sending' ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+                  {sendNowStatus === 'sending' ? 'Sending…' : sendNowStatus === 'sent' ? 'Sent!' : sendNowStatus === 'error' ? 'Failed' : 'Send Now'}
+                </button>
+                <button
+                  onClick={handleOpenScheduleModal}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  <Clock size={13} /> Schedule Send
+                </button>
+              </>)}
             </>)}
             {/* Action buttons — email tab */}
             {hygieneTab === 'email' && (<>
@@ -1238,6 +1379,33 @@ export default function AuditDashboardPage() {
             </div>
           );
         })()}
+
+        {/* Scheduled scorecard sends */}
+        {isAdmin && pendingSchedules.length > 0 && (
+          <Card>
+            <div className="flex items-center gap-2 text-sm font-semibold text-gray-800 mb-2">
+              <Clock size={14} className="text-indigo-600" /> Scheduled Scorecard Sends
+            </div>
+            <div className="space-y-1.5">
+              {pendingSchedules.map((s: any) => (
+                <div key={s.id} className="flex items-center justify-between gap-3 text-xs bg-gray-50 rounded-lg px-3 py-2">
+                  <div className="min-w-0">
+                    <span className="font-medium text-gray-700">{format(new Date(s.scheduledAt), 'MMM d, yyyy HH:mm')}</span>
+                    <span className="text-gray-400"> → </span>
+                    <span className="text-gray-600">{s.recipients.length} recipient{s.recipients.length === 1 ? '' : 's'}</span>
+                    <span className="text-gray-400 truncate"> ({s.recipients.join(', ')})</span>
+                  </div>
+                  <button
+                    onClick={() => handleCancelSchedule(s.id)}
+                    className="flex items-center gap-1 text-red-500 hover:text-red-700 shrink-0"
+                  >
+                    <X size={12} /> Cancel
+                  </button>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
 
         {/* Hygiene table */}
         <Card>
@@ -1602,6 +1770,65 @@ export default function AuditDashboardPage() {
           )}
         </>)}
       </div>
+
+      {showScheduleModal && (
+        <ScorecardModal title="Schedule Hygiene Scorecard Send" onClose={() => setShowScheduleModal(false)}>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1.5">Send at</label>
+              <input
+                type="datetime-local"
+                value={scheduleDateTime}
+                onChange={(e) => setScheduleDateTime(e.target.value)}
+                className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 bg-white text-gray-900"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                Participants {scheduleRecipients.size > 0 && <span className="text-gray-400">({scheduleRecipients.size} selected)</span>}
+              </label>
+              <div className="border border-gray-200 rounded-lg max-h-56 overflow-y-auto divide-y divide-gray-50">
+                {scorecardCandidates.length === 0 ? (
+                  <p className="text-sm text-gray-400 text-center py-6">Loading users…</p>
+                ) : (
+                  scorecardCandidates.map((u: any) => (
+                    <label key={u.id} className="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 cursor-pointer text-sm">
+                      <input
+                        type="checkbox"
+                        checked={scheduleRecipients.has(u.email)}
+                        onChange={() => toggleScheduleRecipient(u.email)}
+                        className="rounded border-gray-300"
+                      />
+                      <span className="font-medium text-gray-800">{u.name}</span>
+                      <span className="text-xs text-gray-400">{u.email}</span>
+                      <span className="ml-auto text-xs text-gray-400">{u.role}</span>
+                    </label>
+                  ))
+                )}
+              </div>
+            </div>
+            {scheduleFormError && (
+              <p className="text-xs text-red-600 flex items-center gap-1"><AlertCircle size={12} /> {scheduleFormError}</p>
+            )}
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                onClick={() => setShowScheduleModal(false)}
+                className="px-4 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreateSchedule}
+                disabled={scheduleSubmitting}
+                className="flex items-center gap-1.5 px-4 py-1.5 text-sm text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50"
+              >
+                {scheduleSubmitting ? <Loader2 size={13} className="animate-spin" /> : <Clock size={13} />}
+                {scheduleSubmitting ? 'Scheduling…' : 'Schedule Send'}
+              </button>
+            </div>
+          </div>
+        </ScorecardModal>
+      )}
     </div>
   );
 }
