@@ -139,7 +139,16 @@
       "Bash(taskkill /PID 15600 /F)",
       "Bash(powershell -Command \"Stop-Process -Id 15600 -Force\")",
       "Bash(nohup npm run dev)",
-      "Bash(curl -s -o /dev/null -w \"schedule-post: %{http_code}\\\\n\" -X POST http://localhost:3001/api/audit/hygiene-scorecard/schedule)"
+      "Bash(curl -s -o /dev/null -w \"schedule-post: %{http_code}\\\\n\" -X POST http://localhost:3001/api/audit/hygiene-scorecard/schedule)",
+      "Bash(gh auth *)",
+      "Bash(gh run *)",
+      "Bash(gh api *)",
+      "Bash(curl -s https://api.github.com/repos/JyoshithasreeDhannapaneni/PMO)",
+      "Bash(curl -s https://api.github.com/repos/JyoshithasreeDhannapaneni/PMO/actions/runs)",
+      "Bash(curl -s -w \"\\\\nHTTP_STATUS:%{http_code}\\\\n\" \"https://neutarapm.cftools.live/api/audit/hygiene-board\")",
+      "Bash(curl -s -w \"\\\\nHTTP_STATUS:%{http_code}\\\\n\" \"https://neutarapm.cftools.live/api/audit/activity-summary?startDate=2026-05-30&endDate=2026-07-29\")",
+      "Bash(curl -sI \"https://neutarapm.cftools.live/api/audit/hygiene-board\")",
+      "Bash(curl -s -w \"\\\\nHTTP_STATUS:%{http_code}\\\\n\" \"https://neutarapm.cftools.live/api/audit/hygiene-scorecard/schedules\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\BharathTummaganti\\OneDrive - CloudFuze, Inc\\Documents\\PMO\\PMO",
