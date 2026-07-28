@@ -70,10 +70,24 @@ export function initializeCronJobs(): void {
     }
   }, { timezone: 'Asia/Kolkata' });
 
+  // PMO Hygiene & Score Card — ad-hoc scheduled sends, polled every minute
+  cron.schedule('* * * * *', async () => {
+    try {
+      const { hygieneScorecardService } = require('../services/hygieneScorecardService');
+      const result = await hygieneScorecardService.processPendingSchedules();
+      if (result.sent > 0 || result.failed > 0) {
+        logger.info(`Hygiene scorecard schedule poll: sent=${result.sent} failed=${result.failed}`);
+      }
+    } catch (error) {
+      logger.error('Hygiene scorecard schedule poll failed:', error);
+    }
+  });
+
   logger.info('Cron jobs scheduled:');
   logger.info('  - Delay check: Daily at 6:00 AM');
   logger.info('  - Server alerts: Daily at 8:00 AM');
   logger.info('  - Deal Desk email poll: Every 15 minutes');
   logger.info('  - NTA ticket sync: Every 5 minutes');
   logger.info('  - PMO Hygiene & Score Card email: Daily at 6:00 PM IST');
+  logger.info('  - PMO Hygiene & Score Card scheduled-send poll: Every minute');
 }

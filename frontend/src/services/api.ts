@@ -774,6 +774,22 @@ export const auditApi = {
     const { data } = await api.get('/audit/export/hygiene-board', { responseType: 'blob' });
     return data as Blob;
   },
+  runHygieneScorecardNow: async () => {
+    const { data } = await api.post('/audit/hygiene-scorecard/run-now');
+    return data;
+  },
+  scheduleHygieneScorecard: async (recipients: string[], scheduledAt: string) => {
+    const { data } = await api.post('/audit/hygiene-scorecard/schedule', { recipients, scheduledAt });
+    return data;
+  },
+  getHygieneScorecardSchedules: async () => {
+    const { data } = await api.get('/audit/hygiene-scorecard/schedules');
+    return data;
+  },
+  cancelHygieneScorecardSchedule: async (id: string) => {
+    const { data } = await api.delete(`/audit/hygiene-scorecard/schedules/${id}`);
+    return data;
+  },
 };
 
 // Escalation Mails API
