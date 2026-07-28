@@ -13,6 +13,8 @@ router.get('/manager-leaderboard', requireAuth, auditController.getManagerLeader
 router.get('/weekly-trend', requireAuth, auditController.getWeeklyTrend);
 router.get('/hygiene-board', requireAuth, auditController.getHygieneBoard);
 router.get('/export/hygiene-board', requireAuth, auditController.exportHygieneExcel);
+// Manual test trigger for the daily 6PM IST hygiene scorecard email — role check is inline (ADMIN only), see controller.
+router.post('/hygiene-scorecard/run-now', requireAuth, auditController.runHygieneScorecardNow);
 router.get('/export/log', requireAuth, auditController.exportLogExcel);
 router.get('/export/leaderboard', requireAuth, auditController.exportLeaderboardExcel);
 router.get('/', requireAuth, auditController.getAll);

@@ -523,7 +523,7 @@ class AuditService {
       LEFT JOIN audit_logs a
         ON a.user_id = u.id
        AND a.created_at >= NOW() - INTERVAL '30 days'
-      WHERE u.role = 'PROJECT_MANAGER'
+      WHERE u.role = 'MANAGER'
       GROUP BY u.id, u.name
     `);
 
@@ -545,12 +545,29 @@ class AuditService {
         p.notes,
         p.project_memory,
         p.estimated_cost,
+        p.delay_status,
+        p.delay_happened,
+        p.cloud_adding_start,
+        p.cloud_adding_end,
+        p.pilot_migration_start,
+        p.pilot_migration_end,
+        p.onetime_migration_start,
+        p.onetime_migration_end,
+        p.final_validation_start,
+        p.final_validation_end,
+        rca.has_rca,
         cs.id          AS cs_id,
         cs.status      AS cs_status,
         cs.title       AS cs_title,
         cs.content     AS cs_content
       FROM projects p
       LEFT JOIN case_studies cs ON cs.project_id = p.id
+      LEFT JOIN (
+        SELECT project_id, true AS has_rca
+        FROM escalation_daily_notes
+        WHERE column_name = 'Delay Happened'
+        GROUP BY project_id
+      ) rca ON rca.project_id = p.id
       WHERE p.status NOT IN ('CANCELLED','INACTIVE')
         AND p.project_manager IS NOT NULL AND TRIM(p.project_manager) <> ''
       ORDER BY p.project_manager
@@ -632,8 +649,50 @@ class AuditService {
         caseStudyScore = Math.max(0, base - Math.min(csPending * 5, 15) - Math.min(csMissing * 10, 30));
       }
 
+      // ── Delay Accountability Score (0-100, over active/on-hold projects) ─
+      // Attribution penalty by delay_happened, plus a separate penalty when
+      // a delayed project has no RCA note (escalation_daily_notes, column_name
+      // 'Delay Happened') — setting the dropdown isn't enough, the root-cause
+      // note is required too.
+      let delayScore = 100;
+      let delayedProjectsCount = 0;
+      let missingRcaCount = 0;
+      for (const p of active) {
+        if (p.delay_status !== 'AT_RISK' && p.delay_status !== 'DELAYED') continue;
+        delayedProjectsCount++;
+        if (p.delay_happened === 'CUSTOMER_DELAY')      delayScore -= 5;
+        else if (p.delay_happened === 'INTERNAL_DELAY') delayScore -= 12;
+        else if (p.delay_happened === 'BOTH')           delayScore -= 15;
+        else                                             delayScore -= 10; // not attributed
+        if (!p.has_rca) { delayScore -= 10; missingRcaCount++; }
+      }
+      delayScore = Math.max(0, delayScore);
+
+      // ── Phase-Date Integrity Score (0-100, over ALL projects) ──────────
+      // Flags identical start/end dates for phases that realistically can't
+      // be completed in a single day. Kickoff→Cloud Adding same-day and
+      // Delta Migration's own start=end are intentionally NOT penalized.
+      const sameDay = (a: any, b: any) => !!a && !!b && new Date(a).toDateString() === new Date(b).toDateString();
+      let dateIntegrityScore = 100;
+      let dateViolationsCount = 0;
+      for (const p of projects) {
+        const violations = [
+          sameDay(p.planned_start, p.planned_end),
+          sameDay(p.cloud_adding_start, p.cloud_adding_end),
+          sameDay(p.pilot_migration_start, p.pilot_migration_end),
+          sameDay(p.onetime_migration_start, p.onetime_migration_end),
+          sameDay(p.final_validation_start, p.final_validation_end),
+        ].filter(Boolean).length;
+        dateViolationsCount += violations;
+        dateIntegrityScore -= violations * 8;
+      }
+      dateIntegrityScore = Math.max(0, dateIntegrityScore);
+
       // ── Overall Hygiene Score ─────────────────────────────────────────
-      const hygieneScore = Math.round(activityScore * 0.35 + qualityScore * 0.35 + caseStudyScore * 0.30);
+      const hygieneScore = Math.round(
+        activityScore * 0.25 + qualityScore * 0.25 + caseStudyScore * 0.15 +
+        delayScore * 0.20 + dateIntegrityScore * 0.15
+      );
 
       board.push({
         projectManager: pm,
@@ -659,15 +718,74 @@ class AuditService {
         csDone,
         csPending,
         csMissing,
+        // Delay accountability
+        delayedProjectsCount,
+        missingRcaCount,
+        // Phase-date integrity
+        dateViolationsCount,
         // Scores
         activityScore,
         qualityScore,
         caseStudyScore,
+        delayScore,
+        dateIntegrityScore,
         hygieneScore,
       });
     }
 
     return board.sort((a, b) => b.hygieneScore - a.hygieneScore);
+  }
+
+  /**
+   * Per-PM activity snapshot for "yesterday" specifically (IST calendar day),
+   * used by the daily hygiene scorecard email — distinct from the 30-day
+   * rolling window getHygieneBoard() uses for the dashboard.
+   */
+  async getYesterdayActivitySnapshot() {
+    const loginResult = await query(`
+      SELECT u.name AS pm_name, COUNT(*)::int AS logins_yesterday
+      FROM audit_logs a
+      JOIN users u ON u.id = a.user_id
+      WHERE a.action = 'LOGIN'
+        AND (a.created_at AT TIME ZONE 'Asia/Kolkata')::date =
+            ((NOW() AT TIME ZONE 'Asia/Kolkata')::date - INTERVAL '1 day')
+      GROUP BY u.name
+    `);
+
+    const projectTouchResult = await query(`
+      SELECT u.name AS pm_name, COUNT(*)::int AS project_updates_yesterday
+      FROM audit_logs a
+      JOIN users u ON u.id = a.user_id
+      WHERE a.action IN ('UPDATE','CREATE','STATUS_CHANGE')
+        AND a.entity_type ILIKE '%project%'
+        AND (a.created_at AT TIME ZONE 'Asia/Kolkata')::date =
+            ((NOW() AT TIME ZONE 'Asia/Kolkata')::date - INTERVAL '1 day')
+      GROUP BY u.name
+    `);
+
+    const notesResult = await query(`
+      SELECT author, COUNT(*)::int AS notes_yesterday
+      FROM escalation_daily_notes
+      WHERE author IS NOT NULL AND TRIM(author) <> ''
+        AND (created_at AT TIME ZONE 'Asia/Kolkata')::date =
+            ((NOW() AT TIME ZONE 'Asia/Kolkata')::date - INTERVAL '1 day')
+      GROUP BY author
+    `);
+
+    const snapshot = new Map<string, { loggedInYesterday: boolean; updatedProjectYesterday: boolean; addedNoteYesterday: boolean }>();
+    const ensure = (name: string) => {
+      const key = name.toLowerCase().trim();
+      if (!snapshot.has(key)) {
+        snapshot.set(key, { loggedInYesterday: false, updatedProjectYesterday: false, addedNoteYesterday: false });
+      }
+      return snapshot.get(key)!;
+    };
+
+    for (const row of loginResult.rows) ensure(row.pm_name).loggedInYesterday = Number(row.logins_yesterday) > 0;
+    for (const row of projectTouchResult.rows) ensure(row.pm_name).updatedProjectYesterday = Number(row.project_updates_yesterday) > 0;
+    for (const row of notesResult.rows) ensure(row.author).addedNoteYesterday = Number(row.notes_yesterday) > 0;
+
+    return snapshot;
   }
 
   async getRecentActivity(limit = 20) {

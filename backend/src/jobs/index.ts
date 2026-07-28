@@ -57,9 +57,23 @@ export function initializeCronJobs(): void {
     }
   });
 
+  // PMO Hygiene & Score Card — daily at 6:00 PM IST (explicit timezone, since
+  // every other job here runs in implicit server-local time)
+  cron.schedule('0 18 * * *', async () => {
+    logger.info('Running daily hygiene scorecard job...');
+    try {
+      const { hygieneScorecardService } = require('../services/hygieneScorecardService');
+      const result = await hygieneScorecardService.sendDailyScorecard();
+      logger.info(`Hygiene scorecard: sent=${result.sent} recipients=${result.recipientCount} ${result.skippedReason ? `skipped=${result.skippedReason}` : ''}`);
+    } catch (error) {
+      logger.error('Hygiene scorecard job failed:', error);
+    }
+  }, { timezone: 'Asia/Kolkata' });
+
   logger.info('Cron jobs scheduled:');
   logger.info('  - Delay check: Daily at 6:00 AM');
   logger.info('  - Server alerts: Daily at 8:00 AM');
   logger.info('  - Deal Desk email poll: Every 15 minutes');
   logger.info('  - NTA ticket sync: Every 5 minutes');
+  logger.info('  - PMO Hygiene & Score Card email: Daily at 6:00 PM IST');
 }

@@ -11,7 +11,7 @@ export interface EmailOptions {
 const BRAND_COLOR = '#2563eb';
 
 /** Wrap any body HTML in a consistent CloudFuze-branded shell. */
-function brandedEmail(title: string, body: string, accentColor = BRAND_COLOR): string {
+export function brandedEmail(title: string, body: string, accentColor = BRAND_COLOR): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>

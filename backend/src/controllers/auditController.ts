@@ -1,7 +1,8 @@
 import { Request, Response } from 'express';
 import * as XLSX from 'xlsx';
 import { auditService } from '../services/auditService';
-import { asyncHandler } from '../middleware/errorHandler';
+import { hygieneScorecardService } from '../services/hygieneScorecardService';
+import { asyncHandler, AppError } from '../middleware/errorHandler';
 
 function sendWorkbook(res: Response, sheets: Record<string, any[]>, filename: string) {
   const workbook = XLSX.utils.book_new();
@@ -204,10 +205,17 @@ export const auditController = {
       'Case Studies Done': pm.csDone,
       'Case Studies Pending': pm.csPending,
       'No Case Study': pm.csMissing,
+      // Delay accountability
+      'Delayed Projects': pm.delayedProjectsCount,
+      'Missing RCA Note': pm.missingRcaCount,
+      // Phase-date integrity
+      'Same-Day Date Violations': pm.dateViolationsCount,
       // Scores
       'Activity Score': pm.activityScore,
       'Data Quality Score': pm.qualityScore,
       'Case Study Score': pm.caseStudyScore,
+      'Delay Accountability Score': pm.delayScore,
+      'Phase Date Integrity Score': pm.dateIntegrityScore,
       'Hygiene Score': pm.hygieneScore,
     }));
     sendWorkbook(
@@ -215,5 +223,14 @@ export const auditController = {
       { 'Hygiene Board': rows },
       `hygiene-board-${new Date().toISOString().slice(0, 10)}.xlsx`
     );
+  }),
+
+  runHygieneScorecardNow: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const requestingUser = (req as any).user;
+    if (!requestingUser || requestingUser.role !== 'ADMIN') {
+      throw new AppError('Only admins can trigger the hygiene scorecard send', 403);
+    }
+    const result = await hygieneScorecardService.sendDailyScorecard(true);
+    res.json({ success: true, data: result });
   }),
 };
