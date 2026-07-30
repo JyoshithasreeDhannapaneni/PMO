@@ -38,13 +38,13 @@ export const emailHygieneController = {
       // Resolution
       'One-Reply Resolution (%)': m.oneReplyResolutionRate,
       'Reopened Thread Rate (%)': m.reopenedThreadRate,
-      // Tone
-      'Tone Score': m.toneScore,
-      // Category scores
-      'Speed Score': m.speedScore,
-      'Quality Score': m.qualityScore,
-      'Resolution Score': m.resolutionScore,
-      'Email Hygiene Score': m.emailHygieneScore,
+      // Tone (out of 20)
+      'Tone Score (/20)': m.toneScore,
+      // Category scores on new scale
+      'Speed Score (/30)': m.speedScore,
+      'Quality Score (/30)': m.qualityScore,
+      'Resolution Score (/20)': m.resolutionScore,
+      'Email Hygiene Score (/100)': m.emailHygieneScore,
     }));
     sendWorkbook(
       res,

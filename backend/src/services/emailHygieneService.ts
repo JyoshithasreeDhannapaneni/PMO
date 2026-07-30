@@ -22,31 +22,41 @@ interface GraphMessage {
   sentDateTime: string;
 }
 
+export interface ImprovementInsight {
+  category: 'speed' | 'quality' | 'tone' | 'resolution';
+  metric: string;
+  score: number;
+  maxScore: number;
+  originalLine: string;
+  improvedLine: string;
+}
+
 export interface UserEmailHygiene {
   userEmail: string;
   userName: string;
-  // Volume (thread-level; raw emails not tracked)
+  // Volume
   uniqueCustomerThreads: number;
-  // Speed (35%)
+  // Speed raw
   avgFirstReplyTimeHours: number | null;
-  slaHitRate: number;                  // % of threads with first reply ≤4h
+  slaHitRate: number;                   // 0–100 %
   avgFullResolutionTimeHours: number | null;
-  // Quality (35%)
+  // Quality raw
   relevancyScore: number | null;
   relevancySample: string | null;
-  accuracyRate: number;                // % of replies that are substantive & non-auto
-  completenessRate: number;            // % coverage of customer questions in reply
-  // Resolution (20%)
-  oneReplyResolutionRate: number;
-  reopenedThreadRate: number;
-  // Tone (10%)
-  toneScore: number;
-  // Category scores (0–100)
-  speedScore: number;
-  qualityScore: number;
-  resolutionScore: number;
+  accuracyRate: number;                 // 0–100 %
+  completenessRate: number;             // 0–100 %
+  // Resolution raw
+  oneReplyResolutionRate: number;       // 0–100 %
+  reopenedThreadRate: number;           // 0–100 %
+  // Category scores on new scale
+  toneScore: number;                    // 0–20
+  speedScore: number;                   // 0–30  (Avg1stReply/10 + SLA/10 + ResTime/10)
+  qualityScore: number;                 // 0–30  (Relevancy/10 + Accuracy/10 + Completeness/10)
+  resolutionScore: number;              // 0–20  (1-Reply/10 + Reopened/10)
   // Overall
-  emailHygieneScore: number;
+  emailHygieneScore: number;            // 0–100
+  // Improvement suggestions (only for weak areas)
+  insights: ImprovementInsight[];
 }
 
 const CF_DOMAIN = 'cloudfuze.com';
@@ -347,8 +357,12 @@ async function analyzeUser(
   const sampleIds = [...customerConvIds].filter(id => sentByConv.has(id)).slice(0, 5);
   const relevancyScores: number[] = [];
   const completenessScores: number[] = [];
-  const toneScores: number[] = [];
+  const rawToneScores: number[] = [];
   let lastReason = '';
+
+  // Track worst samples for insight generation
+  let worstToneEntry: { cfText: string; raw: number } | null = null;
+  let worstComplEntry: { custText: string; cfText: string; score: number } | null = null;
 
   for (const convId of sampleIds) {
     const custMsg = recvByConv.get(convId)?.[0];
@@ -359,70 +373,159 @@ async function analyzeUser(
     const rel = scoreRelevancy(custText, cfText);
     relevancyScores.push(rel.score);
     lastReason = rel.reason;
-    completenessScores.push(scoreCompleteness(custText, cfText));
-    toneScores.push(scoreTone(cfText));
+    const cs = scoreCompleteness(custText, cfText);
+    completenessScores.push(cs);
+    const ts = scoreTone(cfText);
+    rawToneScores.push(ts);
+    if (worstToneEntry === null || ts < worstToneEntry.raw) worstToneEntry = { cfText, raw: ts };
+    if (worstComplEntry === null || cs < worstComplEntry.score) worstComplEntry = { custText, cfText, score: cs };
   }
 
   const relevancyScore = relevancyScores.length > 0
     ? Math.round(relevancyScores.reduce((a, b) => a + b, 0) / relevancyScores.length)
     : null;
   const relevancySample = relevancyScores.length > 0 ? lastReason : null;
-  const completenessRate = completenessScores.length > 0
+  const completenessRate = Math.min(100, completenessScores.length > 0
     ? Math.round(completenessScores.reduce((a, b) => a + b, 0) / completenessScores.length)
-    : 50;
-  const toneScore = toneScores.length > 0
-    ? Math.round(toneScores.reduce((a, b) => a + b, 0) / toneScores.length)
+    : 50);
+  const rawToneAvg = rawToneScores.length > 0
+    ? Math.round(rawToneScores.reduce((a, b) => a + b, 0) / rawToneScores.length)
     : 50;
 
-  // ── Component scores (0–100) ─────────────────────────────────────
+  // ── Derived time metrics ─────────────────────────────────────────
   const avgFirstReplyTimeHours = firstReplyTimes.length
     ? Math.round(firstReplyTimes.reduce((a, b) => a + b, 0) / firstReplyTimes.length * 10) / 10
     : null;
-
   const avgFullResolutionTimeHours = fullResolutionTimes.length
     ? Math.round(fullResolutionTimes.reduce((a, b) => a + b, 0) / fullResolutionTimes.length * 10) / 10
     : null;
-
-  const slaHitRate = threadsWithReply > 0
+  const slaHitRate = Math.min(100, threadsWithReply > 0
     ? Math.round((within4h / threadsWithReply) * 100)
-    : 0;
+    : 0);
 
-  const firstReplyScore =
-    avgFirstReplyTimeHours === null ? 50 :
-    avgFirstReplyTimeHours <= 4    ? 100 :
-    avgFirstReplyTimeHours <= 8    ? 85  :
-    avgFirstReplyTimeHours <= 24   ? 70  :
-    avgFirstReplyTimeHours <= 48   ? 50  :
-    avgFirstReplyTimeHours <= 72   ? 30  : 10;
-
-  const resolutionTimeScore =
-    avgFullResolutionTimeHours === null  ? 50  :
-    avgFullResolutionTimeHours <= 24     ? 100 :
-    avgFullResolutionTimeHours <= 48     ? 85  :
-    avgFullResolutionTimeHours <= 96     ? 70  :
-    avgFullResolutionTimeHours <= 168    ? 50  : 25;
-
-  const relevancyForCalc = relevancyScore ?? 50;
-  const reopenedScoreVal = 100 - reopenedThreadRate;
-
-  // Speed 35% = firstReply 20% + resolution 15%
-  // Quality 35% = relevancy 15% + completeness 10% + accuracy 10%
-  // Resolution 20% = oneReply 10% + reopened-inverse 10%
-  // Tone 10%
-  const speedScore = Math.round((firstReplyScore * 20 + resolutionTimeScore * 15) / 35);
-  const qualityScore = Math.round((relevancyForCalc * 15 + completenessRate * 10 + accuracyRate * 10) / 35);
-  const resolutionScore = Math.round((oneReplyResolutionRate + reopenedScoreVal) / 2);
-
-  const emailHygieneScore = Math.round(
-    firstReplyScore        * 0.20 +
-    resolutionTimeScore    * 0.15 +
-    relevancyForCalc       * 0.15 +
-    completenessRate       * 0.10 +
-    accuracyRate           * 0.10 +
-    oneReplyResolutionRate * 0.10 +
-    reopenedScoreVal       * 0.10 +
-    toneScore              * 0.10
+  // ── Sub-scores (each 0–10) → category totals ────────────────────
+  // Speed /30: Avg 1st Reply (10) + % ≤4h SLA (10) + Avg Resolution (10)
+  const avgFirstReplySub = Math.min(10,
+    avgFirstReplyTimeHours === null ? 5 :
+    avgFirstReplyTimeHours <= 2  ? 10 :
+    avgFirstReplyTimeHours <= 4  ? 9  :
+    avgFirstReplyTimeHours <= 8  ? 7  :
+    avgFirstReplyTimeHours <= 24 ? 5  :
+    avgFirstReplyTimeHours <= 48 ? 3  :
+    avgFirstReplyTimeHours <= 72 ? 1  : 0
   );
+  const slaSub        = Math.min(10, Math.round(slaHitRate / 10));
+  const resTimeSub    = Math.min(10,
+    avgFullResolutionTimeHours === null   ? 5 :
+    avgFullResolutionTimeHours <= 24      ? 10 :
+    avgFullResolutionTimeHours <= 48      ? 8  :
+    avgFullResolutionTimeHours <= 96      ? 6  :
+    avgFullResolutionTimeHours <= 168     ? 4  : 2
+  );
+
+  // Quality /30: Relevancy (10) + Accuracy (10) + Completeness (10)
+  const relevancySub  = Math.min(10, Math.round((relevancyScore ?? 50) / 10));
+  const accuracySub   = Math.min(10, Math.round(accuracyRate / 10));
+  const completeSub   = Math.min(10, Math.round(completenessRate / 10));
+
+  // Resolution /20: 1-Reply% (10) + Reopened% inverted (10)
+  const oneReplySub   = Math.min(10, Math.round(oneReplyResolutionRate / 10));
+  const reopenedSub   = Math.min(10, Math.round((100 - reopenedThreadRate) / 10));
+
+  // Tone /20: raw 0–100 → 0–20
+  const toneScore     = Math.min(20, Math.round(rawToneAvg / 5));
+
+  const speedScore      = avgFirstReplySub + slaSub + resTimeSub;   // 0–30
+  const qualityScore    = relevancySub + accuracySub + completeSub; // 0–30
+  const resolutionScore = oneReplySub + reopenedSub;                 // 0–20
+  const emailHygieneScore = speedScore + qualityScore + resolutionScore + toneScore; // 0–100
+
+  // ── Improvement insights (only for weak sub-scores) ──────────────
+  const insights: ImprovementInsight[] = [];
+
+  if (avgFirstReplySub < 5 && avgFirstReplyTimeHours !== null) {
+    insights.push({
+      category: 'speed',
+      metric: 'Avg First Reply',
+      score: avgFirstReplySub,
+      maxScore: 10,
+      originalLine: `Average first reply sent ${avgFirstReplyTimeHours.toFixed(1)} hours after the customer's message.`,
+      improvedLine: `Acknowledge within 4 hours: "Hi [Customer Name], thank you for reaching out! I've received your message and am looking into it — I'll update you by [time/date]."`,
+    });
+  }
+
+  if (slaSub < 5) {
+    insights.push({
+      category: 'speed',
+      metric: '% ≤4h SLA',
+      score: slaSub,
+      maxScore: 10,
+      originalLine: `Only ${slaHitRate}% of customer threads received a first reply within 4 hours.`,
+      improvedLine: `Quick acknowledgment template: "Hi [Customer], I've received your message and will respond with full details by [time]. Thank you for your patience."`,
+    });
+  }
+
+  if (toneScore < 12 && worstToneEntry) {
+    const snippet = worstToneEntry.cfText.replace(/\s+/g, ' ').slice(0, 250).trim();
+    const hasGreeting = /\b(hi|hello|dear|good morning|good afternoon|greetings)\b/i.test(snippet);
+    const hasSignOff = /\b(best|regards|sincerely|thanks|thank you|cheers|warm regards)\b/i.test(snippet);
+    const missing = [...(!hasGreeting ? ['greeting'] : []), ...(!hasSignOff ? ['professional sign-off'] : [])];
+    insights.push({
+      category: 'tone',
+      metric: 'Tone',
+      score: toneScore,
+      maxScore: 20,
+      originalLine: snippet + (worstToneEntry.cfText.length > 250 ? '…' : ''),
+      improvedLine: missing.length > 0
+        ? `Missing ${missing.join(' and ')}. Suggested version:\n"Hi [Customer Name],\n\n${snippet.slice(0, 180)}${snippet.length > 180 ? '…' : ''}\n\nBest regards,\n[Your Name]"`
+        : `Add empathy phrases: "I understand your concern" / "I appreciate your patience" and close with "Please feel free to reach out if you need further assistance."`,
+    });
+  }
+
+  if (completeSub < 5 && worstComplEntry) {
+    const numQ = (worstComplEntry.custText.match(/\?/g) ?? []).length;
+    const qLines = worstComplEntry.custText
+      .split('?')
+      .slice(0, -1)
+      .map(s => s.split(/[.!\n]+/).filter(l => l.trim().length > 5).pop()?.trim() ?? '')
+      .filter(s => s.length > 5)
+      .slice(0, 3);
+    const replySnip = worstComplEntry.cfText.replace(/\s+/g, ' ').slice(0, 200).trim();
+    insights.push({
+      category: 'quality',
+      metric: 'Completeness',
+      score: completeSub,
+      maxScore: 10,
+      originalLine: numQ > 0
+        ? `Customer asked ${numQ} question(s). Example: "${qLines[0] ?? ''}?" — Reply: "${replySnip}${replySnip.length > 150 ? '…' : ''}"`
+        : `Short reply: "${replySnip}${replySnip.length > 150 ? '…' : ''}"`,
+      improvedLine: numQ > 0
+        ? `Address each question explicitly:\n${qLines.map((q, i) => `${i + 1}. ${q}? → [Your answer here]`).join('\n')}`
+        : `Aim for at least 50 words. Explain the next steps, the timeline, and who the customer can follow up with.`,
+    });
+  }
+
+  if (accuracySub < 5) {
+    insights.push({
+      category: 'quality',
+      metric: 'Accuracy',
+      score: accuracySub,
+      maxScore: 10,
+      originalLine: `${100 - accuracyRate}% of replies were auto-generated or too short (under 100 characters) to be a substantive response.`,
+      improvedLine: `Replace auto-replies with a personal note: "Hi [Customer], I've received your message and will look into [topic] right away. I'll update you by [timeframe]."`,
+    });
+  }
+
+  if (oneReplySub < 5) {
+    insights.push({
+      category: 'resolution',
+      metric: '1-Reply Resolution',
+      score: oneReplySub,
+      maxScore: 10,
+      originalLine: `Only ${oneReplyResolutionRate}% of customer threads were fully resolved in a single reply.`,
+      improvedLine: `Aim to include all necessary details (next steps, ETA, follow-up owner) in the first response to reduce back-and-forth.`,
+    });
+  }
 
   return {
     userEmail,
@@ -442,6 +545,7 @@ async function analyzeUser(
     qualityScore,
     resolutionScore,
     emailHygieneScore,
+    insights,
   };
 }
 
@@ -475,8 +579,8 @@ export const emailHygieneService = {
         if (cached.rows.length > 0) {
           const row = cached.rows[0];
           const metrics = row.metrics as any[];
-          // Invalidate cache if it was written with the old schema (missing new fields)
-          const isNewSchema = metrics.length === 0 || ('slaHitRate' in metrics[0] && 'completenessRate' in metrics[0]);
+          // Invalidate if written with old schema — check for insights array + new score ranges
+          const isNewSchema = metrics.length === 0 || Array.isArray(metrics[0]?.insights);
           if (isNewSchema && Date.now() - new Date(row.computed_at).getTime() < CACHE_TTL_MS) {
             return {
               metrics: metrics as UserEmailHygiene[],

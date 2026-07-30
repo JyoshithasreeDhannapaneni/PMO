@@ -178,21 +178,10 @@ export default function AuditDashboardPage() {
   function handleExportEmailHygieneCSV() {
     if (!emailMetrics.length) return;
     const rows = [
-      [
-        'Team Member', 'Email', 'Customer Threads',
-        'Avg First Reply (h)', 'SLA Hit Rate (% ≤4h)', 'Avg Full Resolution (h)',
-        'Relevancy Score', 'Accuracy Rate (%)', 'Completeness Rate (%)',
-        'One-Reply Resolution (%)', 'Reopened Rate (%)',
-        'Tone Score',
-        'Speed Score', 'Quality Score', 'Resolution Score', 'Email Hygiene Score',
-      ],
+      ['Team Member', 'Email', 'Threads', 'Speed /30', 'Quality /30', 'Resolution /20', 'Tone /20', 'Hygiene /100'],
       ...emailMetrics.map((m: any) => [
         m.userName, m.userEmail, m.uniqueCustomerThreads,
-        m.avgFirstReplyTimeHours ?? 'N/A', m.slaHitRate, m.avgFullResolutionTimeHours ?? 'N/A',
-        m.relevancyScore ?? 'N/A', m.accuracyRate, m.completenessRate,
-        m.oneReplyResolutionRate, m.reopenedThreadRate,
-        m.toneScore,
-        m.speedScore, m.qualityScore, m.resolutionScore, m.emailHygieneScore,
+        m.speedScore ?? 0, m.qualityScore ?? 0, m.resolutionScore ?? 0, m.toneScore ?? 0, m.emailHygieneScore ?? 0,
       ]),
     ];
     downloadCSV(rows, `email-hygiene-${format(new Date(), 'yyyy-MM-dd')}.csv`);
@@ -1662,117 +1651,59 @@ export default function AuditDashboardPage() {
           {emailMetrics.length > 0 && (
             <Card>
               <div className="overflow-x-auto">
-                <table className="w-full text-sm" style={{ minWidth: '1200px' }}>
+                <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-gray-100">
-                      <th colSpan={2} className="py-1.5 px-3" />
-                      <th colSpan={3} className="text-center text-xs font-semibold text-blue-600 py-1.5 bg-blue-50">Speed (35%)</th>
-                      <th colSpan={3} className="text-center text-xs font-semibold text-purple-600 py-1.5 bg-purple-50">Quality (35%)</th>
-                      <th colSpan={2} className="text-center text-xs font-semibold text-teal-600 py-1.5 bg-teal-50">Resolution (20%)</th>
-                      <th colSpan={1} className="text-center text-xs font-semibold text-orange-600 py-1.5 bg-orange-50">Tone (10%)</th>
-                      <th colSpan={4} className="text-center text-xs font-medium text-gray-400 py-1.5">Scores</th>
-                    </tr>
                     <tr className="border-b border-gray-200 bg-gray-50/60">
                       <th className="text-left py-2.5 px-3 text-xs font-semibold text-gray-700 whitespace-nowrap">Team Member</th>
-                      <th className="text-center py-2.5 px-2 text-xs font-semibold text-gray-500 whitespace-nowrap">Threads</th>
-                      {/* Speed */}
-                      <th className="text-center py-2.5 px-2 text-xs font-semibold text-blue-600 bg-blue-50/70 whitespace-nowrap">Avg 1st Reply</th>
-                      <th className="text-center py-2.5 px-2 text-xs font-semibold text-blue-600 bg-blue-50/70 whitespace-nowrap">% ≤4h SLA</th>
-                      <th className="text-center py-2.5 px-2 text-xs font-semibold text-blue-600 bg-blue-50/70 whitespace-nowrap">Avg Resolution</th>
-                      {/* Quality */}
-                      <th className="text-center py-2.5 px-2 text-xs font-semibold text-purple-600 bg-purple-50/70 whitespace-nowrap">Relevancy</th>
-                      <th className="text-center py-2.5 px-2 text-xs font-semibold text-purple-600 bg-purple-50/70 whitespace-nowrap">Accuracy</th>
-                      <th className="text-center py-2.5 px-2 text-xs font-semibold text-purple-600 bg-purple-50/70 whitespace-nowrap">Completeness</th>
-                      {/* Resolution */}
-                      <th className="text-center py-2.5 px-2 text-xs font-semibold text-teal-600 bg-teal-50/70 whitespace-nowrap">1-Reply %</th>
-                      <th className="text-center py-2.5 px-2 text-xs font-semibold text-teal-600 bg-teal-50/70 whitespace-nowrap">Reopened %</th>
-                      {/* Tone */}
-                      <th className="text-center py-2.5 px-2 text-xs font-semibold text-orange-600 bg-orange-50/70 whitespace-nowrap">Tone</th>
-                      {/* Scores */}
-                      <th className="text-center py-2.5 px-2 text-xs font-semibold text-blue-700 whitespace-nowrap">Speed</th>
-                      <th className="text-center py-2.5 px-2 text-xs font-semibold text-purple-700 whitespace-nowrap">Quality</th>
-                      <th className="text-center py-2.5 px-2 text-xs font-semibold text-teal-700 whitespace-nowrap">Resolution</th>
-                      <th className="text-center py-2.5 px-3 text-xs font-semibold text-gray-800 whitespace-nowrap">Hygiene</th>
+                      <th className="text-center py-2.5 px-3 text-xs font-semibold text-gray-500 whitespace-nowrap">Threads</th>
+                      <th className="text-center py-2.5 px-3 text-xs font-semibold text-blue-600 whitespace-nowrap">Speed<span className="font-normal text-blue-400">/30</span></th>
+                      <th className="text-center py-2.5 px-3 text-xs font-semibold text-purple-600 whitespace-nowrap">Quality<span className="font-normal text-purple-400">/30</span></th>
+                      <th className="text-center py-2.5 px-3 text-xs font-semibold text-teal-600 whitespace-nowrap">Resolution<span className="font-normal text-teal-400">/20</span></th>
+                      <th className="text-center py-2.5 px-3 text-xs font-semibold text-orange-600 whitespace-nowrap">Tone<span className="font-normal text-orange-400">/20</span></th>
+                      <th className="text-center py-2.5 px-3 text-xs font-semibold text-gray-800 whitespace-nowrap">Hygiene<span className="font-normal text-gray-400">/100</span></th>
                     </tr>
                   </thead>
                   <tbody>
                     {emailMetrics.map((m: any, i: number) => {
                       const sc = emailScoreColor(m.emailHygieneScore);
-                      const pct = (n: number, good = 70, ok = 40) =>
-                        n >= good ? 'text-green-600 font-semibold' : n >= ok ? 'text-yellow-600 font-semibold' : 'text-red-600 font-semibold';
-                      const pctBad = (n: number, warn = 20, bad = 40) =>
-                        n >= bad ? 'text-red-600 font-semibold' : n >= warn ? 'text-yellow-600 font-semibold' : 'text-green-600 font-semibold';
                       return (
                         <tr key={m.userEmail} className={`border-b border-gray-50 ${i % 2 === 0 ? '' : 'bg-gray-50/30'} hover:bg-indigo-50/20 transition-colors`}>
                           <td className="py-3 px-3 whitespace-nowrap">
                             <div className="font-medium text-gray-800">{m.userName}</div>
                             <div className="text-xs text-gray-400">{m.userEmail}</div>
                           </td>
-                          <td className="py-3 px-2 text-center text-gray-600">{m.uniqueCustomerThreads}</td>
-                          {/* Speed */}
-                          <td className="py-3 px-2 text-center bg-blue-50/40">
-                            <span className={
-                              m.avgFirstReplyTimeHours === null ? 'text-gray-400' :
-                              m.avgFirstReplyTimeHours <= 4 ? 'text-green-600 font-semibold' :
-                              m.avgFirstReplyTimeHours <= 24 ? 'text-yellow-600 font-semibold' :
-                              'text-red-600 font-semibold'
-                            }>{fmtHours(m.avgFirstReplyTimeHours)}</span>
-                          </td>
-                          <td className="py-3 px-2 text-center bg-blue-50/40">
-                            <span className={pct(m.slaHitRate)}>{m.slaHitRate}%</span>
-                          </td>
-                          <td className="py-3 px-2 text-center bg-blue-50/40">
-                            <span className={
-                              m.avgFullResolutionTimeHours === null ? 'text-gray-400' :
-                              m.avgFullResolutionTimeHours <= 48 ? 'text-green-600 font-semibold' :
-                              m.avgFullResolutionTimeHours <= 96 ? 'text-yellow-600 font-semibold' :
-                              'text-red-600 font-semibold'
-                            }>{fmtHours(m.avgFullResolutionTimeHours)}</span>
-                          </td>
-                          {/* Quality */}
-                          <td className="py-3 px-2 text-center bg-purple-50/40">
-                            {m.relevancyScore !== null ? (
-                              <span className={`inline-block text-xs font-semibold px-2 py-0.5 rounded-full ${
-                                m.relevancyScore >= 80 ? 'bg-green-100 text-green-700' :
-                                m.relevancyScore >= 60 ? 'bg-yellow-100 text-yellow-700' :
-                                'bg-red-100 text-red-700'
-                              }`}>{m.relevancyScore}</span>
-                            ) : <span className="text-gray-300 text-xs">N/A</span>}
-                          </td>
-                          <td className="py-3 px-2 text-center bg-purple-50/40">
-                            <span className={pct(m.accuracyRate)}>{m.accuracyRate}%</span>
-                          </td>
-                          <td className="py-3 px-2 text-center bg-purple-50/40">
-                            <span className={pct(m.completenessRate)}>{m.completenessRate}%</span>
-                          </td>
-                          {/* Resolution */}
-                          <td className="py-3 px-2 text-center bg-teal-50/40">
-                            <span className={pct(m.oneReplyResolutionRate, 50, 25)}>{m.oneReplyResolutionRate}%</span>
-                          </td>
-                          <td className="py-3 px-2 text-center bg-teal-50/40">
-                            <span className={pctBad(m.reopenedThreadRate)}>{m.reopenedThreadRate}%</span>
-                          </td>
-                          {/* Tone */}
-                          <td className="py-3 px-2 text-center bg-orange-50/40">
-                            <span className={`inline-block text-xs font-semibold px-2 py-0.5 rounded-full ${
-                              m.toneScore >= 70 ? 'bg-green-100 text-green-700' :
-                              m.toneScore >= 40 ? 'bg-yellow-100 text-yellow-700' :
+                          <td className="py-3 px-3 text-center text-gray-600">{m.uniqueCustomerThreads}</td>
+                          <td className="py-3 px-3 text-center">
+                            <span className={`inline-block text-xs font-semibold px-2.5 py-0.5 rounded-full ${
+                              (m.speedScore ?? 0) >= 21 ? 'bg-blue-100 text-blue-700' :
+                              (m.speedScore ?? 0) >= 12 ? 'bg-yellow-100 text-yellow-700' :
                               'bg-red-100 text-red-700'
-                            }`}>{m.toneScore}</span>
+                            }`}>{m.speedScore ?? 0}</span>
                           </td>
-                          {/* Scores */}
-                          <td className="py-3 px-2 text-center">
-                            <span className="inline-block text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">{m.speedScore}</span>
+                          <td className="py-3 px-3 text-center">
+                            <span className={`inline-block text-xs font-semibold px-2.5 py-0.5 rounded-full ${
+                              (m.qualityScore ?? 0) >= 21 ? 'bg-purple-100 text-purple-700' :
+                              (m.qualityScore ?? 0) >= 12 ? 'bg-yellow-100 text-yellow-700' :
+                              'bg-red-100 text-red-700'
+                            }`}>{m.qualityScore ?? 0}</span>
                           </td>
-                          <td className="py-3 px-2 text-center">
-                            <span className="inline-block text-xs font-semibold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">{m.qualityScore}</span>
+                          <td className="py-3 px-3 text-center">
+                            <span className={`inline-block text-xs font-semibold px-2.5 py-0.5 rounded-full ${
+                              (m.resolutionScore ?? 0) >= 14 ? 'bg-teal-100 text-teal-700' :
+                              (m.resolutionScore ?? 0) >= 8  ? 'bg-yellow-100 text-yellow-700' :
+                              'bg-red-100 text-red-700'
+                            }`}>{m.resolutionScore ?? 0}</span>
                           </td>
-                          <td className="py-3 px-2 text-center">
-                            <span className="inline-block text-xs font-semibold px-2 py-0.5 rounded-full bg-teal-100 text-teal-700">{m.resolutionScore}</span>
+                          <td className="py-3 px-3 text-center">
+                            <span className={`inline-block text-xs font-semibold px-2.5 py-0.5 rounded-full ${
+                              (m.toneScore ?? 0) >= 14 ? 'bg-orange-100 text-orange-700' :
+                              (m.toneScore ?? 0) >= 8  ? 'bg-yellow-100 text-yellow-700' :
+                              'bg-red-100 text-red-700'
+                            }`}>{m.toneScore ?? 0}</span>
                           </td>
                           <td className="py-3 px-3 text-center">
                             <span className={`inline-block text-sm font-bold px-3 py-1 rounded-full ring-1 ${sc.bg} ${sc.text} ${sc.ring}`}>
-                              {m.emailHygieneScore}
+                              {m.emailHygieneScore ?? 0}
                             </span>
                           </td>
                         </tr>
@@ -1782,11 +1713,61 @@ export default function AuditDashboardPage() {
                 </table>
               </div>
               <div className="flex items-center gap-4 pt-3 mt-3 border-t border-gray-100 text-xs text-gray-500 flex-wrap">
-                <span className="font-medium text-gray-700">Email Hygiene Score:</span>
                 <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-green-400 inline-block" /> ≥80 Good</span>
                 <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-yellow-400 inline-block" /> 60–79 Fair</span>
                 <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-red-400 inline-block" /> &lt;60 Needs Attention</span>
-                <span className="ml-auto text-gray-400">Speed 35% · Quality 35% · Resolution 20% · Tone 10%</span>
+                <span className="ml-auto text-gray-400">Speed /30 + Quality /30 + Resolution /20 + Tone /20 = Hygiene /100</span>
+              </div>
+            </Card>
+          )}
+
+          {/* Improvement Insights */}
+          {emailMetrics.some((m: any) => m.insights?.length > 0) && (
+            <Card>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-semibold text-gray-800 text-sm">Improvement Insights</h3>
+                <span className="text-xs text-gray-400">Showing areas below threshold — actual email samples with suggested rewrites</span>
+              </div>
+              <div className="space-y-4">
+                {emailMetrics
+                  .filter((m: any) => m.insights?.length > 0)
+                  .map((m: any) => (
+                    <div key={m.userEmail} className="border border-gray-100 rounded-xl p-4 bg-gray-50/40">
+                      <div className="font-medium text-gray-800 text-sm mb-2">{m.userName}</div>
+                      <div className="space-y-3">
+                        {m.insights.map((ins: any, idx: number) => {
+                          const catColors: Record<string, string> = {
+                            speed: 'bg-blue-100 text-blue-700',
+                            quality: 'bg-purple-100 text-purple-700',
+                            tone: 'bg-orange-100 text-orange-700',
+                            resolution: 'bg-teal-100 text-teal-700',
+                          };
+                          const maxLabel = ins.maxScore === 20 ? '/20' : '/10';
+                          return (
+                            <div key={idx} className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+                              <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100 bg-gray-50">
+                                <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${catColors[ins.category] ?? 'bg-gray-100 text-gray-600'}`}>
+                                  {ins.category.charAt(0).toUpperCase() + ins.category.slice(1)}
+                                </span>
+                                <span className="text-xs font-medium text-gray-700">{ins.metric}</span>
+                                <span className="text-xs text-red-600 font-semibold ml-auto">{ins.score}{maxLabel}</span>
+                              </div>
+                              <div className="p-3 space-y-2">
+                                <div>
+                                  <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">From actual email</div>
+                                  <div className="text-xs text-gray-700 bg-red-50 border border-red-100 rounded p-2 italic leading-relaxed whitespace-pre-wrap">{ins.originalLine}</div>
+                                </div>
+                                <div>
+                                  <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Suggested improvement</div>
+                                  <div className="text-xs text-gray-800 bg-green-50 border border-green-100 rounded p-2 leading-relaxed whitespace-pre-wrap">{ins.improvedLine}</div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
               </div>
             </Card>
           )}

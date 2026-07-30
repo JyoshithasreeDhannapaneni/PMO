@@ -152,7 +152,9 @@
       "Bash(nslookup neutarapm.cftools.live)",
       "Bash(tasklist)",
       "Bash(curl -s -w '\\\\nHTTP_STATUS:%{http_code}\\\\n' https://neutarapm.cftools.live/api/audit/hygiene-board -H 'Authorization: Bearer 9440da520f1ef2d7f10a1a3114745c4113a94f5baa75a70e421027d8e90c73c0fbe82b577b83590fe9c5c8efc4d8a687')",
-      "Bash(curl -s -w '\\\\nHTTP_STATUS:%{http_code}\\\\n' 'https://neutarapm.cftools.live/api/audit/activity-summary?startDate=2026-05-30&endDate=2026-07-29' -H 'Authorization: Bearer 9440da520f1ef2d7f10a1a3114745c4113a94f5baa75a70e421027d8e90c73c0fbe82b577b83590fe9c5c8efc4d8a687')"
+      "Bash(curl -s -w '\\\\nHTTP_STATUS:%{http_code}\\\\n' 'https://neutarapm.cftools.live/api/audit/activity-summary?startDate=2026-05-30&endDate=2026-07-29' -H 'Authorization: Bearer 9440da520f1ef2d7f10a1a3114745c4113a94f5baa75a70e421027d8e90c73c0fbe82b577b83590fe9c5c8efc4d8a687')",
+      "Bash(node -e \"require\\('dotenv'\\).config\\({ path: require\\('path'\\).resolve\\(__dirname, '../.env'\\) }\\); console.log\\('TENANT:', process.env.MS_GRAPH_TENANT_ID ? 'SET' : 'MISSING'\\); console.log\\('CLIENT_ID:', process.env.MS_GRAPH_CLIENT_ID ? 'SET' : 'MISSING'\\); console.log\\('SECRET:', process.env.MS_GRAPH_CLIENT_SECRET ? 'SET' : 'MISSING'\\);\")",
+      "Bash(node -e \"const p=require\\('path'\\); console.log\\('From backend/src:',p.resolve\\('c:\\\\\\\\\\\\\\\\Users\\\\\\\\\\\\\\\\BharathTummaganti\\\\\\\\\\\\\\\\OneDrive - CloudFuze, Inc\\\\\\\\\\\\\\\\Documents\\\\\\\\\\\\\\\\PMO\\\\\\\\\\\\\\\\PMO\\\\\\\\\\\\\\\\backend\\\\\\\\\\\\\\\\src','../../.env'\\)\\); console.log\\('Expected .env at:','c:\\\\\\\\\\\\\\\\Users\\\\\\\\\\\\\\\\BharathTummaganti\\\\\\\\\\\\\\\\OneDrive - CloudFuze, Inc\\\\\\\\\\\\\\\\Documents\\\\\\\\\\\\\\\\PMO\\\\\\\\\\\\\\\\PMO\\\\\\\\\\\\\\\\backend\\\\\\\\\\\\\\\\.env'\\);\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\BharathTummaganti\\OneDrive - CloudFuze, Inc\\Documents\\PMO\\PMO",
