@@ -25,29 +25,27 @@ interface GraphMessage {
 export interface UserEmailHygiene {
   userEmail: string;
   userName: string;
-  // Volume
-  externalEmailsSent: number;
-  externalEmailsReceived: number;
+  // Volume (thread-level; raw emails not tracked)
   uniqueCustomerThreads: number;
-  // Response time
-  avgResponseTimeHours: number | null;
-  medianResponseTimeHours: number | null;
-  responsesWithin4h: number;
-  responsesWithin24h: number;
-  responsesOver24h: number;
-  // Response rate
-  responseRate: number;
-  unrepliedThreads: number;
-  // Content quality
-  avgReplyLengthChars: number;
-  autoRepliesDetected: number;
-  // AI relevancy
+  // Speed (35%)
+  avgFirstReplyTimeHours: number | null;
+  slaHitRate: number;                  // % of threads with first reply ≤4h
+  avgFullResolutionTimeHours: number | null;
+  // Quality (35%)
   relevancyScore: number | null;
   relevancySample: string | null;
-  // Scores
-  responseTimeScore: number;
-  responseRateScore: number;
+  accuracyRate: number;                // % of replies that are substantive & non-auto
+  completenessRate: number;            // % coverage of customer questions in reply
+  // Resolution (20%)
+  oneReplyResolutionRate: number;
+  reopenedThreadRate: number;
+  // Tone (10%)
+  toneScore: number;
+  // Category scores (0–100)
+  speedScore: number;
   qualityScore: number;
+  resolutionScore: number;
+  // Overall
   emailHygieneScore: number;
 }
 
@@ -209,13 +207,41 @@ function scoreRelevancy(
   return { score: total, reason };
 }
 
+function scoreTone(cfReplyText: string): number {
+  if (!cfReplyText || cfReplyText.trim().length < 5) return 0;
+  if (/^(automatic|out of office|auto.?reply)/i.test(cfReplyText.trimStart().slice(0, 60))) return 15;
+  let score = 0;
+  if (/\b(hi|hello|dear|good morning|good afternoon|greetings)\b/i.test(cfReplyText)) score += 20;
+  if (/\b(best|regards|sincerely|thanks|thank you|cheers|warm regards)\b/i.test(cfReplyText)) score += 20;
+  if (/\b(please|kindly|appreciate|certainly|absolutely|happy to|glad to)\b/i.test(cfReplyText)) score += 15;
+  if (/\b(understand|apologize|sorry|acknowledge|concern|empathize)\b/i.test(cfReplyText)) score += 15;
+  const sentences = cfReplyText.split(/[.!?]+/).filter(s => s.trim().length > 5).length;
+  score += Math.min(30, sentences * 10);
+  return Math.min(100, score);
+}
+
+function scoreCompleteness(customerText: string, cfReplyText: string): number {
+  if (!cfReplyText || cfReplyText.trim().length < 10) return 0;
+  if (/^(automatic|out of office|auto.?reply)/i.test(cfReplyText.trimStart().slice(0, 60))) return 0;
+  const numQuestions = (customerText.match(/\?/g) ?? []).length;
+  const replyWords = cfReplyText.trim().split(/\s+/).filter(w => w.length > 1).length;
+  if (numQuestions === 0) {
+    // Statement — score by reply depth
+    if (replyWords >= 50) return 100;
+    if (replyWords >= 25) return 75;
+    if (replyWords >= 10) return 50;
+    return 25;
+  }
+  // Expect ~30 words to address each question
+  return Math.min(100, Math.round(replyWords / (numQuestions * 30) * 100));
+}
+
 async function analyzeUser(
   client: AxiosInstance,
   userEmail: string,
   userName: string,
   since: string
 ): Promise<UserEmailHygiene> {
-  // Use email address directly as Graph path segment — requires only Mail.Read, not User.Read.All
   const userPath = encodeURIComponent(userEmail);
   const sinceEncoded = encodeURIComponent(since);
 
@@ -232,7 +258,6 @@ async function analyzeUser(
     fetchMessages(client, recvUrl, 300).catch(() => [] as GraphMessage[]),
   ]);
 
-  // Filter to only external-facing emails
   const externalSent = sentRaw.filter(m =>
     m.toRecipients?.some(r => isExternal(r.emailAddress.address))
   );
@@ -240,7 +265,6 @@ async function analyzeUser(
     m.from?.emailAddress?.address && isExternal(m.from.emailAddress.address)
   );
 
-  // Group by conversationId
   const sentByConv = new Map<string, GraphMessage[]>();
   for (const m of externalSent) {
     if (!sentByConv.has(m.conversationId)) sentByConv.set(m.conversationId, []);
@@ -251,138 +275,172 @@ async function analyzeUser(
     if (!recvByConv.has(m.conversationId)) recvByConv.set(m.conversationId, []);
     recvByConv.get(m.conversationId)!.push(m);
   }
+  for (const [, msgs] of sentByConv) msgs.sort((a, b) => new Date(a.sentDateTime).getTime() - new Date(b.sentDateTime).getTime());
+  for (const [, msgs] of recvByConv) msgs.sort((a, b) => new Date(a.receivedDateTime).getTime() - new Date(b.receivedDateTime).getTime());
 
   const customerConvIds = new Set(recvByConv.keys());
   const uniqueCustomerThreads = customerConvIds.size;
 
-  const responseTimes: number[] = [];
-  let responsesWithin4h = 0;
-  let responsesWithin24h = 0;
-  let responsesOver24h = 0;
-  let unrepliedThreads = 0;
+  // ── Speed ────────────────────────────────────────────────────────
+  const firstReplyTimes: number[] = [];
+  const fullResolutionTimes: number[] = [];
+  let within4h = 0;
+
+  // ── Resolution ───────────────────────────────────────────────────
+  let oneReplySolved = 0;
+  let reopenedThreads = 0;
+  let threadsWithReply = 0;
 
   for (const convId of customerConvIds) {
-    const custMsgs = (recvByConv.get(convId) ?? []).sort(
-      (a, b) => new Date(a.receivedDateTime).getTime() - new Date(b.receivedDateTime).getTime()
-    );
-    const cfReplies = (sentByConv.get(convId) ?? []).sort(
-      (a, b) => new Date(a.sentDateTime).getTime() - new Date(b.sentDateTime).getTime()
-    );
+    const custMsgs = recvByConv.get(convId) ?? [];
+    const cfReplies = sentByConv.get(convId) ?? [];
 
     const firstCust = custMsgs[0];
     if (!firstCust) continue;
     const custTime = new Date(firstCust.receivedDateTime).getTime();
 
-    const reply = cfReplies.find(r => new Date(r.sentDateTime).getTime() > custTime);
-    if (!reply) {
-      unrepliedThreads++;
-    } else {
-      const diffH = (new Date(reply.sentDateTime).getTime() - custTime) / 3600000;
-      responseTimes.push(diffH);
-      if (diffH <= 4) responsesWithin4h++;
-      else if (diffH <= 24) responsesWithin24h++;
-      else responsesOver24h++;
-    }
+    const firstReply = cfReplies.find(r => new Date(r.sentDateTime).getTime() > custTime);
+    if (!firstReply) continue;
+
+    const diffH = (new Date(firstReply.sentDateTime).getTime() - custTime) / 3600000;
+    firstReplyTimes.push(diffH);
+    if (diffH <= 4) within4h++;
+    threadsWithReply++;
+
+    const lastCfReply = cfReplies[cfReplies.length - 1];
+    fullResolutionTimes.push(
+      (new Date(lastCfReply.sentDateTime).getTime() - custTime) / 3600000
+    );
+
+    const firstReplyTime = new Date(firstReply.sentDateTime).getTime();
+    const customerFollowUps = custMsgs.filter(m =>
+      new Date(m.receivedDateTime).getTime() > firstReplyTime
+    );
+    const wasReopened = customerFollowUps.length > 0;
+    if (wasReopened) reopenedThreads++;
+    if (cfReplies.length === 1 && !wasReopened) oneReplySolved++;
   }
 
-  const avgResponseTimeHours = responseTimes.length
-    ? Math.round((responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length) * 10) / 10
-    : null;
-
-  const sorted = [...responseTimes].sort((a, b) => a - b);
-  const medianResponseTimeHours = sorted.length
-    ? Math.round(sorted[Math.floor(sorted.length / 2)] * 10) / 10
-    : null;
-
-  const responseRate = uniqueCustomerThreads > 0
-    ? Math.round(((uniqueCustomerThreads - unrepliedThreads) / uniqueCustomerThreads) * 100)
+  // ── Quality: accuracy rate ────────────────────────────────────────
+  let accurateReplies = 0;
+  for (const convId of customerConvIds) {
+    if (!sentByConv.has(convId)) continue;
+    const cfReply = sentByConv.get(convId)?.[0];
+    if (!cfReply) continue;
+    const isAuto = /^(automatic reply|out of office|auto.?reply)/i.test(cfReply.subject ?? '');
+    const text = cfReply.body?.content ? stripHtml(cfReply.body.content) : cfReply.bodyPreview ?? '';
+    if (!isAuto && text.length > 100) accurateReplies++;
+  }
+  const accuracyRate = threadsWithReply > 0
+    ? Math.round((accurateReplies / threadsWithReply) * 100)
     : 100;
 
-  const avgReplyLengthChars = externalSent.length > 0
-    ? Math.round(
-        externalSent.reduce((sum, m) => {
-          const txt = m.body?.content ? stripHtml(m.body.content) : m.bodyPreview ?? '';
-          return sum + txt.length;
-        }, 0) / externalSent.length
-      )
+  // ── Resolution derived ────────────────────────────────────────────
+  const oneReplyResolutionRate = threadsWithReply > 0
+    ? Math.round((oneReplySolved / threadsWithReply) * 100)
+    : 0;
+  const reopenedThreadRate = threadsWithReply > 0
+    ? Math.round((reopenedThreads / threadsWithReply) * 100)
     : 0;
 
-  const autoRepliesDetected = externalSent.filter(m =>
-    /^(automatic reply|out of office|auto.?reply)/i.test(m.subject ?? '')
-  ).length;
-
-  // Relevancy: score up to 5 threads that have both a customer msg and a CF reply
-  const sampleIds = [...customerConvIds]
-    .filter(id => sentByConv.has(id))
-    .slice(0, 5);
-
-  const scores: number[] = [];
+  // ── Sample threads for relevancy + completeness + tone ───────────
+  const sampleIds = [...customerConvIds].filter(id => sentByConv.has(id)).slice(0, 5);
+  const relevancyScores: number[] = [];
+  const completenessScores: number[] = [];
+  const toneScores: number[] = [];
   let lastReason = '';
+
   for (const convId of sampleIds) {
     const custMsg = recvByConv.get(convId)?.[0];
     const cfReply = sentByConv.get(convId)?.[0];
     if (!custMsg || !cfReply) continue;
     const custText = custMsg.body?.content ? stripHtml(custMsg.body.content) : custMsg.bodyPreview ?? '';
     const cfText = cfReply.body?.content ? stripHtml(cfReply.body.content) : cfReply.bodyPreview ?? '';
-    const result = scoreRelevancy(custText, cfText);
-    scores.push(result.score);
-    lastReason = result.reason;
+    const rel = scoreRelevancy(custText, cfText);
+    relevancyScores.push(rel.score);
+    lastReason = rel.reason;
+    completenessScores.push(scoreCompleteness(custText, cfText));
+    toneScores.push(scoreTone(cfText));
   }
 
-  const relevancyScore = scores.length > 0
-    ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
+  const relevancyScore = relevancyScores.length > 0
+    ? Math.round(relevancyScores.reduce((a, b) => a + b, 0) / relevancyScores.length)
     : null;
-  const relevancySample = scores.length > 0 ? lastReason : null;
+  const relevancySample = relevancyScores.length > 0 ? lastReason : null;
+  const completenessRate = completenessScores.length > 0
+    ? Math.round(completenessScores.reduce((a, b) => a + b, 0) / completenessScores.length)
+    : 50;
+  const toneScore = toneScores.length > 0
+    ? Math.round(toneScores.reduce((a, b) => a + b, 0) / toneScores.length)
+    : 50;
 
-  // Scores
-  let responseTimeScore = 50;
-  if (avgResponseTimeHours !== null) {
-    if (avgResponseTimeHours <= 4) responseTimeScore = 100;
-    else if (avgResponseTimeHours <= 12) responseTimeScore = 85;
-    else if (avgResponseTimeHours <= 24) responseTimeScore = 70;
-    else if (avgResponseTimeHours <= 48) responseTimeScore = 50;
-    else if (avgResponseTimeHours <= 72) responseTimeScore = 30;
-    else responseTimeScore = 10;
-  }
+  // ── Component scores (0–100) ─────────────────────────────────────
+  const avgFirstReplyTimeHours = firstReplyTimes.length
+    ? Math.round(firstReplyTimes.reduce((a, b) => a + b, 0) / firstReplyTimes.length * 10) / 10
+    : null;
 
-  const responseRateScore = responseRate;
+  const avgFullResolutionTimeHours = fullResolutionTimes.length
+    ? Math.round(fullResolutionTimes.reduce((a, b) => a + b, 0) / fullResolutionTimes.length * 10) / 10
+    : null;
 
-  const lengthScore = avgReplyLengthChars >= 300 ? 100
-    : avgReplyLengthChars >= 150 ? 75
-    : avgReplyLengthChars >= 75 ? 50
-    : 25;
-  const autoPenalty = externalSent.length > 0
-    ? Math.min(30, Math.round((autoRepliesDetected / externalSent.length) * 100))
+  const slaHitRate = threadsWithReply > 0
+    ? Math.round((within4h / threadsWithReply) * 100)
     : 0;
-  const contentScore = Math.max(0, lengthScore - autoPenalty);
-  const qualityScore = relevancyScore !== null
-    ? Math.round(relevancyScore * 0.6 + contentScore * 0.4)
-    : contentScore;
+
+  const firstReplyScore =
+    avgFirstReplyTimeHours === null ? 50 :
+    avgFirstReplyTimeHours <= 4    ? 100 :
+    avgFirstReplyTimeHours <= 8    ? 85  :
+    avgFirstReplyTimeHours <= 24   ? 70  :
+    avgFirstReplyTimeHours <= 48   ? 50  :
+    avgFirstReplyTimeHours <= 72   ? 30  : 10;
+
+  const resolutionTimeScore =
+    avgFullResolutionTimeHours === null  ? 50  :
+    avgFullResolutionTimeHours <= 24     ? 100 :
+    avgFullResolutionTimeHours <= 48     ? 85  :
+    avgFullResolutionTimeHours <= 96     ? 70  :
+    avgFullResolutionTimeHours <= 168    ? 50  : 25;
+
+  const relevancyForCalc = relevancyScore ?? 50;
+  const reopenedScoreVal = 100 - reopenedThreadRate;
+
+  // Speed 35% = firstReply 20% + resolution 15%
+  // Quality 35% = relevancy 15% + completeness 10% + accuracy 10%
+  // Resolution 20% = oneReply 10% + reopened-inverse 10%
+  // Tone 10%
+  const speedScore = Math.round((firstReplyScore * 20 + resolutionTimeScore * 15) / 35);
+  const qualityScore = Math.round((relevancyForCalc * 15 + completenessRate * 10 + accuracyRate * 10) / 35);
+  const resolutionScore = Math.round((oneReplyResolutionRate + reopenedScoreVal) / 2);
 
   const emailHygieneScore = Math.round(
-    responseTimeScore * 0.40 + responseRateScore * 0.20 + qualityScore * 0.40
+    firstReplyScore        * 0.20 +
+    resolutionTimeScore    * 0.15 +
+    relevancyForCalc       * 0.15 +
+    completenessRate       * 0.10 +
+    accuracyRate           * 0.10 +
+    oneReplyResolutionRate * 0.10 +
+    reopenedScoreVal       * 0.10 +
+    toneScore              * 0.10
   );
 
   return {
     userEmail,
     userName,
-    externalEmailsSent: externalSent.length,
-    externalEmailsReceived: externalReceived.length,
     uniqueCustomerThreads,
-    avgResponseTimeHours,
-    medianResponseTimeHours,
-    responsesWithin4h,
-    responsesWithin24h,
-    responsesOver24h,
-    responseRate,
-    unrepliedThreads,
-    avgReplyLengthChars,
-    autoRepliesDetected,
+    avgFirstReplyTimeHours,
+    slaHitRate,
+    avgFullResolutionTimeHours,
     relevancyScore,
     relevancySample,
-    responseTimeScore,
-    responseRateScore,
+    accuracyRate,
+    completenessRate,
+    oneReplyResolutionRate,
+    reopenedThreadRate,
+    toneScore,
+    speedScore,
     qualityScore,
+    resolutionScore,
     emailHygieneScore,
   };
 }
@@ -408,7 +466,7 @@ export const emailHygieneService = {
       };
     }
 
-    // Return cached if fresh enough
+    // Return cached if fresh enough AND schema matches current format
     if (!forceRefresh) {
       try {
         const cached = await query(
@@ -416,9 +474,12 @@ export const emailHygieneService = {
         );
         if (cached.rows.length > 0) {
           const row = cached.rows[0];
-          if (Date.now() - new Date(row.computed_at).getTime() < CACHE_TTL_MS) {
+          const metrics = row.metrics as any[];
+          // Invalidate cache if it was written with the old schema (missing new fields)
+          const isNewSchema = metrics.length === 0 || ('slaHitRate' in metrics[0] && 'completenessRate' in metrics[0]);
+          if (isNewSchema && Date.now() - new Date(row.computed_at).getTime() < CACHE_TTL_MS) {
             return {
-              metrics: row.metrics as UserEmailHygiene[],
+              metrics: metrics as UserEmailHygiene[],
               computedAt: row.computed_at as string,
               periodStart: row.period_start as string,
               periodEnd: row.period_end as string,

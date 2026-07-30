@@ -148,7 +148,11 @@
       "Bash(curl -s -w \"\\\\nHTTP_STATUS:%{http_code}\\\\n\" \"https://neutarapm.cftools.live/api/audit/hygiene-board\")",
       "Bash(curl -s -w \"\\\\nHTTP_STATUS:%{http_code}\\\\n\" \"https://neutarapm.cftools.live/api/audit/activity-summary?startDate=2026-05-30&endDate=2026-07-29\")",
       "Bash(curl -sI \"https://neutarapm.cftools.live/api/audit/hygiene-board\")",
-      "Bash(curl -s -w \"\\\\nHTTP_STATUS:%{http_code}\\\\n\" \"https://neutarapm.cftools.live/api/audit/hygiene-scorecard/schedules\")"
+      "Bash(curl -s -w \"\\\\nHTTP_STATUS:%{http_code}\\\\n\" \"https://neutarapm.cftools.live/api/audit/hygiene-scorecard/schedules\")",
+      "Bash(nslookup neutarapm.cftools.live)",
+      "Bash(tasklist)",
+      "Bash(curl -s -w '\\\\nHTTP_STATUS:%{http_code}\\\\n' https://neutarapm.cftools.live/api/audit/hygiene-board -H 'Authorization: Bearer 9440da520f1ef2d7f10a1a3114745c4113a94f5baa75a70e421027d8e90c73c0fbe82b577b83590fe9c5c8efc4d8a687')",
+      "Bash(curl -s -w '\\\\nHTTP_STATUS:%{http_code}\\\\n' 'https://neutarapm.cftools.live/api/audit/activity-summary?startDate=2026-05-30&endDate=2026-07-29' -H 'Authorization: Bearer 9440da520f1ef2d7f10a1a3114745c4113a94f5baa75a70e421027d8e90c73c0fbe82b577b83590fe9c5c8efc4d8a687')"
     ],
     "additionalDirectories": [
       "c:\\Users\\BharathTummaganti\\OneDrive - CloudFuze, Inc\\Documents\\PMO\\PMO",

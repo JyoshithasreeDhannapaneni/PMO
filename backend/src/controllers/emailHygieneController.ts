@@ -26,23 +26,24 @@ export const emailHygieneController = {
     const rows = metrics.map(m => ({
       'Team Member': m.userName,
       Email: m.userEmail,
-      'Emails Sent (Ext)': m.externalEmailsSent,
-      'Emails Received (Ext)': m.externalEmailsReceived,
       'Customer Threads': m.uniqueCustomerThreads,
-      'Avg Response Time (h)': m.avgResponseTimeHours ?? 'N/A',
-      'Median Response Time (h)': m.medianResponseTimeHours ?? 'N/A',
-      'Replied ≤4h': m.responsesWithin4h,
-      'Replied ≤24h': m.responsesWithin24h,
-      'Replied >24h': m.responsesOver24h,
-      'Unreplied Threads': m.unrepliedThreads,
-      'Response Rate (%)': m.responseRate,
-      'Avg Reply Length (chars)': m.avgReplyLengthChars,
-      'Auto-Replies': m.autoRepliesDetected,
-      'AI Relevancy Score': m.relevancyScore ?? 'N/A',
-      'AI Sample Reason': m.relevancySample ?? '',
-      'Response Time Score': m.responseTimeScore,
-      'Response Rate Score': m.responseRateScore,
+      // Speed
+      'Avg First Reply (h)': m.avgFirstReplyTimeHours ?? 'N/A',
+      'SLA Hit Rate (% ≤4h)': m.slaHitRate,
+      'Avg Full Resolution (h)': m.avgFullResolutionTimeHours ?? 'N/A',
+      // Quality
+      'Relevancy Score': m.relevancyScore ?? 'N/A',
+      'Accuracy Rate (%)': m.accuracyRate,
+      'Completeness Rate (%)': m.completenessRate,
+      // Resolution
+      'One-Reply Resolution (%)': m.oneReplyResolutionRate,
+      'Reopened Thread Rate (%)': m.reopenedThreadRate,
+      // Tone
+      'Tone Score': m.toneScore,
+      // Category scores
+      'Speed Score': m.speedScore,
       'Quality Score': m.qualityScore,
+      'Resolution Score': m.resolutionScore,
       'Email Hygiene Score': m.emailHygieneScore,
     }));
     sendWorkbook(

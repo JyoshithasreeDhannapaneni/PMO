@@ -168,8 +168,8 @@ export default function AuditDashboardPage() {
     return { bg: 'bg-red-100', text: 'text-red-700', ring: 'ring-red-300' };
   }
 
-  function fmtHours(h: number | null): string {
-    if (h === null) return '—';
+  function fmtHours(h: number | null | undefined): string {
+    if (h == null || isNaN(h)) return '—';
     if (h < 1) return `${Math.round(h * 60)}m`;
     if (h < 24) return `${h.toFixed(1)}h`;
     return `${(h / 24).toFixed(1)}d`;
@@ -179,22 +179,20 @@ export default function AuditDashboardPage() {
     if (!emailMetrics.length) return;
     const rows = [
       [
-        'Team Member', 'Email',
-        'Emails Sent (Ext)', 'Emails Received (Ext)', 'Customer Threads',
-        'Avg Response Time', 'Median Response Time',
-        'Replied ≤4h', 'Replied ≤24h', 'Replied >24h', 'Unreplied',
-        'Response Rate (%)', 'Avg Reply Length (chars)', 'Auto-Replies',
-        'Relevancy Score', 'AI Sample Reason',
-        'Response Time Score', 'Rate Score', 'Quality Score', 'Email Hygiene Score',
+        'Team Member', 'Email', 'Customer Threads',
+        'Avg First Reply (h)', 'SLA Hit Rate (% ≤4h)', 'Avg Full Resolution (h)',
+        'Relevancy Score', 'Accuracy Rate (%)', 'Completeness Rate (%)',
+        'One-Reply Resolution (%)', 'Reopened Rate (%)',
+        'Tone Score',
+        'Speed Score', 'Quality Score', 'Resolution Score', 'Email Hygiene Score',
       ],
       ...emailMetrics.map((m: any) => [
-        m.userName, m.userEmail,
-        m.externalEmailsSent, m.externalEmailsReceived, m.uniqueCustomerThreads,
-        m.avgResponseTimeHours ?? 'N/A', m.medianResponseTimeHours ?? 'N/A',
-        m.responsesWithin4h, m.responsesWithin24h, m.responsesOver24h, m.unrepliedThreads,
-        m.responseRate, m.avgReplyLengthChars, m.autoRepliesDetected,
-        m.relevancyScore ?? 'N/A', m.relevancySample ?? '',
-        m.responseTimeScore, m.responseRateScore, m.qualityScore, m.emailHygieneScore,
+        m.userName, m.userEmail, m.uniqueCustomerThreads,
+        m.avgFirstReplyTimeHours ?? 'N/A', m.slaHitRate, m.avgFullResolutionTimeHours ?? 'N/A',
+        m.relevancyScore ?? 'N/A', m.accuracyRate, m.completenessRate,
+        m.oneReplyResolutionRate, m.reopenedThreadRate,
+        m.toneScore,
+        m.speedScore, m.qualityScore, m.resolutionScore, m.emailHygieneScore,
       ]),
     ];
     downloadCSV(rows, `email-hygiene-${format(new Date(), 'yyyy-MM-dd')}.csv`);
@@ -1257,7 +1255,7 @@ export default function AuditDashboardPage() {
             <p className="text-xs text-gray-500 mt-0.5">
               {hygieneTab === 'project'
                 ? 'PM login & update activity (audit logs), data completeness, and case study completion'
-                : 'Email response time, response rate, and heuristic reply relevancy for all @cloudfuze.com team members (last 30 days)'}
+                : 'Speed (35%) · Quality (35%) · Resolution (20%) · Tone (10%) — scored from Microsoft 365 mailbox data for all @cloudfuze.com team members (last 30 days)'}
             </p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
@@ -1622,16 +1620,14 @@ export default function AuditDashboardPage() {
           {/* KPI cards */}
           {emailMetrics.length > 0 && (() => {
             const avgScore = Math.round(emailMetrics.reduce((s: number, m: any) => s + m.emailHygieneScore, 0) / emailMetrics.length);
-            const totalUnreplied = emailMetrics.reduce((s: number, m: any) => s + m.unrepliedThreads, 0);
-            const validTimes = emailMetrics.filter((m: any) => m.avgResponseTimeHours !== null);
-            const avgRespTime: number | null = validTimes.length > 0
-              ? validTimes.reduce((s: number, m: any) => s + m.avgResponseTimeHours, 0) / validTimes.length
+            const validFirstReply = emailMetrics.filter((m: any) => m.avgFirstReplyTimeHours !== null);
+            const avgFirstReply: number | null = validFirstReply.length > 0
+              ? validFirstReply.reduce((s: number, m: any) => s + m.avgFirstReplyTimeHours, 0) / validFirstReply.length
               : null;
-            const validRel = emailMetrics.filter((m: any) => m.relevancyScore !== null);
-            const avgRelevancy: number | null = validRel.length > 0
-              ? Math.round(validRel.reduce((s: number, m: any) => s + m.relevancyScore, 0) / validRel.length)
-              : null;
+            const fleetSla = Math.round(emailMetrics.reduce((s: number, m: any) => s + m.slaHitRate, 0) / emailMetrics.length);
+            const avgOneReply = Math.round(emailMetrics.reduce((s: number, m: any) => s + m.oneReplyResolutionRate, 0) / emailMetrics.length);
             const sc = emailScoreColor(avgScore);
+            const slaSc = fleetSla >= 70 ? 'text-green-700' : fleetSla >= 40 ? 'text-yellow-700' : 'text-red-700';
             return (
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div className={`${sc.bg} rounded-xl p-4 border border-white`}>
@@ -1639,16 +1635,16 @@ export default function AuditDashboardPage() {
                   <div className="text-xs text-gray-500 mt-0.5">Fleet Email Hygiene Score</div>
                 </div>
                 <div className="bg-blue-50 rounded-xl p-4 border border-white">
-                  <div className="text-2xl font-bold text-blue-700">{fmtHours(avgRespTime)}</div>
-                  <div className="text-xs text-gray-500 mt-0.5">Avg Response Time</div>
+                  <div className="text-2xl font-bold text-blue-700">{fmtHours(avgFirstReply)}</div>
+                  <div className="text-xs text-gray-500 mt-0.5">Avg First Reply Time</div>
                 </div>
-                <div className="bg-red-50 rounded-xl p-4 border border-white">
-                  <div className="text-2xl font-bold text-red-700">{totalUnreplied}</div>
-                  <div className="text-xs text-gray-500 mt-0.5">Total Unreplied Threads</div>
+                <div className="bg-green-50 rounded-xl p-4 border border-white">
+                  <div className={`text-2xl font-bold ${slaSc}`}>{fleetSla}%</div>
+                  <div className="text-xs text-gray-500 mt-0.5">Fleet SLA Hit Rate (≤4h)</div>
                 </div>
-                <div className="bg-purple-50 rounded-xl p-4 border border-white">
-                  <div className="text-2xl font-bold text-purple-700">{avgRelevancy !== null ? avgRelevancy : '—'}</div>
-                  <div className="text-xs text-gray-500 mt-0.5">Avg Relevancy Score</div>
+                <div className="bg-teal-50 rounded-xl p-4 border border-white">
+                  <div className="text-2xl font-bold text-teal-700">{avgOneReply}%</div>
+                  <div className="text-xs text-gray-500 mt-0.5">Avg One-Reply Resolution</div>
                 </div>
               </div>
             );
@@ -1666,70 +1662,75 @@ export default function AuditDashboardPage() {
           {emailMetrics.length > 0 && (
             <Card>
               <div className="overflow-x-auto">
-                <table className="w-full text-sm" style={{ minWidth: '1500px' }}>
+                <table className="w-full text-sm" style={{ minWidth: '1200px' }}>
                   <thead>
                     <tr className="border-b border-gray-100">
-                      <th colSpan={4} className="py-1.5 px-3" />
-                      <th colSpan={5} className="text-center text-xs font-semibold text-blue-600 py-1.5 bg-blue-50">Response Time</th>
-                      <th colSpan={3} className="text-center text-xs font-semibold text-purple-600 py-1.5 bg-purple-50">Content Quality</th>
-                      <th colSpan={2} className="text-center text-xs font-semibold text-teal-600 py-1.5 bg-teal-50">Relevancy</th>
+                      <th colSpan={2} className="py-1.5 px-3" />
+                      <th colSpan={3} className="text-center text-xs font-semibold text-blue-600 py-1.5 bg-blue-50">Speed (35%)</th>
+                      <th colSpan={3} className="text-center text-xs font-semibold text-purple-600 py-1.5 bg-purple-50">Quality (35%)</th>
+                      <th colSpan={2} className="text-center text-xs font-semibold text-teal-600 py-1.5 bg-teal-50">Resolution (20%)</th>
+                      <th colSpan={1} className="text-center text-xs font-semibold text-orange-600 py-1.5 bg-orange-50">Tone (10%)</th>
                       <th colSpan={4} className="text-center text-xs font-medium text-gray-400 py-1.5">Scores</th>
                     </tr>
                     <tr className="border-b border-gray-200 bg-gray-50/60">
                       <th className="text-left py-2.5 px-3 text-xs font-semibold text-gray-700 whitespace-nowrap">Team Member</th>
-                      <th className="text-center py-2.5 px-2 text-xs font-semibold text-gray-500 whitespace-nowrap">Sent</th>
-                      <th className="text-center py-2.5 px-2 text-xs font-semibold text-gray-500 whitespace-nowrap">Recv</th>
                       <th className="text-center py-2.5 px-2 text-xs font-semibold text-gray-500 whitespace-nowrap">Threads</th>
-                      <th className="text-center py-2.5 px-2 text-xs font-semibold text-blue-600 bg-blue-50/70 whitespace-nowrap">Avg Time</th>
-                      <th className="text-center py-2.5 px-2 text-xs font-semibold text-blue-600 bg-blue-50/70 whitespace-nowrap">≤4h</th>
-                      <th className="text-center py-2.5 px-2 text-xs font-semibold text-blue-600 bg-blue-50/70 whitespace-nowrap">≤24h</th>
-                      <th className="text-center py-2.5 px-2 text-xs font-semibold text-blue-600 bg-blue-50/70 whitespace-nowrap">&gt;24h</th>
-                      <th className="text-center py-2.5 px-2 text-xs font-semibold text-blue-600 bg-blue-50/70 whitespace-nowrap">Unreplied</th>
-                      <th className="text-center py-2.5 px-2 text-xs font-semibold text-purple-600 bg-purple-50/70 whitespace-nowrap">Resp. Rate</th>
-                      <th className="text-center py-2.5 px-2 text-xs font-semibold text-purple-600 bg-purple-50/70 whitespace-nowrap">Avg Length</th>
-                      <th className="text-center py-2.5 px-2 text-xs font-semibold text-purple-600 bg-purple-50/70 whitespace-nowrap">Auto-Reply</th>
-                      <th className="text-center py-2.5 px-2 text-xs font-semibold text-teal-600 bg-teal-50/70 whitespace-nowrap">Score</th>
-                      <th className="text-left py-2.5 px-2 text-xs font-semibold text-teal-600 bg-teal-50/70 whitespace-nowrap">AI Note</th>
-                      <th className="text-center py-2.5 px-2 text-xs font-semibold text-blue-700 whitespace-nowrap">Resp. Time</th>
-                      <th className="text-center py-2.5 px-2 text-xs font-semibold text-purple-700 whitespace-nowrap">Rate</th>
-                      <th className="text-center py-2.5 px-2 text-xs font-semibold text-teal-700 whitespace-nowrap">Quality</th>
+                      {/* Speed */}
+                      <th className="text-center py-2.5 px-2 text-xs font-semibold text-blue-600 bg-blue-50/70 whitespace-nowrap">Avg 1st Reply</th>
+                      <th className="text-center py-2.5 px-2 text-xs font-semibold text-blue-600 bg-blue-50/70 whitespace-nowrap">% ≤4h SLA</th>
+                      <th className="text-center py-2.5 px-2 text-xs font-semibold text-blue-600 bg-blue-50/70 whitespace-nowrap">Avg Resolution</th>
+                      {/* Quality */}
+                      <th className="text-center py-2.5 px-2 text-xs font-semibold text-purple-600 bg-purple-50/70 whitespace-nowrap">Relevancy</th>
+                      <th className="text-center py-2.5 px-2 text-xs font-semibold text-purple-600 bg-purple-50/70 whitespace-nowrap">Accuracy</th>
+                      <th className="text-center py-2.5 px-2 text-xs font-semibold text-purple-600 bg-purple-50/70 whitespace-nowrap">Completeness</th>
+                      {/* Resolution */}
+                      <th className="text-center py-2.5 px-2 text-xs font-semibold text-teal-600 bg-teal-50/70 whitespace-nowrap">1-Reply %</th>
+                      <th className="text-center py-2.5 px-2 text-xs font-semibold text-teal-600 bg-teal-50/70 whitespace-nowrap">Reopened %</th>
+                      {/* Tone */}
+                      <th className="text-center py-2.5 px-2 text-xs font-semibold text-orange-600 bg-orange-50/70 whitespace-nowrap">Tone</th>
+                      {/* Scores */}
+                      <th className="text-center py-2.5 px-2 text-xs font-semibold text-blue-700 whitespace-nowrap">Speed</th>
+                      <th className="text-center py-2.5 px-2 text-xs font-semibold text-purple-700 whitespace-nowrap">Quality</th>
+                      <th className="text-center py-2.5 px-2 text-xs font-semibold text-teal-700 whitespace-nowrap">Resolution</th>
                       <th className="text-center py-2.5 px-3 text-xs font-semibold text-gray-800 whitespace-nowrap">Hygiene</th>
                     </tr>
                   </thead>
                   <tbody>
                     {emailMetrics.map((m: any, i: number) => {
                       const sc = emailScoreColor(m.emailHygieneScore);
-                      const bad = (n: number) => n > 0 ? 'text-red-600 font-semibold' : 'text-gray-300';
-                      const good = (n: number) => n > 0 ? 'text-green-600 font-semibold' : 'text-gray-300';
+                      const pct = (n: number, good = 70, ok = 40) =>
+                        n >= good ? 'text-green-600 font-semibold' : n >= ok ? 'text-yellow-600 font-semibold' : 'text-red-600 font-semibold';
+                      const pctBad = (n: number, warn = 20, bad = 40) =>
+                        n >= bad ? 'text-red-600 font-semibold' : n >= warn ? 'text-yellow-600 font-semibold' : 'text-green-600 font-semibold';
                       return (
                         <tr key={m.userEmail} className={`border-b border-gray-50 ${i % 2 === 0 ? '' : 'bg-gray-50/30'} hover:bg-indigo-50/20 transition-colors`}>
                           <td className="py-3 px-3 whitespace-nowrap">
                             <div className="font-medium text-gray-800">{m.userName}</div>
                             <div className="text-xs text-gray-400">{m.userEmail}</div>
                           </td>
-                          <td className="py-3 px-2 text-center text-gray-600">{m.externalEmailsSent}</td>
-                          <td className="py-3 px-2 text-center text-gray-600">{m.externalEmailsReceived}</td>
                           <td className="py-3 px-2 text-center text-gray-600">{m.uniqueCustomerThreads}</td>
+                          {/* Speed */}
                           <td className="py-3 px-2 text-center bg-blue-50/40">
                             <span className={
-                              m.avgResponseTimeHours === null ? 'text-gray-400' :
-                              m.avgResponseTimeHours <= 4 ? 'text-green-600 font-semibold' :
-                              m.avgResponseTimeHours <= 24 ? 'text-yellow-600 font-semibold' :
+                              m.avgFirstReplyTimeHours === null ? 'text-gray-400' :
+                              m.avgFirstReplyTimeHours <= 4 ? 'text-green-600 font-semibold' :
+                              m.avgFirstReplyTimeHours <= 24 ? 'text-yellow-600 font-semibold' :
                               'text-red-600 font-semibold'
-                            }>{fmtHours(m.avgResponseTimeHours)}</span>
+                            }>{fmtHours(m.avgFirstReplyTimeHours)}</span>
                           </td>
-                          <td className="py-3 px-2 text-center bg-blue-50/40"><span className={good(m.responsesWithin4h)}>{m.responsesWithin4h}</span></td>
-                          <td className="py-3 px-2 text-center bg-blue-50/40"><span className={good(m.responsesWithin24h)}>{m.responsesWithin24h}</span></td>
-                          <td className="py-3 px-2 text-center bg-blue-50/40"><span className={bad(m.responsesOver24h)}>{m.responsesOver24h}</span></td>
-                          <td className="py-3 px-2 text-center bg-blue-50/40"><span className={bad(m.unrepliedThreads)}>{m.unrepliedThreads}</span></td>
+                          <td className="py-3 px-2 text-center bg-blue-50/40">
+                            <span className={pct(m.slaHitRate)}>{m.slaHitRate}%</span>
+                          </td>
+                          <td className="py-3 px-2 text-center bg-blue-50/40">
+                            <span className={
+                              m.avgFullResolutionTimeHours === null ? 'text-gray-400' :
+                              m.avgFullResolutionTimeHours <= 48 ? 'text-green-600 font-semibold' :
+                              m.avgFullResolutionTimeHours <= 96 ? 'text-yellow-600 font-semibold' :
+                              'text-red-600 font-semibold'
+                            }>{fmtHours(m.avgFullResolutionTimeHours)}</span>
+                          </td>
+                          {/* Quality */}
                           <td className="py-3 px-2 text-center bg-purple-50/40">
-                            <span className={m.responseRate >= 90 ? 'text-green-600 font-semibold' : m.responseRate >= 70 ? 'text-yellow-600 font-semibold' : 'text-red-600 font-semibold'}>
-                              {m.responseRate}%
-                            </span>
-                          </td>
-                          <td className="py-3 px-2 text-center bg-purple-50/40 text-gray-600">{m.avgReplyLengthChars.toLocaleString()}</td>
-                          <td className="py-3 px-2 text-center bg-purple-50/40"><span className={bad(m.autoRepliesDetected)}>{m.autoRepliesDetected}</span></td>
-                          <td className="py-3 px-2 text-center bg-teal-50/40">
                             {m.relevancyScore !== null ? (
                               <span className={`inline-block text-xs font-semibold px-2 py-0.5 rounded-full ${
                                 m.relevancyScore >= 80 ? 'bg-green-100 text-green-700' :
@@ -1738,15 +1739,36 @@ export default function AuditDashboardPage() {
                               }`}>{m.relevancyScore}</span>
                             ) : <span className="text-gray-300 text-xs">N/A</span>}
                           </td>
-                          <td className="py-3 px-2 bg-teal-50/40 text-xs text-gray-500 max-w-xs">{m.relevancySample ?? '—'}</td>
+                          <td className="py-3 px-2 text-center bg-purple-50/40">
+                            <span className={pct(m.accuracyRate)}>{m.accuracyRate}%</span>
+                          </td>
+                          <td className="py-3 px-2 text-center bg-purple-50/40">
+                            <span className={pct(m.completenessRate)}>{m.completenessRate}%</span>
+                          </td>
+                          {/* Resolution */}
+                          <td className="py-3 px-2 text-center bg-teal-50/40">
+                            <span className={pct(m.oneReplyResolutionRate, 50, 25)}>{m.oneReplyResolutionRate}%</span>
+                          </td>
+                          <td className="py-3 px-2 text-center bg-teal-50/40">
+                            <span className={pctBad(m.reopenedThreadRate)}>{m.reopenedThreadRate}%</span>
+                          </td>
+                          {/* Tone */}
+                          <td className="py-3 px-2 text-center bg-orange-50/40">
+                            <span className={`inline-block text-xs font-semibold px-2 py-0.5 rounded-full ${
+                              m.toneScore >= 70 ? 'bg-green-100 text-green-700' :
+                              m.toneScore >= 40 ? 'bg-yellow-100 text-yellow-700' :
+                              'bg-red-100 text-red-700'
+                            }`}>{m.toneScore}</span>
+                          </td>
+                          {/* Scores */}
                           <td className="py-3 px-2 text-center">
-                            <span className="inline-block text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">{m.responseTimeScore}</span>
+                            <span className="inline-block text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">{m.speedScore}</span>
                           </td>
                           <td className="py-3 px-2 text-center">
-                            <span className="inline-block text-xs font-semibold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">{m.responseRateScore}</span>
+                            <span className="inline-block text-xs font-semibold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">{m.qualityScore}</span>
                           </td>
                           <td className="py-3 px-2 text-center">
-                            <span className="inline-block text-xs font-semibold px-2 py-0.5 rounded-full bg-teal-100 text-teal-700">{m.qualityScore}</span>
+                            <span className="inline-block text-xs font-semibold px-2 py-0.5 rounded-full bg-teal-100 text-teal-700">{m.resolutionScore}</span>
                           </td>
                           <td className="py-3 px-3 text-center">
                             <span className={`inline-block text-sm font-bold px-3 py-1 rounded-full ring-1 ${sc.bg} ${sc.text} ${sc.ring}`}>
@@ -1764,7 +1786,7 @@ export default function AuditDashboardPage() {
                 <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-green-400 inline-block" /> ≥80 Good</span>
                 <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-yellow-400 inline-block" /> 60–79 Fair</span>
                 <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-red-400 inline-block" /> &lt;60 Needs Attention</span>
-                <span className="ml-auto text-gray-400">Response Time 40% · Response Rate 20% · Reply Quality 40%</span>
+                <span className="ml-auto text-gray-400">Speed 35% · Quality 35% · Resolution 20% · Tone 10%</span>
               </div>
             </Card>
           )}
