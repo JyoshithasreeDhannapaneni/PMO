@@ -46,7 +46,7 @@ PMO/
 4. **All new API routes need auth middleware** — `requireAuth` + `requireRole('admin')` where appropriate.
 5. **Frontend hooks live in `hooks/useProjects.ts`** — do not create separate hook files.
 6. **lucide-react icons on OneDrive timeout** — only use icons already in the import list; never add new lucide icons without confirming the file is locally cached.
-7. **`dotenv.config()`** in `backend/src/index.ts` must use `path.resolve(__dirname, '../../.env')`.
+7. **`dotenv.config()`** in `backend/src/index.ts` must use `path.resolve(__dirname, '../.env')` — `tsx` runtime sets `__dirname` to `backend/src`, so one level up reaches `backend/.env`.
 8. **OAuth scope** — never add `manage:servicedesk-customer` (triggers org-level approval block).
 
 ## Running Locally
