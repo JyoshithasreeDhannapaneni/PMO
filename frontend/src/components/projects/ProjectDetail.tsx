@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { DelayIndicator } from '@/components/ui/DelayIndicator';
@@ -1250,6 +1250,41 @@ export function ProjectDetail({ project }: ProjectDetailProps) {
   const [pendingPhase, setPendingPhase] = useState<string>(project.status === 'COMPLETED' ? 'COMPLETED' : project.phase);
   const [pendingPct, setPendingPct] = useState<number>(project.onetimeProgress ?? 0);
   const [savingPhase, setSavingPhase] = useState(false);
+  const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
+  const [savingStatus, setSavingStatus] = useState(false);
+
+  const STATUS_OPTIONS: { value: import('@/types').ProjectStatus; label: string }[] = [
+    { value: 'ACTIVE',   label: 'Active' },
+    { value: 'ON_HOLD',  label: 'On Hold' },
+    { value: 'INACTIVE', label: 'Inactive' },
+  ];
+
+  const statusDropdownRef = useRef<HTMLDivElement>(null);
+
+  const handleStatusChange = async (newStatus: import('@/types').ProjectStatus) => {
+    if (newStatus === project.status) { setStatusDropdownOpen(false); return; }
+    setSavingStatus(true);
+    setStatusDropdownOpen(false);
+    try {
+      await updateProject.mutateAsync({ id: project.id, data: { status: newStatus } });
+      showToast('success', 'Status updated');
+    } catch {
+      showToast('error', 'Failed to update status');
+    } finally {
+      setSavingStatus(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!statusDropdownOpen) return;
+    const handleOutside = (e: MouseEvent) => {
+      if (statusDropdownRef.current && !statusDropdownRef.current.contains(e.target as Node)) {
+        setStatusDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, [statusDropdownOpen]);
 
   const phaseOptions = settings.phases
     .slice()
@@ -1304,7 +1339,33 @@ export function ProjectDetail({ project }: ProjectDetailProps) {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-3 flex-wrap">
               <h1 className="text-2xl font-bold text-gray-900 uppercase tracking-wide">{project.name}</h1>
-              <StatusBadge status={project.status} variant="status" />
+              {/* Clickable status badge */}
+              <div className="relative" ref={statusDropdownRef}>
+                <button
+                  onClick={() => canEdit && setStatusDropdownOpen(o => !o)}
+                  className={`flex items-center gap-1 rounded focus:outline-none ${canEdit ? 'cursor-pointer hover:ring-2 hover:ring-indigo-300 hover:ring-offset-1 rounded' : 'cursor-default'}`}
+                  title={canEdit ? 'Click to change status' : project.status}
+                  disabled={savingStatus}
+                >
+                  {savingStatus ? <Loader2 size={14} className="animate-spin text-gray-400" /> : null}
+                  <StatusBadge status={project.status} variant="status" />
+                  {canEdit && <span className="text-gray-400 text-xs">▾</span>}
+                </button>
+                {statusDropdownOpen && canEdit && (
+                  <div className="absolute left-0 top-full mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-[130px]">
+                    {STATUS_OPTIONS.map(opt => (
+                      <button
+                        key={opt.value}
+                        onClick={() => handleStatusChange(opt.value)}
+                        className={`w-full text-left px-3 py-1.5 text-sm hover:bg-gray-50 flex items-center gap-2 ${project.status === opt.value ? 'font-semibold text-indigo-600' : 'text-gray-700'}`}
+                      >
+                        {project.status === opt.value && <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 inline-block" />}
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               {project.delayStatus !== 'NOT_DELAYED' && (
                 <span className={`text-sm font-semibold flex items-center gap-1 ${project.delayStatus === 'DELAYED' ? 'text-red-600' : 'text-amber-600'}`}>
                   <AlertTriangle size={15} />
