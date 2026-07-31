@@ -51,3 +51,5 @@ CLAUDE.local.md
 
 # Jira OAuth tokens (contains live access tokens)
 backend/.jira-oauth-tokens.json
+
+backend/.jira-excel-data.json
