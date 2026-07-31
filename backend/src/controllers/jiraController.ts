@@ -25,6 +25,7 @@ import {
   isExcelDataAvailable,
   getExcelSlaByManager,
   getExcelEngineerStats,
+  getExcelEngineersByManager,
   getBoardData,
 } from '../services/jiraExcelService';
 import { logger } from '../utils/logger';
@@ -134,6 +135,15 @@ export const jiraController = {
       logger.error(`[Jira] getEngineerStats failed: ${err.message}`);
       res.status(500).json({ success: false, configured: true, error: err.message, hint: err.response?.data ?? null });
     }
+  }),
+
+  getEngineersByManager: asyncHandler(async (_req: Request, res: Response): Promise<void> => {
+    if (!isExcelDataAvailable()) {
+      res.json({ success: true, available: false, data: { managers: [] } });
+      return;
+    }
+    const store = loadExcelData()!;
+    res.json({ success: true, available: true, data: getExcelEngineersByManager(store) });
   }),
 
   // ── Excel upload endpoints ────────────────────────────────────────────────

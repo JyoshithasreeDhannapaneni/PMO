@@ -371,6 +371,14 @@ export function useJiraExcelStatus() {
   });
 }
 
+export function useEngineersByManager() {
+  return useQuery({
+    queryKey: ['jira-engineers-by-manager'],
+    queryFn: () => authFetch(`${API_BASE}/api/jira/engineers-by-manager`),
+    staleTime: 30_000,
+  });
+}
+
 export function useJiraBoardTickets() {
   return useQuery({
     queryKey: ['jira-board'],

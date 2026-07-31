@@ -47,6 +47,21 @@ export interface ExcelSlaResult {
   source: "excel";
 }
 
+export interface EngineerHygiene {
+  engineerName: string;
+  totalTickets: number;
+  resolvedTickets: number;
+  breachedTickets: number;
+  breachRate: number;
+  hygieneScore: number;
+  tickets: ParsedTicket[];
+}
+
+export interface ExcelEngineersByManagerResult {
+  managers: { manager: string; engineers: EngineerHygiene[] }[];
+  source: "excel";
+}
+
 export interface ExcelEngineerResult {
   period: { startDate: string; endDate: string };
   engineers: {
@@ -339,6 +354,57 @@ export function getBoardData(store: ExcelDataStore): BoardResult {
     uploadedAt: store.uploadedAt,
     source: 'excel',
   };
+}
+
+// Jira exports use several terminal status names; treat all as resolved.
+function isResolvedStatus(status: string): boolean {
+  const s = status.toLowerCase().trim();
+  return s === "resolved" || s === "done" || s === "closed" || s === "completed";
+}
+
+// Engineer hygiene = SLA cleanliness of their tickets (100 - breach rate).
+// Placeholder until a dedicated engineer-hygiene formula is supplied.
+function buildEngineerHygiene(name: string, tickets: ParsedTicket[]): EngineerHygiene {
+  const breachedTickets = tickets.filter((t) => t.frBreached || t.resBreached).length;
+  const resolvedTickets = tickets.filter((t) => isResolvedStatus(t.status)).length;
+  const breachRate = tickets.length > 0
+    ? parseFloat(((breachedTickets / tickets.length) * 100).toFixed(1))
+    : 0;
+  return {
+    engineerName: name,
+    totalTickets: tickets.length,
+    resolvedTickets,
+    breachedTickets,
+    breachRate,
+    hygieneScore: Math.max(0, Math.round(100 - breachRate)),
+    tickets,
+  };
+}
+
+/**
+ * Groups engineers (Assignee) under the Project Manager on their tickets.
+ * An engineer working for two PMs appears under both, scoped to that PM's tickets.
+ */
+export function getExcelEngineersByManager(store: ExcelDataStore): ExcelEngineersByManagerResult {
+  const byManager: Record<string, Record<string, ParsedTicket[]>> = {};
+
+  for (const t of store.tickets) {
+    const pm = (t.projectManager || "").trim();
+    if (!pm) continue;
+    const engineer = (t.assignee || "").trim() || "Unassigned";
+    if (!byManager[pm]) byManager[pm] = {};
+    if (!byManager[pm][engineer]) byManager[pm][engineer] = [];
+    byManager[pm][engineer].push(t);
+  }
+
+  const managers = Object.entries(byManager).map(([manager, engineerMap]) => ({
+    manager,
+    engineers: Object.entries(engineerMap)
+      .map(([name, tickets]) => buildEngineerHygiene(name, tickets))
+      .sort((a, b) => b.totalTickets - a.totalTickets),
+  }));
+
+  return { managers, source: "excel" };
 }
 
 export function getExcelEngineerStats(store: ExcelDataStore): ExcelEngineerResult {

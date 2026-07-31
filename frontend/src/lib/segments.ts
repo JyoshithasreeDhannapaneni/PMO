@@ -5,6 +5,13 @@ export const SEGMENT_CONFIG: { label: Segment; managers: string[] }[] = [
   { label: 'SMB', managers: ['Ajay Singh', 'Abhishikth', 'Harika', 'Sravan', 'Raghu'] },
 ];
 
+// Reporting hierarchy per segment. The lead row shows the rolled-up totals of
+// its own projects plus every manager beneath it.
+export const SEGMENT_HIERARCHY: { label: Segment; lead: string; managers: string[] }[] = [
+  { label: 'ENT', lead: 'Abhishek',   managers: ['Lakshmi Prasanna', 'Pranavi'] },
+  { label: 'SMB', lead: 'Ajay Singh', managers: ['Harika', 'Sravan', 'Raghu', 'Abhishikth'] },
+];
+
 // When a manager's tickets are split across multiple PM names in NTA, list all
 // names here (comma-separated). The API uses exact matching for comma lists.
 export const MANAGER_QUERY_NAMES: Record<string, string> = {
