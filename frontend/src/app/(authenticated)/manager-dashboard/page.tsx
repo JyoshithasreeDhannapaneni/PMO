@@ -4,7 +4,7 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
-import { useManagerGoalsWithStats, useEscalatedProjects, useNtaStats, useNtaSpaces, useNtaIssues, useNtaSearch, useNtaTrends, useNtaAssignees, useNtaReporters, useNtaProjectManagers, useNtaDepartments, useJiraExcelStatus, useNtaByManagers } from '@/hooks/useProjects';
+import { useManagerGoalsWithStats, useEscalatedProjects, useNtaStats, useNtaSpaces, useNtaIssues, useNtaSearch, useNtaTrends, useNtaAssignees, useNtaReporters, useNtaProjectManagers, useNtaDepartments, useJiraExcelStatus, useNtaByManagers, useEngineersByManager } from '@/hooks/useProjects';
 import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import {
@@ -13,7 +13,7 @@ import {
   ArrowLeft, ExternalLink, Upload, FileSpreadsheet, Trash2,
 } from 'lucide-react';
 import api from '@/services/api';
-import { SEGMENT_CONFIG, MANAGER_QUERY_NAMES, segmentOfManager, type Segment } from '@/lib/segments';
+import { SEGMENT_CONFIG, SEGMENT_HIERARCHY, MANAGER_QUERY_NAMES, segmentOfManager, type Segment } from '@/lib/segments';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -521,6 +521,9 @@ function ManagerDetailView({
         )}
       </div>
 
+      {/* Engineers under this manager (from uploaded Jira Excel) */}
+      {!isOthers && <ManagerEngineersSection manager={stat.manager} />}
+
       {/* NTA tickets for this manager */}
       {!isOthers && (
         <div className="mt-4">
@@ -533,6 +536,126 @@ function ManagerDetailView({
   );
 }
 
+// ─── Engineers under a manager (from uploaded Jira Excel) ────────────────────
+
+function hygieneBadgeStyle(score: number): string {
+  if (score >= 80) return 'bg-green-100 text-green-700 ring-green-200';
+  if (score >= 60) return 'bg-yellow-100 text-yellow-700 ring-yellow-200';
+  return 'bg-red-100 text-red-700 ring-red-200';
+}
+
+function ExcelTicketTable({ tickets }: { tickets: any[] }) {
+  return (
+    <div className="border-t border-gray-100 overflow-x-auto">
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="bg-gray-50 text-gray-500">
+            <th className="px-4 py-2 text-left font-medium whitespace-nowrap">Key</th>
+            <th className="px-3 py-2 text-left font-medium">Summary</th>
+            <th className="px-3 py-2 text-left font-medium whitespace-nowrap">Customer</th>
+            <th className="px-3 py-2 text-left font-medium whitespace-nowrap">Status</th>
+            <th className="px-3 py-2 text-center font-medium whitespace-nowrap">FR Breach</th>
+            <th className="px-3 py-2 text-center font-medium whitespace-nowrap">Res Breach</th>
+            <th className="px-3 py-2 text-left font-medium whitespace-nowrap">Created</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-50">
+          {tickets.map((t: any, i: number) => (
+            <tr key={t.key || i} className="hover:bg-indigo-50/30 transition-colors">
+              <td className="px-4 py-2 whitespace-nowrap font-mono text-indigo-600">{t.key || '—'}</td>
+              <td className="px-3 py-2 max-w-[260px] truncate text-gray-700" title={t.summary}>{t.summary || '—'}</td>
+              <td className="px-3 py-2 whitespace-nowrap text-gray-600">{t.customer || '—'}</td>
+              <td className="px-3 py-2 whitespace-nowrap text-gray-600">{t.status || '—'}</td>
+              <td className="px-3 py-2 text-center">
+                {t.frBreached
+                  ? <span className="px-1.5 py-0.5 rounded bg-red-100 text-red-700 font-medium">Yes</span>
+                  : <span className="text-gray-300">—</span>}
+              </td>
+              <td className="px-3 py-2 text-center">
+                {t.resBreached
+                  ? <span className="px-1.5 py-0.5 rounded bg-red-100 text-red-700 font-medium">Yes</span>
+                  : <span className="text-gray-300">—</span>}
+              </td>
+              <td className="px-3 py-2 whitespace-nowrap text-gray-500">{t.created ? t.created.slice(0, 10) : '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function ManagerEngineersSection({ manager }: { manager: string }) {
+  const { data, isLoading } = useEngineersByManager();
+  const [openEngineer, setOpenEngineer] = useState<string | null>(null);
+
+  const available: boolean = data?.available ?? false;
+  const managers: any[] = data?.data?.managers ?? [];
+  const entry = managers.find(
+    (m: any) => (m.manager || '').toLowerCase().trim() === manager.toLowerCase().trim()
+  );
+  const engineers: any[] = entry?.engineers ?? [];
+
+  return (
+    <div className="mt-4 bg-white rounded-2xl border border-gray-200 overflow-hidden">
+      <div className="px-5 py-3 bg-gray-50 border-b border-gray-200 flex items-center gap-3">
+        <h3 className="text-sm font-semibold text-gray-700">Engineers</h3>
+        {!isLoading && <span className="text-xs text-gray-400">{engineers.length} mapped</span>}
+      </div>
+
+      {isLoading ? (
+        <div className="flex justify-center py-10">
+          <Loader2 size={20} className="animate-spin text-indigo-500" />
+        </div>
+      ) : !available ? (
+        <div className="px-5 py-8 text-center text-sm text-gray-400">
+          <p className="font-medium text-gray-500 mb-1">No engineer data yet</p>
+          <p className="text-xs">Upload a Jira export above to populate engineers.</p>
+        </div>
+      ) : engineers.length === 0 ? (
+        <div className="px-5 py-8 text-center text-sm text-gray-400">
+          No engineers found for this manager in the uploaded Jira export.
+        </div>
+      ) : (
+        <div className="divide-y divide-gray-100">
+          {engineers.map((e: any) => {
+            const isOpen = openEngineer === e.engineerName;
+            return (
+              <div key={e.engineerName}>
+                <button
+                  onClick={() => setOpenEngineer(isOpen ? null : e.engineerName)}
+                  className="w-full flex items-center gap-3 px-5 py-3.5 hover:bg-gray-50 transition-colors text-left"
+                >
+                  <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-xs font-bold shrink-0">
+                    {toInitials(e.engineerName)}
+                  </div>
+                  <span className="font-medium text-sm text-gray-800">{e.engineerName}</span>
+                  <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-medium">
+                    {e.totalTickets} ticket{e.totalTickets !== 1 ? 's' : ''}
+                  </span>
+                  <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
+                    {e.resolvedTickets} resolved
+                  </span>
+                  {e.breachedTickets > 0 && (
+                    <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium">
+                      {e.breachedTickets} breached
+                    </span>
+                  )}
+                  <span className={`ml-auto text-xs font-bold px-2.5 py-1 rounded-full ring-1 ${hygieneBadgeStyle(e.hygieneScore)}`}>
+                    Hygiene {e.hygieneScore}
+                  </span>
+                  <ChevronRight size={14} className={`text-gray-400 transition-transform duration-150 ${isOpen ? 'rotate-90' : ''}`} />
+                </button>
+                {isOpen && <ExcelTicketTable tickets={e.tickets ?? []} />}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Manager stats table row ──────────────────────────────────────────────────
 
 function ManagerRow({
@@ -540,11 +663,15 @@ function ManagerRow({
   stat,
   isOthers,
   onSelect,
+  isLead = false,
+  isIndented = false,
 }: {
   name: string;
   stat: ManagerStat | null;
   isOthers: boolean;
   onSelect: () => void;
+  isLead?: boolean;
+  isIndented?: boolean;
 }) {
   const initials = isOthers ? 'OT' : toInitials(name);
   const loading = stat === null;
@@ -552,14 +679,19 @@ function ManagerRow({
   return (
     <tr
       onClick={onSelect}
-      className="hover:bg-primary-50/40 cursor-pointer transition-colors group border-b border-gray-100 last:border-0"
+      className={`hover:bg-primary-50/40 cursor-pointer transition-colors group border-b border-gray-100 last:border-0 ${isLead ? 'bg-primary-50/30' : ''}`}
     >
-      <td className="px-5 py-3.5">
+      <td className={`px-5 py-3.5 ${isIndented ? 'pl-12' : ''}`}>
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center text-xs font-bold text-primary-700 flex-shrink-0 group-hover:bg-primary-200 transition-colors">
+          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 transition-colors ${isLead ? 'bg-primary-600 text-white' : 'bg-primary-100 text-primary-700 group-hover:bg-primary-200'}`}>
             {initials}
           </div>
-          <span className="font-medium text-gray-900 text-sm">{name}</span>
+          <span className={`text-gray-900 text-sm ${isLead ? 'font-bold' : 'font-medium'}`}>{name}</span>
+          {isLead && (
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary-600 text-white whitespace-nowrap tracking-wide">
+              LEAD · ROLLED UP
+            </span>
+          )}
         </div>
       </td>
 
@@ -889,15 +1021,42 @@ export default function ManagerDashboardPage() {
                 </tr>
               </thead>
               <tbody>
-                {currentSegment.managers.map((name) => (
-                  <ManagerRow
-                    key={name}
-                    name={name}
-                    stat={getStatForManager(name)}
-                    isOthers={false}
-                    onSelect={() => setSelectedManager(name)}
-                  />
-                ))}
+                {(() => {
+                  const hier = SEGMENT_HIERARCHY.find((h) => h.label === activeSegment);
+                  if (!hier) return null;
+                  const leadOwn = getStatForManager(hier.lead);
+                  const teamStats = hier.managers.map((m) => getStatForManager(m));
+                  const anyLoading = leadOwn === null || teamStats.some((s) => s === null);
+                  const rollup: ManagerStat | null = anyLoading
+                    ? null
+                    : {
+                        ...EMPTY_STAT,
+                        manager: hier.lead,
+                        ...sumStats([leadOwn as ManagerStat, ...(teamStats as ManagerStat[])]),
+                      };
+                  return (
+                    <>
+                      <ManagerRow
+                        key={hier.lead}
+                        name={hier.lead}
+                        stat={rollup}
+                        isOthers={false}
+                        isLead
+                        onSelect={() => setSelectedManager(hier.lead)}
+                      />
+                      {hier.managers.map((name) => (
+                        <ManagerRow
+                          key={name}
+                          name={name}
+                          stat={getStatForManager(name)}
+                          isOthers={false}
+                          isIndented
+                          onSelect={() => setSelectedManager(name)}
+                        />
+                      ))}
+                    </>
+                  );
+                })()}
                 {currentSegment.label === 'SMB' && (
                   <ManagerRow
                     key="others"

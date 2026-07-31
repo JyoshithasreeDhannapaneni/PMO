@@ -214,23 +214,28 @@ export default function AuditDashboardPage() {
     if (!hygieneBoard.length) return;
     const rows = [
       [
-        'Project Manager', 'Total Projects', 'Active/On-Hold', 'Completed/Archived',
+        'Project Manager', 'Total Projects', 'Active / On-Hold', 'Completed / Archived',
         'Logins (30d)', 'Project Updates (30d)', 'Case Study Updates (30d)',
-        'Last Login', 'Days Since Last Action',
-        'Missing Kickoff', 'Missing SOW Dates', 'Missing Email', 'Missing Notes',
-        'Overdue (unflagged)', 'Missing Size', 'Missing Budget',
-        'CS Done', 'CS Pending', 'No Case Study',
-        'Activity Score', 'Data Quality Score', 'Case Study Score', 'Hygiene Score',
+        'Last Login', 'Last Action', 'Days Since Last Action',
+        'Missing Kickoff Date', 'Missing Planned Dates', 'Missing Customer Email', 'Missing Notes',
+        'Overdue (Not Flagged)', 'Missing Project Size', 'Missing Budget',
+        'Case Studies Done', 'Case Studies Pending', 'No Case Study',
+        'Delayed Projects', 'Missing RCA Note', 'Same-Day Date Violations',
+        'Activity Score', 'Data Quality Score', 'Case Study Score',
+        'Delay Accountability Score', 'Phase Date Integrity Score', 'Hygiene Score',
       ],
       ...hygieneBoard.map((pm: any) => [
         pm.projectManager, pm.totalProjects, pm.activeProjects, pm.completedProjects,
         pm.logins30d, pm.projectUpdates30d, pm.caseStudyUpdates30d,
         pm.lastLoginAt ? pm.lastLoginAt.slice(0, 10) : 'Never',
+        pm.lastActionAt ? pm.lastActionAt.slice(0, 10) : 'Never',
         pm.daysSinceLastAction ?? 'Never',
         pm.missingKickoffDate, pm.missingPlannedDates, pm.missingCustomerEmail,
         pm.missingNotes, pm.overdueNotFlagged, pm.missingProjectSize, pm.missingBudget,
         pm.csDone, pm.csPending, pm.csMissing,
-        pm.activityScore, pm.qualityScore, pm.caseStudyScore, pm.hygieneScore,
+        pm.delayedProjectsCount, pm.missingRcaCount, pm.dateViolationsCount,
+        pm.activityScore, pm.qualityScore, pm.caseStudyScore,
+        pm.delayScore, pm.dateIntegrityScore, pm.hygieneScore,
       ]),
     ];
     downloadCSV(rows, `hygiene-board-${format(new Date(), 'yyyy-MM-dd')}.csv`);
@@ -1404,12 +1409,12 @@ export default function AuditDashboardPage() {
             <div className="text-center py-10 text-gray-400 text-sm">No project data available</div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm" style={{ minWidth: '1700px' }}>
+              <table className="w-full text-sm" style={{ minWidth: '2600px' }}>
                 <thead>
                   {/* Column-group labels */}
                   <tr className="border-b border-gray-100">
-                    <th colSpan={3} className="text-left text-xs font-medium text-gray-400 py-1.5 px-3" />
-                    <th colSpan={5} className="text-center text-xs font-semibold text-blue-600 py-1.5 bg-blue-50">Activity (last 30 days)</th>
+                    <th colSpan={4} className="text-left text-xs font-medium text-gray-400 py-1.5 px-3" />
+                    <th colSpan={6} className="text-center text-xs font-semibold text-blue-600 py-1.5 bg-blue-50">Activity (last 30 days)</th>
                     <th colSpan={7} className="text-center text-xs font-semibold text-purple-600 py-1.5 bg-purple-50">Data Quality (active projects)</th>
                     <th colSpan={3} className="text-center text-xs font-semibold text-teal-600 py-1.5 bg-teal-50">Case Studies</th>
                     <th colSpan={2} className="text-center text-xs font-semibold text-orange-600 py-1.5 bg-orange-50">Delay Accountability</th>
@@ -1419,38 +1424,40 @@ export default function AuditDashboardPage() {
                   <tr className="border-b border-gray-200 bg-gray-50/60">
                     {/* Identity */}
                     <th className="text-left font-semibold text-gray-700 py-2.5 px-3 whitespace-nowrap text-xs">Project Manager</th>
-                    <th className="text-center font-semibold text-gray-500 py-2.5 px-2 whitespace-nowrap text-xs">Projects</th>
-                    <th className="text-center font-semibold text-gray-500 py-2.5 px-2 whitespace-nowrap text-xs">Active</th>
+                    <th className="text-center font-semibold text-gray-500 py-2.5 px-2 whitespace-nowrap text-xs">Total Projects</th>
+                    <th className="text-center font-semibold text-gray-500 py-2.5 px-2 whitespace-nowrap text-xs">Active / On-Hold</th>
+                    <th className="text-center font-semibold text-gray-500 py-2.5 px-2 whitespace-nowrap text-xs">Completed / Archived</th>
                     {/* Activity */}
-                    <th className="text-center font-semibold text-blue-600 py-2.5 px-2 whitespace-nowrap text-xs bg-blue-50/70">Logins</th>
-                    <th className="text-center font-semibold text-blue-600 py-2.5 px-2 whitespace-nowrap text-xs bg-blue-50/70">Proj. Updates</th>
-                    <th className="text-center font-semibold text-blue-600 py-2.5 px-2 whitespace-nowrap text-xs bg-blue-50/70">CS Updates</th>
+                    <th className="text-center font-semibold text-blue-600 py-2.5 px-2 whitespace-nowrap text-xs bg-blue-50/70">Logins (30d)</th>
+                    <th className="text-center font-semibold text-blue-600 py-2.5 px-2 whitespace-nowrap text-xs bg-blue-50/70">Project Updates (30d)</th>
+                    <th className="text-center font-semibold text-blue-600 py-2.5 px-2 whitespace-nowrap text-xs bg-blue-50/70">Case Study Updates (30d)</th>
                     <th className="text-center font-semibold text-blue-600 py-2.5 px-2 whitespace-nowrap text-xs bg-blue-50/70">Last Login</th>
-                    <th className="text-center font-semibold text-blue-600 py-2.5 px-2 whitespace-nowrap text-xs bg-blue-50/70">Days Idle</th>
+                    <th className="text-center font-semibold text-blue-600 py-2.5 px-2 whitespace-nowrap text-xs bg-blue-50/70">Last Action</th>
+                    <th className="text-center font-semibold text-blue-600 py-2.5 px-2 whitespace-nowrap text-xs bg-blue-50/70">Days Since Last Action</th>
                     {/* Data quality */}
-                    <th className="text-center font-semibold text-purple-600 py-2.5 px-2 whitespace-nowrap text-xs bg-purple-50/70">No Kickoff</th>
-                    <th className="text-center font-semibold text-purple-600 py-2.5 px-2 whitespace-nowrap text-xs bg-purple-50/70">No SOW</th>
-                    <th className="text-center font-semibold text-purple-600 py-2.5 px-2 whitespace-nowrap text-xs bg-purple-50/70">No Email</th>
-                    <th className="text-center font-semibold text-purple-600 py-2.5 px-2 whitespace-nowrap text-xs bg-purple-50/70">No Notes</th>
-                    <th className="text-center font-semibold text-purple-600 py-2.5 px-2 whitespace-nowrap text-xs bg-purple-50/70">Overdue</th>
-                    <th className="text-center font-semibold text-purple-600 py-2.5 px-2 whitespace-nowrap text-xs bg-purple-50/70">No Size</th>
-                    <th className="text-center font-semibold text-purple-600 py-2.5 px-2 whitespace-nowrap text-xs bg-purple-50/70">No Budget</th>
+                    <th className="text-center font-semibold text-purple-600 py-2.5 px-2 whitespace-nowrap text-xs bg-purple-50/70">Missing Kickoff Date</th>
+                    <th className="text-center font-semibold text-purple-600 py-2.5 px-2 whitespace-nowrap text-xs bg-purple-50/70">Missing Planned Dates</th>
+                    <th className="text-center font-semibold text-purple-600 py-2.5 px-2 whitespace-nowrap text-xs bg-purple-50/70">Missing Customer Email</th>
+                    <th className="text-center font-semibold text-purple-600 py-2.5 px-2 whitespace-nowrap text-xs bg-purple-50/70">Missing Notes</th>
+                    <th className="text-center font-semibold text-purple-600 py-2.5 px-2 whitespace-nowrap text-xs bg-purple-50/70">Overdue (Not Flagged)</th>
+                    <th className="text-center font-semibold text-purple-600 py-2.5 px-2 whitespace-nowrap text-xs bg-purple-50/70">Missing Project Size</th>
+                    <th className="text-center font-semibold text-purple-600 py-2.5 px-2 whitespace-nowrap text-xs bg-purple-50/70">Missing Budget</th>
                     {/* Case studies */}
-                    <th className="text-center font-semibold text-teal-600 py-2.5 px-2 whitespace-nowrap text-xs bg-teal-50/70">Done</th>
-                    <th className="text-center font-semibold text-teal-600 py-2.5 px-2 whitespace-nowrap text-xs bg-teal-50/70">Pending</th>
-                    <th className="text-center font-semibold text-teal-600 py-2.5 px-2 whitespace-nowrap text-xs bg-teal-50/70">Missing</th>
+                    <th className="text-center font-semibold text-teal-600 py-2.5 px-2 whitespace-nowrap text-xs bg-teal-50/70">Case Studies Done</th>
+                    <th className="text-center font-semibold text-teal-600 py-2.5 px-2 whitespace-nowrap text-xs bg-teal-50/70">Case Studies Pending</th>
+                    <th className="text-center font-semibold text-teal-600 py-2.5 px-2 whitespace-nowrap text-xs bg-teal-50/70">No Case Study</th>
                     {/* Delay accountability */}
                     <th className="text-center font-semibold text-orange-600 py-2.5 px-2 whitespace-nowrap text-xs bg-orange-50/70">Delayed Projects</th>
                     <th className="text-center font-semibold text-orange-600 py-2.5 px-2 whitespace-nowrap text-xs bg-orange-50/70">Missing RCA</th>
                     {/* Phase-date integrity */}
                     <th className="text-center font-semibold text-rose-600 py-2.5 px-2 whitespace-nowrap text-xs bg-rose-50/70">Same-Day Violations</th>
                     {/* Scores */}
-                    <th className="text-center font-semibold text-blue-700 py-2.5 px-2 whitespace-nowrap text-xs">Activity</th>
-                    <th className="text-center font-semibold text-purple-700 py-2.5 px-2 whitespace-nowrap text-xs">Quality</th>
-                    <th className="text-center font-semibold text-teal-700 py-2.5 px-2 whitespace-nowrap text-xs">CS Score</th>
-                    <th className="text-center font-semibold text-orange-700 py-2.5 px-2 whitespace-nowrap text-xs">Delay</th>
-                    <th className="text-center font-semibold text-rose-700 py-2.5 px-2 whitespace-nowrap text-xs">Date Integrity</th>
-                    <th className="text-center font-semibold text-gray-800 py-2.5 px-3 whitespace-nowrap text-xs">Hygiene</th>
+                    <th className="text-center font-semibold text-blue-700 py-2.5 px-2 whitespace-nowrap text-xs">Activity Score</th>
+                    <th className="text-center font-semibold text-purple-700 py-2.5 px-2 whitespace-nowrap text-xs">Data Quality Score</th>
+                    <th className="text-center font-semibold text-teal-700 py-2.5 px-2 whitespace-nowrap text-xs">Case Study Score</th>
+                    <th className="text-center font-semibold text-orange-700 py-2.5 px-2 whitespace-nowrap text-xs">Delay Accountability Score</th>
+                    <th className="text-center font-semibold text-rose-700 py-2.5 px-2 whitespace-nowrap text-xs">Phase Date Integrity Score</th>
+                    <th className="text-center font-semibold text-gray-800 py-2.5 px-3 whitespace-nowrap text-xs">Hygiene Score</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1465,6 +1472,7 @@ export default function AuditDashboardPage() {
                         <td className="py-3 px-3 font-medium text-gray-800 whitespace-nowrap">{pm.projectManager}</td>
                         <td className="py-3 px-2 text-center text-gray-600">{pm.totalProjects}</td>
                         <td className="py-3 px-2 text-center text-gray-600">{pm.activeProjects}</td>
+                        <td className="py-3 px-2 text-center text-gray-600">{pm.completedProjects}</td>
                         {/* Activity cols */}
                         <td className="py-3 px-2 text-center bg-blue-50/40">
                           <span className={neverLoggedIn ? 'text-red-500 font-semibold' : pm.logins30d >= 4 ? 'text-green-600 font-semibold' : 'text-gray-700'}>
@@ -1480,6 +1488,11 @@ export default function AuditDashboardPage() {
                         <td className="py-3 px-2 text-center bg-blue-50/40">
                           <span className={neverLoggedIn ? 'text-red-400 italic text-xs' : 'text-gray-500 text-xs'}>
                             {pm.lastLoginAt ? pm.lastLoginAt.slice(0, 10) : 'Never'}
+                          </span>
+                        </td>
+                        <td className="py-3 px-2 text-center bg-blue-50/40">
+                          <span className={pm.lastActionAt ? 'text-gray-500 text-xs' : 'text-red-400 italic text-xs'}>
+                            {pm.lastActionAt ? pm.lastActionAt.slice(0, 10) : 'Never'}
                           </span>
                         </td>
                         <td className="py-3 px-2 text-center bg-blue-50/40">
