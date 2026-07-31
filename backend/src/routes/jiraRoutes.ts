@@ -11,6 +11,7 @@ router.get('/projects',           jiraController.listProjects);
 router.get('/sample',             jiraController.sampleTickets);
 router.get('/sla',                jiraController.getSlaForManager);
 router.get('/engineers',          jiraController.getEngineerStats);
+router.get('/engineers-by-manager', jiraController.getEngineersByManager);
 router.get('/board',              jiraController.getBoardTickets);
 
 // Excel upload
