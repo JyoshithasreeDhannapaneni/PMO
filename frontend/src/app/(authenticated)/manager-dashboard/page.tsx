@@ -4,7 +4,7 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
-import { useManagerGoalsWithStats, useEscalatedProjects, useNtaStats, useNtaSpaces, useNtaIssues, useNtaSearch, useNtaTrends, useNtaAssignees, useNtaReporters, useNtaProjectManagers, useNtaDepartments, useJiraExcelStatus, useNtaByManagers, useEngineersByManager } from '@/hooks/useProjects';
+import { useManagerGoalsWithStats, useEscalatedProjects, useNtaStats, useNtaEnabled, useNtaToggle, useNtaSpaces, useNtaIssues, useNtaSearch, useNtaTrends, useNtaAssignees, useNtaReporters, useNtaProjectManagers, useNtaDepartments, useJiraExcelStatus, useNtaByManagers, useEngineersByManager, useJiraEngineers } from '@/hooks/useProjects';
 import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import {
@@ -13,7 +13,7 @@ import {
   ArrowLeft, ExternalLink, Upload, FileSpreadsheet, Trash2,
 } from 'lucide-react';
 import api from '@/services/api';
-import { SEGMENT_CONFIG, SEGMENT_HIERARCHY, MANAGER_QUERY_NAMES, segmentOfManager, type Segment } from '@/lib/segments';
+import { SEGMENT_CONFIG, SEGMENT_HIERARCHY, MANAGER_QUERY_NAMES, ENGINEER_ASSIGNMENTS, segmentOfManager, type Segment } from '@/lib/segments';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -83,9 +83,13 @@ function sumStats(stats: ManagerStat[]) {
 // ─── NTA connectivity banner ─────────────────────────────────────────────────
 
 function NtaConnectBanner() {
-  const { data: statsData, isLoading, isError } = useNtaStats();
+  const { data: configData, isLoading: configLoading } = useNtaEnabled();
+  const { data: statsData, isLoading: statsLoading, isError } = useNtaStats();
 
-  if (isLoading) return null;
+  if (configLoading || statsLoading) return null;
+
+  // NTA not configured — hide banner entirely (not an error state)
+  if (!configData?.configured) return null;
 
   if (isError || !statsData) {
     return (
@@ -130,6 +134,8 @@ function ExcelUploadBanner() {
   const invalidateAll = () => {
     queryClient.invalidateQueries({ queryKey: ['jira-excel-status'] });
     queryClient.invalidateQueries({ queryKey: ['jira-sla'] });
+    queryClient.invalidateQueries({ queryKey: ['jira-engineers'] });
+    queryClient.invalidateQueries({ queryKey: ['jira-engineers-by-manager'] });
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -222,15 +228,21 @@ function ManagerDetailView({
   stat,
   isOthers,
   onBack,
+  jiraBaseUrl,
 }: {
   stat: ManagerStat;
   isOthers: boolean;
   onBack: () => void;
+  jiraBaseUrl: string;
 }) {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [projectsOpen, setProjectsOpen] = useState(false);
   const [escalationsOpen, setEscalationsOpen] = useState(false);
+
+  const { data: ntaConfigData } = useNtaEnabled();
+  const ntaEnabled: boolean = (ntaConfigData?.data?.configured ?? ntaConfigData?.configured ?? false)
+    && (ntaConfigData?.data?.enabled ?? ntaConfigData?.enabled ?? true);
 
   const { data: escalatedData } = useEscalatedProjects(isOthers ? undefined : stat.manager);
   const escalationCount: number = Array.isArray(escalatedData) ? escalatedData.length : (escalatedData as any)?.data?.length ?? 0;
@@ -522,10 +534,10 @@ function ManagerDetailView({
       </div>
 
       {/* Engineers under this manager (from uploaded Jira Excel) */}
-      {!isOthers && <ManagerEngineersSection manager={stat.manager} />}
+      {!isOthers && <ManagerEngineersSection manager={stat.manager} jiraBaseUrl={jiraBaseUrl} />}
 
-      {/* NTA tickets for this manager */}
-      {!isOthers && (
+      {/* NTA tickets for this manager — only when NTA is linked */}
+      {!isOthers && ntaEnabled && (
         <div className="mt-4">
           <p className="text-sm font-semibold text-gray-700 mb-2">Tickets</p>
           <ManagerTicketAccordion name={stat.manager} />
@@ -538,21 +550,99 @@ function ManagerDetailView({
 
 // ─── Engineers under a manager (from uploaded Jira Excel) ────────────────────
 
-function hygieneBadgeStyle(score: number): string {
-  if (score >= 80) return 'bg-green-100 text-green-700 ring-green-200';
-  if (score >= 60) return 'bg-yellow-100 text-yellow-700 ring-yellow-200';
-  return 'bg-red-100 text-red-700 ring-red-200';
+function PMEngineerRow({ e, jiraBaseUrl }: { e: any; jiraBaseUrl: string }) {
+  const [openMode, setOpenMode] = useState<null | 'all' | 'fr' | 'res'>(null);
+  const tickets: any[] = e.tickets ?? [];
+  const frBreaches  = tickets.filter((t: any) => t.frBreached).length;
+  const resBreaches = tickets.filter((t: any) => t.resBreached).length;
+  const openTickets = tickets.filter((t: any) => !isTicketRetried(t)).length;
+  const anyBreached = tickets.filter((t: any) => t.frBreached || t.resBreached).length;
+  const breachRate  = tickets.length > 0 ? Math.round((anyBreached / tickets.length) * 100) : 0;
+  const frTickets   = tickets.filter((t: any) => t.frBreached);
+  const resTickets  = tickets.filter((t: any) => t.resBreached);
+
+  const toggle = (mode: 'all' | 'fr' | 'res') =>
+    setOpenMode(prev => (prev === mode ? null : mode));
+
+  return (
+    <div>
+      <div className="flex items-center gap-2 px-5 py-2.5 hover:bg-gray-50 transition-colors">
+        <button
+          onClick={() => tickets.length > 0 && toggle('all')}
+          className={`flex items-center gap-2 flex-1 min-w-0 text-left ${tickets.length > 0 ? 'cursor-pointer group' : 'cursor-default'}`}
+        >
+          <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-xs font-bold shrink-0">
+            {toInitials(e.engineerName)}
+          </div>
+          <span className="font-medium text-sm text-gray-800 group-hover:text-indigo-600 transition-colors">{e.engineerName}</span>
+          {tickets.length > 0 && (
+            <ChevronRight size={13} className={`text-gray-300 transition-transform flex-shrink-0 ${openMode === 'all' ? 'rotate-90' : ''}`} />
+          )}
+        </button>
+
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-medium whitespace-nowrap">
+            {e.totalTickets} total
+          </span>
+          {openTickets > 0 && (
+            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium whitespace-nowrap">
+              {openTickets} open
+            </span>
+          )}
+          {frBreaches > 0 && (
+            <button
+              onClick={() => toggle('fr')}
+              className={`text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap ring-1 transition-colors
+                ${openMode === 'fr'
+                  ? 'bg-orange-500 text-white ring-orange-400'
+                  : 'bg-orange-100 text-orange-700 ring-orange-200 hover:bg-orange-200'}`}
+            >
+              FR {frBreaches}
+            </button>
+          )}
+          {resBreaches > 0 && (
+            <button
+              onClick={() => toggle('res')}
+              className={`text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap ring-1 transition-colors
+                ${openMode === 'res'
+                  ? 'bg-red-500 text-white ring-red-400'
+                  : 'bg-red-100 text-red-700 ring-red-200 hover:bg-red-200'}`}
+            >
+              Res {resBreaches}
+            </button>
+          )}
+          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ring-1 whitespace-nowrap
+            ${breachRate > 20 ? 'bg-red-100 text-red-700 ring-red-200'
+              : breachRate > 0 ? 'bg-amber-100 text-amber-700 ring-amber-200'
+              : 'bg-green-100 text-green-700 ring-green-200'}`}>
+            {breachRate}% breach
+          </span>
+        </div>
+      </div>
+
+      {openMode === 'all' && (
+        tickets.length > 0
+          ? <div className="border-t border-gray-100"><ExcelTicketTable tickets={tickets} jiraBaseUrl={jiraBaseUrl} /></div>
+          : <div className="px-5 py-3 text-xs text-gray-400 border-t border-gray-50">No tickets found.</div>
+      )}
+      {openMode === 'fr' && frTickets.length > 0 && (
+        <BreachedTicketSections tickets={frTickets} jiraBaseUrl={jiraBaseUrl} />
+      )}
+      {openMode === 'res' && resTickets.length > 0 && (
+        <BreachedTicketSections tickets={resTickets} jiraBaseUrl={jiraBaseUrl} />
+      )}
+    </div>
+  );
 }
 
-function ExcelTicketTable({ tickets }: { tickets: any[] }) {
+function ExcelTicketTable({ tickets, jiraBaseUrl }: { tickets: any[]; jiraBaseUrl: string }) {
   return (
-    <div className="border-t border-gray-100 overflow-x-auto">
+    <div className="overflow-x-auto">
       <table className="w-full text-xs">
         <thead>
           <tr className="bg-gray-50 text-gray-500">
             <th className="px-4 py-2 text-left font-medium whitespace-nowrap">Key</th>
             <th className="px-3 py-2 text-left font-medium">Summary</th>
-            <th className="px-3 py-2 text-left font-medium whitespace-nowrap">Customer</th>
             <th className="px-3 py-2 text-left font-medium whitespace-nowrap">Status</th>
             <th className="px-3 py-2 text-center font-medium whitespace-nowrap">FR Breach</th>
             <th className="px-3 py-2 text-center font-medium whitespace-nowrap">Res Breach</th>
@@ -562,13 +652,24 @@ function ExcelTicketTable({ tickets }: { tickets: any[] }) {
         <tbody className="divide-y divide-gray-50">
           {tickets.map((t: any, i: number) => (
             <tr key={t.key || i} className="hover:bg-indigo-50/30 transition-colors">
-              <td className="px-4 py-2 whitespace-nowrap font-mono text-indigo-600">{t.key || '—'}</td>
-              <td className="px-3 py-2 max-w-[260px] truncate text-gray-700" title={t.summary}>{t.summary || '—'}</td>
-              <td className="px-3 py-2 whitespace-nowrap text-gray-600">{t.customer || '—'}</td>
+              <td className="px-4 py-2 whitespace-nowrap font-mono">
+                {t.key ? (
+                  <a
+                    href={`${jiraBaseUrl}/browse/${t.key}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-indigo-600 hover:text-indigo-800 hover:underline"
+                    onClick={e => e.stopPropagation()}
+                  >
+                    {t.key}
+                  </a>
+                ) : '—'}
+              </td>
+              <td className="px-3 py-2 max-w-[320px] truncate text-gray-700" title={t.summary}>{t.summary || '—'}</td>
               <td className="px-3 py-2 whitespace-nowrap text-gray-600">{t.status || '—'}</td>
               <td className="px-3 py-2 text-center">
                 {t.frBreached
-                  ? <span className="px-1.5 py-0.5 rounded bg-red-100 text-red-700 font-medium">Yes</span>
+                  ? <span className="px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 font-medium">Yes</span>
                   : <span className="text-gray-300">—</span>}
               </td>
               <td className="px-3 py-2 text-center">
@@ -585,16 +686,94 @@ function ExcelTicketTable({ tickets }: { tickets: any[] }) {
   );
 }
 
-function ManagerEngineersSection({ manager }: { manager: string }) {
+const RETRY_KEYWORDS = ['retry', 'went into conflict', 'not moving', 'not picking'];
+
+function isTicketRetried(t: any): boolean {
+  const text = (t.summary || '').toLowerCase();
+  return RETRY_KEYWORDS.some(kw => text.includes(kw));
+}
+
+function BreachedTicketSections({
+  tickets,
+  jiraBaseUrl,
+}: {
+  tickets: any[];
+  jiraBaseUrl: string;
+}) {
+  const retry    = tickets.filter(isTicketRetried);
+  const nonRetry = tickets.filter(t => !isTicketRetried(t));
+  const [tab, setTab] = useState<'retry' | 'nonretry'>(retry.length > 0 ? 'retry' : 'nonretry');
+
+  return (
+    <div className="border-t border-gray-100">
+      {/* Tab bar */}
+      <div className="flex border-b border-gray-100 bg-gray-50/80">
+        <button
+          onClick={() => setTab('retry')}
+          className={`flex items-center gap-1.5 px-4 py-2 text-xs font-semibold border-b-2 -mb-px transition whitespace-nowrap
+            ${tab === 'retry'
+              ? 'border-amber-500 text-amber-700'
+              : 'border-transparent text-gray-400 hover:text-gray-600'}`}
+        >
+          Breached — Retry
+          <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold leading-none
+            ${tab === 'retry' ? 'bg-amber-500 text-white' : 'bg-gray-200 text-gray-500'}`}>
+            {retry.length}
+          </span>
+        </button>
+        <button
+          onClick={() => setTab('nonretry')}
+          className={`flex items-center gap-1.5 px-4 py-2 text-xs font-semibold border-b-2 -mb-px transition whitespace-nowrap
+            ${tab === 'nonretry'
+              ? 'border-red-500 text-red-700'
+              : 'border-transparent text-gray-400 hover:text-gray-600'}`}
+        >
+          Breached — Non-retry
+          <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold leading-none
+            ${tab === 'nonretry' ? 'bg-red-500 text-white' : 'bg-gray-200 text-gray-500'}`}>
+            {nonRetry.length}
+          </span>
+        </button>
+      </div>
+
+      {/* Tab content */}
+      <div className="bg-white">
+        {tab === 'retry' && (
+          retry.length > 0
+            ? <ExcelTicketTable tickets={retry} jiraBaseUrl={jiraBaseUrl} />
+            : <p className="px-5 py-6 text-center text-xs text-gray-400">No retry tickets — none match retry / conflict / not moving / not picking.</p>
+        )}
+        {tab === 'nonretry' && (
+          nonRetry.length > 0
+            ? <ExcelTicketTable tickets={nonRetry} jiraBaseUrl={jiraBaseUrl} />
+            : <p className="px-5 py-6 text-center text-xs text-gray-400">No non-retry breached tickets.</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function pmFuzzyMatch(excelPm: string, dbName: string): boolean {
+  const jv = excelPm.toLowerCase().trim();
+  const cn = dbName.toLowerCase().trim();
+  if (!jv || !cn) return false;
+  if (jv === cn) return true;
+  const jvFirst = jv.split(/\s+/)[0];
+  const cnFirst = cn.split(/\s+/)[0];
+  if (jvFirst.length > 2 && jvFirst === cnFirst) return true;
+  return jv.includes(cn) || cn.includes(jv);
+}
+
+function ManagerEngineersSection({ manager, jiraBaseUrl }: { manager: string; jiraBaseUrl: string }) {
   const { data, isLoading } = useEngineersByManager();
-  const [openEngineer, setOpenEngineer] = useState<string | null>(null);
 
   const available: boolean = data?.available ?? false;
+  const pmColumnFound: boolean = data?.pmColumnFound ?? true;
   const managers: any[] = data?.data?.managers ?? [];
-  const entry = managers.find(
-    (m: any) => (m.manager || '').toLowerCase().trim() === manager.toLowerCase().trim()
+  const matchingEntries = managers.filter(
+    (m: any) => pmFuzzyMatch(m.manager || '', manager)
   );
-  const engineers: any[] = entry?.engineers ?? [];
+  const engineers: any[] = matchingEntries.flatMap((e: any) => e.engineers ?? []);
 
   return (
     <div className="mt-4 bg-white rounded-2xl border border-gray-200 overflow-hidden">
@@ -612,46 +791,299 @@ function ManagerEngineersSection({ manager }: { manager: string }) {
           <p className="font-medium text-gray-500 mb-1">No engineer data yet</p>
           <p className="text-xs">Upload a Jira export above to populate engineers.</p>
         </div>
+      ) : !pmColumnFound ? (
+        <div className="px-5 py-8 text-center text-sm text-gray-400">
+          <p className="font-medium text-gray-600 mb-1">&#34;Project Manager&#34; column not found in the uploaded Excel</p>
+          <p className="text-xs max-w-md mx-auto">Re-export from Jira and include the <strong>Project Manager</strong> and <strong>Customer Name</strong> columns. The current file only has: Assignee, Reporter, Combination, Status, Priority, and SLA breach columns.</p>
+        </div>
       ) : engineers.length === 0 ? (
         <div className="px-5 py-8 text-center text-sm text-gray-400">
-          No engineers found for this manager in the uploaded Jira export.
+          <p>No engineers found for <strong className="text-gray-600">{manager}</strong> in the uploaded Jira export.</p>
+          {managers.length > 0 && (
+            <p className="mt-2 text-xs">PM names in Excel: {managers.map((m: any) => m.manager).join(', ')}</p>
+          )}
         </div>
       ) : (
-        <div className="divide-y divide-gray-100">
-          {engineers.map((e: any) => {
-            const isOpen = openEngineer === e.engineerName;
-            return (
-              <div key={e.engineerName}>
-                <button
-                  onClick={() => setOpenEngineer(isOpen ? null : e.engineerName)}
-                  className="w-full flex items-center gap-3 px-5 py-3.5 hover:bg-gray-50 transition-colors text-left"
-                >
-                  <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-xs font-bold shrink-0">
-                    {toInitials(e.engineerName)}
-                  </div>
-                  <span className="font-medium text-sm text-gray-800">{e.engineerName}</span>
-                  <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-medium">
-                    {e.totalTickets} ticket{e.totalTickets !== 1 ? 's' : ''}
-                  </span>
-                  <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
-                    {e.resolvedTickets} resolved
-                  </span>
-                  {e.breachedTickets > 0 && (
-                    <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium">
-                      {e.breachedTickets} breached
-                    </span>
-                  )}
-                  <span className={`ml-auto text-xs font-bold px-2.5 py-1 rounded-full ring-1 ${hygieneBadgeStyle(e.hygieneScore)}`}>
-                    Hygiene {e.hygieneScore}
-                  </span>
-                  <ChevronRight size={14} className={`text-gray-400 transition-transform duration-150 ${isOpen ? 'rotate-90' : ''}`} />
-                </button>
-                {isOpen && <ExcelTicketTable tickets={e.tickets ?? []} />}
-              </div>
-            );
-          })}
+        <div className="divide-y divide-gray-50">
+          {engineers.map((e: any) => (
+            <PMEngineerRow key={e.engineerName} e={e} jiraBaseUrl={jiraBaseUrl} />
+          ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Segment tree view (hierarchy: lead → managers → engineers → tickets) ─────
+
+function normalizeForEngineerMatch(s: string): string {
+  const base = s.includes('@') ? s.split('@')[0] : s;
+  return base.toLowerCase().replace(/[.\s_-]/g, '');
+}
+
+function engineerMatch(jiraAssignee: string, canonicalName: string): boolean {
+  const jv = normalizeForEngineerMatch(jiraAssignee);
+  const cn = normalizeForEngineerMatch(canonicalName);
+  if (jv === cn) return true;
+  if (jv.startsWith(cn) || cn.startsWith(jv)) return true;
+
+  // First-word match (e.g. "Arun Kandula" → canonical "Arun")
+  const jvRaw = jiraAssignee.includes('@') ? jiraAssignee.split('@')[0] : jiraAssignee;
+  const jvFirst = jvRaw.toLowerCase().split(/[\s.]/)[0];
+  const cnFirst = canonicalName.toLowerCase().split(/\s/)[0];
+  if (jvFirst.length > 2 && cnFirst.length > 2 && jvFirst === cnFirst) return true;
+
+  // All canonical words appear anywhere in the jira assignee name.
+  // Handles reversed/prefixed Indian names, e.g.:
+  //   "kondameedi ganesh"      → "Ganesh Kondameedi"
+  //   "Chinthala Ravi Hemanth" → "Ravi Hemanth"
+  //   "Lakshmi Triveni Meena"  → "Meena Lakshmi Triveni"
+  const cnWords = canonicalName.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+  const jvLower = jiraAssignee.toLowerCase();
+  if (cnWords.length > 0 && cnWords.every(w => jvLower.includes(w))) return true;
+
+  return false;
+}
+
+function getEngineerJiraData(allJiraEngineers: any[], canonicalName: string) {
+  const matches     = allJiraEngineers.filter(e => engineerMatch(e.engineerName, canonicalName));
+  const tickets     = matches.flatMap(e => e.tickets ?? []);
+  const totalTickets = tickets.length;
+  const frBreaches  = tickets.filter((t: any) => t.frBreached).length;
+  const resBreaches = tickets.filter((t: any) => t.resBreached).length;
+  const openTickets = tickets.filter((t: any) => {
+    const s = (t.status || '').toLowerCase();
+    return !['done', 'resolved', 'closed', 'completed'].some(x => s.includes(x));
+  }).length;
+  const anyBreached   = tickets.filter((t: any) => t.frBreached || t.resBreached).length;
+  const breachRate  = totalTickets > 0 ? Math.round((anyBreached / totalTickets) * 100) : 0;
+  return { totalTickets, frBreaches, resBreaches, openTickets, breachRate, tickets };
+}
+
+function EngineerTreeRow({
+  name,
+  allJiraEngineers,
+  jiraAvailable,
+  jiraBaseUrl,
+}: {
+  name: string;
+  allJiraEngineers: any[];
+  jiraAvailable: boolean;
+  jiraBaseUrl: string;
+}) {
+  const [openMode, setOpenMode] = useState<null | 'all' | 'fr' | 'res'>(null);
+  const { totalTickets, frBreaches, resBreaches, openTickets, breachRate, tickets } = getEngineerJiraData(allJiraEngineers, name);
+  const frTickets  = tickets.filter((t: any) => t.frBreached);
+  const resTickets = tickets.filter((t: any) => t.resBreached);
+
+  const toggle = (mode: 'all' | 'fr' | 'res') =>
+    setOpenMode(prev => (prev === mode ? null : mode));
+
+  return (
+    <div>
+      <div className="flex items-center gap-2 px-5 py-2.5 hover:bg-gray-50 transition-colors">
+        {/* Avatar + name → click to see all tickets */}
+        <button
+          onClick={() => jiraAvailable && totalTickets > 0 && toggle('all')}
+          className={`flex items-center gap-2 flex-1 min-w-0 text-left ${jiraAvailable && totalTickets > 0 ? 'cursor-pointer group' : 'cursor-default'}`}
+        >
+          <div className="w-7 h-7 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center text-xs font-bold flex-shrink-0">
+            {toInitials(name)}
+          </div>
+          <span className="font-medium text-sm text-gray-700 group-hover:text-indigo-600 transition-colors">{name}</span>
+          {jiraAvailable && totalTickets > 0 && (
+            <ChevronRight size={13} className={`text-gray-300 transition-transform flex-shrink-0 ${openMode === 'all' ? 'rotate-90' : ''}`} />
+          )}
+        </button>
+
+        {jiraAvailable ? (
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-medium whitespace-nowrap">
+              {totalTickets} total
+            </span>
+            {openTickets > 0 && (
+              <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium whitespace-nowrap">
+                {openTickets} open
+              </span>
+            )}
+            {frBreaches > 0 && (
+              <button
+                onClick={() => toggle('fr')}
+                className={`text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap ring-1 transition-colors
+                  ${openMode === 'fr'
+                    ? 'bg-orange-500 text-white ring-orange-400'
+                    : 'bg-orange-100 text-orange-700 ring-orange-200 hover:bg-orange-200'}`}
+              >
+                FR {frBreaches}
+              </button>
+            )}
+            {resBreaches > 0 && (
+              <button
+                onClick={() => toggle('res')}
+                className={`text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap ring-1 transition-colors
+                  ${openMode === 'res'
+                    ? 'bg-red-500 text-white ring-red-400'
+                    : 'bg-red-100 text-red-700 ring-red-200 hover:bg-red-200'}`}
+              >
+                Res {resBreaches}
+              </button>
+            )}
+            <span className={`text-xs font-bold px-2 py-0.5 rounded-full ring-1 whitespace-nowrap
+              ${breachRate > 20 ? 'bg-red-100 text-red-700 ring-red-200'
+                : breachRate > 0 ? 'bg-amber-100 text-amber-700 ring-amber-200'
+                : 'bg-green-100 text-green-700 ring-green-200'}`}>
+              {breachRate}% breach
+            </span>
+          </div>
+        ) : (
+          <span className="text-xs text-gray-300 italic">upload Excel to see tickets</span>
+        )}
+      </div>
+
+      {/* All-tickets panel */}
+      {openMode === 'all' && (
+        tickets.length > 0
+          ? <div className="border-t border-gray-100"><ExcelTicketTable tickets={tickets} jiraBaseUrl={jiraBaseUrl} /></div>
+          : <div className="px-5 py-3 text-xs text-gray-400 border-t border-gray-50">No tickets found for {name} in the uploaded Excel.</div>
+      )}
+
+      {/* FR breach panel — retry / non-retry */}
+      {openMode === 'fr' && frTickets.length > 0 && (
+        <BreachedTicketSections tickets={frTickets} jiraBaseUrl={jiraBaseUrl} />
+      )}
+
+      {/* Res breach panel — retry / non-retry */}
+      {openMode === 'res' && resTickets.length > 0 && (
+        <BreachedTicketSections tickets={resTickets} jiraBaseUrl={jiraBaseUrl} />
+      )}
+    </div>
+  );
+}
+
+function ManagerTreeCard({
+  name,
+  isLead,
+  stat,
+  engineers,
+  allJiraEngineers,
+  jiraAvailable,
+  jiraBaseUrl,
+  onViewProjects,
+}: {
+  name: string;
+  isLead: boolean;
+  stat: ManagerStat | null;
+  engineers: string[];
+  allJiraEngineers: any[];
+  jiraAvailable: boolean;
+  jiraBaseUrl: string;
+  onViewProjects: () => void;
+}) {
+  const [expanded, setExpanded] = useState(isLead);
+
+  return (
+    <div className={isLead ? '' : 'ml-6 pl-4 border-l-2 border-gray-100'}>
+      <div
+        className={`flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer select-none transition-colors
+          ${isLead ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-white border border-gray-200 hover:bg-gray-50'}`}
+        onClick={() => setExpanded(e => !e)}
+      >
+        <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0
+          ${isLead ? 'bg-white/20 text-white' : 'bg-indigo-100 text-indigo-700'}`}>
+          {toInitials(name)}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className={`font-semibold text-sm ${isLead ? 'text-white' : 'text-gray-900'}`}>{name}</span>
+            {isLead && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/20 text-white">LEAD</span>}
+          </div>
+          <div className={`text-xs mt-0.5 ${isLead ? 'text-indigo-200' : 'text-gray-500'}`}>
+            {stat ? (
+              <>
+                {stat.total} project{stat.total !== 1 ? 's' : ''}
+                {stat.pctOnTime > 0 || stat.total > 0 ? (
+                  <> · <span className={stat.pctOnTime >= 80 ? (isLead ? 'text-green-300' : 'text-green-600') : (isLead ? 'text-yellow-300' : 'text-yellow-600')}>
+                    {stat.pctOnTime}% on time
+                  </span></>
+                ) : null}
+                {stat.delayed > 0 && <> · <span className={isLead ? 'text-red-300' : 'text-red-500'}>{stat.delayed} delayed</span></>}
+              </>
+            ) : <span className="opacity-50">loading…</span>}
+          </div>
+        </div>
+        <button
+          onClick={e => { e.stopPropagation(); onViewProjects(); }}
+          className={`text-xs font-medium px-3 py-1.5 rounded-lg border whitespace-nowrap flex-shrink-0 transition-colors
+            ${isLead ? 'border-white/30 text-white hover:bg-white/10' : 'border-gray-200 text-gray-600 hover:bg-gray-100'}`}
+        >
+          Projects →
+        </button>
+        <span className={`text-xs flex-shrink-0 ${isLead ? 'text-indigo-200' : 'text-gray-400'}`}>{engineers.length} eng</span>
+        <ChevronRight size={16} className={`flex-shrink-0 transition-transform duration-200 ${expanded ? 'rotate-90' : ''} ${isLead ? 'text-white/60' : 'text-gray-300'}`} />
+      </div>
+
+      {expanded && (
+        <div className="mt-1.5 rounded-xl border border-gray-100 bg-white overflow-hidden">
+          <div className="px-5 py-2 bg-gray-50 border-b border-gray-100 flex items-center gap-2">
+            <span className="text-[11px] font-semibold text-gray-500 tracking-wide">ENGINEERS</span>
+            <span className="text-xs text-gray-400">({engineers.length})</span>
+          </div>
+          <div className="divide-y divide-gray-50">
+            {engineers.map(eng => (
+              <EngineerTreeRow key={eng} name={eng} allJiraEngineers={allJiraEngineers} jiraAvailable={jiraAvailable} jiraBaseUrl={jiraBaseUrl} />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SegmentTreeView({
+  segment,
+  getStatForManager,
+  allJiraEngineers,
+  jiraAvailable,
+  jiraBaseUrl,
+  onSelectManager,
+}: {
+  segment: Segment;
+  getStatForManager: (name: string) => ManagerStat | null;
+  allJiraEngineers: any[];
+  jiraAvailable: boolean;
+  jiraBaseUrl: string;
+  onSelectManager: (name: string) => void;
+}) {
+  const hier = SEGMENT_HIERARCHY.find(h => h.label === segment);
+  if (!hier) return null;
+
+  return (
+    <div className="space-y-3">
+      <ManagerTreeCard
+        name={hier.lead}
+        isLead
+        stat={getStatForManager(hier.lead)}
+        engineers={ENGINEER_ASSIGNMENTS[hier.lead] ?? []}
+        allJiraEngineers={allJiraEngineers}
+        jiraAvailable={jiraAvailable}
+        jiraBaseUrl={jiraBaseUrl}
+        onViewProjects={() => onSelectManager(hier.lead)}
+      />
+      <div className="space-y-2 mt-1">
+        {hier.managers.map(managerName => (
+          <ManagerTreeCard
+            key={managerName}
+            name={managerName}
+            isLead={false}
+            stat={getStatForManager(managerName)}
+            engineers={ENGINEER_ASSIGNMENTS[managerName] ?? []}
+            allJiraEngineers={allJiraEngineers}
+            jiraAvailable={jiraAvailable}
+            jiraBaseUrl={jiraBaseUrl}
+            onViewProjects={() => onSelectManager(managerName)}
+          />
+        ))}
+      </div>
     </div>
   );
 }
@@ -881,11 +1313,21 @@ export default function ManagerDashboardPage() {
   const activeSegment = activeTab as Segment;
   const queryClient = useQueryClient();
 
+  const { data: ntaConfigData, isLoading: ntaConfigLoading } = useNtaEnabled();
+  const ntaApiKeyPresent: boolean = ntaConfigData?.data?.configured ?? ntaConfigData?.configured ?? false;
+  const ntaEnabled: boolean = ntaApiKeyPresent && (ntaConfigData?.data?.enabled ?? ntaConfigData?.enabled ?? true);
+  const ntaToggle = useNtaToggle();
+
   const { data: statsData, isLoading: statsLoading } = useManagerGoalsWithStats();
   const allStats: ManagerStat[] = useMemo(() => {
     const raw: any[] = statsData?.data ?? [];
     return raw;
   }, [statsData]);
+
+  const { data: jiraEngineersData } = useJiraEngineers();
+  const allJiraEngineers: any[] = jiraEngineersData?.data?.engineers ?? [];
+  const jiraAvailable: boolean = allJiraEngineers.length > 0;
+  const jiraBaseUrl: string = jiraEngineersData?.jiraBaseUrl ?? 'https://cf2020.atlassian.net';
 
   if (authLoading) {
     return (
@@ -905,7 +1347,7 @@ export default function ManagerDashboardPage() {
     );
   }
 
-  const currentSegment = SEGMENT_CONFIG.find((s) => s.label === activeSegment)!;
+  const currentSegment = SEGMENT_CONFIG.find((s) => s.label === activeSegment);
 
   // Build per-manager stat lookup
   const getStatForManager = (name: string): ManagerStat | null => {
@@ -947,6 +1389,7 @@ export default function ManagerDashboardPage() {
           stat={selectedStat}
           isOthers={selectedManager === 'Others'}
           onBack={() => setSelectedManager(null)}
+          jiraBaseUrl={jiraBaseUrl}
         />
       </div>
     );
@@ -962,7 +1405,7 @@ export default function ManagerDashboardPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-gray-200 overflow-x-auto">
-        {(['ENT', 'SMB', 'ENGINEERS', 'OBSERVATIONS', 'TICKETS'] as ActiveTab[]).map((tab) => {
+        {(['ENT', 'SMB', ...(ntaEnabled ? ['ENGINEERS', 'TICKETS'] as ActiveTab[] : []), 'OBSERVATIONS'] as ActiveTab[]).map((tab) => {
           const labels: Record<ActiveTab, string> = {
             ENT: 'ENT', SMB: 'SMB', ENGINEERS: 'Engineers',
             OBSERVATIONS: 'Observations', TICKETS: 'Tickets',
@@ -987,93 +1430,60 @@ export default function ManagerDashboardPage() {
       <div className="space-y-2">
         <ExcelUploadBanner />
         <NtaConnectBanner />
+        {/* Neutara Link / Unlink card — only visible to admin and only when API key is present in .env */}
+        {!ntaConfigLoading && ntaApiKeyPresent && (
+          <div className={`rounded-xl border p-3 flex items-center justify-between gap-4 ${ntaEnabled ? 'border-indigo-200 bg-indigo-50' : 'border-gray-200 bg-gray-50'}`}>
+            <div className="flex items-center gap-2.5">
+              <div className={`w-2 h-2 rounded-full flex-shrink-0 ${ntaEnabled ? 'bg-indigo-500' : 'bg-gray-400'}`} />
+              <div>
+                <p className="text-sm font-semibold text-gray-800">Neutara Ticketing</p>
+                <p className="text-xs text-gray-500">{ntaEnabled ? 'Linked — Tickets, Engineers & NTA sections are active' : 'Unlinked — Tickets, Engineers & NTA sections are hidden'}</p>
+              </div>
+            </div>
+            <button
+              disabled={ntaToggle.isPending}
+              onClick={() => ntaToggle.mutate(!ntaEnabled)}
+              className={`px-4 py-1.5 text-sm font-semibold rounded-lg border transition whitespace-nowrap disabled:opacity-60 ${
+                ntaEnabled
+                  ? 'border-red-300 text-red-600 bg-white hover:bg-red-50'
+                  : 'border-indigo-400 text-indigo-700 bg-white hover:bg-indigo-50'
+              }`}
+            >
+              {ntaToggle.isPending ? 'Saving…' : ntaEnabled ? 'Unlink' : 'Link'}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Observations tab */}
       {activeTab === 'OBSERVATIONS' && <ObservationsView />}
 
-      {/* Tickets tab */}
-      {activeTab === 'TICKETS' && <TicketsView />}
+      {/* Tickets tab — only when NTA is linked */}
+      {ntaEnabled && activeTab === 'TICKETS' && <TicketsView />}
 
-      {/* Engineers tab */}
-      {activeTab === 'ENGINEERS' && <EngineersView />}
+      {/* Engineers tab — only when NTA is linked */}
+      {ntaEnabled && activeTab === 'ENGINEERS' && <EngineersView />}
 
-      {/* Manager stats table (ENT / SMB) */}
+      {/* Segment tree view (ENT / SMB) */}
       {activeTab !== 'OBSERVATIONS' && activeTab !== 'TICKETS' && activeTab !== 'ENGINEERS' && (
-        <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-          {statsLoading ? (
-            <div className="flex justify-center py-16">
-              <Loader2 className="w-7 h-7 animate-spin text-primary-600" />
-            </div>
-          ) : (
-            <table className="w-full">
-              <thead>
-                <tr className="bg-[#1b4f72] text-white text-xs font-semibold">
-                  <th className="px-5 py-3 text-left">Project Manager</th>
-                  <th className="px-5 py-3 text-center">Total Projects</th>
-                  <th className="px-5 py-3 text-center">On Time</th>
-                  <th className="px-5 py-3 text-center">Delayed</th>
-                  <th className="px-5 py-3 text-center">At Risk</th>
-                  <th className="px-5 py-3 text-left min-w-[140px]">% On Time</th>
-                  <th className="px-5 py-3 text-center whitespace-nowrap">Avg Delay (Days, Late Only)</th>
-                  <th className="px-3 py-3 w-8" />
-
-                </tr>
-              </thead>
-              <tbody>
-                {(() => {
-                  const hier = SEGMENT_HIERARCHY.find((h) => h.label === activeSegment);
-                  if (!hier) return null;
-                  const leadOwn = getStatForManager(hier.lead);
-                  const teamStats = hier.managers.map((m) => getStatForManager(m));
-                  const anyLoading = leadOwn === null || teamStats.some((s) => s === null);
-                  const rollup: ManagerStat | null = anyLoading
-                    ? null
-                    : {
-                        ...EMPTY_STAT,
-                        manager: hier.lead,
-                        ...sumStats([leadOwn as ManagerStat, ...(teamStats as ManagerStat[])]),
-                      };
-                  return (
-                    <>
-                      <ManagerRow
-                        key={hier.lead}
-                        name={hier.lead}
-                        stat={rollup}
-                        isOthers={false}
-                        isLead
-                        onSelect={() => setSelectedManager(hier.lead)}
-                      />
-                      {hier.managers.map((name) => (
-                        <ManagerRow
-                          key={name}
-                          name={name}
-                          stat={getStatForManager(name)}
-                          isOthers={false}
-                          isIndented
-                          onSelect={() => setSelectedManager(name)}
-                        />
-                      ))}
-                    </>
-                  );
-                })()}
-                {currentSegment.label === 'SMB' && (
-                  <ManagerRow
-                    key="others"
-                    name="Others"
-                    stat={othersStats}
-                    isOthers={true}
-                    onSelect={() => setSelectedManager('Others')}
-                  />
-                )}
-              </tbody>
-            </table>
-          )}
-        </div>
+        statsLoading ? (
+          <div className="flex justify-center py-16">
+            <Loader2 className="w-7 h-7 animate-spin text-primary-600" />
+          </div>
+        ) : (
+          <SegmentTreeView
+            segment={activeSegment}
+            getStatForManager={getStatForManager}
+            allJiraEngineers={allJiraEngineers}
+            jiraAvailable={jiraAvailable}
+            jiraBaseUrl={jiraBaseUrl}
+            onSelectManager={setSelectedManager}
+          />
+        )
       )}
 
-      {/* NTA Tickets by Manager (ENT / SMB) */}
-      {(activeTab === 'ENT' || activeTab === 'SMB') && (
+      {/* NTA Tickets by Manager (ENT / SMB) — only when NTA is linked */}
+      {ntaEnabled && (activeTab === 'ENT' || activeTab === 'SMB') && (
         <NtaBoardSection segment={activeSegment} />
       )}
     </div>
