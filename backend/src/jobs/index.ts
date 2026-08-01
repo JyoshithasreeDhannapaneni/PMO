@@ -2,6 +2,7 @@ import cron from 'node-cron';
 import { logger } from '../utils/logger';
 import { projectService } from '../services/projectService';
 import { ntaSyncService, isNtaConfigured } from '../services/ntaSyncService';
+import { ticketingService } from '../services/ticketingService';
 
 /**
  * Initialize all cron jobs
@@ -49,6 +50,7 @@ export function initializeCronJobs(): void {
   // NTA ticket sync — every 5 minutes
   cron.schedule('*/5 * * * *', async () => {
     if (!isNtaConfigured()) return;
+    if (!(await ticketingService.isEnabled())) return;
     try {
       const result = await ntaSyncService.syncFromNta();
       logger.info(`NTA sync: ${result.synced} upserted, ${result.total} total`);

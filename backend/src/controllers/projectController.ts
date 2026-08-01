@@ -194,4 +194,16 @@ getAll: asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const summary = await projectService.getClientSummary(clientName);
     res.json({ success: true, data: summary });
   }),
+
+  uploadRcaDoc: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const { id } = req.params;
+    const file = (req as any).file as Express.Multer.File | undefined;
+    if (!file) {
+      res.status(400).json({ success: false, error: 'No file uploaded' });
+      return;
+    }
+    const fileUrl = `/uploads/rca-docs/${file.filename}`;
+    await projectService.update(id, { rcaDocUrl: fileUrl } as any);
+    res.json({ success: true, fileUrl, originalName: file.originalname });
+  }),
 };

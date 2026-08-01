@@ -379,6 +379,7 @@ export function useEngineersByManager() {
   });
 }
 
+
 export function useJiraBoardTickets() {
   return useQuery({
     queryKey: ['jira-board'],
@@ -801,6 +802,45 @@ export function useNtaStats() {
     queryFn: () => ntaFetch('/stats'),
     staleTime: 60_000,
     ...NTA_QUERY_OPTS,
+  });
+}
+
+export function useNtaEnabled() {
+  return useQuery({
+    queryKey: ['ntaConfig'],
+    queryFn: () => ntaFetch('/config'),
+    staleTime: 5 * 60_000,
+    ...NTA_QUERY_OPTS,
+  });
+}
+
+export function useNtaToggle() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (enabled: boolean) => {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
+      const res = await fetch(`${API_BASE}/api/ticketing/config`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ enabled }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body?.error || `HTTP ${res.status}`);
+      return body;
+    },
+    onSuccess: (_data, enabled) => {
+      queryClient.setQueryData(['ntaConfig'], (old: any) => {
+        if (!old) return old;
+        return { ...old, data: { ...old.data, enabled } };
+      });
+      queryClient.invalidateQueries({ queryKey: ['ntaConfig'] });
+    },
+    onError: (err: Error) => {
+      console.error('NTA toggle failed:', err.message);
+    },
   });
 }
 

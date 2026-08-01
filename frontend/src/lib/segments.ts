@@ -19,6 +19,18 @@ export const MANAGER_QUERY_NAMES: Record<string, string> = {
   'Raghu':    'Raghu,Sri Ram',
 };
 
+// Hardcoded engineer assignments. Shared engineers appear under both managers.
+export const ENGINEER_ASSIGNMENTS: Record<string, string[]> = {
+  'Abhishek':         ['Arun', 'Chandramouli', 'Manoj', 'Pallavi'],
+  'Pranavi':          ['Arun', 'Chandramouli', 'Manoj', 'Pallavi'],
+  'Lakshmi Prasanna': ['Chaitanya Gupta', 'Harshith', 'Lakshma Reddy', 'Ganesh Kondameedi', 'Davidraj'],
+  'Ajay Singh':       ['Amulya', 'Ranadeep', 'Habeebunnisa', 'Neelima', 'Vijendar'],
+  'Abhishikth':       ['Amulya', 'Ranadeep', 'Habeebunnisa', 'Neelima', 'Vijendar'],
+  'Harika':           ['Meena Lakshmi Triveni', 'Ravi Hemanth', 'Siva Kota'],
+  'Raghu':            ['Sriram', 'Vineetha', 'Ramana Reddy'],
+  'Sravan':           ['Swaroop', 'Dathu', 'Saikumar'],
+};
+
 export function segmentOfManager(name: string | null | undefined): Segment | null {
   if (!name) return null;
   const normalized = name.trim().toLowerCase();

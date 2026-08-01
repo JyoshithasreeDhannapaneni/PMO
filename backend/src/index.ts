@@ -431,6 +431,9 @@ async function runMigrations() {
   if (!await columnExists('projects', 'client_name')) {
     try { await execute(`ALTER TABLE projects ADD COLUMN client_name VARCHAR(255) DEFAULT NULL`); } catch {}
   }
+  if (!await columnExists('projects', 'rca_doc_url')) {
+    try { await execute(`ALTER TABLE projects ADD COLUMN rca_doc_url VARCHAR(1000) DEFAULT NULL`); } catch {}
+  }
 
   // Server alert logs
   await execute(`CREATE TABLE IF NOT EXISTS server_alert_logs (
