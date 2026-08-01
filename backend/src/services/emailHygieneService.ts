@@ -61,7 +61,9 @@ export interface UserEmailHygiene {
 
 const CF_DOMAIN = 'cloudfuze.com';
 const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
-const CACHE_TTL_MS = 2 * 3600 * 1000;
+// Cache is only refreshed by the daily 7 AM IST cron job (or admin force-refresh).
+// Regular HTTP requests always serve from cache — never trigger a live Graph API sync.
+const CACHE_TTL_MS = 25 * 3600 * 1000; // 25 h — longer than the daily cron cycle
 
 // Microsoft system notification senders to exclude from "external received"
 const SYSTEM_SENDER_DOMAINS = new Set([

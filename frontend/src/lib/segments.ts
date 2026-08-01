@@ -20,16 +20,83 @@ export const MANAGER_QUERY_NAMES: Record<string, string> = {
 };
 
 // Hardcoded engineer assignments. Shared engineers appear under both managers.
+// Leads (Abhishek / Ajay Singh) manage sub-managers only — no direct engineer list.
 export const ENGINEER_ASSIGNMENTS: Record<string, string[]> = {
-  'Abhishek':         ['Arun', 'Chandramouli', 'Manoj', 'Pallavi'],
   'Pranavi':          ['Arun', 'Chandramouli', 'Manoj', 'Pallavi'],
   'Lakshmi Prasanna': ['Chaitanya Gupta', 'Harshith', 'Lakshma Reddy', 'Ganesh Kondameedi', 'Davidraj'],
-  'Ajay Singh':       ['Amulya', 'Ranadeep', 'Habeebunnisa', 'Neelima', 'Vijendar'],
   'Abhishikth':       ['Amulya', 'Ranadeep', 'Habeebunnisa', 'Neelima', 'Vijendar'],
   'Harika':           ['Meena Lakshmi Triveni', 'Ravi Hemanth', 'Siva Kota'],
   'Raghu':            ['Sriram', 'Vineetha', 'Ramana Reddy'],
   'Sravan':           ['Swaroop', 'Dathu', 'Saikumar'],
 };
+
+export const LMS_SCORES: { name: string; score: number }[] = [
+  { name: 'Siva Kota',                       score: 8  },
+  { name: 'Pallavi Kosuvaripalli',            score: 9  },
+  { name: 'Abhishek Sakala',                  score: 10 },
+  { name: 'Abhishikth Yenugula',              score: 10 },
+  { name: 'Ajay Singh',                       score: 10 },
+  { name: 'Amulya Anapuram',                  score: 10 },
+  { name: 'Arun Kandula',                     score: 10 },
+  { name: 'Chaitanya Gupta',                  score: 10 },
+  { name: 'Davidraj Dumpala',                 score: 10 },
+  { name: 'Ganesh Kondameedi',                score: 10 },
+  { name: 'Habeebunnisa Begum',               score: 10 },
+  { name: 'Harika Velidi',                    score: 10 },
+  { name: 'Harshith Kaduluri',                score: 10 },
+  { name: 'Krotta Neelima',                   score: 10 },
+  { name: 'Lakshma Reddy Naredla',            score: 10 },
+  { name: 'Lakshmi Triveni',                  score: 10 },
+  { name: 'Manoj Bathula',                    score: 10 },
+  { name: 'Raghu Yellani',                    score: 10 },
+  { name: 'Ramana Alamuru',                   score: 10 },
+  { name: 'Ranadeep Muddam',                  score: 10 },
+  { name: 'Ravi Hemanth Chinthala',           score: 10 },
+  { name: 'Sai Dathu Kaluvala',               score: 10 },
+  { name: 'Sai kumar Kustapuram',             score: 9  },
+  { name: 'Sravan Kesaram',                   score: 10 },
+  { name: 'Sriram Ramakrishnan',              score: 10 },
+  { name: 'Swaroop B',                        score: 10 },
+  { name: 'V S Chandra Mouli Bhamidipati',    score: 10 },
+  { name: 'Vijendar Burgula',                 score: 10 },
+  { name: 'Vineetha Yenti',                   score: 10 },
+];
+
+export const LMS_MAX = 10;
+
+// 5 meetings held so far (7/13, 7/21, 7/24, 7/27, 7/31).
+// "Harishtha" in source is a typo for "Harshith" — corrected here.
+export const MEETING_ATTENDANCE: { name: string; attended: number; total: number }[] = [
+  { name: 'Ranadeep',       attended: 5, total: 5 },
+  { name: 'David raj',      attended: 5, total: 5 },
+  { name: 'Sri Ramkrishna', attended: 4, total: 5 },
+  { name: 'Pallavi',        attended: 5, total: 5 },
+  { name: 'Sai Kumar',      attended: 5, total: 5 },
+  { name: 'Vijendar',       attended: 5, total: 5 },
+  { name: 'Neelima',        attended: 3, total: 5 },
+  { name: 'Raghu',          attended: 5, total: 5 },
+  { name: 'Sravan',         attended: 4, total: 5 },
+  { name: 'Swaroop',        attended: 2, total: 5 },
+  { name: 'Siva Kota',      attended: 4, total: 5 },
+  { name: 'Meena Lakshmi',  attended: 5, total: 5 },
+  { name: 'Ravi H',         attended: 5, total: 5 },
+  { name: 'Amulya',         attended: 3, total: 5 },
+  { name: 'Ganesha',        attended: 4, total: 5 },
+  { name: 'Lakshmi prasanna', attended: 2, total: 5 },
+  { name: 'Chaitanya',      attended: 4, total: 5 },
+  { name: 'Abhishek',       attended: 5, total: 5 },
+  { name: 'Abhishikth',     attended: 5, total: 5 },
+  { name: 'Harika',         attended: 3, total: 5 },
+  { name: 'Vineetha',       attended: 4, total: 5 },
+  { name: 'Chandra Mouli',  attended: 4, total: 5 },
+  { name: 'Arun',           attended: 4, total: 5 },
+  { name: 'Manoj',          attended: 3, total: 5 },
+  { name: 'Harshith',       attended: 3, total: 5 },
+  { name: 'Habeeb',         attended: 4, total: 5 },
+  { name: 'Dathu',          attended: 5, total: 5 },
+  { name: 'Ajay Singh',     attended: 5, total: 5 },
+  { name: 'Ramana',         attended: 5, total: 5 },
+];
 
 export function segmentOfManager(name: string | null | undefined): Segment | null {
   if (!name) return null;
