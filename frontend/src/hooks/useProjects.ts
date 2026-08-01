@@ -1049,9 +1049,11 @@ export function useEmailHygiene(enabled = true) {
     queryKey: ['email-hygiene'],
     queryFn: () => emailHygieneApi.getMetrics(false),
     enabled,
-    staleTime: 2 * 60 * 60 * 1000,
-    gcTime: 2 * 60 * 60 * 1000,
-    retry: 0, // First fetch can take 2-4 min — don't retry on timeout
+    staleTime: Infinity,        // always serve DB cache — cron refreshes at 7 AM IST
+    gcTime: 24 * 60 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
+    retry: 0,
   });
 }
 

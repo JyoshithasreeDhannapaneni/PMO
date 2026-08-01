@@ -4,7 +4,7 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
-import { useManagerGoalsWithStats, useEscalatedProjects, useNtaStats, useNtaEnabled, useNtaToggle, useNtaSpaces, useNtaIssues, useNtaSearch, useNtaTrends, useNtaAssignees, useNtaReporters, useNtaProjectManagers, useNtaDepartments, useJiraExcelStatus, useNtaByManagers, useEngineersByManager, useJiraEngineers } from '@/hooks/useProjects';
+import { useManagerGoalsWithStats, useEscalatedProjects, useNtaStats, useNtaEnabled, useNtaToggle, useNtaSpaces, useNtaIssues, useNtaSearch, useNtaTrends, useNtaAssignees, useNtaReporters, useNtaProjectManagers, useNtaDepartments, useJiraExcelStatus, useNtaByManagers, useEngineersByManager, useJiraEngineers, useEmailHygiene } from '@/hooks/useProjects';
 import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import {
@@ -13,7 +13,7 @@ import {
   ArrowLeft, ExternalLink, Upload, FileSpreadsheet, Trash2,
 } from 'lucide-react';
 import api from '@/services/api';
-import { SEGMENT_CONFIG, SEGMENT_HIERARCHY, MANAGER_QUERY_NAMES, ENGINEER_ASSIGNMENTS, segmentOfManager, type Segment } from '@/lib/segments';
+import { SEGMENT_CONFIG, SEGMENT_HIERARCHY, MANAGER_QUERY_NAMES, ENGINEER_ASSIGNMENTS, LMS_SCORES, LMS_MAX, MEETING_ATTENDANCE, segmentOfManager, type Segment } from '@/lib/segments';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -222,76 +222,326 @@ function ExcelUploadBanner() {
   );
 }
 
-// ─── ManagerDetailView (inline, not a popup) ─────────────────────────────────
+// ─── Manager tab view (Projects tab + Engineers tab) ─────────────────────────
 
-function ManagerDetailView({
-  stat,
-  isOthers,
-  onBack,
-  jiraBaseUrl,
-}: {
-  stat: ManagerStat;
-  isOthers: boolean;
-  onBack: () => void;
-  jiraBaseUrl: string;
-}) {
-  const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [projectsOpen, setProjectsOpen] = useState(false);
-  const [escalationsOpen, setEscalationsOpen] = useState(false);
-
-  const { data: ntaConfigData } = useNtaEnabled();
-  const ntaEnabled: boolean = (ntaConfigData?.data?.configured ?? ntaConfigData?.configured ?? false)
-    && (ntaConfigData?.data?.enabled ?? ntaConfigData?.enabled ?? true);
-
-  const { data: escalatedData } = useEscalatedProjects(isOthers ? undefined : stat.manager);
-  const escalationCount: number = Array.isArray(escalatedData) ? escalatedData.length : (escalatedData as any)?.data?.length ?? 0;
-  const escalations: any[] = Array.isArray(escalatedData) ? escalatedData : (escalatedData as any)?.data ?? [];
-
-  const { data: projectData, isLoading: projectsLoading } = useQuery({
-    queryKey: isOthers ? ['managerDashboard', 'others', 'projects'] : ['managerDashboard', stat.manager, 'projects'],
+function ProjectsTabView({ managerName, isOthers }: { managerName: string; isOthers: boolean }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['manager-projects-tab', managerName, isOthers],
     queryFn: () =>
       isOthers
         ? api.get('/projects?limit=500').then((r: any) => r.data)
-        : api.get(`/projects?projectManager=${encodeURIComponent(stat.manager)}&limit=200`).then((r: any) => r.data),
+        : api.get(`/projects?projectManager=${encodeURIComponent(managerName)}&limit=200`).then((r: any) => r.data),
     staleTime: 30_000,
   });
 
-  const allFetched: any[] = projectData?.data ?? [];
+  const allFetched: any[] = data?.data ?? [];
   const projects = useMemo(
     () => isOthers ? allFetched.filter((p: any) => !NAMED_MANAGER_SET.has(p.projectManager)) : allFetched,
     [allFetched, isOthers]
   );
 
-  const filtered = useMemo(() => {
-    const q = search.toLowerCase();
-    return projects.filter((p: any) => {
-      if (statusFilter && p.status !== statusFilter) return false;
-      if (q && !p.name?.toLowerCase().includes(q) && !p.customerName?.toLowerCase().includes(q)) return false;
-      return true;
-    });
-  }, [projects, search, statusFilter]);
+  const getProjectStatus = (p: any): { label: string; cls: string } => {
+    if (p.delayStatus === 'DELAYED') return { label: 'Delayed', cls: 'bg-red-100 text-red-700' };
+    if (p.extendedEndDate) return { label: 'Extended', cls: 'bg-amber-100 text-amber-700' };
+    return { label: 'On Track', cls: 'bg-green-100 text-green-700' };
+  };
 
-  const kpis = [
-    { label: 'Active',    value: stat.active,    color: 'text-green-700',  bg: 'bg-green-50',  icon: PlayCircle },
-    { label: 'On Hold',   value: stat.inactive,  color: 'text-yellow-700', bg: 'bg-yellow-50', icon: PauseCircle },
-    { label: 'Completed', value: stat.completed, color: 'text-blue-700',   bg: 'bg-blue-50',   icon: CheckCircle },
-    { label: 'Delayed',   value: stat.delayed,   color: 'text-red-700',    bg: 'bg-red-50',    icon: Clock },
-    { label: 'At Risk',   value: stat.atRisk,    color: 'text-orange-700', bg: 'bg-orange-50', icon: AlertCircle },
-  ];
+  if (isLoading) {
+    return <div className="flex justify-center py-12"><Loader2 size={24} className="animate-spin text-indigo-500" /></div>;
+  }
+  if (projects.length === 0) {
+    return <div className="text-center py-12 text-sm text-gray-400">No projects found for {managerName}.</div>;
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+      <div className="px-5 py-3 bg-gray-50 border-b border-gray-200 flex items-center gap-3">
+        <h3 className="text-sm font-semibold text-gray-700">Projects</h3>
+        <span className="text-xs text-gray-400">{projects.length} total</span>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 border-b border-gray-200">
+            <tr>
+              {['Project Name', 'Status', 'Kickoff Date', 'End Date'].map(h => (
+                <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {projects.map((p: any) => {
+              const { label, cls } = getProjectStatus(p);
+              const kickoffDate = p.actualStart ?? p.plannedStart;
+              const endDate = p.extendedEndDate ?? p.plannedEnd;
+              return (
+                <tr key={p.id} className="hover:bg-gray-50 transition-colors">
+                  <td className="px-4 py-3">
+                    <Link href={`/projects/${p.id}`} className="font-medium text-gray-900 hover:text-primary-600 hover:underline">
+                      {p.name}
+                    </Link>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${cls}`}>{label}</span>
+                  </td>
+                  <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{fmtDate(kickoffDate)}</td>
+                  <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{fmtDate(endDate)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+type EngPopupMode = 'all' | 'fr' | 'res' | 'hygiene';
+
+interface EngPopupState {
+  engName: string;
+  mode: EngPopupMode;
+  tickets: any[];
+}
+
+function EngMetricPopup({
+  state,
+  hygieneMetric,
+  jiraBaseUrl,
+  onClose,
+}: {
+  state: EngPopupState;
+  hygieneMetric: any | null;
+  jiraBaseUrl: string;
+  onClose: () => void;
+}) {
+  const titles: Record<EngPopupMode, string> = {
+    all:     'All Tickets',
+    fr:      'FR Breached Tickets',
+    res:     'Resolution Breached Tickets',
+    hygiene: 'Email Hygiene Score',
+  };
+
+  return createPortal(
+    <div
+      className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-100 flex-shrink-0">
+          <h3 className="font-semibold text-gray-900 text-sm">
+            {state.engName} — {titles[state.mode]}
+          </h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 transition-colors">
+            <X size={16} />
+          </button>
+        </div>
+        <div className="overflow-auto flex-1">
+          {state.mode === 'all' && (
+            state.tickets.length > 0
+              ? <ExcelTicketTable tickets={state.tickets} jiraBaseUrl={jiraBaseUrl} />
+              : <p className="text-center text-sm text-gray-400 py-10">No tickets found for {state.engName}.</p>
+          )}
+          {(state.mode === 'fr' || state.mode === 'res') && (
+            state.tickets.length > 0
+              ? <BreachedTicketSections tickets={state.tickets} jiraBaseUrl={jiraBaseUrl} />
+              : <p className="text-center text-sm text-gray-400 py-10">No breached tickets.</p>
+          )}
+          {state.mode === 'hygiene' && hygieneMetric && <HygienePanel metric={hygieneMetric} />}
+          {state.mode === 'hygiene' && !hygieneMetric && (
+            <p className="text-center text-sm text-gray-400 py-10">No hygiene data available for {state.engName}.</p>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+function EngineersTabView({
+  managerName,
+  jiraBaseUrl,
+  allHygieneMetrics,
+  allJiraEngineers,
+  jiraAvailable,
+}: {
+  managerName: string;
+  jiraBaseUrl: string;
+  allHygieneMetrics: any[];
+  allJiraEngineers: any[];
+  jiraAvailable: boolean;
+}) {
+  const engineers = ENGINEER_ASSIGNMENTS[managerName] ?? [];
+  const [popup, setPopup] = useState<EngPopupState | null>(null);
+
+  if (engineers.length === 0) {
+    return (
+      <div className="text-center py-12 text-sm text-gray-400">
+        No engineers directly assigned to {managerName}.
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+        <div className="px-5 py-3 bg-gray-50 border-b border-gray-200 flex items-center gap-3">
+          <h3 className="text-sm font-semibold text-gray-700">Engineers</h3>
+          <span className="text-xs text-gray-400">{engineers.length} assigned</span>
+          {!jiraAvailable && (
+            <span className="text-xs text-gray-400 italic ml-auto">Upload Excel to see ticket data</span>
+          )}
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr>
+                <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500">Name</th>
+                <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-500 whitespace-nowrap">Total</th>
+                <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-500 whitespace-nowrap">FR</th>
+                <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-500 whitespace-nowrap">Res</th>
+                <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-500 whitespace-nowrap">Breach%</th>
+                <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-500 whitespace-nowrap">Hygiene</th>
+                <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-500 whitespace-nowrap">Mtg /5</th>
+                <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-500 whitespace-nowrap">LMS /10</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {engineers.map(engName => {
+                const { totalTickets, frBreaches, resBreaches, breachRate, tickets } = getEngineerJiraData(allJiraEngineers, engName);
+                const frTickets    = tickets.filter((t: any) => t.frBreached);
+                const resTickets   = tickets.filter((t: any) => t.resBreached);
+                const hygieneMetric  = getEngineerHygieneData(allHygieneMetrics, engName);
+                const lmsScore       = getEngineerLmsScore(engName);
+                const meetingData    = getEngineerMeetingData(engName);
+
+                return (
+                  <tr key={engName} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center text-xs font-bold flex-shrink-0">
+                          {toInitials(engName)}
+                        </div>
+                        <span className="font-medium text-gray-800 text-sm">{engName}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      {jiraAvailable ? (
+                        <button
+                          onClick={() => totalTickets > 0 && setPopup({ engName, mode: 'all', tickets })}
+                          className={`font-semibold text-gray-800 ${totalTickets > 0 ? 'hover:text-indigo-600 cursor-pointer' : 'cursor-default'}`}
+                        >
+                          {totalTickets}
+                        </button>
+                      ) : <span className="text-gray-300">—</span>}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      {jiraAvailable ? (
+                        <button
+                          onClick={() => frBreaches > 0 && setPopup({ engName, mode: 'fr', tickets: frTickets })}
+                          className={`px-2 py-0.5 rounded-full text-xs font-semibold
+                            ${frBreaches > 0 ? 'bg-orange-100 text-orange-700 hover:bg-orange-200 cursor-pointer' : 'bg-gray-100 text-gray-400 cursor-default'}`}
+                        >
+                          {frBreaches}
+                        </button>
+                      ) : <span className="text-gray-300">—</span>}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      {jiraAvailable ? (
+                        <button
+                          onClick={() => resBreaches > 0 && setPopup({ engName, mode: 'res', tickets: resTickets })}
+                          className={`px-2 py-0.5 rounded-full text-xs font-semibold
+                            ${resBreaches > 0 ? 'bg-red-100 text-red-700 hover:bg-red-200 cursor-pointer' : 'bg-gray-100 text-gray-400 cursor-default'}`}
+                        >
+                          {resBreaches}
+                        </button>
+                      ) : <span className="text-gray-300">—</span>}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      {jiraAvailable ? (
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-bold
+                          ${breachRate > 20 ? 'bg-red-100 text-red-700' : breachRate > 0 ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}`}>
+                          {breachRate}%
+                        </span>
+                      ) : <span className="text-gray-300">—</span>}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      {hygieneMetric ? (
+                        <button
+                          onClick={() => setPopup({ engName, mode: 'hygiene', tickets: [] })}
+                          className={`px-2 py-0.5 rounded-full text-xs font-bold ring-1 hover:opacity-80 cursor-pointer ${hygieneScoreBadgeClass(hygieneMetric.emailHygieneScore)}`}
+                        >
+                          {hygieneMetric.emailHygieneScore}
+                        </button>
+                      ) : <span className="text-gray-300">—</span>}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      {meetingData ? (() => {
+                        const pct = Math.round((meetingData.attended / meetingData.total) * 100);
+                        return (
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${pct === 100 ? 'bg-green-100 text-green-700' : pct >= 80 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>
+                            {meetingData.attended}/{meetingData.total}
+                          </span>
+                        );
+                      })() : <span className="text-gray-300">—</span>}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      {lmsScore !== null ? (
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${lmsScore >= LMS_MAX ? 'bg-green-100 text-green-700' : lmsScore >= LMS_MAX * 0.8 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>
+                          {lmsScore}/{LMS_MAX}
+                        </span>
+                      ) : <span className="text-gray-300">—</span>}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {popup && (
+        <EngMetricPopup
+          state={popup}
+          hygieneMetric={popup.mode === 'hygiene' ? getEngineerHygieneData(allHygieneMetrics, popup.engName) : null}
+          jiraBaseUrl={jiraBaseUrl}
+          onClose={() => setPopup(null)}
+        />
+      )}
+    </>
+  );
+}
+
+function ManagerTabView({
+  stat,
+  isOthers,
+  onBack,
+  jiraBaseUrl,
+  allHygieneMetrics,
+  allJiraEngineers,
+  jiraAvailable,
+}: {
+  stat: ManagerStat;
+  isOthers: boolean;
+  onBack: () => void;
+  jiraBaseUrl: string;
+  allHygieneMetrics: any[];
+  allJiraEngineers: any[];
+  jiraAvailable: boolean;
+}) {
+  const [tab, setTab] = useState<'projects' | 'engineers'>('projects');
 
   return (
     <div className="space-y-4 animate-fadeIn">
-      {/* Back button + manager header */}
-      <div className="flex items-center gap-4">
-        <button
-          onClick={onBack}
-          className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-primary-600 font-medium transition-colors"
-        >
-          <ArrowLeft size={16} />
-          Back to Dashboard
-        </button>
-      </div>
+      <button
+        onClick={onBack}
+        className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-primary-600 font-medium transition-colors"
+      >
+        <ArrowLeft size={16} />
+        Back to Dashboard
+      </button>
 
       <div className="bg-gradient-to-r from-[#1b4f72] to-[#2980b9] rounded-2xl p-5 flex items-center gap-4">
         <div className="w-14 h-14 rounded-full bg-white/20 flex items-center justify-center text-white text-xl font-bold flex-shrink-0">
@@ -299,9 +549,7 @@ function ManagerDetailView({
         </div>
         <div>
           <h2 className="text-xl font-bold text-white">{stat.manager}</h2>
-          <p className="text-sm text-blue-100 mt-0.5">
-            Project Manager · {stat.total} total projects
-          </p>
+          <p className="text-sm text-blue-100 mt-0.5">Project Manager · {stat.total} total projects</p>
         </div>
         {!isOthers && (
           <Link
@@ -313,327 +561,36 @@ function ManagerDetailView({
         )}
       </div>
 
-      {/* KPI cards */}
-      <div className="grid grid-cols-5 gap-3">
-        {kpis.map((k) => (
-          <div key={k.label} className={`${k.bg} rounded-xl p-4 flex items-center gap-3 border border-white`}>
-            <k.icon size={20} className={k.color} />
-            <div>
-              <p className={`text-2xl font-bold ${k.color}`}>{k.value}</p>
-              <p className="text-xs text-gray-500 mt-0.5">{k.label}</p>
-            </div>
-          </div>
+      <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit">
+        {(['projects', 'engineers'] as const).map(t => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={`px-5 py-2 rounded-lg text-sm font-medium transition-all
+              ${tab === t ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
+          >
+            {t === 'projects' ? 'Projects' : 'Engineers'}
+          </button>
         ))}
       </div>
 
-      {/* On Time + Avg Delay + Escalations summary strip */}
-      <div className="grid grid-cols-3 gap-3">
-        <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-4">
-          <div>
-            <p className="text-xs text-gray-500 mb-1">% On Time</p>
-            <p className={`text-2xl font-bold ${stat.pctOnTime >= 80 ? 'text-green-600' : stat.pctOnTime >= 50 ? 'text-yellow-600' : 'text-red-600'}`}>
-              {stat.pctOnTime}%
-            </p>
-          </div>
-          <div className="flex-1">
-            <div className="bg-gray-100 rounded-full h-2">
-              <div
-                className={`h-2 rounded-full ${stat.pctOnTime >= 80 ? 'bg-green-500' : stat.pctOnTime >= 50 ? 'bg-yellow-400' : 'bg-red-400'}`}
-                style={{ width: `${stat.pctOnTime}%` }}
-              />
-            </div>
-            <p className="text-xs text-gray-400 mt-1">{stat.onTime} of {stat.total} projects on time</p>
-          </div>
-        </div>
-        <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <p className="text-xs text-gray-500 mb-1">Avg Delay (Late Projects Only)</p>
-          {stat.avgDelayDays > 0 ? (
-            <p className="text-2xl font-bold text-red-600">{stat.avgDelayDays} <span className="text-base font-normal text-gray-400">days</span></p>
-          ) : (
-            <p className="text-2xl font-bold text-green-600">0 <span className="text-base font-normal text-gray-400">days</span></p>
-          )}
-        </div>
-        <button
-          onClick={() => setEscalationsOpen((o) => !o)}
-          className="bg-red-50 rounded-xl border border-red-100 p-4 flex items-center gap-3 cursor-pointer hover:bg-red-100 transition-colors h-full w-full text-left"
-        >
-          <AlertCircle size={20} className="text-red-600 flex-shrink-0" />
-          <div className="flex-1">
-            <p className="text-2xl font-bold text-red-600">{escalationCount}</p>
-            <p className="text-xs text-gray-500 mt-0.5">Escalations</p>
-          </div>
-          <ChevronRight size={15} className={`text-red-400 transition-transform duration-200 ${escalationsOpen ? 'rotate-90' : ''}`} />
-        </button>
-      </div>
-
-      {/* Inline escalations panel */}
-      {escalationsOpen && (
-        <div className="bg-white rounded-2xl border border-red-100 overflow-hidden">
-          <div className="px-5 py-3 bg-red-50 border-b border-red-100 flex items-center gap-2">
-            <AlertCircle size={15} className="text-red-600" />
-            <h3 className="text-sm font-semibold text-red-700">Escalated Projects</h3>
-            <span className="text-xs text-red-400 ml-1">{escalations.length} total</span>
-          </div>
-          {escalations.length === 0 ? (
-            <div className="text-center py-10 text-gray-400 text-sm">No escalated projects found.</div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 border-b border-gray-200">
-                  <tr>
-                    {['Project Name', 'Customer', 'Priority', 'Status', 'Delay Days', 'Escalated At'].map((h) => (
-                      <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {escalations.map((p: any) => (
-                    <tr key={p.id} className="hover:bg-red-50/40">
-                      <td className="px-4 py-2.5">
-                        <Link href={`/projects/${p.id}`} className="font-medium text-primary-600 hover:underline">{p.name}</Link>
-                      </td>
-                      <td className="px-4 py-2.5 text-gray-600 text-xs">{p.customerName || '—'}</td>
-                      <td className="px-4 py-2.5">
-                        {p.escalationPriority ? (
-                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${p.escalationPriority === 'HIGH' ? 'bg-red-100 text-red-700' : p.escalationPriority === 'MEDIUM' ? 'bg-orange-100 text-orange-700' : 'bg-yellow-100 text-yellow-700'}`}>
-                            {p.escalationPriority}
-                          </span>
-                        ) : <span className="text-gray-400 text-xs">—</span>}
-                      </td>
-                      <td className="px-4 py-2.5 text-gray-600 text-xs">{p.status?.replace('_', ' ') || '—'}</td>
-                      <td className="px-4 py-2.5">
-                        {p.delayDays > 0 ? (
-                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${p.delayDays > 14 ? 'bg-red-100 text-red-700' : p.delayDays > 7 ? 'bg-orange-100 text-orange-700' : 'bg-yellow-100 text-yellow-700'}`}>
-                            {p.delayDays}d
-                          </span>
-                        ) : <span className="text-gray-400 text-xs">0d</span>}
-                      </td>
-                      <td className="px-4 py-2.5 text-gray-500 text-xs whitespace-nowrap">
-                        {p.escalatedAt ? new Date(p.escalatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+      {tab === 'projects' && (
+        <ProjectsTabView managerName={stat.manager} isOthers={isOthers} />
       )}
-
-      {/* Project list — collapsible */}
-      <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-        {/* Clickable header toggle */}
-        <button
-          onClick={() => setProjectsOpen((o) => !o)}
-          className="w-full px-5 py-3 flex items-center gap-3 bg-gray-50 hover:bg-gray-100 transition-colors text-left"
-        >
-          <h3 className="text-sm font-semibold text-gray-700 flex-shrink-0">Active Projects</h3>
-          <span className="text-xs text-gray-400">{projects.length} projects</span>
-          <ChevronRight
-            size={15}
-            className={`ml-auto text-gray-400 transition-transform duration-200 ${projectsOpen ? 'rotate-90' : ''}`}
-          />
-        </button>
-
-        {projectsOpen && (
-          <>
-            {/* Filters — shown only when open */}
-            <div className="px-5 py-2.5 border-t border-b border-gray-100 flex items-center gap-3 bg-white">
-              <div className="relative flex-1">
-                <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search projects..."
-                  className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-primary-400"
-                />
-              </div>
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-white text-gray-900 focus:outline-none"
-              >
-                <option value="">All Status</option>
-                {['ACTIVE', 'ON_HOLD', 'CANCELLED'].map((s) => (
-                  <option key={s} value={s}>{s.replace('_', ' ')}</option>
-                ))}
-              </select>
-              <span className="text-xs text-gray-400 flex-shrink-0">{filtered.length} results</span>
-            </div>
-
-            {projectsLoading ? (
-              <div className="flex justify-center py-16">
-                <Loader2 className="w-7 h-7 animate-spin text-primary-600" />
-              </div>
-            ) : filtered.length === 0 ? (
-              <div className="text-center py-16 text-gray-400 text-sm">
-                {projects.length === 0 ? 'No active projects found for this manager.' : 'No projects match the current filters.'}
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  {['Project Name', 'Customer', 'Phase', 'Status', 'Delay', 'Planned End', 'SOW End'].map((h) => (
-                    <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {filtered.map((p: any) => {
-                  const sowEnd = p.extendedEndDate ?? p.plannedEnd;
-                  const isExtended = !!p.extendedEndDate;
-                  return (
-                    <tr key={p.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-4 py-3">
-                        <Link
-                          href={`/projects/${p.id}`}
-                          className="font-medium text-gray-900 hover:text-primary-600 hover:underline"
-                        >
-                          {p.name}
-                        </Link>
-                      </td>
-                      <td className="px-4 py-3 text-gray-500 text-xs">{p.customerName || '—'}</td>
-                      <td className="px-4 py-3">
-                        <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 font-medium whitespace-nowrap">
-                          {p.phase?.replace(/_/g, ' ') || '—'}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap ${STATUS_COLORS[p.status] || 'bg-gray-100 text-gray-500'}`}>
-                          {p.status?.replace('_', ' ') || '—'}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        {p.delayStatus && p.delayStatus !== 'NOT_DELAYED' ? (
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap ${DELAY_COLORS[p.delayStatus]}`}>
-                            {p.delayStatus === 'DELAYED' && p.delayDays > 0 ? `Delayed (${p.delayDays}d)` : 'At Risk'}
-                          </span>
-                        ) : (
-                          <span className="text-xs text-green-600 font-medium">On Track</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{fmtDate(p.plannedEnd)}</td>
-                      <td className="px-4 py-3 text-xs whitespace-nowrap">
-                        <span className={isExtended ? 'text-amber-600 font-medium' : 'text-gray-500'}>
-                          {fmtDate(sowEnd)}{isExtended && <span className="ml-1">↑</span>}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-          </>
-        )}
-      </div>
-
-      {/* Engineers under this manager (from uploaded Jira Excel) */}
-      {!isOthers && <ManagerEngineersSection manager={stat.manager} jiraBaseUrl={jiraBaseUrl} />}
-
-      {/* NTA tickets for this manager — only when NTA is linked */}
-      {!isOthers && ntaEnabled && (
-        <div className="mt-4">
-          <p className="text-sm font-semibold text-gray-700 mb-2">Tickets</p>
-          <ManagerTicketAccordion name={stat.manager} />
-        </div>
-      )}
-
-    </div>
-  );
-}
-
-// ─── Engineers under a manager (from uploaded Jira Excel) ────────────────────
-
-function PMEngineerRow({ e, jiraBaseUrl }: { e: any; jiraBaseUrl: string }) {
-  const [openMode, setOpenMode] = useState<null | 'all' | 'fr' | 'res'>(null);
-  const tickets: any[] = e.tickets ?? [];
-  const frBreaches  = tickets.filter((t: any) => t.frBreached).length;
-  const resBreaches = tickets.filter((t: any) => t.resBreached).length;
-  const openTickets = tickets.filter((t: any) => !isTicketRetried(t)).length;
-  const anyBreached = tickets.filter((t: any) => t.frBreached || t.resBreached).length;
-  const breachRate  = tickets.length > 0 ? Math.round((anyBreached / tickets.length) * 100) : 0;
-  const frTickets   = tickets.filter((t: any) => t.frBreached);
-  const resTickets  = tickets.filter((t: any) => t.resBreached);
-
-  const toggle = (mode: 'all' | 'fr' | 'res') =>
-    setOpenMode(prev => (prev === mode ? null : mode));
-
-  return (
-    <div>
-      <div className="flex items-center gap-2 px-5 py-2.5 hover:bg-gray-50 transition-colors">
-        <button
-          onClick={() => tickets.length > 0 && toggle('all')}
-          className={`flex items-center gap-2 flex-1 min-w-0 text-left ${tickets.length > 0 ? 'cursor-pointer group' : 'cursor-default'}`}
-        >
-          <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-xs font-bold shrink-0">
-            {toInitials(e.engineerName)}
-          </div>
-          <span className="font-medium text-sm text-gray-800 group-hover:text-indigo-600 transition-colors">{e.engineerName}</span>
-          {tickets.length > 0 && (
-            <ChevronRight size={13} className={`text-gray-300 transition-transform flex-shrink-0 ${openMode === 'all' ? 'rotate-90' : ''}`} />
-          )}
-        </button>
-
-        <div className="flex items-center gap-1.5 flex-shrink-0">
-          <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-medium whitespace-nowrap">
-            {e.totalTickets} total
-          </span>
-          {openTickets > 0 && (
-            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium whitespace-nowrap">
-              {openTickets} open
-            </span>
-          )}
-          {frBreaches > 0 && (
-            <button
-              onClick={() => toggle('fr')}
-              className={`text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap ring-1 transition-colors
-                ${openMode === 'fr'
-                  ? 'bg-orange-500 text-white ring-orange-400'
-                  : 'bg-orange-100 text-orange-700 ring-orange-200 hover:bg-orange-200'}`}
-            >
-              FR {frBreaches}
-            </button>
-          )}
-          {resBreaches > 0 && (
-            <button
-              onClick={() => toggle('res')}
-              className={`text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap ring-1 transition-colors
-                ${openMode === 'res'
-                  ? 'bg-red-500 text-white ring-red-400'
-                  : 'bg-red-100 text-red-700 ring-red-200 hover:bg-red-200'}`}
-            >
-              Res {resBreaches}
-            </button>
-          )}
-          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ring-1 whitespace-nowrap
-            ${breachRate > 20 ? 'bg-red-100 text-red-700 ring-red-200'
-              : breachRate > 0 ? 'bg-amber-100 text-amber-700 ring-amber-200'
-              : 'bg-green-100 text-green-700 ring-green-200'}`}>
-            {breachRate}% breach
-          </span>
-        </div>
-      </div>
-
-      {openMode === 'all' && (
-        tickets.length > 0
-          ? <div className="border-t border-gray-100"><ExcelTicketTable tickets={tickets} jiraBaseUrl={jiraBaseUrl} /></div>
-          : <div className="px-5 py-3 text-xs text-gray-400 border-t border-gray-50">No tickets found.</div>
-      )}
-      {openMode === 'fr' && frTickets.length > 0 && (
-        <BreachedTicketSections tickets={frTickets} jiraBaseUrl={jiraBaseUrl} />
-      )}
-      {openMode === 'res' && resTickets.length > 0 && (
-        <BreachedTicketSections tickets={resTickets} jiraBaseUrl={jiraBaseUrl} />
+      {tab === 'engineers' && (
+        <EngineersTabView
+          managerName={stat.manager}
+          jiraBaseUrl={jiraBaseUrl}
+          allHygieneMetrics={allHygieneMetrics}
+          allJiraEngineers={allJiraEngineers}
+          jiraAvailable={jiraAvailable}
+        />
       )}
     </div>
   );
 }
+
+// ─── Engineer data helpers ────────────────────────────────────────────────────
 
 function ExcelTicketTable({ tickets, jiraBaseUrl }: { tickets: any[]; jiraBaseUrl: string }) {
   return (
@@ -753,67 +710,6 @@ function BreachedTicketSections({
   );
 }
 
-function pmFuzzyMatch(excelPm: string, dbName: string): boolean {
-  const jv = excelPm.toLowerCase().trim();
-  const cn = dbName.toLowerCase().trim();
-  if (!jv || !cn) return false;
-  if (jv === cn) return true;
-  const jvFirst = jv.split(/\s+/)[0];
-  const cnFirst = cn.split(/\s+/)[0];
-  if (jvFirst.length > 2 && jvFirst === cnFirst) return true;
-  return jv.includes(cn) || cn.includes(jv);
-}
-
-function ManagerEngineersSection({ manager, jiraBaseUrl }: { manager: string; jiraBaseUrl: string }) {
-  const { data, isLoading } = useEngineersByManager();
-
-  const available: boolean = data?.available ?? false;
-  const pmColumnFound: boolean = data?.pmColumnFound ?? true;
-  const managers: any[] = data?.data?.managers ?? [];
-  const matchingEntries = managers.filter(
-    (m: any) => pmFuzzyMatch(m.manager || '', manager)
-  );
-  const engineers: any[] = matchingEntries.flatMap((e: any) => e.engineers ?? []);
-
-  return (
-    <div className="mt-4 bg-white rounded-2xl border border-gray-200 overflow-hidden">
-      <div className="px-5 py-3 bg-gray-50 border-b border-gray-200 flex items-center gap-3">
-        <h3 className="text-sm font-semibold text-gray-700">Engineers</h3>
-        {!isLoading && <span className="text-xs text-gray-400">{engineers.length} mapped</span>}
-      </div>
-
-      {isLoading ? (
-        <div className="flex justify-center py-10">
-          <Loader2 size={20} className="animate-spin text-indigo-500" />
-        </div>
-      ) : !available ? (
-        <div className="px-5 py-8 text-center text-sm text-gray-400">
-          <p className="font-medium text-gray-500 mb-1">No engineer data yet</p>
-          <p className="text-xs">Upload a Jira export above to populate engineers.</p>
-        </div>
-      ) : !pmColumnFound ? (
-        <div className="px-5 py-8 text-center text-sm text-gray-400">
-          <p className="font-medium text-gray-600 mb-1">&#34;Project Manager&#34; column not found in the uploaded Excel</p>
-          <p className="text-xs max-w-md mx-auto">Re-export from Jira and include the <strong>Project Manager</strong> and <strong>Customer Name</strong> columns. The current file only has: Assignee, Reporter, Combination, Status, Priority, and SLA breach columns.</p>
-        </div>
-      ) : engineers.length === 0 ? (
-        <div className="px-5 py-8 text-center text-sm text-gray-400">
-          <p>No engineers found for <strong className="text-gray-600">{manager}</strong> in the uploaded Jira export.</p>
-          {managers.length > 0 && (
-            <p className="mt-2 text-xs">PM names in Excel: {managers.map((m: any) => m.manager).join(', ')}</p>
-          )}
-        </div>
-      ) : (
-        <div className="divide-y divide-gray-50">
-          {engineers.map((e: any) => (
-            <PMEngineerRow key={e.engineerName} e={e} jiraBaseUrl={jiraBaseUrl} />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ─── Segment tree view (hierarchy: lead → managers → engineers → tickets) ─────
 
 function normalizeForEngineerMatch(s: string): string {
@@ -860,228 +756,277 @@ function getEngineerJiraData(allJiraEngineers: any[], canonicalName: string) {
   return { totalTickets, frBreaches, resBreaches, openTickets, breachRate, tickets };
 }
 
-function EngineerTreeRow({
-  name,
-  allJiraEngineers,
-  jiraAvailable,
-  jiraBaseUrl,
-}: {
-  name: string;
-  allJiraEngineers: any[];
-  jiraAvailable: boolean;
-  jiraBaseUrl: string;
-}) {
-  const [openMode, setOpenMode] = useState<null | 'all' | 'fr' | 'res'>(null);
-  const { totalTickets, frBreaches, resBreaches, openTickets, breachRate, tickets } = getEngineerJiraData(allJiraEngineers, name);
-  const frTickets  = tickets.filter((t: any) => t.frBreached);
-  const resTickets = tickets.filter((t: any) => t.resBreached);
+function getEngineerHygieneData(allHygieneMetrics: any[], canonicalName: string) {
+  const cn = canonicalName.toLowerCase();
+  const cnNorm = cn.replace(/[\s._-]/g, '');            // "Chandra Mouli" → "chandramouli"
+  const cnWords = cn.split(/\s+/).filter(w => w.length > 2);
+  const match = allHygieneMetrics.find(m => {
+    const un = (m.userName || '').toLowerCase();
+    const emailPrefix = (m.userEmail || '').split('@')[0].toLowerCase();
+    if (un === cn || emailPrefix === cn) return true;
+    if (un.startsWith(cn) || cn.startsWith(un)) return true;
+    const unFirst = un.split(/[\s.]/)[0];
+    const cnFirst = cn.split(/\s/)[0];
+    if (unFirst.length > 2 && cnFirst.length > 2 && unFirst === cnFirst) return true;
+    if (cnWords.length > 0 && cnWords.every(w => un.includes(w))) return true;
+    // Normalized comparison: strip spaces/dots/underscores before matching
+    // Handles "Chandramouli" ↔ "Chandra Mouli", "Saikumar" ↔ "Sai Kumar", etc.
+    const unNorm = un.replace(/[\s._-]/g, '');
+    const epNorm = emailPrefix.replace(/[\s._-]/g, '');
+    if (unNorm === cnNorm || epNorm === cnNorm) return true;
+    if (cnNorm.length >= 4 && (unNorm.startsWith(cnNorm) || cnNorm.startsWith(unNorm))) return true;
+    return false;
+  });
+  return match ?? null;
+}
 
-  const toggle = (mode: 'all' | 'fr' | 'res') =>
-    setOpenMode(prev => (prev === mode ? null : mode));
+function getEngineerLmsScore(canonicalName: string): number | null {
+  const cn = canonicalName.toLowerCase();
+  const cnNorm = cn.replace(/[\s._-]/g, '');
+  const cnWords = cn.split(/\s+/).filter(w => w.length > 2);
+  const match = LMS_SCORES.find(entry => {
+    const ln = entry.name.toLowerCase();
+    const lnNorm = ln.replace(/[\s._-]/g, '');
+    const lnWords = ln.split(/\s+/).filter(w => w.length > 2);
+    if (cn === ln) return true;
+    const cnFirst = cn.split(/\s/)[0];
+    const lnFirst = ln.split(/\s/)[0];
+    if (cnFirst.length > 2 && cnFirst === lnFirst) return true;
+    if (cnWords.length > 0 && cnWords.every(w => ln.includes(w))) return true;
+    if (lnWords.length > 0 && lnWords.every(w => cn.includes(w))) return true;
+    if (cnNorm.length >= 4 && (lnNorm.includes(cnNorm) || cnNorm.includes(lnNorm))) return true;
+    return false;
+  });
+  return match ? match.score : null;
+}
+
+function getEngineerMeetingData(canonicalName: string): { attended: number; total: number } | null {
+  const cn = canonicalName.toLowerCase();
+  const cnNorm = cn.replace(/[\s._-]/g, '');
+  const cnWords = cn.split(/\s+/).filter(w => w.length > 2);
+  const match = MEETING_ATTENDANCE.find(entry => {
+    const ln = entry.name.toLowerCase();
+    const lnNorm = ln.replace(/[\s._-]/g, '');
+    const lnWords = ln.split(/\s+/).filter(w => w.length > 2);
+    if (cn === ln) return true;
+    const cnFirst = cn.split(/\s/)[0];
+    const lnFirst = ln.split(/\s/)[0];
+    // First-word match including prefix variants ("Ganesh" ↔ "Ganesha", "Habeeb" ↔ "Habeebunnisa")
+    if (cnFirst.length > 3 && lnFirst.length > 3 && (cnFirst === lnFirst || cnFirst.startsWith(lnFirst) || lnFirst.startsWith(cnFirst))) return true;
+    // All canonical words present in attendance name (e.g. "Ravi Hemanth" ↔ "Ravi H")
+    if (cnWords.length > 0 && cnWords.every(w => ln.includes(w))) return true;
+    // All attendance words present in canonical name (e.g. "Meena Lakshmi" ↔ "Meena Lakshmi Triveni")
+    if (lnWords.length > 0 && lnWords.every(w => cn.includes(w))) return true;
+    // Normalized substring ("David raj" ↔ "Davidraj", "Sri Ramkrishna" ↔ "Sriram")
+    if (cnNorm.length >= 4 && (lnNorm.includes(cnNorm) || cnNorm.includes(lnNorm))) return true;
+    return false;
+  });
+  return match ? { attended: match.attended, total: match.total } : null;
+}
+
+function hygieneScoreBadgeClass(score: number): string {
+  if (score >= 80) return 'bg-green-100 text-green-700 ring-green-200';
+  if (score >= 60) return 'bg-amber-100 text-amber-700 ring-amber-200';
+  return 'bg-red-100 text-red-700 ring-red-200';
+}
+
+function HygienePanel({ metric }: { metric: any }) {
+  const categories = [
+    {
+      label: 'Speed',
+      score: metric.speedScore,
+      max: 30,
+      color: 'indigo',
+      items: [
+        { label: 'Avg First Reply', value: metric.avgFirstReplyTimeHours != null ? `${Math.round(metric.avgFirstReplyTimeHours)}h` : '—' },
+        { label: 'SLA Hit Rate', value: `${Math.round(metric.slaHitRate ?? 0)}%` },
+        { label: 'Avg Resolution', value: metric.avgFullResolutionTimeHours != null ? `${Math.round(metric.avgFullResolutionTimeHours)}h` : '—' },
+      ],
+    },
+    {
+      label: 'Quality',
+      score: metric.qualityScore,
+      max: 30,
+      color: 'blue',
+      items: [
+        { label: 'Relevancy', value: metric.relevancyScore != null ? `${Math.round(metric.relevancyScore)}%` : '—' },
+        { label: 'Accuracy', value: `${Math.round(metric.accuracyRate ?? 0)}%` },
+        { label: 'Completeness', value: `${Math.round(metric.completenessRate ?? 0)}%` },
+      ],
+    },
+    {
+      label: 'Resolution',
+      score: metric.resolutionScore,
+      max: 20,
+      color: 'violet',
+      items: [
+        { label: 'One-Reply Rate', value: `${Math.round(metric.oneReplyResolutionRate ?? 0)}%` },
+        { label: 'Reopened Rate', value: `${Math.round(metric.reopenedThreadRate ?? 0)}%` },
+      ],
+    },
+    {
+      label: 'Tone',
+      score: metric.toneScore,
+      max: 20,
+      color: 'teal',
+      items: [
+        { label: 'Professionalism', value: `${metric.toneScore ?? 0}/20` },
+      ],
+    },
+  ];
+
+  const colorMap: Record<string, { bg: string; text: string; ring: string; bar: string }> = {
+    indigo: { bg: 'bg-indigo-50', text: 'text-indigo-700', ring: 'ring-indigo-200', bar: 'bg-indigo-500' },
+    blue:   { bg: 'bg-blue-50',   text: 'text-blue-700',   ring: 'ring-blue-200',   bar: 'bg-blue-500'   },
+    violet: { bg: 'bg-violet-50', text: 'text-violet-700', ring: 'ring-violet-200', bar: 'bg-violet-500' },
+    teal:   { bg: 'bg-teal-50',   text: 'text-teal-700',   ring: 'ring-teal-200',   bar: 'bg-teal-500'   },
+  };
 
   return (
-    <div>
-      <div className="flex items-center gap-2 px-5 py-2.5 hover:bg-gray-50 transition-colors">
-        {/* Avatar + name → click to see all tickets */}
-        <button
-          onClick={() => jiraAvailable && totalTickets > 0 && toggle('all')}
-          className={`flex items-center gap-2 flex-1 min-w-0 text-left ${jiraAvailable && totalTickets > 0 ? 'cursor-pointer group' : 'cursor-default'}`}
-        >
-          <div className="w-7 h-7 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center text-xs font-bold flex-shrink-0">
-            {toInitials(name)}
-          </div>
-          <span className="font-medium text-sm text-gray-700 group-hover:text-indigo-600 transition-colors">{name}</span>
-          {jiraAvailable && totalTickets > 0 && (
-            <ChevronRight size={13} className={`text-gray-300 transition-transform flex-shrink-0 ${openMode === 'all' ? 'rotate-90' : ''}`} />
-          )}
-        </button>
-
-        {jiraAvailable ? (
-          <div className="flex items-center gap-1.5 flex-shrink-0">
-            <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-medium whitespace-nowrap">
-              {totalTickets} total
-            </span>
-            {openTickets > 0 && (
-              <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium whitespace-nowrap">
-                {openTickets} open
-              </span>
-            )}
-            {frBreaches > 0 && (
-              <button
-                onClick={() => toggle('fr')}
-                className={`text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap ring-1 transition-colors
-                  ${openMode === 'fr'
-                    ? 'bg-orange-500 text-white ring-orange-400'
-                    : 'bg-orange-100 text-orange-700 ring-orange-200 hover:bg-orange-200'}`}
-              >
-                FR {frBreaches}
-              </button>
-            )}
-            {resBreaches > 0 && (
-              <button
-                onClick={() => toggle('res')}
-                className={`text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap ring-1 transition-colors
-                  ${openMode === 'res'
-                    ? 'bg-red-500 text-white ring-red-400'
-                    : 'bg-red-100 text-red-700 ring-red-200 hover:bg-red-200'}`}
-              >
-                Res {resBreaches}
-              </button>
-            )}
-            <span className={`text-xs font-bold px-2 py-0.5 rounded-full ring-1 whitespace-nowrap
-              ${breachRate > 20 ? 'bg-red-100 text-red-700 ring-red-200'
-                : breachRate > 0 ? 'bg-amber-100 text-amber-700 ring-amber-200'
-                : 'bg-green-100 text-green-700 ring-green-200'}`}>
-              {breachRate}% breach
-            </span>
-          </div>
-        ) : (
-          <span className="text-xs text-gray-300 italic">upload Excel to see tickets</span>
-        )}
+    <div className="border-t border-gray-100 p-4 bg-gray-50/50">
+      {/* Overall score header */}
+      <div className="flex items-center gap-3 mb-3">
+        <span className={`text-2xl font-bold px-3 py-1 rounded-xl ring-1 ${hygieneScoreBadgeClass(metric.emailHygieneScore)}`}>
+          {metric.emailHygieneScore}
+          <span className="text-xs font-normal">/100</span>
+        </span>
+        <div>
+          <p className="text-xs font-semibold text-gray-700">Overall Email Hygiene Score</p>
+          <p className="text-xs text-gray-400">{metric.uniqueCustomerThreads} customer threads · {metric.userEmail}</p>
+        </div>
       </div>
 
-      {/* All-tickets panel */}
-      {openMode === 'all' && (
-        tickets.length > 0
-          ? <div className="border-t border-gray-100"><ExcelTicketTable tickets={tickets} jiraBaseUrl={jiraBaseUrl} /></div>
-          : <div className="px-5 py-3 text-xs text-gray-400 border-t border-gray-50">No tickets found for {name} in the uploaded Excel.</div>
-      )}
-
-      {/* FR breach panel — retry / non-retry */}
-      {openMode === 'fr' && frTickets.length > 0 && (
-        <BreachedTicketSections tickets={frTickets} jiraBaseUrl={jiraBaseUrl} />
-      )}
-
-      {/* Res breach panel — retry / non-retry */}
-      {openMode === 'res' && resTickets.length > 0 && (
-        <BreachedTicketSections tickets={resTickets} jiraBaseUrl={jiraBaseUrl} />
-      )}
+      {/* Category cards grid */}
+      <div className="grid grid-cols-2 gap-2">
+        {categories.map(cat => {
+          const c = colorMap[cat.color];
+          const pct = Math.round((cat.score / cat.max) * 100);
+          return (
+            <div key={cat.label} className={`${c.bg} rounded-xl p-3 ring-1 ${c.ring}`}>
+              <div className="flex items-center justify-between mb-1.5">
+                <span className={`text-xs font-bold ${c.text}`}>{cat.label}</span>
+                <span className={`text-xs font-bold ${c.text}`}>{cat.score}/{cat.max}</span>
+              </div>
+              <div className="h-1.5 bg-white/60 rounded-full mb-2">
+                <div className={`h-1.5 rounded-full ${c.bar}`} style={{ width: `${pct}%` }} />
+              </div>
+              <div className="space-y-0.5">
+                {cat.items.map(item => (
+                  <div key={item.label} className="flex justify-between text-[10px]">
+                    <span className="text-gray-500">{item.label}</span>
+                    <span className={`font-semibold ${c.text}`}>{item.value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
 
-function ManagerTreeCard({
+function OrgNode({
   name,
   isLead,
   stat,
-  engineers,
-  allJiraEngineers,
-  jiraAvailable,
-  jiraBaseUrl,
-  onViewProjects,
+  onClick,
 }: {
   name: string;
   isLead: boolean;
   stat: ManagerStat | null;
-  engineers: string[];
-  allJiraEngineers: any[];
-  jiraAvailable: boolean;
-  jiraBaseUrl: string;
-  onViewProjects: () => void;
+  onClick: () => void;
 }) {
-  const [expanded, setExpanded] = useState(isLead);
+  const loading = stat === null;
 
   return (
-    <div className={isLead ? '' : 'ml-6 pl-4 border-l-2 border-gray-100'}>
-      <div
-        className={`flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer select-none transition-colors
-          ${isLead ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-white border border-gray-200 hover:bg-gray-50'}`}
-        onClick={() => setExpanded(e => !e)}
-      >
-        <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0
+    <div
+      onClick={onClick}
+      className={`rounded-xl border cursor-pointer transition-all hover:shadow-md select-none w-full
+        ${isLead
+          ? 'bg-gradient-to-br from-indigo-600 to-indigo-700 border-indigo-500'
+          : 'bg-white border-gray-200 hover:border-indigo-300'}`}
+    >
+      <div className="px-4 py-3 flex items-center gap-3">
+        <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0
           ${isLead ? 'bg-white/20 text-white' : 'bg-indigo-100 text-indigo-700'}`}>
           {toInitials(name)}
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className={`font-semibold text-sm ${isLead ? 'text-white' : 'text-gray-900'}`}>{name}</span>
-            {isLead && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/20 text-white">LEAD</span>}
+            {isLead && (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/20 text-white tracking-wide">LEAD</span>
+            )}
           </div>
-          <div className={`text-xs mt-0.5 ${isLead ? 'text-indigo-200' : 'text-gray-500'}`}>
-            {stat ? (
-              <>
-                {stat.total} project{stat.total !== 1 ? 's' : ''}
-                {stat.pctOnTime > 0 || stat.total > 0 ? (
-                  <> · <span className={stat.pctOnTime >= 80 ? (isLead ? 'text-green-300' : 'text-green-600') : (isLead ? 'text-yellow-300' : 'text-yellow-600')}>
-                    {stat.pctOnTime}% on time
-                  </span></>
-                ) : null}
-                {stat.delayed > 0 && <> · <span className={isLead ? 'text-red-300' : 'text-red-500'}>{stat.delayed} delayed</span></>}
-              </>
-            ) : <span className="opacity-50">loading…</span>}
-          </div>
+          {loading ? (
+            <span className={`text-xs ${isLead ? 'text-indigo-200' : 'text-gray-400'}`}>loading…</span>
+          ) : (
+            <div className={`text-xs mt-0.5 flex items-center gap-2 flex-wrap ${isLead ? 'text-indigo-200' : 'text-gray-500'}`}>
+              <span>{stat!.total} project{stat!.total !== 1 ? 's' : ''}</span>
+              {stat!.delayed > 0 && (
+                <span className={isLead ? 'text-red-300' : 'text-red-500'}>· {stat!.delayed} delayed</span>
+              )}
+              {stat!.pctOnTime > 0 && (
+                <span className={stat!.pctOnTime >= 80 ? (isLead ? 'text-green-300' : 'text-green-600') : (isLead ? 'text-yellow-300' : 'text-yellow-600')}>
+                  · {stat!.pctOnTime}% on time
+                </span>
+              )}
+            </div>
+          )}
         </div>
-        <button
-          onClick={e => { e.stopPropagation(); onViewProjects(); }}
-          className={`text-xs font-medium px-3 py-1.5 rounded-lg border whitespace-nowrap flex-shrink-0 transition-colors
-            ${isLead ? 'border-white/30 text-white hover:bg-white/10' : 'border-gray-200 text-gray-600 hover:bg-gray-100'}`}
-        >
-          Projects →
-        </button>
-        <span className={`text-xs flex-shrink-0 ${isLead ? 'text-indigo-200' : 'text-gray-400'}`}>{engineers.length} eng</span>
-        <ChevronRight size={16} className={`flex-shrink-0 transition-transform duration-200 ${expanded ? 'rotate-90' : ''} ${isLead ? 'text-white/60' : 'text-gray-300'}`} />
+        <ChevronRight size={14} className={`flex-shrink-0 ${isLead ? 'text-indigo-300' : 'text-gray-300'}`} />
       </div>
-
-      {expanded && (
-        <div className="mt-1.5 rounded-xl border border-gray-100 bg-white overflow-hidden">
-          <div className="px-5 py-2 bg-gray-50 border-b border-gray-100 flex items-center gap-2">
-            <span className="text-[11px] font-semibold text-gray-500 tracking-wide">ENGINEERS</span>
-            <span className="text-xs text-gray-400">({engineers.length})</span>
-          </div>
-          <div className="divide-y divide-gray-50">
-            {engineers.map(eng => (
-              <EngineerTreeRow key={eng} name={eng} allJiraEngineers={allJiraEngineers} jiraAvailable={jiraAvailable} jiraBaseUrl={jiraBaseUrl} />
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
 
-function SegmentTreeView({
+function OrgChart({
   segment,
   getStatForManager,
-  allJiraEngineers,
-  jiraAvailable,
-  jiraBaseUrl,
   onSelectManager,
 }: {
   segment: Segment;
   getStatForManager: (name: string) => ManagerStat | null;
-  allJiraEngineers: any[];
-  jiraAvailable: boolean;
-  jiraBaseUrl: string;
   onSelectManager: (name: string) => void;
 }) {
   const hier = SEGMENT_HIERARCHY.find(h => h.label === segment);
   if (!hier) return null;
+  const n = hier.managers.length;
 
   return (
-    <div className="space-y-3">
-      <ManagerTreeCard
-        name={hier.lead}
-        isLead
-        stat={getStatForManager(hier.lead)}
-        engineers={ENGINEER_ASSIGNMENTS[hier.lead] ?? []}
-        allJiraEngineers={allJiraEngineers}
-        jiraAvailable={jiraAvailable}
-        jiraBaseUrl={jiraBaseUrl}
-        onViewProjects={() => onSelectManager(hier.lead)}
-      />
-      <div className="space-y-2 mt-1">
-        {hier.managers.map(managerName => (
-          <ManagerTreeCard
-            key={managerName}
-            name={managerName}
-            isLead={false}
-            stat={getStatForManager(managerName)}
-            engineers={ENGINEER_ASSIGNMENTS[managerName] ?? []}
-            allJiraEngineers={allJiraEngineers}
-            jiraAvailable={jiraAvailable}
-            jiraBaseUrl={jiraBaseUrl}
-            onViewProjects={() => onSelectManager(managerName)}
-          />
+    <div className="py-2">
+      {/* Lead node */}
+      <div className="max-w-sm mx-auto">
+        <OrgNode
+          name={hier.lead}
+          isLead
+          stat={getStatForManager(hier.lead)}
+          onClick={() => onSelectManager(hier.lead)}
+        />
+      </div>
+
+      {/* Connector: vertical stem + horizontal bridge to children */}
+      <div className="relative flex justify-center" style={{ height: '48px' }}>
+        <div className="w-px bg-gray-200 h-full" />
+        <div
+          className="absolute bottom-0 bg-gray-200"
+          style={{ height: '1px', left: `${100 / (2 * n)}%`, right: `${100 / (2 * n)}%` }}
+        />
+      </div>
+
+      {/* Manager nodes */}
+      <div className="flex gap-4">
+        {hier.managers.map(name => (
+          <div key={name} className="flex flex-col items-center flex-1">
+            <div className="w-px h-8 bg-gray-200" />
+            <OrgNode
+              name={name}
+              isLead={false}
+              stat={getStatForManager(name)}
+              onClick={() => onSelectManager(name)}
+            />
+          </div>
         ))}
       </div>
     </div>
@@ -1329,6 +1274,9 @@ export default function ManagerDashboardPage() {
   const jiraAvailable: boolean = allJiraEngineers.length > 0;
   const jiraBaseUrl: string = jiraEngineersData?.jiraBaseUrl ?? 'https://cf2020.atlassian.net';
 
+  const { data: emailHygieneData } = useEmailHygiene();
+  const allHygieneMetrics: any[] = emailHygieneData?.data?.metrics ?? [];
+
   if (authLoading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -1385,11 +1333,14 @@ export default function ManagerDashboardPage() {
           <h1 className="text-2xl font-bold text-gray-900">Manager Dashboard</h1>
           <p className="text-sm text-gray-500 mt-0.5">Project health overview by business segment and manager</p>
         </div>
-        <ManagerDetailView
+        <ManagerTabView
           stat={selectedStat}
           isOthers={selectedManager === 'Others'}
           onBack={() => setSelectedManager(null)}
           jiraBaseUrl={jiraBaseUrl}
+          allHygieneMetrics={allHygieneMetrics}
+          allJiraEngineers={allJiraEngineers}
+          jiraAvailable={jiraAvailable}
         />
       </div>
     );
@@ -1471,12 +1422,9 @@ export default function ManagerDashboardPage() {
             <Loader2 className="w-7 h-7 animate-spin text-primary-600" />
           </div>
         ) : (
-          <SegmentTreeView
+          <OrgChart
             segment={activeSegment}
             getStatForManager={getStatForManager}
-            allJiraEngineers={allJiraEngineers}
-            jiraAvailable={jiraAvailable}
-            jiraBaseUrl={jiraBaseUrl}
             onSelectManager={setSelectedManager}
           />
         )
