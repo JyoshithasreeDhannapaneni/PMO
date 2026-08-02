@@ -411,20 +411,111 @@ function EngineersTabView({
   const engineers = ENGINEER_ASSIGNMENTS[managerName] ?? [];
   const [popup, setPopup] = useState<EngPopupState | null>(null);
 
-  if (engineers.length === 0) {
+  // All rows: manager first (always shown), then direct reports
+  const allRows: { name: string; isManager: boolean }[] = [
+    { name: managerName, isManager: true },
+    ...engineers.map(n => ({ name: n, isManager: false })),
+  ];
+
+  const renderRow = (rowName: string, isManager: boolean) => {
+    const { totalTickets, frBreaches, resBreaches, breachRate, tickets } = getEngineerJiraData(allJiraEngineers, rowName);
+    const frTickets     = tickets.filter((t: any) => t.frBreached);
+    const resTickets    = tickets.filter((t: any) => t.resBreached);
+    const hygieneMetric = getEngineerHygieneData(allHygieneMetrics, rowName);
+    const lmsScore      = getEngineerLmsScore(rowName);
+    const meetingData   = getEngineerMeetingData(rowName);
+
     return (
-      <div className="text-center py-12 text-sm text-gray-400">
-        No engineers directly assigned to {managerName}.
-      </div>
+      <tr key={rowName} className={`hover:bg-gray-50 transition-colors ${isManager ? 'bg-indigo-50/40' : ''}`}>
+        <td className="px-4 py-3">
+          <div className="flex items-center gap-2">
+            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0
+              ${isManager ? 'bg-indigo-600 text-white' : 'bg-indigo-50 text-indigo-600'}`}>
+              {toInitials(rowName)}
+            </div>
+            <span className={`font-medium text-sm ${isManager ? 'text-indigo-700' : 'text-gray-800'}`}>{rowName}</span>
+            {isManager && (
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-600 uppercase tracking-wide">Mgr</span>
+            )}
+          </div>
+        </td>
+        <td className="px-4 py-3 text-center">
+          {jiraAvailable ? (
+            <button
+              onClick={() => totalTickets > 0 && setPopup({ engName: rowName, mode: 'all', tickets })}
+              className={`font-semibold text-gray-800 ${totalTickets > 0 ? 'hover:text-indigo-600 cursor-pointer' : 'cursor-default'}`}
+            >
+              {totalTickets}
+            </button>
+          ) : <span className="text-gray-300">—</span>}
+        </td>
+        <td className="px-4 py-3 text-center">
+          {jiraAvailable ? (
+            <button
+              onClick={() => frBreaches > 0 && setPopup({ engName: rowName, mode: 'fr', tickets: frTickets })}
+              className={`px-2 py-0.5 rounded-full text-xs font-semibold
+                ${frBreaches > 0 ? 'bg-orange-100 text-orange-700 hover:bg-orange-200 cursor-pointer' : 'bg-gray-100 text-gray-400 cursor-default'}`}
+            >
+              {frBreaches}
+            </button>
+          ) : <span className="text-gray-300">—</span>}
+        </td>
+        <td className="px-4 py-3 text-center">
+          {jiraAvailable ? (
+            <button
+              onClick={() => resBreaches > 0 && setPopup({ engName: rowName, mode: 'res', tickets: resTickets })}
+              className={`px-2 py-0.5 rounded-full text-xs font-semibold
+                ${resBreaches > 0 ? 'bg-red-100 text-red-700 hover:bg-red-200 cursor-pointer' : 'bg-gray-100 text-gray-400 cursor-default'}`}
+            >
+              {resBreaches}
+            </button>
+          ) : <span className="text-gray-300">—</span>}
+        </td>
+        <td className="px-4 py-3 text-center">
+          {jiraAvailable ? (
+            <span className={`px-2 py-0.5 rounded-full text-xs font-bold
+              ${breachRate > 20 ? 'bg-red-100 text-red-700' : breachRate > 0 ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}`}>
+              {breachRate}%
+            </span>
+          ) : <span className="text-gray-300">—</span>}
+        </td>
+        <td className="px-4 py-3 text-center">
+          {hygieneMetric ? (
+            <button
+              onClick={() => setPopup({ engName: rowName, mode: 'hygiene', tickets: [] })}
+              className={`px-2 py-0.5 rounded-full text-xs font-bold ring-1 hover:opacity-80 cursor-pointer ${hygieneScoreBadgeClass(hygieneMetric.emailHygieneScore)}`}
+            >
+              {hygieneMetric.emailHygieneScore}
+            </button>
+          ) : <span className="text-gray-300">—</span>}
+        </td>
+        <td className="px-4 py-3 text-center">
+          {meetingData ? (() => {
+            const pct = Math.round((meetingData.attended / meetingData.total) * 100);
+            return (
+              <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${pct === 100 ? 'bg-green-100 text-green-700' : pct >= 80 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>
+                {meetingData.attended}/{meetingData.total}
+              </span>
+            );
+          })() : <span className="text-gray-300">—</span>}
+        </td>
+        <td className="px-4 py-3 text-center">
+          {lmsScore !== null ? (
+            <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${lmsScore >= LMS_MAX ? 'bg-green-100 text-green-700' : lmsScore >= LMS_MAX * 0.8 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>
+              {lmsScore}/{LMS_MAX}
+            </span>
+          ) : <span className="text-gray-300">—</span>}
+        </td>
+      </tr>
     );
-  }
+  };
 
   return (
     <>
       <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
         <div className="px-5 py-3 bg-gray-50 border-b border-gray-200 flex items-center gap-3">
-          <h3 className="text-sm font-semibold text-gray-700">Engineers</h3>
-          <span className="text-xs text-gray-400">{engineers.length} assigned</span>
+          <h3 className="text-sm font-semibold text-gray-700">Team</h3>
+          <span className="text-xs text-gray-400">{engineers.length} engineer{engineers.length !== 1 ? 's' : ''}</span>
           {!jiraAvailable && (
             <span className="text-xs text-gray-400 italic ml-auto">Upload Excel to see ticket data</span>
           )}
@@ -444,94 +535,7 @@ function EngineersTabView({
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {engineers.map(engName => {
-                const { totalTickets, frBreaches, resBreaches, breachRate, tickets } = getEngineerJiraData(allJiraEngineers, engName);
-                const frTickets    = tickets.filter((t: any) => t.frBreached);
-                const resTickets   = tickets.filter((t: any) => t.resBreached);
-                const hygieneMetric  = getEngineerHygieneData(allHygieneMetrics, engName);
-                const lmsScore       = getEngineerLmsScore(engName);
-                const meetingData    = getEngineerMeetingData(engName);
-
-                return (
-                  <tr key={engName} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center text-xs font-bold flex-shrink-0">
-                          {toInitials(engName)}
-                        </div>
-                        <span className="font-medium text-gray-800 text-sm">{engName}</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      {jiraAvailable ? (
-                        <button
-                          onClick={() => totalTickets > 0 && setPopup({ engName, mode: 'all', tickets })}
-                          className={`font-semibold text-gray-800 ${totalTickets > 0 ? 'hover:text-indigo-600 cursor-pointer' : 'cursor-default'}`}
-                        >
-                          {totalTickets}
-                        </button>
-                      ) : <span className="text-gray-300">—</span>}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      {jiraAvailable ? (
-                        <button
-                          onClick={() => frBreaches > 0 && setPopup({ engName, mode: 'fr', tickets: frTickets })}
-                          className={`px-2 py-0.5 rounded-full text-xs font-semibold
-                            ${frBreaches > 0 ? 'bg-orange-100 text-orange-700 hover:bg-orange-200 cursor-pointer' : 'bg-gray-100 text-gray-400 cursor-default'}`}
-                        >
-                          {frBreaches}
-                        </button>
-                      ) : <span className="text-gray-300">—</span>}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      {jiraAvailable ? (
-                        <button
-                          onClick={() => resBreaches > 0 && setPopup({ engName, mode: 'res', tickets: resTickets })}
-                          className={`px-2 py-0.5 rounded-full text-xs font-semibold
-                            ${resBreaches > 0 ? 'bg-red-100 text-red-700 hover:bg-red-200 cursor-pointer' : 'bg-gray-100 text-gray-400 cursor-default'}`}
-                        >
-                          {resBreaches}
-                        </button>
-                      ) : <span className="text-gray-300">—</span>}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      {jiraAvailable ? (
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-bold
-                          ${breachRate > 20 ? 'bg-red-100 text-red-700' : breachRate > 0 ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}`}>
-                          {breachRate}%
-                        </span>
-                      ) : <span className="text-gray-300">—</span>}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      {hygieneMetric ? (
-                        <button
-                          onClick={() => setPopup({ engName, mode: 'hygiene', tickets: [] })}
-                          className={`px-2 py-0.5 rounded-full text-xs font-bold ring-1 hover:opacity-80 cursor-pointer ${hygieneScoreBadgeClass(hygieneMetric.emailHygieneScore)}`}
-                        >
-                          {hygieneMetric.emailHygieneScore}
-                        </button>
-                      ) : <span className="text-gray-300">—</span>}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      {meetingData ? (() => {
-                        const pct = Math.round((meetingData.attended / meetingData.total) * 100);
-                        return (
-                          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${pct === 100 ? 'bg-green-100 text-green-700' : pct >= 80 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>
-                            {meetingData.attended}/{meetingData.total}
-                          </span>
-                        );
-                      })() : <span className="text-gray-300">—</span>}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      {lmsScore !== null ? (
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${lmsScore >= LMS_MAX ? 'bg-green-100 text-green-700' : lmsScore >= LMS_MAX * 0.8 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>
-                          {lmsScore}/{LMS_MAX}
-                        </span>
-                      ) : <span className="text-gray-300">—</span>}
-                    </td>
-                  </tr>
-                );
-              })}
+              {allRows.map(({ name, isManager }) => renderRow(name, isManager))}
             </tbody>
           </table>
         </div>
@@ -1335,7 +1339,15 @@ export default function ManagerDashboardPage() {
   // Build per-manager stat lookup
   const getStatForManager = (name: string): ManagerStat | null => {
     if (statsLoading) return null;
-    return allStats.find((s) => s.manager.toLowerCase() === name.toLowerCase()) ?? {
+    const cn = name.toLowerCase();
+    // Find by exact match OR by DB name starting with the canonical name
+    // ("Raghu Yellani" in DB → canonical "Raghu"; "Lakshmi prasanna" → "Lakshmi Prasanna")
+    const found = allStats.find((s) => {
+      const dn = s.manager.toLowerCase();
+      return dn === cn || dn.startsWith(cn + ' ') || cn.startsWith(dn + ' ');
+    });
+    // Always return the canonical config name so ENGINEER_ASSIGNMENTS keys match exactly
+    return found ? { ...found, manager: name } : {
       manager: name, total: 0, active: 0, inactive: 0, completed: 0,
       delayed: 0, atRisk: 0, onTime: 0, pctOnTime: 0, avgDelayDays: 0,
       achievedPct: 0, goalPct: 80, variance: -80,
