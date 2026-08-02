@@ -253,6 +253,13 @@ function ProjectsTabView({ managerName, isOthers }: { managerName: string; isOth
     return <div className="text-center py-12 text-sm text-gray-400">No projects found for {managerName}.</div>;
   }
 
+  const delayReasonLabel = (v: string | null | undefined) => {
+    if (v === 'CUSTOMER_DELAY') return { text: 'Customer', cls: 'bg-orange-100 text-orange-700' };
+    if (v === 'INTERNAL_DELAY') return { text: 'Internal', cls: 'bg-purple-100 text-purple-700' };
+    if (v === 'BOTH')           return { text: 'Both',     cls: 'bg-red-100 text-red-700'    };
+    return null;
+  };
+
   return (
     <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
       <div className="px-5 py-3 bg-gray-50 border-b border-gray-200 flex items-center gap-3">
@@ -263,28 +270,56 @@ function ProjectsTabView({ managerName, isOthers }: { managerName: string; isOth
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
-              {['Project Name', 'Status', 'Kickoff Date', 'End Date'].map(h => (
-                <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">{h}</th>
-              ))}
+              <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">Project Name</th>
+              <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">Status</th>
+              <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">Delay</th>
+              <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">Delay Reason</th>
+              <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">RCA</th>
+              <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">Kickoff Date</th>
+              <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">Project End Date</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {projects.map((p: any) => {
               const { label, cls } = getProjectStatus(p);
               const kickoffDate = p.actualStart ?? p.plannedStart;
-              const endDate = p.extendedEndDate ?? p.plannedEnd;
+              const reason = delayReasonLabel(p.delayHappened);
               return (
                 <tr key={p.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-4 py-3">
-                    <Link href={`/projects/${p.id}`} className="font-medium text-gray-900 hover:text-primary-600 hover:underline">
+                  <td className="px-4 py-3 max-w-[200px]">
+                    <Link href={`/projects/${p.id}`} className="font-medium text-gray-900 hover:text-primary-600 hover:underline line-clamp-2">
                       {p.name}
                     </Link>
                   </td>
                   <td className="px-4 py-3">
                     <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${cls}`}>{label}</span>
                   </td>
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    {p.delayDays > 0 ? (
+                      <span className="text-xs font-semibold text-red-600">+{p.delayDays}d</span>
+                    ) : (
+                      <span className="text-gray-300 text-xs">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    {reason ? (
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${reason.cls}`}>{reason.text}</span>
+                    ) : (
+                      <span className="text-gray-300 text-xs">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    {p.rcaDocUrl ? (
+                      <a href={p.rcaDocUrl} target="_blank" rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 hover:underline font-medium">
+                        <ExternalLink size={12} /> View
+                      </a>
+                    ) : (
+                      <span className="text-gray-300 text-xs">—</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{fmtDate(kickoffDate)}</td>
-                  <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{fmtDate(endDate)}</td>
+                  <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{fmtDate(p.plannedEnd)}</td>
                 </tr>
               );
             })}
