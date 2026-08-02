@@ -64,7 +64,7 @@ class ManagerGoalsService {
     const params = managerName ? [managerName] : [];
 
     const [projectsResult, goalsResult] = await Promise.all([
-      query(`SELECT project_manager, status, delay_status, delay_days FROM projects WHERE archived_at IS NULL ${whereClause}`, params),
+      query(`SELECT project_manager, status, delay_status, delay_days FROM projects WHERE archived_at IS NULL AND status != 'COMPLETED' ${whereClause}`, params),
       query(`SELECT manager_name, goal_pct FROM manager_goals`),
     ]);
 

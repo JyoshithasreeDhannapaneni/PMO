@@ -21,6 +21,7 @@ type ActiveTab = 'ENT' | 'SMB' | 'ENGINEERS' | 'OBSERVATIONS' | 'TICKETS';
 
 interface ManagerStat {
   manager: string;
+  dbManager?: string;   // actual project_manager value stored in DB (may differ in casing/alias)
   total: number;
   active: number;
   inactive: number;
@@ -224,15 +225,22 @@ function ExcelUploadBanner() {
 
 // ─── Manager tab view (Projects tab + Engineers tab) ─────────────────────────
 
-function ProjectsTabView({ managerName, isOthers }: { managerName: string; isOthers: boolean }) {
+function ProjectsTabView({ managerName, dbManager, isOthers }: { managerName: string; dbManager?: string; isOthers: boolean }) {
+  // Build a deduplicated set of PM names to query:
+  // - canonical aliases from MANAGER_QUERY_NAMES (handles "Abhishek,Chandra Mouli")
+  // - the actual DB value in dbManager (handles casing differences like "Raghu Yellani", "Lakshmi prasanna")
+  const queryNames = isOthers ? '' : (() => {
+    const parts = new Set<string>();
+    (MANAGER_QUERY_NAMES[managerName] ?? managerName).split(',').map(s => s.trim()).forEach(n => parts.add(n));
+    if (dbManager) parts.add(dbManager);
+    return Array.from(parts).join(',');
+  })();
+
   const { data, isLoading } = useQuery({
-    queryKey: ['manager-projects-tab', managerName, isOthers],
+    queryKey: ['manager-projects-tab', managerName, dbManager, isOthers],
     queryFn: () => {
-      if (isOthers) return api.get('/projects?limit=500').then((r: any) => r.data);
-      // Expand via MANAGER_QUERY_NAMES (e.g. Abhishek → "Abhishek,Chandra Mouli")
-      // so projects stored under any alias are included
-      const queryName = MANAGER_QUERY_NAMES[managerName] ?? managerName;
-      return api.get(`/projects?projectManager=${encodeURIComponent(queryName)}&limit=500`).then((r: any) => r.data);
+      if (isOthers) return api.get('/projects?excludeStatus=COMPLETED&limit=500').then((r: any) => r.data);
+      return api.get(`/projects?projectManager=${encodeURIComponent(queryNames)}&excludeStatus=COMPLETED&limit=500`).then((r: any) => r.data);
     },
     staleTime: 30_000,
   });
@@ -617,7 +625,7 @@ function ManagerTabView({
       </div>
 
       {tab === 'projects' && (
-        <ProjectsTabView managerName={stat.manager} isOthers={isOthers} />
+        <ProjectsTabView managerName={stat.manager} dbManager={stat.dbManager} isOthers={isOthers} />
       )}
       {tab === 'engineers' && (
         <EngineersTabView
@@ -1349,9 +1357,10 @@ export default function ManagerDashboardPage() {
       const dn = s.manager.toLowerCase();
       return dn === cn || dn.startsWith(cn + ' ') || cn.startsWith(dn + ' ');
     });
-    // Always return the canonical config name so ENGINEER_ASSIGNMENTS keys match exactly
-    return found ? { ...found, manager: name } : {
-      manager: name, total: 0, active: 0, inactive: 0, completed: 0,
+    // Override manager with the canonical config name (for ENGINEER_ASSIGNMENTS lookup)
+    // but preserve the original DB value in dbManager (for the Projects API query)
+    return found ? { ...found, manager: name, dbManager: found.manager } : {
+      manager: name, dbManager: name, total: 0, active: 0, inactive: 0, completed: 0,
       delayed: 0, atRisk: 0, onTime: 0, pctOnTime: 0, avgDelayDays: 0,
       achievedPct: 0, goalPct: 80, variance: -80,
     };
