@@ -227,10 +227,13 @@ function ExcelUploadBanner() {
 function ProjectsTabView({ managerName, isOthers }: { managerName: string; isOthers: boolean }) {
   const { data, isLoading } = useQuery({
     queryKey: ['manager-projects-tab', managerName, isOthers],
-    queryFn: () =>
-      isOthers
-        ? api.get('/projects?limit=500').then((r: any) => r.data)
-        : api.get(`/projects?projectManager=${encodeURIComponent(managerName)}&limit=200`).then((r: any) => r.data),
+    queryFn: () => {
+      if (isOthers) return api.get('/projects?limit=500').then((r: any) => r.data);
+      // Expand via MANAGER_QUERY_NAMES (e.g. Abhishek → "Abhishek,Chandra Mouli")
+      // so projects stored under any alias are included
+      const queryName = MANAGER_QUERY_NAMES[managerName] ?? managerName;
+      return api.get(`/projects?projectManager=${encodeURIComponent(queryName)}&limit=500`).then((r: any) => r.data);
+    },
     staleTime: 30_000,
   });
 
@@ -592,7 +595,7 @@ function ManagerTabView({
         </div>
         {!isOthers && (
           <Link
-            href={`/projects?projectManager=${encodeURIComponent(stat.manager)}`}
+            href={`/projects?projectManager=${encodeURIComponent(MANAGER_QUERY_NAMES[stat.manager] ?? stat.manager)}`}
             className="ml-auto flex items-center gap-1.5 text-xs text-white/80 hover:text-white font-medium px-3 py-1.5 rounded-lg border border-white/30 hover:border-white/60 transition"
           >
             View in All Projects <ChevronRight size={12} />

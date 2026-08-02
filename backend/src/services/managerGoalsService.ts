@@ -60,11 +60,11 @@ class ManagerGoalsService {
   async getManagerStatsWithGoals(managerName?: string) {
     await this.ensureTable();
 
-    const whereClause = managerName ? `WHERE project_manager = $1` : '';
+    const whereClause = managerName ? `AND project_manager = $1` : '';
     const params = managerName ? [managerName] : [];
 
     const [projectsResult, goalsResult] = await Promise.all([
-      query(`SELECT project_manager, status, delay_status, delay_days FROM projects ${whereClause}`, params),
+      query(`SELECT project_manager, status, delay_status, delay_days FROM projects WHERE archived_at IS NULL ${whereClause}`, params),
       query(`SELECT manager_name, goal_pct FROM manager_goals`),
     ]);
 
