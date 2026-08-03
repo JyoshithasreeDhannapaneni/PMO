@@ -98,6 +98,42 @@ export const MEETING_ATTENDANCE: { name: string; attended: number; total: number
   { name: 'Ramana',         attended: 5, total: 5 },
 ];
 
+// Avg. check-in delay in minutes per person.
+// Stored with names close to canonical for easy matching.
+// "Lakshmi Prasanna" entry corresponds to "Lakshmi Adabala" in the attendance system.
+export const CHECKIN_DELAYS: { name: string; delayMin: number }[] = [
+  { name: 'Ranadeep',         delayMin: 19.8 },
+  { name: 'David Raj',        delayMin: 10.0 },
+  { name: 'Sri Ramkrishna',   delayMin: 6.7  },
+  { name: 'Pallavi',          delayMin: 34.9 },
+  { name: 'Sai Kumar',        delayMin: 16.7 },
+  { name: 'Vijendar',         delayMin: 0.5  },
+  { name: 'Neelima',          delayMin: 1.2  },
+  { name: 'Raghu Yellani',    delayMin: 15.0 },
+  { name: 'Sravan',           delayMin: 20.0 },
+  { name: 'Swaroop',          delayMin: 15.0 },
+  { name: 'Siva Kota',        delayMin: 15.2 },
+  { name: 'Meena Lakshmi',    delayMin: 14.9 },
+  { name: 'Amulya',           delayMin: 21.5 },
+  { name: 'Ganesha',          delayMin: 21.9 },
+  { name: 'Lakshmi Prasanna', delayMin: 18.7 },
+  { name: 'Chaitanya',        delayMin: 7.3  },
+  { name: 'Abhishek',         delayMin: 15.0 },
+  { name: 'Abhishikth',       delayMin: 20.0 },
+  { name: 'Harika',           delayMin: 17.0 },
+  { name: 'Vineetha',         delayMin: 16.9 },
+  { name: 'Chandra Mouli',    delayMin: 21.7 },
+  { name: 'Arun',             delayMin: 28.0 },
+  { name: 'Manoj',            delayMin: 18.4 },
+  { name: 'Habeeb',           delayMin: 4.7  },
+  { name: 'Dathu',            delayMin: 10.4 },
+  { name: 'Ajay Singh',       delayMin: 15.0 },
+  { name: 'Ramana',           delayMin: 17.1 },
+  { name: 'Lakshma Reddy',    delayMin: 18.5 },
+  { name: 'Ravi Hemanth',    delayMin: 18.6 },
+  { name: 'Harshith',        delayMin: 14.8 },
+];
+
 export function segmentOfManager(name: string | null | undefined): Segment | null {
   if (!name) return null;
   const normalized = name.trim().toLowerCase();
