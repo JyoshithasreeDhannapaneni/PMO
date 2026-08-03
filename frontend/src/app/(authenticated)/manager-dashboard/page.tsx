@@ -13,11 +13,11 @@ import {
   ArrowLeft, ExternalLink, Upload, FileSpreadsheet, Trash2,
 } from 'lucide-react';
 import api from '@/services/api';
-import { SEGMENT_CONFIG, SEGMENT_HIERARCHY, MANAGER_QUERY_NAMES, ENGINEER_ASSIGNMENTS, LMS_SCORES, LMS_MAX, MEETING_ATTENDANCE, segmentOfManager, type Segment } from '@/lib/segments';
+import { SEGMENT_CONFIG, SEGMENT_HIERARCHY, MANAGER_QUERY_NAMES, ENGINEER_ASSIGNMENTS, LMS_SCORES, LMS_MAX, MEETING_ATTENDANCE, CHECKIN_DELAYS, segmentOfManager, type Segment } from '@/lib/segments';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type ActiveTab = 'ENT' | 'SMB' | 'ENGINEERS' | 'OBSERVATIONS' | 'TICKETS';
+type ActiveTab = 'ENT' | 'SMB' | 'ENGINEERS' | 'OBSERVATIONS' | 'TICKETS' | 'ACTION_ITEMS';
 
 interface ManagerStat {
   manager: string;
@@ -64,6 +64,15 @@ function toInitials(name: string): string {
 function fmtDate(d: string | null | undefined): string {
   if (!d) return '—';
   return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+// Ensures a stored URL has a proper protocol so the browser doesn't treat it
+// as a relative path (common when users paste URLs without https://).
+function toAbsoluteUrl(url: string | null | undefined): string {
+  if (!url) return '';
+  if (/^https?:\/\//i.test(url)) return url;
+  if (url.startsWith('//')) return `https:${url}`;
+  return `https://${url}`;
 }
 
 function sumStats(stats: ManagerStat[]) {
@@ -321,7 +330,8 @@ function ProjectsTabView({ managerName, dbManager, isOthers }: { managerName: st
                   </td>
                   <td className="px-4 py-3">
                     {p.rcaDocUrl ? (
-                      <a href={p.rcaDocUrl} target="_blank" rel="noopener noreferrer"
+                      <a href={toAbsoluteUrl(p.rcaDocUrl)} target="_blank" rel="noopener noreferrer"
+                        title={p.rcaDocUrl}
                         className="inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 hover:underline font-medium">
                         <ExternalLink size={12} /> View
                       </a>
@@ -435,6 +445,7 @@ function EngineersTabView({
     const hygieneMetric = getEngineerHygieneData(allHygieneMetrics, rowName);
     const lmsScore      = getEngineerLmsScore(rowName);
     const meetingData   = getEngineerMeetingData(rowName);
+    const checkinDelay  = getEngineerCheckinDelay(rowName);
 
     return (
       <tr key={rowName} className={`hover:bg-gray-50 transition-colors ${isManager ? 'bg-indigo-50/40' : ''}`}>
@@ -517,6 +528,13 @@ function EngineersTabView({
             </span>
           ) : <span className="text-gray-300">—</span>}
         </td>
+        <td className="px-4 py-3 text-center">
+          {checkinDelay !== null ? (
+            <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${checkinDelay <= 5 ? 'bg-green-100 text-green-700' : checkinDelay <= 15 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>
+              {checkinDelay} min
+            </span>
+          ) : <span className="text-gray-300">—</span>}
+        </td>
       </tr>
     );
   };
@@ -543,6 +561,7 @@ function EngineersTabView({
                 <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-500 whitespace-nowrap">Hygiene</th>
                 <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-500 whitespace-nowrap">Mtg /5</th>
                 <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-500 whitespace-nowrap">LMS /10</th>
+                <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-500 whitespace-nowrap">Avg. Delay</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -651,6 +670,7 @@ function ExcelTicketTable({ tickets, jiraBaseUrl }: { tickets: any[]; jiraBaseUr
             <th className="px-4 py-2 text-left font-medium whitespace-nowrap">Key</th>
             <th className="px-3 py-2 text-left font-medium">Summary</th>
             <th className="px-3 py-2 text-left font-medium whitespace-nowrap">Status</th>
+            <th className="px-3 py-2 text-left font-medium whitespace-nowrap">Reporter</th>
             <th className="px-3 py-2 text-center font-medium whitespace-nowrap">FR Breach</th>
             <th className="px-3 py-2 text-center font-medium whitespace-nowrap">Res Breach</th>
             <th className="px-3 py-2 text-left font-medium whitespace-nowrap">Created</th>
@@ -674,6 +694,7 @@ function ExcelTicketTable({ tickets, jiraBaseUrl }: { tickets: any[]; jiraBaseUr
               </td>
               <td className="px-3 py-2 max-w-[320px] truncate text-gray-700" title={t.summary}>{t.summary || '—'}</td>
               <td className="px-3 py-2 whitespace-nowrap text-gray-600">{t.status || '—'}</td>
+              <td className="px-3 py-2 whitespace-nowrap text-gray-600">{t.reporter || t.reporterName || '—'}</td>
               <td className="px-3 py-2 text-center">
                 {t.frBreached
                   ? <span className="px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 font-medium">Yes</span>
@@ -872,6 +893,26 @@ function getEngineerMeetingData(canonicalName: string): { attended: number; tota
     return false;
   });
   return match ? { attended: match.attended, total: match.total } : null;
+}
+
+function getEngineerCheckinDelay(canonicalName: string): number | null {
+  const cn = canonicalName.toLowerCase();
+  const cnNorm = cn.replace(/[\s._-]/g, '');
+  const cnWords = cn.split(/\s+/).filter(w => w.length > 2);
+  const match = CHECKIN_DELAYS.find(entry => {
+    const ln = entry.name.toLowerCase();
+    const lnNorm = ln.replace(/[\s._-]/g, '');
+    const lnWords = ln.split(/\s+/).filter(w => w.length > 2);
+    if (cn === ln) return true;
+    const cnFirst = cn.split(/\s/)[0];
+    const lnFirst = ln.split(/\s/)[0];
+    if (cnFirst.length > 3 && lnFirst.length > 3 && (cnFirst === lnFirst || cnFirst.startsWith(lnFirst) || lnFirst.startsWith(cnFirst))) return true;
+    if (cnWords.length > 0 && cnWords.every(w => ln.includes(w))) return true;
+    if (lnWords.length > 0 && lnWords.every(w => cn.includes(w))) return true;
+    if (cnNorm.length >= 4 && (lnNorm.includes(cnNorm) || cnNorm.includes(lnNorm))) return true;
+    return false;
+  });
+  return match ? match.delayMin : null;
 }
 
 function hygieneScoreBadgeClass(score: number): string {
@@ -1415,10 +1456,10 @@ export default function ManagerDashboardPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-gray-200 overflow-x-auto">
-        {(['ENT', 'SMB', ...(ntaEnabled ? ['ENGINEERS', 'TICKETS'] as ActiveTab[] : []), 'OBSERVATIONS'] as ActiveTab[]).map((tab) => {
+        {(['ENT', 'SMB', ...(ntaEnabled ? ['ENGINEERS', 'TICKETS'] as ActiveTab[] : []), 'OBSERVATIONS', 'ACTION_ITEMS'] as ActiveTab[]).map((tab) => {
           const labels: Record<ActiveTab, string> = {
             ENT: 'ENT', SMB: 'SMB', ENGINEERS: 'Engineers',
-            OBSERVATIONS: 'Observations', TICKETS: 'Tickets',
+            OBSERVATIONS: 'Observations', TICKETS: 'Tickets', ACTION_ITEMS: 'Action Items',
           };
           return (
             <button
@@ -1468,6 +1509,9 @@ export default function ManagerDashboardPage() {
       {/* Observations tab */}
       {activeTab === 'OBSERVATIONS' && <ObservationsView />}
 
+      {/* Action Items tab */}
+      {activeTab === 'ACTION_ITEMS' && <ActionItemsView />}
+
       {/* Tickets tab — only when NTA is linked */}
       {ntaEnabled && activeTab === 'TICKETS' && <TicketsView />}
 
@@ -1475,7 +1519,7 @@ export default function ManagerDashboardPage() {
       {ntaEnabled && activeTab === 'ENGINEERS' && <EngineersView />}
 
       {/* Segment tree view (ENT / SMB) */}
-      {activeTab !== 'OBSERVATIONS' && activeTab !== 'TICKETS' && activeTab !== 'ENGINEERS' && (
+      {activeTab !== 'OBSERVATIONS' && activeTab !== 'TICKETS' && activeTab !== 'ENGINEERS' && activeTab !== 'ACTION_ITEMS' && (
         statsLoading ? (
           <div className="flex justify-center py-16">
             <Loader2 className="w-7 h-7 animate-spin text-primary-600" />
@@ -2433,6 +2477,58 @@ function ObservationsView() {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+// ─── Action Items View ────────────────────────────────────────────────────────
+
+const ACTION_ITEMS_DATA: { source: string; period: string; items: string[] }[] = [
+  {
+    source: 'Last Month MBR',
+    period: 'July 2026',
+    items: [
+      'Update the PMO Tracker daily before the shift starts.',
+      'Acknowledge every customer email promptly before taking action.',
+      'Do not share project credentials in Jira tickets or emails.',
+      'Resolve tickets within the defined SLA based on their priority.',
+      'Conduct weekly knowledge transfer (KT) sessions.',
+      'Publish one benchmark project for each migration type.',
+      'Perform a pre-check at every project phase.',
+      'Review customer Jira tickets and email conversations thoroughly before sending any response to ensure accuracy and context.',
+    ],
+  },
+];
+
+function ActionItemsView() {
+  return (
+    <div className="space-y-6 py-2">
+      {ACTION_ITEMS_DATA.map((group) => (
+        <div key={group.source} className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+          {/* Header */}
+          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-indigo-50">
+            <div>
+              <h3 className="text-base font-semibold text-indigo-800">{group.source}</h3>
+              <p className="text-xs text-indigo-500 mt-0.5">Time range: {group.period}</p>
+            </div>
+            <span className="px-3 py-1 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-700 border border-indigo-200">
+              {group.items.length} items
+            </span>
+          </div>
+
+          {/* Items list */}
+          <ul className="divide-y divide-gray-50">
+            {group.items.map((item, idx) => (
+              <li key={idx} className="flex items-start gap-4 px-6 py-4 hover:bg-gray-50 transition-colors">
+                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 text-xs font-bold flex items-center justify-center mt-0.5">
+                  {idx + 1}
+                </span>
+                <p className="text-sm text-gray-700 leading-relaxed">{item}</p>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
     </div>
   );
 }
