@@ -115,7 +115,7 @@ export const jiraController = {
       try {
         const store = loadExcelData()!;
         const data = getExcelEngineerStats(store);
-        res.json({ success: true, configured: true, source: 'excel', jiraBaseUrl, data });
+        res.json({ success: true, available: true, configured: true, source: 'excel', jiraBaseUrl, data });
         return;
       } catch (err: any) {
         logger.error(`[Excel] getEngineerStats failed: ${err.message}`);
@@ -123,17 +123,17 @@ export const jiraController = {
     }
 
     if (!isJiraConfigured()) {
-      res.json({ success: true, configured: false, data: null });
+      res.json({ success: true, available: false, configured: false, data: null });
       return;
     }
     try {
       const { startDate, endDate, nextMonthStart } = getLastMonthRange();
       logger.info(`[Jira] Engineer stats ${startDate}→${endDate}`);
       const data = await getEngineerStats(startDate, endDate, nextMonthStart);
-      res.json({ success: true, configured: true, data });
+      res.json({ success: true, available: true, configured: true, data });
     } catch (err: any) {
       logger.error(`[Jira] getEngineerStats failed: ${err.message}`);
-      res.status(500).json({ success: false, configured: true, error: err.message, hint: err.response?.data ?? null });
+      res.status(500).json({ success: false, available: false, configured: true, error: err.message, hint: err.response?.data ?? null });
     }
   }),
 
@@ -143,7 +143,15 @@ export const jiraController = {
       return;
     }
     const store = loadExcelData()!;
-    res.json({ success: true, available: true, data: getExcelEngineersByManager(store) });
+    const pmColumnFound = store.columnMap?.pm !== 'NOT FOUND';
+    const custColumnFound = store.columnMap?.customer !== 'NOT FOUND';
+    res.json({
+      success: true,
+      available: true,
+      pmColumnFound,
+      custColumnFound,
+      data: getExcelEngineersByManager(store),
+    });
   }),
 
   // ── Excel upload endpoints ────────────────────────────────────────────────

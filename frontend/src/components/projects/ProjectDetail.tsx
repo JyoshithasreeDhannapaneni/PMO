@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { DelayIndicator } from '@/components/ui/DelayIndicator';
@@ -715,6 +715,8 @@ function TimelineTab({ project, onProjectUpdate }: { project: Project; onProject
   const [notesPanel, setNotesPanel] = useState<{ columnName: string } | null>(null);
   const [newNote, setNewNote] = useState('');
   const [noteDate, setNoteDate] = useState(new Date().toISOString().split('T')[0]);
+  const [rcaUploading, setRcaUploading] = useState(false);
+  const [rcaError, setRcaError] = useState<string | null>(null);
 
   const { data: notesData, isLoading: loadingNotes } = useEscalationDailyNotes(
     notesPanel ? project.id : null,
@@ -807,6 +809,91 @@ function TimelineTab({ project, onProjectUpdate }: { project: Project; onProject
             <MessageSquare size={13} /> Delay Notes
           </button>
         </div>
+      </div>
+
+      {/* ── 1b. RCA Document ── */}
+      <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-semibold text-gray-800">RCA Document</h3>
+        </div>
+
+        {/* Current file */}
+        {project.rcaDocUrl && (
+          <div className="flex items-center gap-3 mb-3 p-3 bg-indigo-50 rounded-lg border border-indigo-100">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-500 flex-shrink-0"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <a
+              href={`${API_URL}${project.rcaDocUrl}`}
+              target="_blank"
+              rel="noreferrer"
+              className="flex-1 text-sm text-indigo-700 hover:underline font-medium truncate"
+            >
+              {project.rcaDocUrl.split('/').pop()}
+            </a>
+            <a
+              href={`${API_URL}${project.rcaDocUrl}`}
+              target="_blank"
+              rel="noreferrer"
+              download
+              className="text-xs text-indigo-500 hover:text-indigo-700 px-2 py-1 rounded hover:bg-indigo-100 transition-colors whitespace-nowrap"
+            >
+              Download
+            </a>
+          </div>
+        )}
+
+        {/* Upload area */}
+        <label className={`flex flex-col items-center gap-2 border-2 border-dashed rounded-xl p-5 cursor-pointer transition-colors
+          ${rcaUploading ? 'border-indigo-300 bg-indigo-50/50 pointer-events-none' : 'border-gray-200 hover:border-indigo-300 hover:bg-indigo-50/30'}`}>
+          <input
+            type="file"
+            className="hidden"
+            accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.png,.jpg,.jpeg"
+            disabled={rcaUploading}
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              setRcaError(null);
+              setRcaUploading(true);
+              try {
+                const token = localStorage.getItem('token');
+                const fd = new FormData();
+                fd.append('file', file);
+                const res = await fetch(`${API_URL}/api/projects/${project.id}/rca-doc`, {
+                  method: 'POST',
+                  headers: { Authorization: `Bearer ${token}` },
+                  body: fd,
+                });
+                const json = await res.json();
+                if (!json.success) throw new Error(json.error || 'Upload failed');
+                showToast('success', 'RCA document uploaded');
+                onProjectUpdate?.();
+              } catch (err: any) {
+                setRcaError(err.message || 'Upload failed');
+              } finally {
+                setRcaUploading(false);
+                e.target.value = '';
+              }
+            }}
+          />
+          {rcaUploading ? (
+            <>
+              <Loader2 size={22} className="animate-spin text-indigo-500" />
+              <span className="text-sm text-indigo-600 font-medium">Uploading…</span>
+            </>
+          ) : (
+            <>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              <span className="text-sm text-gray-500 font-medium">{project.rcaDocUrl ? 'Replace document' : 'Upload RCA document'}</span>
+              <span className="text-xs text-gray-400">PDF, Word, Excel, image — up to 50 MB</span>
+            </>
+          )}
+        </label>
+
+        {rcaError && (
+          <p className="mt-2 text-xs text-red-600 flex items-center gap-1">
+            <AlertCircle size={12} /> {rcaError}
+          </p>
+        )}
       </div>
 
       {/* ── 2. Phase Dates & Notes table ── */}
@@ -1250,6 +1337,41 @@ export function ProjectDetail({ project }: ProjectDetailProps) {
   const [pendingPhase, setPendingPhase] = useState<string>(project.status === 'COMPLETED' ? 'COMPLETED' : project.phase);
   const [pendingPct, setPendingPct] = useState<number>(project.onetimeProgress ?? 0);
   const [savingPhase, setSavingPhase] = useState(false);
+  const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
+  const [savingStatus, setSavingStatus] = useState(false);
+
+  const STATUS_OPTIONS: { value: import('@/types').ProjectStatus; label: string }[] = [
+    { value: 'ACTIVE',   label: 'Active' },
+    { value: 'ON_HOLD',  label: 'On Hold' },
+    { value: 'INACTIVE', label: 'Inactive' },
+  ];
+
+  const statusDropdownRef = useRef<HTMLDivElement>(null);
+
+  const handleStatusChange = async (newStatus: import('@/types').ProjectStatus) => {
+    if (newStatus === project.status) { setStatusDropdownOpen(false); return; }
+    setSavingStatus(true);
+    setStatusDropdownOpen(false);
+    try {
+      await updateProject.mutateAsync({ id: project.id, data: { status: newStatus } });
+      showToast('success', 'Status updated');
+    } catch {
+      showToast('error', 'Failed to update status');
+    } finally {
+      setSavingStatus(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!statusDropdownOpen) return;
+    const handleOutside = (e: MouseEvent) => {
+      if (statusDropdownRef.current && !statusDropdownRef.current.contains(e.target as Node)) {
+        setStatusDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, [statusDropdownOpen]);
 
   const phaseOptions = settings.phases
     .slice()
@@ -1304,7 +1426,33 @@ export function ProjectDetail({ project }: ProjectDetailProps) {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-3 flex-wrap">
               <h1 className="text-2xl font-bold text-gray-900 uppercase tracking-wide">{project.name}</h1>
-              <StatusBadge status={project.status} variant="status" />
+              {/* Clickable status badge */}
+              <div className="relative" ref={statusDropdownRef}>
+                <button
+                  onClick={() => canEdit && setStatusDropdownOpen(o => !o)}
+                  className={`flex items-center gap-1 rounded focus:outline-none ${canEdit ? 'cursor-pointer hover:ring-2 hover:ring-indigo-300 hover:ring-offset-1 rounded' : 'cursor-default'}`}
+                  title={canEdit ? 'Click to change status' : project.status}
+                  disabled={savingStatus}
+                >
+                  {savingStatus ? <Loader2 size={14} className="animate-spin text-gray-400" /> : null}
+                  <StatusBadge status={project.status} variant="status" />
+                  {canEdit && <span className="text-gray-400 text-xs">▾</span>}
+                </button>
+                {statusDropdownOpen && canEdit && (
+                  <div className="absolute left-0 top-full mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-[130px]">
+                    {STATUS_OPTIONS.map(opt => (
+                      <button
+                        key={opt.value}
+                        onClick={() => handleStatusChange(opt.value)}
+                        className={`w-full text-left px-3 py-1.5 text-sm hover:bg-gray-50 flex items-center gap-2 ${project.status === opt.value ? 'font-semibold text-indigo-600' : 'text-gray-700'}`}
+                      >
+                        {project.status === opt.value && <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 inline-block" />}
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               {project.delayStatus !== 'NOT_DELAYED' && (
                 <span className={`text-sm font-semibold flex items-center gap-1 ${project.delayStatus === 'DELAYED' ? 'text-red-600' : 'text-amber-600'}`}>
                   <AlertTriangle size={15} />

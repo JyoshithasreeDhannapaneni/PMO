@@ -11,6 +11,7 @@ export interface ParsedTicket {
   key: string;
   summary: string;
   assignee: string;
+  reporter: string;
   projectManager: string;
   customer: string;
   status: string;
@@ -146,6 +147,7 @@ export function parseJiraExcel(buffer: Buffer, filename: string): ExcelDataStore
   const idxKey      = findColIdx(rawHeaders, "Key", "Issue Key", "Issue key", "issue key", "Ticket Key", "Issue id", "Issue ID");
   const idxSummary  = findColIdx(rawHeaders, "Summary");
   const idxAssignee = findColIdx(rawHeaders, "Assignee");
+  const idxReporter = findColIdx(rawHeaders, "Reporter", "reporter", "Reported By", "reported by");
   const idxPm       = findColIdx(rawHeaders, "Project Manager", "PM", "Project manager", "project manager");
   const idxCust     = findColIdx(rawHeaders, "Customer Name", "Customer", "customer name", "customer", "Account Name", "Client");
   const idxStatus   = findColIdx(rawHeaders, "Status");
@@ -158,6 +160,7 @@ export function parseJiraExcel(buffer: Buffer, filename: string): ExcelDataStore
     key:      idxKey >= 0      ? rawHeaders[idxKey]      : "NOT FOUND",
     summary:  idxSummary >= 0  ? rawHeaders[idxSummary]  : "NOT FOUND",
     assignee: idxAssignee >= 0 ? rawHeaders[idxAssignee] : "NOT FOUND",
+    reporter: idxReporter >= 0 ? rawHeaders[idxReporter] : "NOT FOUND",
     pm:       idxPm >= 0       ? rawHeaders[idxPm]       : "NOT FOUND",
     customer: idxCust >= 0     ? rawHeaders[idxCust]     : "NOT FOUND",
     frSla:    idxFrSla >= 0    ? rawHeaders[idxFrSla]    : "NOT FOUND",
@@ -178,6 +181,7 @@ export function parseJiraExcel(buffer: Buffer, filename: string): ExcelDataStore
       key:            cellStr(row, idxKey),
       summary:        cellStr(row, idxSummary),
       assignee:       cellStr(row, idxAssignee) || "Unassigned",
+      reporter:       cellStr(row, idxReporter),
       projectManager: cellStr(row, idxPm),
       customer:       cellStr(row, idxCust) || "Unknown",
       status:         cellStr(row, idxStatus),
