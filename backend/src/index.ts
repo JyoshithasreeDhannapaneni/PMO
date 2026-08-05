@@ -58,6 +58,7 @@ import dealDeskRoutes from './routes/dealDeskRoutes';
 import docsRoutes from './routes/docsRoutes';
 import ticketingRoutes from './routes/ticketingRoutes';
 import emailHygieneRoutes from './routes/emailHygieneRoutes';
+import callHygieneRoutes from './routes/callHygieneRoutes';
 import escalationMailsRoutes from './routes/escalationMailsRoutes';
 import { ntaSyncService, isNtaConfigured } from './services/ntaSyncService';
 import { logger } from './utils/logger';
@@ -138,6 +139,7 @@ app.use('/api/deal-desk', dealDeskRoutes);
 app.use('/api/docs', docsRoutes);
 app.use('/api/ticketing', ticketingRoutes);
 app.use('/api/email-hygiene', emailHygieneRoutes);
+app.use('/api/call-hygiene', callHygieneRoutes);
 app.use('/api/escalation-mails', escalationMailsRoutes);
 
 app.use(notFoundHandler);
@@ -657,6 +659,15 @@ async function runMigrations() {
 
   // Email hygiene cache — stores computed metrics (refreshed every 2h on demand)
   await execute(`CREATE TABLE IF NOT EXISTS email_hygiene_cache (
+    id           UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    period_start TIMESTAMPTZ NOT NULL,
+    period_end   TIMESTAMPTZ NOT NULL,
+    metrics      JSONB NOT NULL DEFAULT '[]',
+    computed_at  TIMESTAMPTZ DEFAULT NOW()
+  )`);
+
+  // Call hygiene cache — stores computed Outlook-calendar-derived metrics (refreshed every 25h)
+  await execute(`CREATE TABLE IF NOT EXISTS call_hygiene_cache (
     id           UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     period_start TIMESTAMPTZ NOT NULL,
     period_end   TIMESTAMPTZ NOT NULL,

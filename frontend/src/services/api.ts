@@ -740,6 +740,17 @@ export const emailHygieneApi = {
   },
 };
 
+export const callHygieneApi = {
+  getMetrics: async (forceRefresh = false) => {
+    const { data } = await api.get('/call-hygiene', { params: forceRefresh ? { refresh: 'true' } : {} });
+    return data;
+  },
+  exportExcel: async () => {
+    const { data } = await api.get('/call-hygiene/export', { responseType: 'blob' });
+    return data as Blob;
+  },
+};
+
 export const auditApi = {
   getAll: async (params?: {
     page?: number; limit?: number; userId?: string; entityType?: string;

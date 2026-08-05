@@ -602,32 +602,58 @@ class AuditService {
         ? Math.floor((now.getTime() - new Date(lastActionAt).getTime()) / 86400000)
         : 999;
 
-      // ── Data quality metrics (from active/on-hold projects) ───────────
-      const missingKickoffDate  = active.filter((p) => !p.actual_start).length;
-      const missingPlannedDates = projects.filter((p) => !p.planned_start || !p.planned_end).length;
-      const missingCustomerEmail = projects.filter((p) => !p.customer_contact).length;
-      const missingNotes        = active.filter((p) => !p.notes || !String(p.notes).trim()).length;
-      const overdueNotFlagged   = active.filter((p) => p.planned_end && new Date(p.planned_end) < now).length;
-      const missingProjectSize  = projects.filter((p) => !p.project_memory).length;
-      const missingBudget       = projects.filter((p) => !p.estimated_cost).length;
+      // ── Data quality metrics ────────────────────────────────────────────
+      // Scored population must match qualityScope below (active, falling back to
+      // all projects when a PM has none active) — otherwise the displayed counts
+      // and the Data Quality Score are computed over different project sets and
+      // silently disagree.
+      const qualityPopulation = active.length > 0 ? active : projects;
+      const missingKickoffDate  = qualityPopulation.filter((p) => !p.actual_start).length;
+      const missingPlannedDates = qualityPopulation.filter((p) => !p.planned_start || !p.planned_end).length;
+      const missingCustomerEmail = qualityPopulation.filter((p) => !p.customer_contact).length;
+      const missingNotes        = qualityPopulation.filter((p) => !p.notes || !String(p.notes).trim()).length;
+      // Past planned_end AND not already owned via delay_status — a flagged
+      // delay is accounted for in delayScore, so counting it here too would
+      // penalise the same slip twice.
+      const overdueNotFlagged   = active.filter((p) =>
+        p.planned_end && new Date(p.planned_end) < now &&
+        p.delay_status !== 'DELAYED' && p.delay_status !== 'AT_RISK'
+      ).length;
+      const missingProjectSize  = qualityPopulation.filter((p) => !p.project_memory).length;
+      const missingBudget       = qualityPopulation.filter((p) => !p.estimated_cost).length;
 
       // ── Case study metrics ────────────────────────────────────────────
+      // Projects finished within the grace window are excluded from scoring —
+      // a project completed days ago cannot yet be expected to have a case
+      // study. They still surface in the counts below.
+      const CS_GRACE_DAYS = 30;
+      const csGraceCutoff = new Date(now.getTime() - CS_GRACE_DAYS * 86400000);
+      const csScopeCompleted = completed.filter(
+        (p) => !p.actual_end || new Date(p.actual_end) <= csGraceCutoff
+      );
       const csDone     = completed.filter((p) => p.cs_status === 'COMPLETED' || p.cs_status === 'PUBLISHED').length;
       const csPending  = completed.filter((p) => p.cs_status === 'PENDING' || p.cs_status === 'IN_PROGRESS').length;
       const csMissing  = completed.filter((p) => !p.cs_id).length;
+      const csInGrace  = completed.length - csScopeCompleted.length;
 
       // ── Activity Score (0-100) ────────────────────────────────────────
-      // Logins  (0-30 pts): 0→0, 1→10, 2-3→20, 4+→30
-      const loginPts = logins30d === 0 ? 0 : logins30d === 1 ? 10 : logins30d <= 3 ? 20 : 30;
-      // Updates (0-70 pts): expected = max(1, activeProjects × 2) updates/month
+      // Logins (0-60 pts): 0→0, 1→20, 2-3→40, 4+→60
+      const loginPts = logins30d === 0 ? 0 : logins30d === 1 ? 20 : logins30d <= 3 ? 40 : 60;
+      // Updates (0-40 pts): expected = max(1, activeProjects × 2) updates/month.
+      // Project mutations are not yet written to audit_logs, so this stays 0
+      // until they are — hence logins carry the larger share rather than
+      // zeroing the whole score.
       const expectedUpdates = Math.max(1, active.length * 2);
-      const updatePts = logins30d === 0 ? 0 : Math.min(70, Math.round((projectUpdates30d / expectedUpdates) * 70));
+      const updatePts = logins30d === 0 ? 0 : Math.min(40, Math.round((projectUpdates30d / expectedUpdates) * 40));
       const activityScore = loginPts + updatePts;
 
       // ── Data Quality Score (0-100) ────────────────────────────────────
+      // Uses qualityPopulation (defined above) so the score and the displayed
+      // missing-field counts are always computed over the same project set.
+      const qualityScope = qualityPopulation;
       let qualityScore = 100;
-      if (active.length > 0) {
-        const earned = active.reduce((sum, p) => {
+      if (qualityScope.length > 0) {
+        const earned = qualityScope.reduce((sum, p) => {
           let pts = 0;
           if (p.planned_start)                    pts++;
           if (p.planned_end)                      pts++;
@@ -638,15 +664,18 @@ class AuditService {
           if (p.estimated_cost)                   pts++;
           return sum + pts;
         }, 0);
-        const base = Math.round((earned / (active.length * 7)) * 100);
+        const base = Math.round((earned / (qualityScope.length * 7)) * 100);
         qualityScore = Math.max(0, base - Math.min(overdueNotFlagged * 5, 20));
       }
 
       // ── Case Study Score (0-100) ──────────────────────────────────────
       let caseStudyScore = 100;
-      if (completed.length > 0) {
-        const base = Math.round((csDone / completed.length) * 100);
-        caseStudyScore = Math.max(0, base - Math.min(csPending * 5, 15) - Math.min(csMissing * 10, 30));
+      if (csScopeCompleted.length > 0) {
+        const scopedDone    = csScopeCompleted.filter((p) => p.cs_status === 'COMPLETED' || p.cs_status === 'PUBLISHED').length;
+        const scopedPending = csScopeCompleted.filter((p) => p.cs_status === 'PENDING' || p.cs_status === 'IN_PROGRESS').length;
+        const scopedMissing = csScopeCompleted.filter((p) => !p.cs_id).length;
+        const base = Math.round((scopedDone / csScopeCompleted.length) * 100);
+        caseStudyScore = Math.max(0, base - Math.min(scopedPending * 5, 15) - Math.min(scopedMissing * 10, 30));
       }
 
       // ── Delay Accountability Score (0-100, over active/on-hold projects) ─
@@ -660,10 +689,13 @@ class AuditService {
       for (const p of active) {
         if (p.delay_status !== 'AT_RISK' && p.delay_status !== 'DELAYED') continue;
         delayedProjectsCount++;
+        // Leaving delay_happened blank must cost more than any honest
+        // attribution, otherwise reporting an internal delay scores worse than
+        // reporting nothing at all.
         if (p.delay_happened === 'CUSTOMER_DELAY')      delayScore -= 5;
-        else if (p.delay_happened === 'INTERNAL_DELAY') delayScore -= 12;
-        else if (p.delay_happened === 'BOTH')           delayScore -= 15;
-        else                                             delayScore -= 10; // not attributed
+        else if (p.delay_happened === 'INTERNAL_DELAY') delayScore -= 10;
+        else if (p.delay_happened === 'BOTH')           delayScore -= 12;
+        else                                             delayScore -= 15; // not attributed
         if (!p.has_rca) { delayScore -= 10; missingRcaCount++; }
       }
       delayScore = Math.max(0, delayScore);
@@ -718,6 +750,7 @@ class AuditService {
         csDone,
         csPending,
         csMissing,
+        csInGrace,
         // Delay accountability
         delayedProjectsCount,
         missingRcaCount,
