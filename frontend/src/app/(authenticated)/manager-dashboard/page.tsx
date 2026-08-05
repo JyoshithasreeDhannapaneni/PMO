@@ -2108,6 +2108,12 @@ function TicketsView() {
             // narrow one you can't read.
             const COL_W = groupView === 'month' ? 72 : 56;
             return (
+              <>
+              <div className="flex items-center gap-4 mb-3 justify-end">
+                <span className="flex items-center gap-1.5 text-xs text-gray-600"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-700 inline-block" />Done</span>
+                <span className="flex items-center gap-1.5 text-xs text-gray-600"><span className="w-2.5 h-2.5 rounded-sm bg-indigo-700 inline-block" />In Progress</span>
+                <span className="flex items-center gap-1.5 text-xs text-gray-600"><span className="w-2.5 h-2.5 rounded-sm bg-slate-500 inline-block" />To Do</span>
+              </div>
               <div className="overflow-x-auto -mx-1 px-1 pb-1">
                 <div
                   className="grid gap-2 items-end"
@@ -2125,12 +2131,12 @@ function TicketsView() {
                       <div key={b.key} className="flex flex-col items-center justify-end h-full gap-1.5" title={b.label}>
                         <p className="text-xs font-bold text-gray-700 whitespace-nowrap">{b.total.toLocaleString()}</p>
                         <div
-                          className="w-full max-w-[36px] rounded-t-md rounded-b-sm overflow-hidden flex flex-col-reverse bg-gray-100"
+                          className="w-full max-w-[36px] rounded-t-md rounded-b-sm overflow-hidden flex flex-col-reverse bg-gray-200"
                           style={{ height: stackHeight }}
                         >
-                          <div className="w-full bg-green-600" style={{ height: `${donePct}%` }} />
-                          <div className="w-full bg-blue-600" style={{ height: `${inProgPct}%` }} />
-                          <div className="w-full bg-gray-400" style={{ height: `${todoPct}%` }} />
+                          <div className="w-full bg-emerald-700" style={{ height: `${donePct}%` }} />
+                          <div className="w-full bg-indigo-700" style={{ height: `${inProgPct}%` }} />
+                          <div className="w-full bg-slate-500" style={{ height: `${todoPct}%` }} />
                         </div>
                         <p className="text-[10px] text-gray-400 text-center leading-tight whitespace-nowrap">{shortLabel}</p>
                       </div>
@@ -2138,6 +2144,7 @@ function TicketsView() {
                   })}
                 </div>
               </div>
+              </>
             );
           })()}
         </div>
