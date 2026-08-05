@@ -1,6 +1,23 @@
 import { pool } from '../config/db';
 import { logger } from '../utils/logger';
 import { isNtaConfigured } from './ntaSyncService';
+import fs from 'fs';
+import path from 'path';
+
+const NTA_STATE_FILE = path.join(process.cwd(), '.nta-state.json');
+
+function readNtaState(): { enabled: boolean } {
+  try {
+    const raw = fs.readFileSync(NTA_STATE_FILE, 'utf8');
+    return JSON.parse(raw);
+  } catch {
+    return { enabled: true };
+  }
+}
+
+function writeNtaState(state: { enabled: boolean }): void {
+  fs.writeFileSync(NTA_STATE_FILE, JSON.stringify(state), 'utf8');
+}
 
 export interface SearchFilters {
   key?: string;
@@ -132,6 +149,14 @@ function buildWhere(filters: SearchFilters): { sql: string; params: any[] } {
 export const ticketingService = {
   isConfigured(): boolean {
     return isNtaConfigured();
+  },
+
+  async isEnabled(): Promise<boolean> {
+    return readNtaState().enabled;
+  },
+
+  async setEnabled(enabled: boolean): Promise<void> {
+    writeNtaState({ enabled });
   },
 
   async getStats(): Promise<{ totalTickets: number; totalAgents: number; totalBoards: number }> {

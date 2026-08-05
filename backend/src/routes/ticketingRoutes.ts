@@ -1,9 +1,11 @@
 import { Router } from 'express';
 import { ticketingController } from '../controllers/ticketingController';
+import { requireAuth } from '../middleware/auth';
 
 const router = Router();
 
 router.get('/config',           ticketingController.checkConfig);
+router.post('/config',          requireAuth, ticketingController.setEnabled);
 router.get('/sync',             ticketingController.getSyncStatus);
 router.post('/sync',            ticketingController.triggerSync);
 router.get('/stats',            ticketingController.getStats);

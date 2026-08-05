@@ -130,6 +130,7 @@ export interface Project {
   customerSuccess?: string | null;
   csatScore?: number | null;
   delayHappened?: 'CUSTOMER_DELAY' | 'INTERNAL_DELAY' | 'BOTH' | null;
+  rcaDocUrl?: string | null;
   createdAt: string;
   updatedAt: string;
   phases?: ProjectPhaseRecord[];

@@ -2,6 +2,8 @@ import cron from 'node-cron';
 import { logger } from '../utils/logger';
 import { projectService } from '../services/projectService';
 import { ntaSyncService, isNtaConfigured } from '../services/ntaSyncService';
+import { ticketingService } from '../services/ticketingService';
+import { emailHygieneService } from '../services/emailHygieneService';
 
 /**
  * Initialize all cron jobs
@@ -49,6 +51,7 @@ export function initializeCronJobs(): void {
   // NTA ticket sync — every 5 minutes
   cron.schedule('*/5 * * * *', async () => {
     if (!isNtaConfigured()) return;
+    if (!(await ticketingService.isEnabled())) return;
     try {
       const result = await ntaSyncService.syncFromNta();
       logger.info(`NTA sync: ${result.synced} upserted, ${result.total} total`);
@@ -83,6 +86,21 @@ export function initializeCronJobs(): void {
     }
   });
 
+  // Email hygiene sync — daily at 7:00 AM IST
+  cron.schedule('0 7 * * *', async () => {
+    logger.info('[EmailHygiene] Starting daily 7 AM IST sync...');
+    try {
+      if (!emailHygieneService.isConfigured()) {
+        logger.info('[EmailHygiene] Graph API not configured — skipping sync');
+        return;
+      }
+      const result = await emailHygieneService.getHygieneMetrics(true);
+      logger.info(`[EmailHygiene] Daily sync complete — ${result.metrics.length} users, computed at ${result.computedAt}`);
+    } catch (error) {
+      logger.error('[EmailHygiene] Daily sync failed:', error);
+    }
+  }, { timezone: 'Asia/Kolkata' });
+
   logger.info('Cron jobs scheduled:');
   logger.info('  - Delay check: Daily at 6:00 AM');
   logger.info('  - Server alerts: Daily at 8:00 AM');
@@ -90,4 +108,5 @@ export function initializeCronJobs(): void {
   logger.info('  - NTA ticket sync: Every 5 minutes');
   logger.info('  - PMO Hygiene & Score Card email: Daily at 6:00 PM IST');
   logger.info('  - PMO Hygiene & Score Card scheduled-send poll: Every minute');
+  logger.info('  - Email hygiene sync: Daily at 7:00 AM IST');
 }

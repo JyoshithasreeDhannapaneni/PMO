@@ -261,6 +261,7 @@ function mapProjectRow(row: any) {
     customerSuccess: row.customer_success ?? null,
     csatScore: row.csat_score != null ? parseFloat(row.csat_score) : null,
     delayHappened: row.delay_happened ?? null,
+    rcaDocUrl: row.rca_doc_url ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -796,6 +797,7 @@ class ProjectService {
       params.push(cv !== null && cv !== '' ? parseFloat(cv) : null);
     }
     if ((data as any).delayHappened !== undefined) { updates.push(`delay_happened = $${params.length + 1}`); params.push((data as any).delayHappened ?? null); }
+    if ((data as any).rcaDocUrl !== undefined) { updates.push(`rca_doc_url = $${params.length + 1}`); params.push((data as any).rcaDocUrl ?? null); }
 
     await execute(
       `UPDATE projects SET ${updates.join(', ')}, updated_at = NOW() WHERE id = $${params.length + 1}`,

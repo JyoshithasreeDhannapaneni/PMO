@@ -23,7 +23,25 @@ function filtersFromQuery(req: Request): SearchFilters {
 
 export const ticketingController = {
   checkConfig: asyncHandler(async (_req: Request, res: Response): Promise<void> => {
-    res.json({ success: true, data: { configured: ticketingService.isConfigured() } });
+    const configured = ticketingService.isConfigured();
+    const enabled = await ticketingService.isEnabled();
+    res.json({ success: true, data: { configured, enabled } });
+  }),
+
+  setEnabled: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const user = (req as any).user;
+    if (!user || user.role !== 'ADMIN') {
+      res.status(403).json({ success: false, error: 'Admin access required' });
+      return;
+    }
+    const { enabled } = req.body;
+    if (typeof enabled !== 'boolean') {
+      res.status(400).json({ success: false, error: '`enabled` must be a boolean' });
+      return;
+    }
+    await ticketingService.setEnabled(enabled);
+    logger.info(`NTA ticketing ${enabled ? 'enabled' : 'disabled'} via UI`);
+    res.json({ success: true, data: { enabled } });
   }),
 
   getStats: asyncHandler(async (_req: Request, res: Response): Promise<void> => {
