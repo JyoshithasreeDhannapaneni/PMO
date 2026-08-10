@@ -198,10 +198,22 @@ export default function AuditDashboardPage() {
   }
 
   async function handleForceRefreshEmailHygiene() {
+    if (isSyncingOutlook) return;
+    setIsSyncingOutlook(true);
+    setSyncOutlookStatus('idle');
+    setSyncOutlookError('');
     try {
       await emailHygieneApi.getMetrics(true);
-      refetchEmailHygiene();
-    } catch {}
+      await refetchEmailHygiene();
+      setSyncOutlookStatus('success');
+    } catch (err: any) {
+      const msg = err?.response?.data?.error || err?.message || 'Sync failed — check Graph API configuration';
+      setSyncOutlookError(msg);
+      setSyncOutlookStatus('error');
+    } finally {
+      setIsSyncingOutlook(false);
+      setTimeout(() => setSyncOutlookStatus('idle'), 5000);
+    }
   }
 
   function hygieneScoreColor(score: number) {
@@ -255,6 +267,9 @@ export default function AuditDashboardPage() {
   const { user: currentUser } = useAuth();
   const isAdmin = currentUser?.role === 'ADMIN';
 
+  const [isSyncingOutlook, setIsSyncingOutlook] = useState(false);
+  const [syncOutlookStatus, setSyncOutlookStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [syncOutlookError, setSyncOutlookError] = useState('');
   const [sendNowStatus, setSendNowStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
   const [sendNowError, setSendNowError] = useState('');
   const [showScheduleModal, setShowScheduleModal] = useState(false);
@@ -1324,11 +1339,19 @@ export default function AuditDashboardPage() {
               </button>
               <button
                 onClick={handleForceRefreshEmailHygiene}
-                disabled={isEmailHygieneFetching}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+                disabled={isSyncingOutlook || isEmailHygieneFetching}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-lg transition-colors disabled:opacity-50 ${
+                  syncOutlookStatus === 'success' ? 'bg-green-50 border-green-300 text-green-700' :
+                  syncOutlookStatus === 'error'   ? 'bg-red-50 border-red-300 text-red-700' :
+                  'text-gray-600 border-gray-300 hover:bg-gray-50'
+                }`}
               >
-                <RefreshCw size={13} /> Sync from Outlook
+                <RefreshCw size={13} className={isSyncingOutlook ? 'animate-spin' : ''} />
+                {isSyncingOutlook ? 'Syncing…' : syncOutlookStatus === 'success' ? 'Synced!' : 'Sync from Outlook'}
               </button>
+              {syncOutlookStatus === 'error' && (
+                <p className="text-xs text-red-600 mt-1 w-full">{syncOutlookError}</p>
+              )}
               <button
                 onClick={handleExportEmailHygieneCSV}
                 disabled={!emailMetrics.length}
