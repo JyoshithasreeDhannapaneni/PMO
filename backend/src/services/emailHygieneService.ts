@@ -551,8 +551,34 @@ async function analyzeUser(
   };
 }
 
+// In-process sync state — prevents concurrent Graph API syncs and lets the
+// frontend poll for completion without holding the HTTP connection open.
+type SyncState = { running: boolean; startedAt: string | null; completedAt: string | null; error: string | null };
+let _syncState: SyncState = { running: false, startedAt: null, completedAt: null, error: null };
+
 export const emailHygieneService = {
   isConfigured: isGraphConfigured,
+
+  getSyncState(): SyncState {
+    return { ..._syncState };
+  },
+
+  triggerBackgroundSync(): { alreadyRunning: boolean } {
+    if (_syncState.running) return { alreadyRunning: true };
+    _syncState = { running: true, startedAt: new Date().toISOString(), completedAt: null, error: null };
+    // Fire-and-forget — response returns 202 immediately
+    emailHygieneService.getHygieneMetrics(true)
+      .then(() => {
+        _syncState = { running: false, startedAt: _syncState.startedAt, completedAt: new Date().toISOString(), error: null };
+        logger.info('[EmailHygiene] Background sync completed');
+      })
+      .catch((err: any) => {
+        const msg = err?.message ?? 'Unknown error';
+        _syncState = { running: false, startedAt: _syncState.startedAt, completedAt: new Date().toISOString(), error: msg };
+        logger.error('[EmailHygiene] Background sync failed:', msg);
+      });
+    return { alreadyRunning: false };
+  },
 
   async getHygieneMetrics(forceRefresh = false): Promise<{
     metrics: UserEmailHygiene[];
