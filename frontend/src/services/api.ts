@@ -738,6 +738,14 @@ export const emailHygieneApi = {
     const { data } = await api.get('/email-hygiene/export', { responseType: 'blob' });
     return data as Blob;
   },
+  triggerSync: async () => {
+    const { data } = await api.post('/email-hygiene/sync');
+    return data as { success: boolean; data: { alreadyRunning: boolean; running: boolean; completedAt: string | null; error: string | null } };
+  },
+  getSyncStatus: async () => {
+    const { data } = await api.get('/email-hygiene/sync-status');
+    return data as { success: boolean; data: { running: boolean; startedAt: string | null; completedAt: string | null; error: string | null } };
+  },
 };
 
 export const auditApi = {

@@ -17,6 +17,7 @@ import {
   UserX, ShieldCheck, FileSpreadsheet, X, Send, Clock,
 } from 'lucide-react';
 import { auditApi, emailHygieneApi, authApi } from '@/services/api';
+import { SEGMENT_CONFIG } from '@/lib/segments';
 import { format, subDays, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { toPng } from 'html-to-image';
 import type { Project } from '@/types';
@@ -87,6 +88,109 @@ type Mode = 'weekly' | 'monthly';
 type SortKey = 'name' | 'totalProjects' | 'activeProjects' | 'completedProjects' | 'delayedProjects' | 'addedInPeriod' | 'closedInPeriod';
 
 function todayStr() { return format(new Date(), 'yyyy-MM-dd'); }
+
+function downloadHygieneTableImage(
+  title: string,
+  col1: string,
+  col2: string,
+  rows: { name: string; score: number }[],
+  filename: string,
+) {
+  const BRAND    = '#4B0BC4';
+  const WHITE    = '#FFFFFF';
+  const ROW_DIV  = 'rgba(75,11,196,0.15)';
+  const W        = 540;
+  const COL_DIV  = 340;   // left col width = 340, right col = 200
+  const TITLE_H  = 58;
+  const HEAD_H   = 40;
+  const ROW_H    = 38;
+  const PAD      = 18;
+  const totalH   = TITLE_H + HEAD_H + rows.length * ROW_H;
+
+  const canvas = document.createElement('canvas');
+  canvas.width  = W * 2;
+  canvas.height = totalH * 2;
+  const ctx = canvas.getContext('2d')!;
+  ctx.scale(2, 2);
+
+  // White base
+  ctx.fillStyle = WHITE;
+  ctx.fillRect(0, 0, W, totalH);
+
+  // ── Title band (full-width purple) ──────────────────────────────
+  ctx.fillStyle = BRAND;
+  ctx.fillRect(0, 0, W, TITLE_H);
+  ctx.fillStyle = WHITE;
+  ctx.font = 'bold 18px Calibri, Arial, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(title, W / 2, TITLE_H / 2, W - PAD * 2);
+
+  // ── Sub-heading band (purple, directly below title) ─────────────
+  ctx.fillStyle = BRAND;
+  ctx.fillRect(0, TITLE_H, W, HEAD_H);
+  ctx.fillStyle = WHITE;
+  ctx.font = 'bold 14px Calibri, Arial, sans-serif';
+  ctx.textBaseline = 'middle';
+  // col1: left-aligned
+  ctx.textAlign = 'left';
+  ctx.fillText(col1, PAD, TITLE_H + HEAD_H / 2, COL_DIV - PAD - 12);
+  // col2: centered in right column
+  ctx.textAlign = 'center';
+  ctx.fillText(col2, COL_DIV + (W - COL_DIV) / 2, TITLE_H + HEAD_H / 2, W - COL_DIV - PAD);
+  // White divider between sub-heading columns
+  ctx.strokeStyle = 'rgba(255,255,255,0.30)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(COL_DIV, TITLE_H + 8);
+  ctx.lineTo(COL_DIV, TITLE_H + HEAD_H - 8);
+  ctx.stroke();
+
+  // ── Data rows ────────────────────────────────────────────────────
+  const dataY = TITLE_H + HEAD_H;
+  rows.forEach((row, i) => {
+    const y = dataY + i * ROW_H;
+    // Manager name
+    ctx.fillStyle = '#111827';
+    ctx.font = '14px Calibri, Arial, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(row.name, PAD, y + ROW_H / 2, COL_DIV - PAD - 12);
+    // Score
+    const scoreColor = row.score >= 80 ? '#15803D' : row.score >= 60 ? '#B45309' : '#B91C1C';
+    ctx.fillStyle = scoreColor;
+    ctx.font = 'bold 15px Calibri, Arial, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(String(row.score), COL_DIV + (W - COL_DIV) / 2, y + ROW_H / 2);
+    // Horizontal row divider (skip last row)
+    if (i < rows.length - 1) {
+      ctx.strokeStyle = ROW_DIV;
+      ctx.lineWidth = 0.75;
+      ctx.beginPath();
+      ctx.moveTo(2, y + ROW_H);
+      ctx.lineTo(W - 2, y + ROW_H);
+      ctx.stroke();
+    }
+  });
+
+  // ── Column divider through data area (one continuous line) ───────
+  ctx.strokeStyle = ROW_DIV;
+  ctx.lineWidth = 0.75;
+  ctx.beginPath();
+  ctx.moveTo(COL_DIV, dataY);
+  ctx.lineTo(COL_DIV, dataY + rows.length * ROW_H);
+  ctx.stroke();
+
+  // ── Outer border ─────────────────────────────────────────────────
+  ctx.strokeStyle = BRAND;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(1, 1, W - 2, totalH - 2);
+
+  const link = document.createElement('a');
+  link.download = filename;
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+}
 function weekStart() { return format(subDays(new Date(), 7), 'yyyy-MM-dd'); }
 function lastWeekStart() { return format(subDays(new Date(), 14), 'yyyy-MM-dd'); }
 function lastWeekEnd() { return format(subDays(new Date(), 8), 'yyyy-MM-dd'); }
@@ -203,7 +307,27 @@ export default function AuditDashboardPage() {
     setSyncOutlookStatus('idle');
     setSyncOutlookError('');
     try {
-      await emailHygieneApi.getMetrics(true);
+      // Fire background sync — returns 202 immediately (no timeout risk)
+      const res = await emailHygieneApi.triggerSync();
+      if (!res.success) throw new Error('Sync trigger failed');
+
+      // Poll /sync-status every 4 seconds until running=false
+      await new Promise<void>((resolve, reject) => {
+        const interval = setInterval(async () => {
+          try {
+            const status = await emailHygieneApi.getSyncStatus();
+            if (!status.data.running) {
+              clearInterval(interval);
+              if (status.data.error) reject(new Error(status.data.error));
+              else resolve();
+            }
+          } catch (e) {
+            clearInterval(interval);
+            reject(e);
+          }
+        }, 4000);
+      });
+
       await refetchEmailHygiene();
       setSyncOutlookStatus('success');
     } catch (err: any) {
@@ -261,6 +385,44 @@ export default function AuditDashboardPage() {
       a.download = `hygiene-board-${format(new Date(), 'yyyy-MM-dd')}.xlsx`;
       a.click();
     } catch {}
+  }
+
+  function handleDownloadPmoHygieneImage() {
+    if (!hygieneBoard.length) return;
+    const allPMs = new Set(SEGMENT_CONFIG.flatMap(s => s.managers).map(m => m.toLowerCase()));
+    const pmRows = hygieneBoard
+      .filter((pm: any) => {
+        const n = (pm.projectManager ?? '').toLowerCase();
+        return allPMs.has(n) || [...allPMs].some(m => n.startsWith(m) || m.startsWith(n.split(' ')[0]));
+      })
+      .map((pm: any) => ({ name: pm.projectManager, score: Math.round(pm.hygieneScore ?? 0) }))
+      .sort((a: { score: number }, b: { score: number }) => b.score - a.score);
+    downloadHygieneTableImage(
+      'PMO Hygiene',
+      'Project Manager',
+      'Hygiene Score',
+      pmRows,
+      `pmo-hygiene-${format(new Date(), 'yyyy-MM-dd')}.png`,
+    );
+  }
+
+  function handleDownloadEmailHygieneImage() {
+    if (!emailMetrics.length) return;
+    const allPMs = new Set(SEGMENT_CONFIG.flatMap(s => s.managers).map(m => m.toLowerCase()));
+    const pmRows = emailMetrics
+      .filter((m: any) => {
+        const n = (m.userName ?? '').toLowerCase();
+        return allPMs.has(n) || [...allPMs].some(pm => n.startsWith(pm) || pm.startsWith(n.split(' ')[0]));
+      })
+      .map((m: any) => ({ name: m.userName, score: Math.round(m.emailHygieneScore ?? 0) }))
+      .sort((a: { score: number }, b: { score: number }) => b.score - a.score);
+    downloadHygieneTableImage(
+      'Email Hygiene',
+      'Managers',
+      'Hygiene Score (/100)',
+      pmRows,
+      `email-hygiene-${format(new Date(), 'yyyy-MM-dd')}.png`,
+    );
   }
 
   // ── Hygiene scorecard email — send now / scheduled send ──────────
@@ -1305,6 +1467,13 @@ export default function AuditDashboardPage() {
               >
                 <FileSpreadsheet size={13} /> Excel
               </button>
+              <button
+                onClick={handleDownloadPmoHygieneImage}
+                disabled={!hygieneBoard.length}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-white rounded-lg transition-colors disabled:opacity-40" style={{ backgroundColor: '#4B0BC4' }}
+              >
+                <Camera size={13} /> Image
+              </button>
               {isAdmin && (<>
                 <button
                   onClick={handleSendNow}
@@ -1365,6 +1534,13 @@ export default function AuditDashboardPage() {
                 className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-40"
               >
                 <FileSpreadsheet size={13} /> Excel
+              </button>
+              <button
+                onClick={handleDownloadEmailHygieneImage}
+                disabled={!emailMetrics.length}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-white rounded-lg transition-colors disabled:opacity-40" style={{ backgroundColor: '#4B0BC4' }}
+              >
+                <Camera size={13} /> Image
               </button>
             </>)}
           </div>
