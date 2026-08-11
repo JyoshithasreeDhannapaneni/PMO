@@ -17,7 +17,6 @@ import authRoutes from './routes/authRoutes';
 import projectRoutes from './routes/projectRoutes';
 import phaseRoutes from './routes/phaseRoutes';
 import caseStudyRoutes from './routes/caseStudyRoutes';
-import kbArticleRoutes from './routes/kbArticleRoutes';
 import notificationRoutes from './routes/notificationRoutes';
 import dashboardRoutes from './routes/dashboardRoutes';
 import templateRoutes from './routes/templateRoutes';
@@ -45,18 +44,6 @@ import migrationChecklistRoutes from './routes/migrationChecklistRoutes';
 import serverAlertRoutes from './routes/serverAlertRoutes';
 import templateCombinationRoutes from './routes/templateCombinationRoutes';
 import jiraRoutes from './routes/jiraRoutes';
-import hubspotRoutes from './routes/hubspotRoutes';
-import { isHubspotConfigured, getDealsByCustomer } from './services/hubspotService';
-import psEngagementsRoutes from './routes/psEngagementsRoutes';
-import externalRoutes from './routes/externalRoutes';
-import aiRoutes from './routes/aiRoutes';
-import apiKeyRoutes from './routes/apiKeyRoutes';
-import clientReviewRoutes from './routes/clientReviewRoutes';
-import platformReviewRoutes from './routes/platformReviewRoutes';
-import overageRoutes from './routes/overageRoutes';
-import dealDeskRoutes from './routes/dealDeskRoutes';
-import docsRoutes from './routes/docsRoutes';
-import ticketingRoutes from './routes/ticketingRoutes';
 import emailHygieneRoutes from './routes/emailHygieneRoutes';
 import callHygieneRoutes from './routes/callHygieneRoutes';
 import escalationMailsRoutes from './routes/escalationMailsRoutes';
@@ -100,7 +87,6 @@ app.use('/api/auth', authRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api/phases', phaseRoutes);
 app.use('/api/case-studies', caseStudyRoutes);
-app.use('/api/kb-articles', kbArticleRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/templates', templateRoutes);
@@ -116,11 +102,6 @@ app.use('/api/comments', commentRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api/export', exportRoutes);
 app.use('/api/manager-goals', managerGoalsRoutes);
-app.use('/api/external', externalRoutes);
-app.use('/api/api-key', apiKeyRoutes);
-app.use('/api/reviews', clientReviewRoutes);
-app.use('/api/platform-reviews', platformReviewRoutes);
-app.use('/api/overage', overageRoutes);
 app.use('/api/smtp', smtpRoutes);
 app.use('/api/pmo-settings', pmoSettingsRoutes);
 app.use('/api/archive', archiveRoutes);
@@ -132,15 +113,12 @@ app.use('/api/migration-checklists', migrationChecklistRoutes);
 app.use('/api/server-alerts', serverAlertRoutes);
 app.use('/api/template-combinations', templateCombinationRoutes);
 app.use('/api/jira', jiraRoutes);
-app.use('/api/hubspot', hubspotRoutes);
-app.use('/api/ps-engagements', psEngagementsRoutes);
-app.use('/api/ai', aiRoutes);
-app.use('/api/deal-desk', dealDeskRoutes);
-app.use('/api/docs', docsRoutes);
-app.use('/api/ticketing', ticketingRoutes);
 app.use('/api/email-hygiene', emailHygieneRoutes);
+<<<<<<< HEAD
 app.use('/api/call-hygiene', callHygieneRoutes);
 app.use('/api/escalation-mails', escalationMailsRoutes);
+=======
+>>>>>>> origin/main
 
 app.use(notFoundHandler);
 app.use(errorHandler);
@@ -777,26 +755,6 @@ const server = app.listen(PORT, async () => {
     logger.info('⏰ Cron jobs initialized');
   }
 
-  if (isNtaConfigured()) {
-    ntaSyncService.getDbCount().then((count) => {
-      logger.info(`NTA tickets DB: ${count} tickets stored. Use POST /api/ticketing/sync to sync manually.`);
-    }).catch(() => {});
-  }
-
-  // HubSpot background refresh — pull once on startup then every 15 minutes
-  if (isHubspotConfigured()) {
-    getDealsByCustomer(true).then(() => {
-      logger.info('✅ HubSpot initial data loaded');
-    }).catch((err) => logger.warn('[HubSpot] Initial fetch failed:', err));
-
-    // node-cron is already a project dependency (used by initializeCronJobs)
-    import('node-cron').then((cron) => {
-      cron.default.schedule('*/15 * * * *', () => {
-        getDealsByCustomer(true).catch((err) => logger.warn('[HubSpot] Cron refresh failed:', err));
-      });
-      logger.info('⏰ HubSpot: auto-refresh every 15 minutes');
-    }).catch(() => {});
-  }
 });
 
 export default app;
