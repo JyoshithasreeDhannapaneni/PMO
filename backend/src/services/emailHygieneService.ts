@@ -55,11 +55,26 @@ export interface UserEmailHygiene {
   resolutionScore: number;              // 0–20  (1-Reply/10 + Reopened/10)
   // Overall
   emailHygieneScore: number;            // 0–100
+  // Team DL hygiene — score from the shared DL mailbox this manager owns
+  teamHygieneScore: number | null;
+  teamDlEmail: string | null;
   // Improvement suggestions (only for weak areas)
   insights: ImprovementInsight[];
 }
 
 const CF_DOMAIN = 'cloudfuze.com';
+
+// Team Distribution Lists — each maps to the manager who owns that support queue.
+// The DL must be provisioned as a shared mailbox in Exchange Online so Graph API
+// can read its SentItems (replies sent by team members on behalf of the DL).
+const DL_MANAGER_MAP: Array<{ dlEmail: string; firstName: string }> = [
+  { dlEmail: 'cfmigrationsupport_team1@cloudfuze.com', firstName: 'Harika' },
+  { dlEmail: 'cfmigrationsupport_team2@cloudfuze.com', firstName: 'Raghu' },
+  { dlEmail: 'cfmigrationsupport_team3@cloudfuze.com', firstName: 'Sravan' },
+  { dlEmail: 'cfmigrationsupport_team4@cloudfuze.com', firstName: 'Lakshmi' },
+  { dlEmail: 'cfmigrationsupport_team5@cloudfuze.com', firstName: 'Abhishikth' },
+  { dlEmail: 'cfmigrationsupport_team6@cloudfuze.com', firstName: 'Pranavi' },
+];
 const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
 // Cache is only refreshed by the daily 7 AM IST cron job (or admin force-refresh).
 // Regular HTTP requests always serve from cache — never trigger a live Graph API sync.
@@ -547,6 +562,8 @@ async function analyzeUser(
     qualityScore,
     resolutionScore,
     emailHygieneScore,
+    teamHygieneScore: null,
+    teamDlEmail: null,
     insights,
   };
 }
@@ -679,6 +696,31 @@ export const emailHygieneService = {
       for (const r of settled) {
         if (r.status === 'fulfilled') results.push(r.value);
         else logger.error('Email hygiene analysis error:', r.reason);
+      }
+    }
+
+    // Analyze team DL mailboxes and stamp the matching manager's record
+    for (const { dlEmail, firstName } of DL_MANAGER_MAP) {
+      try {
+        const dlExists = await userMailboxExists(client, encodeURIComponent(dlEmail));
+        if (!dlExists) {
+          logger.info(`[EmailHygiene] DL ${dlEmail} not accessible as shared mailbox — skipping`);
+          continue;
+        }
+        logger.info(`[EmailHygiene] Analyzing DL ${dlEmail} for ${firstName}`);
+        const dlResult = await analyzeUser(client, dlEmail, `Team-${firstName}`, since);
+        const manager = results.find(r =>
+          r.userName.toLowerCase().startsWith(firstName.toLowerCase())
+        );
+        if (manager) {
+          manager.teamHygieneScore = dlResult.emailHygieneScore;
+          manager.teamDlEmail = dlEmail;
+          logger.info(`[EmailHygiene] DL ${dlEmail} → ${manager.userName}: teamScore=${dlResult.emailHygieneScore}`);
+        } else {
+          logger.warn(`[EmailHygiene] DL ${dlEmail}: no manager found matching firstName="${firstName}"`);
+        }
+      } catch (err: any) {
+        logger.warn(`[EmailHygiene] DL ${dlEmail} analysis failed: ${err?.message ?? err}`);
       }
     }
 

@@ -59,6 +59,8 @@ export const emailHygieneController = {
       'Quality Score (/30)': m.qualityScore,
       'Resolution Score (/20)': m.resolutionScore,
       'Email Hygiene Score (/100)': m.emailHygieneScore,
+      'Team DL Email': m.teamDlEmail ?? '',
+      'Team Hygiene Score (/100)': m.teamHygieneScore ?? '',
     }));
     sendWorkbook(
       res,
