@@ -45,12 +45,6 @@ import serverAlertRoutes from './routes/serverAlertRoutes';
 import templateCombinationRoutes from './routes/templateCombinationRoutes';
 import jiraRoutes from './routes/jiraRoutes';
 import emailHygieneRoutes from './routes/emailHygieneRoutes';
-<<<<<<< HEAD
-import callHygieneRoutes from './routes/callHygieneRoutes';
-import escalationMailsRoutes from './routes/escalationMailsRoutes';
-import { ntaSyncService, isNtaConfigured } from './services/ntaSyncService';
-=======
->>>>>>> 1811b335cc74c10625a6030ed4bd0110d9b3792d
 import { logger } from './utils/logger';
 import { authService } from './services/authService';
 import { templateService } from './services/templateService';
@@ -117,11 +111,6 @@ app.use('/api/server-alerts', serverAlertRoutes);
 app.use('/api/template-combinations', templateCombinationRoutes);
 app.use('/api/jira', jiraRoutes);
 app.use('/api/email-hygiene', emailHygieneRoutes);
-<<<<<<< HEAD
-app.use('/api/call-hygiene', callHygieneRoutes);
-app.use('/api/escalation-mails', escalationMailsRoutes);
-=======
->>>>>>> 1811b335cc74c10625a6030ed4bd0110d9b3792d
 
 app.use(notFoundHandler);
 app.use(errorHandler);
