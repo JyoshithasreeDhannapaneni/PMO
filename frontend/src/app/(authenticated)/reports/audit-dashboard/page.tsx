@@ -16,7 +16,12 @@ import {
   Layers, FolderOpen, MessageSquare, Mail, Flag,
   UserX, ShieldCheck, FileSpreadsheet, X, Send, Clock, Phone,
 } from 'lucide-react';
+<<<<<<< HEAD
 import { auditApi, emailHygieneApi, callHygieneApi, authApi } from '@/services/api';
+=======
+import { auditApi, emailHygieneApi, authApi } from '@/services/api';
+import { SEGMENT_CONFIG } from '@/lib/segments';
+>>>>>>> origin/main
 import { format, subDays, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { toPng } from 'html-to-image';
 import type { Project } from '@/types';
@@ -87,6 +92,148 @@ type Mode = 'weekly' | 'monthly';
 type SortKey = 'name' | 'totalProjects' | 'activeProjects' | 'completedProjects' | 'delayedProjects' | 'addedInPeriod' | 'closedInPeriod';
 
 function todayStr() { return format(new Date(), 'yyyy-MM-dd'); }
+
+function downloadHygieneTableImage(
+  title: string,
+  col1: string,
+  col2: string,
+  rows: { name: string; score: number; teamScore?: number | null }[],
+  filename: string,
+  col3?: string,
+) {
+  const BRAND   = '#4B0BC4';
+  const WHITE   = '#FFFFFF';
+  const ROW_DIV = 'rgba(75,11,196,0.15)';
+  const PAD     = 18;
+  const TITLE_H = 58;
+  const HEAD_H  = 40;
+  const ROW_H   = 38;
+
+  const hasTeam = !!col3;
+  const W       = hasTeam ? 620 : 540;
+  const COL1_X  = hasTeam ? 270 : 340;  // end of name column
+  const COL2_X  = hasTeam ? 445 : W;    // end of personal score column (=W for 2-col)
+  const totalH  = TITLE_H + HEAD_H + rows.length * ROW_H;
+
+  const canvas = document.createElement('canvas');
+  canvas.width  = W * 2;
+  canvas.height = totalH * 2;
+  const ctx = canvas.getContext('2d')!;
+  ctx.scale(2, 2);
+
+  // White base
+  ctx.fillStyle = WHITE;
+  ctx.fillRect(0, 0, W, totalH);
+
+  // ── Title band ──────────────────────────────────────────────────
+  ctx.fillStyle = BRAND;
+  ctx.fillRect(0, 0, W, TITLE_H);
+  ctx.fillStyle = WHITE;
+  ctx.font = 'bold 18px Calibri, Arial, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(title, W / 2, TITLE_H / 2, W - PAD * 2);
+
+  // ── Sub-heading band ────────────────────────────────────────────
+  ctx.fillStyle = BRAND;
+  ctx.fillRect(0, TITLE_H, W, HEAD_H);
+  ctx.fillStyle = WHITE;
+  ctx.font = 'bold 14px Calibri, Arial, sans-serif';
+  ctx.textBaseline = 'middle';
+
+  ctx.textAlign = 'left';
+  ctx.fillText(col1, PAD, TITLE_H + HEAD_H / 2, COL1_X - PAD - 12);
+
+  ctx.textAlign = 'center';
+  ctx.fillText(col2, COL1_X + (COL2_X - COL1_X) / 2, TITLE_H + HEAD_H / 2, COL2_X - COL1_X - PAD);
+
+  if (hasTeam && col3) {
+    ctx.fillText(col3, COL2_X + (W - COL2_X) / 2, TITLE_H + HEAD_H / 2, W - COL2_X - PAD);
+  }
+
+  // White dividers in sub-heading
+  ctx.strokeStyle = 'rgba(255,255,255,0.30)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(COL1_X, TITLE_H + 8);
+  ctx.lineTo(COL1_X, TITLE_H + HEAD_H - 8);
+  ctx.stroke();
+  if (hasTeam) {
+    ctx.beginPath();
+    ctx.moveTo(COL2_X, TITLE_H + 8);
+    ctx.lineTo(COL2_X, TITLE_H + HEAD_H - 8);
+    ctx.stroke();
+  }
+
+  // ── Data rows ────────────────────────────────────────────────────
+  const dataY = TITLE_H + HEAD_H;
+  rows.forEach((row, i) => {
+    const y = dataY + i * ROW_H;
+
+    // Name
+    ctx.fillStyle = '#111827';
+    ctx.font = '14px Calibri, Arial, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(row.name, PAD, y + ROW_H / 2, COL1_X - PAD - 12);
+
+    // Personal hygiene score
+    const sc = row.score >= 80 ? '#15803D' : row.score >= 60 ? '#B45309' : '#B91C1C';
+    ctx.fillStyle = sc;
+    ctx.font = 'bold 15px Calibri, Arial, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(String(row.score), COL1_X + (COL2_X - COL1_X) / 2, y + ROW_H / 2);
+
+    // Team hygiene score
+    if (hasTeam) {
+      const ts = row.teamScore;
+      if (ts != null) {
+        const tc = ts >= 80 ? '#15803D' : ts >= 60 ? '#B45309' : '#B91C1C';
+        ctx.fillStyle = tc;
+        ctx.font = 'bold 15px Calibri, Arial, sans-serif';
+        ctx.fillText(String(Math.round(ts)), COL2_X + (W - COL2_X) / 2, y + ROW_H / 2);
+      } else {
+        ctx.fillStyle = '#9CA3AF';
+        ctx.font = '14px Calibri, Arial, sans-serif';
+        ctx.fillText('—', COL2_X + (W - COL2_X) / 2, y + ROW_H / 2);
+      }
+    }
+
+    // Horizontal row divider (skip last row)
+    if (i < rows.length - 1) {
+      ctx.strokeStyle = ROW_DIV;
+      ctx.lineWidth = 0.75;
+      ctx.beginPath();
+      ctx.moveTo(2, y + ROW_H);
+      ctx.lineTo(W - 2, y + ROW_H);
+      ctx.stroke();
+    }
+  });
+
+  // ── Column dividers through data area ────────────────────────────
+  ctx.strokeStyle = ROW_DIV;
+  ctx.lineWidth = 0.75;
+  ctx.beginPath();
+  ctx.moveTo(COL1_X, dataY);
+  ctx.lineTo(COL1_X, dataY + rows.length * ROW_H);
+  ctx.stroke();
+  if (hasTeam) {
+    ctx.beginPath();
+    ctx.moveTo(COL2_X, dataY);
+    ctx.lineTo(COL2_X, dataY + rows.length * ROW_H);
+    ctx.stroke();
+  }
+
+  // ── Outer border ─────────────────────────────────────────────────
+  ctx.strokeStyle = BRAND;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(1, 1, W - 2, totalH - 2);
+
+  const link = document.createElement('a');
+  link.download = filename;
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+}
 function weekStart() { return format(subDays(new Date(), 7), 'yyyy-MM-dd'); }
 function lastWeekStart() { return format(subDays(new Date(), 14), 'yyyy-MM-dd'); }
 function lastWeekEnd() { return format(subDays(new Date(), 8), 'yyyy-MM-dd'); }
@@ -184,10 +331,12 @@ export default function AuditDashboardPage() {
   function handleExportEmailHygieneCSV() {
     if (!emailMetrics.length) return;
     const rows = [
-      ['Team Member', 'Email', 'Threads', 'Speed /30', 'Quality /30', 'Resolution /20', 'Tone /20', 'Hygiene /100'],
+      ['Team Member', 'Email', 'Threads', 'Speed /30', 'Quality /30', 'Resolution /20', 'Tone /20', 'Hygiene /100', 'Team Hygiene /100', 'Team DL'],
       ...emailMetrics.map((m: any) => [
         m.userName, m.userEmail, m.uniqueCustomerThreads,
         m.speedScore ?? 0, m.qualityScore ?? 0, m.resolutionScore ?? 0, m.toneScore ?? 0, m.emailHygieneScore ?? 0,
+        m.teamHygieneScore != null ? Math.round(m.teamHygieneScore) : '',
+        m.teamDlEmail ?? '',
       ]),
     ];
     downloadCSV(rows, `email-hygiene-${format(new Date(), 'yyyy-MM-dd')}.csv`);
@@ -204,10 +353,42 @@ export default function AuditDashboardPage() {
   }
 
   async function handleForceRefreshEmailHygiene() {
+    if (isSyncingOutlook) return;
+    setIsSyncingOutlook(true);
+    setSyncOutlookStatus('idle');
+    setSyncOutlookError('');
     try {
-      await emailHygieneApi.getMetrics(true);
-      refetchEmailHygiene();
-    } catch {}
+      // Fire background sync — returns 202 immediately (no timeout risk)
+      const res = await emailHygieneApi.triggerSync();
+      if (!res.success) throw new Error('Sync trigger failed');
+
+      // Poll /sync-status every 4 seconds until running=false
+      await new Promise<void>((resolve, reject) => {
+        const interval = setInterval(async () => {
+          try {
+            const status = await emailHygieneApi.getSyncStatus();
+            if (!status.data.running) {
+              clearInterval(interval);
+              if (status.data.error) reject(new Error(status.data.error));
+              else resolve();
+            }
+          } catch (e) {
+            clearInterval(interval);
+            reject(e);
+          }
+        }, 4000);
+      });
+
+      await refetchEmailHygiene();
+      setSyncOutlookStatus('success');
+    } catch (err: any) {
+      const msg = err?.response?.data?.error || err?.message || 'Sync failed — check Graph API configuration';
+      setSyncOutlookError(msg);
+      setSyncOutlookStatus('error');
+    } finally {
+      setIsSyncingOutlook(false);
+      setTimeout(() => setSyncOutlookStatus('idle'), 5000);
+    }
   }
 
   // ── Call Hygiene ────────────────────────────────────────────────
@@ -309,10 +490,56 @@ export default function AuditDashboardPage() {
     } catch {}
   }
 
+  function handleDownloadPmoHygieneImage() {
+    if (!hygieneBoard.length) return;
+    const allPMs = new Set(SEGMENT_CONFIG.flatMap(s => s.managers).map(m => m.toLowerCase()));
+    const pmRows = hygieneBoard
+      .filter((pm: any) => {
+        const n = (pm.projectManager ?? '').toLowerCase();
+        return allPMs.has(n) || [...allPMs].some(m => n.startsWith(m) || m.startsWith(n.split(' ')[0]));
+      })
+      .map((pm: any) => ({ name: pm.projectManager, score: Math.round(pm.hygieneScore ?? 0) }))
+      .sort((a: { score: number }, b: { score: number }) => b.score - a.score);
+    downloadHygieneTableImage(
+      'PMO Hygiene',
+      'Project Manager',
+      'Hygiene Score',
+      pmRows,
+      `pmo-hygiene-${format(new Date(), 'yyyy-MM-dd')}.png`,
+    );
+  }
+
+  function handleDownloadEmailHygieneImage() {
+    if (!emailMetrics.length) return;
+    const allPMs = new Set(SEGMENT_CONFIG.flatMap(s => s.managers).map(m => m.toLowerCase()));
+    const pmRows = emailMetrics
+      .filter((m: any) => {
+        const n = (m.userName ?? '').toLowerCase();
+        return allPMs.has(n) || [...allPMs].some(pm => n.startsWith(pm) || pm.startsWith(n.split(' ')[0]));
+      })
+      .map((m: any) => ({
+        name: m.userName,
+        score: Math.round(m.emailHygieneScore ?? 0),
+        teamScore: m.teamHygieneScore != null ? Math.round(m.teamHygieneScore) : null,
+      }))
+      .sort((a: { score: number }, b: { score: number }) => b.score - a.score);
+    downloadHygieneTableImage(
+      'Email Hygiene',
+      'Managers',
+      'Hygiene Score (/100)',
+      pmRows,
+      `email-hygiene-${format(new Date(), 'yyyy-MM-dd')}.png`,
+      'Team Hygiene (/100)',
+    );
+  }
+
   // ── Hygiene scorecard email — send now / scheduled send ──────────
   const { user: currentUser } = useAuth();
   const isAdmin = currentUser?.role === 'ADMIN';
 
+  const [isSyncingOutlook, setIsSyncingOutlook] = useState(false);
+  const [syncOutlookStatus, setSyncOutlookStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [syncOutlookError, setSyncOutlookError] = useState('');
   const [sendNowStatus, setSendNowStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
   const [sendNowError, setSendNowError] = useState('');
   const [showScheduleModal, setShowScheduleModal] = useState(false);
@@ -1356,6 +1583,13 @@ export default function AuditDashboardPage() {
               >
                 <FileSpreadsheet size={13} /> Excel
               </button>
+              <button
+                onClick={handleDownloadPmoHygieneImage}
+                disabled={!hygieneBoard.length}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-white rounded-lg transition-colors disabled:opacity-40" style={{ backgroundColor: '#4B0BC4' }}
+              >
+                <Camera size={13} /> Image
+              </button>
               {isAdmin && (<>
                 <button
                   onClick={handleSendNow}
@@ -1390,11 +1624,19 @@ export default function AuditDashboardPage() {
               </button>
               <button
                 onClick={handleForceRefreshEmailHygiene}
-                disabled={isEmailHygieneFetching}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+                disabled={isSyncingOutlook || isEmailHygieneFetching}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-lg transition-colors disabled:opacity-50 ${
+                  syncOutlookStatus === 'success' ? 'bg-green-50 border-green-300 text-green-700' :
+                  syncOutlookStatus === 'error'   ? 'bg-red-50 border-red-300 text-red-700' :
+                  'text-gray-600 border-gray-300 hover:bg-gray-50'
+                }`}
               >
-                <RefreshCw size={13} /> Sync from Outlook
+                <RefreshCw size={13} className={isSyncingOutlook ? 'animate-spin' : ''} />
+                {isSyncingOutlook ? 'Syncing…' : syncOutlookStatus === 'success' ? 'Synced!' : 'Sync from Outlook'}
               </button>
+              {syncOutlookStatus === 'error' && (
+                <p className="text-xs text-red-600 mt-1 w-full">{syncOutlookError}</p>
+              )}
               <button
                 onClick={handleExportEmailHygieneCSV}
                 disabled={!emailMetrics.length}
@@ -1408,6 +1650,13 @@ export default function AuditDashboardPage() {
                 className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-40"
               >
                 <FileSpreadsheet size={13} /> Excel
+              </button>
+              <button
+                onClick={handleDownloadEmailHygieneImage}
+                disabled={!emailMetrics.length}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-white rounded-lg transition-colors disabled:opacity-40" style={{ backgroundColor: '#4B0BC4' }}
+              >
+                <Camera size={13} /> Image
               </button>
             </>)}
             {/* Action buttons — call tab */}
@@ -1778,6 +2027,7 @@ export default function AuditDashboardPage() {
                       <th className="text-center py-2.5 px-3 text-xs font-semibold text-teal-600 whitespace-nowrap">Resolution<span className="font-normal text-teal-400">/20</span></th>
                       <th className="text-center py-2.5 px-3 text-xs font-semibold text-orange-600 whitespace-nowrap">Tone<span className="font-normal text-orange-400">/20</span></th>
                       <th className="text-center py-2.5 px-3 text-xs font-semibold text-gray-800 whitespace-nowrap">Hygiene<span className="font-normal text-gray-400">/100</span></th>
+                      <th className="text-center py-2.5 px-3 text-xs font-semibold text-indigo-700 whitespace-nowrap">Team<span className="font-normal text-indigo-400">/100</span></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1822,6 +2072,16 @@ export default function AuditDashboardPage() {
                             <span className={`inline-block text-sm font-bold px-3 py-1 rounded-full ring-1 ${sc.bg} ${sc.text} ${sc.ring}`}>
                               {m.emailHygieneScore ?? 0}
                             </span>
+                          </td>
+                          <td className="py-3 px-3 text-center">
+                            {m.teamHygieneScore != null ? (
+                              <span className={`inline-block text-sm font-bold px-3 py-1 rounded-full ring-1 ${emailScoreColor(Math.round(m.teamHygieneScore)).bg} ${emailScoreColor(Math.round(m.teamHygieneScore)).text} ${emailScoreColor(Math.round(m.teamHygieneScore)).ring}`}
+                                title={m.teamDlEmail ?? ''}>
+                                {Math.round(m.teamHygieneScore)}
+                              </span>
+                            ) : (
+                              <span className="text-gray-300 text-xs">—</span>
+                            )}
                           </td>
                         </tr>
                       );

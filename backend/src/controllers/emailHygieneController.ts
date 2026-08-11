@@ -21,6 +21,20 @@ export const emailHygieneController = {
     res.json({ success: true, data: result });
   }),
 
+  // POST /api/email-hygiene/sync — fires a background Graph API sync and returns 202 immediately.
+  // Prevents 504 timeouts caused by holding the connection open during a 2–5 min sync.
+  triggerSync: asyncHandler(async (_req: Request, res: Response): Promise<void> => {
+    const result = emailHygieneService.triggerBackgroundSync();
+    res.status(result.alreadyRunning ? 200 : 202).json({
+      success: true,
+      data: { alreadyRunning: result.alreadyRunning, ...emailHygieneService.getSyncState() },
+    });
+  }),
+
+  getSyncStatus: asyncHandler(async (_req: Request, res: Response): Promise<void> => {
+    res.json({ success: true, data: emailHygieneService.getSyncState() });
+  }),
+
   exportExcel: asyncHandler(async (_req: Request, res: Response): Promise<void> => {
     const { metrics } = await emailHygieneService.getHygieneMetrics(false);
     const rows = metrics.map(m => ({
@@ -45,6 +59,8 @@ export const emailHygieneController = {
       'Quality Score (/30)': m.qualityScore,
       'Resolution Score (/20)': m.resolutionScore,
       'Email Hygiene Score (/100)': m.emailHygieneScore,
+      'Team DL Email': m.teamDlEmail ?? '',
+      'Team Hygiene Score (/100)': m.teamHygieneScore ?? '',
     }));
     sendWorkbook(
       res,
