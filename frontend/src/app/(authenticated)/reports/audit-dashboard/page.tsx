@@ -93,19 +93,23 @@ function downloadHygieneTableImage(
   title: string,
   col1: string,
   col2: string,
-  rows: { name: string; score: number }[],
+  rows: { name: string; score: number; teamScore?: number | null }[],
   filename: string,
+  col3?: string,
 ) {
-  const BRAND    = '#4B0BC4';
-  const WHITE    = '#FFFFFF';
-  const ROW_DIV  = 'rgba(75,11,196,0.15)';
-  const W        = 540;
-  const COL_DIV  = 340;   // left col width = 340, right col = 200
-  const TITLE_H  = 58;
-  const HEAD_H   = 40;
-  const ROW_H    = 38;
-  const PAD      = 18;
-  const totalH   = TITLE_H + HEAD_H + rows.length * ROW_H;
+  const BRAND   = '#4B0BC4';
+  const WHITE   = '#FFFFFF';
+  const ROW_DIV = 'rgba(75,11,196,0.15)';
+  const PAD     = 18;
+  const TITLE_H = 58;
+  const HEAD_H  = 40;
+  const ROW_H   = 38;
+
+  const hasTeam = !!col3;
+  const W       = hasTeam ? 620 : 540;
+  const COL1_X  = hasTeam ? 270 : 340;  // end of name column
+  const COL2_X  = hasTeam ? 445 : W;    // end of personal score column (=W for 2-col)
+  const totalH  = TITLE_H + HEAD_H + rows.length * ROW_H;
 
   const canvas = document.createElement('canvas');
   canvas.width  = W * 2;
@@ -117,7 +121,7 @@ function downloadHygieneTableImage(
   ctx.fillStyle = WHITE;
   ctx.fillRect(0, 0, W, totalH);
 
-  // ── Title band (full-width purple) ──────────────────────────────
+  // ── Title band ──────────────────────────────────────────────────
   ctx.fillStyle = BRAND;
   ctx.fillRect(0, 0, W, TITLE_H);
   ctx.fillStyle = WHITE;
@@ -126,42 +130,71 @@ function downloadHygieneTableImage(
   ctx.textBaseline = 'middle';
   ctx.fillText(title, W / 2, TITLE_H / 2, W - PAD * 2);
 
-  // ── Sub-heading band (purple, directly below title) ─────────────
+  // ── Sub-heading band ────────────────────────────────────────────
   ctx.fillStyle = BRAND;
   ctx.fillRect(0, TITLE_H, W, HEAD_H);
   ctx.fillStyle = WHITE;
   ctx.font = 'bold 14px Calibri, Arial, sans-serif';
   ctx.textBaseline = 'middle';
-  // col1: left-aligned
+
   ctx.textAlign = 'left';
-  ctx.fillText(col1, PAD, TITLE_H + HEAD_H / 2, COL_DIV - PAD - 12);
-  // col2: centered in right column
+  ctx.fillText(col1, PAD, TITLE_H + HEAD_H / 2, COL1_X - PAD - 12);
+
   ctx.textAlign = 'center';
-  ctx.fillText(col2, COL_DIV + (W - COL_DIV) / 2, TITLE_H + HEAD_H / 2, W - COL_DIV - PAD);
-  // White divider between sub-heading columns
+  ctx.fillText(col2, COL1_X + (COL2_X - COL1_X) / 2, TITLE_H + HEAD_H / 2, COL2_X - COL1_X - PAD);
+
+  if (hasTeam && col3) {
+    ctx.fillText(col3, COL2_X + (W - COL2_X) / 2, TITLE_H + HEAD_H / 2, W - COL2_X - PAD);
+  }
+
+  // White dividers in sub-heading
   ctx.strokeStyle = 'rgba(255,255,255,0.30)';
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(COL_DIV, TITLE_H + 8);
-  ctx.lineTo(COL_DIV, TITLE_H + HEAD_H - 8);
+  ctx.moveTo(COL1_X, TITLE_H + 8);
+  ctx.lineTo(COL1_X, TITLE_H + HEAD_H - 8);
   ctx.stroke();
+  if (hasTeam) {
+    ctx.beginPath();
+    ctx.moveTo(COL2_X, TITLE_H + 8);
+    ctx.lineTo(COL2_X, TITLE_H + HEAD_H - 8);
+    ctx.stroke();
+  }
 
   // ── Data rows ────────────────────────────────────────────────────
   const dataY = TITLE_H + HEAD_H;
   rows.forEach((row, i) => {
     const y = dataY + i * ROW_H;
-    // Manager name
+
+    // Name
     ctx.fillStyle = '#111827';
     ctx.font = '14px Calibri, Arial, sans-serif';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    ctx.fillText(row.name, PAD, y + ROW_H / 2, COL_DIV - PAD - 12);
-    // Score
-    const scoreColor = row.score >= 80 ? '#15803D' : row.score >= 60 ? '#B45309' : '#B91C1C';
-    ctx.fillStyle = scoreColor;
+    ctx.fillText(row.name, PAD, y + ROW_H / 2, COL1_X - PAD - 12);
+
+    // Personal hygiene score
+    const sc = row.score >= 80 ? '#15803D' : row.score >= 60 ? '#B45309' : '#B91C1C';
+    ctx.fillStyle = sc;
     ctx.font = 'bold 15px Calibri, Arial, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText(String(row.score), COL_DIV + (W - COL_DIV) / 2, y + ROW_H / 2);
+    ctx.fillText(String(row.score), COL1_X + (COL2_X - COL1_X) / 2, y + ROW_H / 2);
+
+    // Team hygiene score
+    if (hasTeam) {
+      const ts = row.teamScore;
+      if (ts != null) {
+        const tc = ts >= 80 ? '#15803D' : ts >= 60 ? '#B45309' : '#B91C1C';
+        ctx.fillStyle = tc;
+        ctx.font = 'bold 15px Calibri, Arial, sans-serif';
+        ctx.fillText(String(Math.round(ts)), COL2_X + (W - COL2_X) / 2, y + ROW_H / 2);
+      } else {
+        ctx.fillStyle = '#9CA3AF';
+        ctx.font = '14px Calibri, Arial, sans-serif';
+        ctx.fillText('—', COL2_X + (W - COL2_X) / 2, y + ROW_H / 2);
+      }
+    }
+
     // Horizontal row divider (skip last row)
     if (i < rows.length - 1) {
       ctx.strokeStyle = ROW_DIV;
@@ -173,13 +206,19 @@ function downloadHygieneTableImage(
     }
   });
 
-  // ── Column divider through data area (one continuous line) ───────
+  // ── Column dividers through data area ────────────────────────────
   ctx.strokeStyle = ROW_DIV;
   ctx.lineWidth = 0.75;
   ctx.beginPath();
-  ctx.moveTo(COL_DIV, dataY);
-  ctx.lineTo(COL_DIV, dataY + rows.length * ROW_H);
+  ctx.moveTo(COL1_X, dataY);
+  ctx.lineTo(COL1_X, dataY + rows.length * ROW_H);
   ctx.stroke();
+  if (hasTeam) {
+    ctx.beginPath();
+    ctx.moveTo(COL2_X, dataY);
+    ctx.lineTo(COL2_X, dataY + rows.length * ROW_H);
+    ctx.stroke();
+  }
 
   // ── Outer border ─────────────────────────────────────────────────
   ctx.strokeStyle = BRAND;
@@ -282,10 +321,12 @@ export default function AuditDashboardPage() {
   function handleExportEmailHygieneCSV() {
     if (!emailMetrics.length) return;
     const rows = [
-      ['Team Member', 'Email', 'Threads', 'Speed /30', 'Quality /30', 'Resolution /20', 'Tone /20', 'Hygiene /100'],
+      ['Team Member', 'Email', 'Threads', 'Speed /30', 'Quality /30', 'Resolution /20', 'Tone /20', 'Hygiene /100', 'Team Hygiene /100', 'Team DL'],
       ...emailMetrics.map((m: any) => [
         m.userName, m.userEmail, m.uniqueCustomerThreads,
         m.speedScore ?? 0, m.qualityScore ?? 0, m.resolutionScore ?? 0, m.toneScore ?? 0, m.emailHygieneScore ?? 0,
+        m.teamHygieneScore != null ? Math.round(m.teamHygieneScore) : '',
+        m.teamDlEmail ?? '',
       ]),
     ];
     downloadCSV(rows, `email-hygiene-${format(new Date(), 'yyyy-MM-dd')}.csv`);
@@ -414,7 +455,11 @@ export default function AuditDashboardPage() {
         const n = (m.userName ?? '').toLowerCase();
         return allPMs.has(n) || [...allPMs].some(pm => n.startsWith(pm) || pm.startsWith(n.split(' ')[0]));
       })
-      .map((m: any) => ({ name: m.userName, score: Math.round(m.emailHygieneScore ?? 0) }))
+      .map((m: any) => ({
+        name: m.userName,
+        score: Math.round(m.emailHygieneScore ?? 0),
+        teamScore: m.teamHygieneScore != null ? Math.round(m.teamHygieneScore) : null,
+      }))
       .sort((a: { score: number }, b: { score: number }) => b.score - a.score);
     downloadHygieneTableImage(
       'Email Hygiene',
@@ -422,6 +467,7 @@ export default function AuditDashboardPage() {
       'Hygiene Score (/100)',
       pmRows,
       `email-hygiene-${format(new Date(), 'yyyy-MM-dd')}.png`,
+      'Team Hygiene (/100)',
     );
   }
 
@@ -1873,6 +1919,7 @@ export default function AuditDashboardPage() {
                       <th className="text-center py-2.5 px-3 text-xs font-semibold text-teal-600 whitespace-nowrap">Resolution<span className="font-normal text-teal-400">/20</span></th>
                       <th className="text-center py-2.5 px-3 text-xs font-semibold text-orange-600 whitespace-nowrap">Tone<span className="font-normal text-orange-400">/20</span></th>
                       <th className="text-center py-2.5 px-3 text-xs font-semibold text-gray-800 whitespace-nowrap">Hygiene<span className="font-normal text-gray-400">/100</span></th>
+                      <th className="text-center py-2.5 px-3 text-xs font-semibold text-indigo-700 whitespace-nowrap">Team<span className="font-normal text-indigo-400">/100</span></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1917,6 +1964,16 @@ export default function AuditDashboardPage() {
                             <span className={`inline-block text-sm font-bold px-3 py-1 rounded-full ring-1 ${sc.bg} ${sc.text} ${sc.ring}`}>
                               {m.emailHygieneScore ?? 0}
                             </span>
+                          </td>
+                          <td className="py-3 px-3 text-center">
+                            {m.teamHygieneScore != null ? (
+                              <span className={`inline-block text-sm font-bold px-3 py-1 rounded-full ring-1 ${emailScoreColor(Math.round(m.teamHygieneScore)).bg} ${emailScoreColor(Math.round(m.teamHygieneScore)).text} ${emailScoreColor(Math.round(m.teamHygieneScore)).ring}`}
+                                title={m.teamDlEmail ?? ''}>
+                                {Math.round(m.teamHygieneScore)}
+                              </span>
+                            ) : (
+                              <span className="text-gray-300 text-xs">—</span>
+                            )}
                           </td>
                         </tr>
                       );
