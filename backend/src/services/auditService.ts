@@ -455,19 +455,16 @@ class AuditService {
         u.name,
         u.email,
         u.role,
-        COUNT(a.id)::int                                                        AS total_actions,
-        COUNT(CASE WHEN a.action = 'CREATE'        THEN 1 END)::int             AS creates,
-        COUNT(CASE WHEN a.action = 'UPDATE'        THEN 1 END)::int             AS updates,
-        COUNT(CASE WHEN a.action = 'DELETE'        THEN 1 END)::int             AS deletes,
-        COUNT(CASE WHEN a.action = 'LOGIN'         THEN 1 END)::int             AS logins,
-        COUNT(CASE WHEN a.action = 'STATUS_CHANGE' THEN 1 END)::int             AS status_changes,
-        COUNT(CASE WHEN a.action = 'EXPORT'        THEN 1 END)::int             AS exports,
-        MAX(a.created_at)                                                       AS last_active
+        COUNT(a.id) FILTER (WHERE a.created_at >= $1 AND a.created_at <= $2)::int                                         AS total_actions,
+        COUNT(a.id) FILTER (WHERE a.action = 'CREATE'        AND a.created_at >= $1 AND a.created_at <= $2)::int          AS creates,
+        COUNT(a.id) FILTER (WHERE a.action = 'UPDATE'        AND a.created_at >= $1 AND a.created_at <= $2)::int          AS updates,
+        COUNT(a.id) FILTER (WHERE a.action = 'DELETE'        AND a.created_at >= $1 AND a.created_at <= $2)::int          AS deletes,
+        COUNT(a.id) FILTER (WHERE a.action = 'LOGIN'         AND a.created_at >= $1 AND a.created_at <= $2)::int          AS logins,
+        COUNT(a.id) FILTER (WHERE a.action = 'STATUS_CHANGE' AND a.created_at >= $1 AND a.created_at <= $2)::int          AS status_changes,
+        COUNT(a.id) FILTER (WHERE a.action = 'EXPORT'        AND a.created_at >= $1 AND a.created_at <= $2)::int          AS exports,
+        MAX(a.created_at)                                                                                                  AS last_active
       FROM users u
-      LEFT JOIN audit_logs a
-        ON u.id = a.user_id
-        AND a.created_at >= $1
-        AND a.created_at <= $2
+      LEFT JOIN audit_logs a ON u.id = a.user_id
       WHERE u.role IN ('PROJECT_MANAGER', 'ACCOUNT_MANAGER', 'PRE_SALES')
       GROUP BY u.id, u.name, u.email, u.role
       ORDER BY u.role, total_actions DESC`,
