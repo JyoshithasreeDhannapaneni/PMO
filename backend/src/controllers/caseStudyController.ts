@@ -2,7 +2,21 @@ import { Request, Response } from 'express';
 import { caseStudyService } from '../services/caseStudyService';
 import { aiService } from '../services/aiService';
 import { projectService } from '../services/projectService';
+import { authService } from '../services/authService';
+import { auditService } from '../services/auditService';
 import { asyncHandler } from '../middleware/errorHandler';
+
+// These routes don't run requireAuth, so req.user isn't populated — decode the
+// bearer token directly (best-effort; logging is skipped if it's missing/invalid).
+async function getActingUser(req: Request): Promise<{ id: string; name: string } | null> {
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  if (!token) return null;
+  try {
+    return await authService.getUserFromToken(token);
+  } catch {
+    return null;
+  }
+}
 
 export const caseStudyController = {
   /**
@@ -64,6 +78,19 @@ export const caseStudyController = {
   create: asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const caseStudy = await caseStudyService.create(req.body);
 
+    const actingUser = await getActingUser(req);
+    if (actingUser) {
+      await auditService.log({
+        userId: actingUser.id,
+        action: 'CREATE',
+        entityType: 'case_study',
+        entityId: caseStudy.id,
+        entityName: caseStudy.title,
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      });
+    }
+
     res.status(201).json({
       success: true,
       data: caseStudy,
@@ -78,6 +105,19 @@ export const caseStudyController = {
   update: asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const { id } = req.params;
     const caseStudy = await caseStudyService.update(id, req.body);
+
+    const actingUser = await getActingUser(req);
+    if (actingUser) {
+      await auditService.log({
+        userId: actingUser.id,
+        action: req.body.status ? 'STATUS_CHANGE' : 'UPDATE',
+        entityType: 'case_study',
+        entityId: caseStudy.id,
+        entityName: caseStudy.title,
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      });
+    }
 
     res.json({
       success: true,
@@ -117,6 +157,19 @@ export const caseStudyController = {
       content: JSON.stringify(generatedContent),
       status: 'IN_PROGRESS',
     });
+
+    const actingUser = await getActingUser(req);
+    if (actingUser) {
+      await auditService.log({
+        userId: actingUser.id,
+        action: 'CREATE',
+        entityType: 'case_study',
+        entityId: caseStudy.id,
+        entityName: caseStudy.title,
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      });
+    }
 
     res.status(201).json({
       success: true,

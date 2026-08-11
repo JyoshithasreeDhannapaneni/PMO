@@ -66,7 +66,7 @@ class HygieneScorecardService {
 
   private async getRecipients(): Promise<string[]> {
     const result = await query(
-      `SELECT email FROM users WHERE role = 'MANAGER' AND is_active = true AND email IS NOT NULL AND email <> ''`
+      `SELECT email FROM users WHERE role IN ('PROJECT_MANAGER', 'ADMIN') AND is_active = true AND email IS NOT NULL AND email <> ''`
     );
     return result.rows.map((r: any) => r.email);
   }
