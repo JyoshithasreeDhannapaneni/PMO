@@ -17,11 +17,16 @@ import {
   UserX, ShieldCheck, FileSpreadsheet, X, Send, Clock, Phone,
 } from 'lucide-react';
 <<<<<<< HEAD
+<<<<<<< HEAD
 import { auditApi, emailHygieneApi, callHygieneApi, authApi } from '@/services/api';
 =======
 import { auditApi, emailHygieneApi, authApi } from '@/services/api';
 import { SEGMENT_CONFIG } from '@/lib/segments';
 >>>>>>> origin/main
+=======
+import { auditApi, emailHygieneApi, callHygieneApi, authApi } from '@/services/api';
+import { SEGMENT_CONFIG } from '@/lib/segments';
+>>>>>>> 8aaaf0964e129b8db5d1991218ea2b0838f5113a
 import { format, subDays, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { toPng } from 'html-to-image';
 import type { Project } from '@/types';
