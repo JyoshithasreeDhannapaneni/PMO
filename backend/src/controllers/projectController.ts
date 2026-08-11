@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { authService } from '../services/authService';
 import { projectService, ProjectFilters, PaginationOptions } from '../services/projectService';
+import { auditService } from '../services/auditService';
 import { asyncHandler } from '../middleware/errorHandler';
 
 export const projectController = {
@@ -60,9 +61,11 @@ getAll: asyncHandler(async (req: Request, res: Response): Promise<void> => {
    */
   create: asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const token = req.headers.authorization?.replace('Bearer ', '');
+    let actingUser: { id: string; name: string; role: string } | null = null;
     if (token) {
       try {
         const user = await authService.getUserFromToken(token);
+        actingUser = user;
         if (user && user.role !== 'ADMIN' && user.role !== 'PROJECT_MANAGER' && user.role !== 'PRE_SALES') {
           res.status(403).json({ success: false, error: { message: 'Only Admins and Project Managers can create projects' } });
           return;
@@ -78,6 +81,18 @@ getAll: asyncHandler(async (req: Request, res: Response): Promise<void> => {
     }
     const project = await projectService.create(req.body);
 
+    if (actingUser) {
+      await auditService.log({
+        userId: actingUser.id,
+        action: 'CREATE',
+        entityType: 'project',
+        entityId: project.id,
+        entityName: project.customerName || project.projectManager,
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      });
+    }
+
     res.status(201).json({
       success: true,
       data: project,
@@ -92,23 +107,40 @@ getAll: asyncHandler(async (req: Request, res: Response): Promise<void> => {
   update: asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const { id } = req.params;
     const token = req.headers.authorization?.replace('Bearer ', '');
+    let actingUser: { id: string; name: string; role: string } | null = null;
+    let previousStatus: string | undefined;
     if (token) {
       try {
         const user = await authService.getUserFromToken(token);
+        actingUser = user;
         if (user && user.role !== 'ADMIN' && user.role !== 'PROJECT_MANAGER') {
           res.status(403).json({ success: false, error: { message: 'Only Admins and Project Managers can edit projects' } });
           return;
         }
-        if (user && user.role === 'PROJECT_MANAGER') {
-          const existing = await projectService.getById(id);
-          if (existing.projectManager !== user.name) {
-            res.status(403).json({ success: false, error: { message: 'You can only edit projects assigned to you' } });
-            return;
-          }
+        const existing = await projectService.getById(id);
+        previousStatus = existing.status;
+        if (user && user.role === 'PROJECT_MANAGER' && existing.projectManager !== user.name) {
+          res.status(403).json({ success: false, error: { message: 'You can only edit projects assigned to you' } });
+          return;
         }
       } catch {}
     }
     const project = await projectService.update(id, req.body);
+
+    if (actingUser) {
+      const isStatusChange = req.body.status && req.body.status !== previousStatus;
+      await auditService.log({
+        userId: actingUser.id,
+        action: isStatusChange ? 'STATUS_CHANGE' : 'UPDATE',
+        entityType: 'project',
+        entityId: project.id,
+        entityName: project.customerName || project.projectManager,
+        oldValues: isStatusChange ? { status: previousStatus } : undefined,
+        newValues: isStatusChange ? { status: req.body.status } : undefined,
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      });
+    }
 
     res.json({
       success: true,

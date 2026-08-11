@@ -376,6 +376,17 @@ export const authController = {
       const { accessToken } = await authService.exchangeMicrosoftCode(code, codeVerifier);
       const microsoftUser = await authService.getMicrosoftUserInfo(accessToken);
       const result = await authService.loginWithMicrosoft(microsoftUser);
+
+      await auditService.log({
+        userId: result.user.id,
+        action: 'LOGIN',
+        entityType: 'user',
+        entityId: result.user.id,
+        entityName: result.user.name,
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      });
+
       res.redirect(`${frontendUrl}/auth/callback?token=${result.token}&name=${encodeURIComponent(result.user.name)}&email=${encodeURIComponent(result.user.email)}&role=${result.user.role}&id=${result.user.id}`);
     } catch (err: any) {
       const msg = err?.message || 'microsoft_auth_failed';
