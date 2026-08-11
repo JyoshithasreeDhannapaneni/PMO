@@ -140,9 +140,15 @@ export default function AuditDashboardPage() {
   }
 
   // ── Hygiene Board ──────────────────────────────────────────────
+  // Computed live from audit_logs + projects on every request (no server-side
+  // cache) — refetchInterval keeps the on-screen numbers current automatically
+  // while this tab is open, not just on manual refresh/navigation.
   const { data: hygieneData, isLoading: isHygieneLoading, refetch: refetchHygiene } = useQuery({
     queryKey: ['hygieneBoard'],
     queryFn: () => auditApi.getHygieneBoard(),
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
   });
   const hygieneBoard: any[] = hygieneData?.data ?? [];
 

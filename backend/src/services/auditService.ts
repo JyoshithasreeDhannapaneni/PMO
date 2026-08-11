@@ -518,18 +518,26 @@ class AuditService {
         COUNT(a.id) FILTER (WHERE a.action IN ('UPDATE','STATUS_CHANGE','CREATE')
                              AND a.entity_type ILIKE '%case%')::int                                AS case_study_updates,
         MAX(a.created_at) FILTER (WHERE a.action = 'LOGIN')                                        AS last_login_at,
-        MAX(a.created_at) FILTER (WHERE a.action IN ('UPDATE','STATUS_CHANGE','CREATE'))           AS last_action_at
+        MAX(a.created_at) FILTER (WHERE a.action IN ('UPDATE','STATUS_CHANGE','CREATE'))           AS last_action_at,
+        u.email AS email
       FROM users u
       LEFT JOIN audit_logs a
         ON a.user_id = u.id
        AND a.created_at >= NOW() - INTERVAL '30 days'
-      WHERE u.role = 'MANAGER'
-      GROUP BY u.id, u.name
+      WHERE u.role IN ('PROJECT_MANAGER', 'ADMIN')
+      GROUP BY u.id, u.name, u.email
     `);
 
+    // Keyed by both display name and email local-part, so a project_manager
+    // value of "shruthi" resolves whether it matches the account name or the
+    // address prefix. Name wins when both are present.
     const activityByName = new Map<string, any>();
     for (const row of activityResult.rows) {
-      activityByName.set(row.pm_name.toLowerCase().trim(), row);
+      const local = String(row.email || '').split('@')[0].toLowerCase().trim();
+      if (local && !activityByName.has(local)) activityByName.set(local, row);
+    }
+    for (const row of activityResult.rows) {
+      activityByName.set(String(row.pm_name || '').toLowerCase().trim(), row);
     }
 
     // ── 2. Projects + case studies per PM ────────────────────────────────
@@ -541,6 +549,7 @@ class AuditService {
         p.planned_start,
         p.planned_end,
         p.actual_start,
+        p.actual_end,
         p.customer_contact,
         p.notes,
         p.project_memory,
