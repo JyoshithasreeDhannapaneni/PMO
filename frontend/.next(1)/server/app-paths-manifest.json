@@ -1,9 +1,0 @@
-{
-  "/(authenticated)/projects/page": "app/(authenticated)/projects/page.js",
-  "/(authenticated)/projects/[id]/page": "app/(authenticated)/projects/[id]/page.js",
-  "/(authenticated)/case-studies/page": "app/(authenticated)/case-studies/page.js",
-  "/(authenticated)/projects/[id]/tasks/page": "app/(authenticated)/projects/[id]/tasks/page.js",
-  "/(authenticated)/customer-success/page": "app/(authenticated)/customer-success/page.js",
-  "/(authenticated)/projects/[id]/manage/page": "app/(authenticated)/projects/[id]/manage/page.js",
-  "/(authenticated)/account-manager/page": "app/(authenticated)/account-manager/page.js"
-}
