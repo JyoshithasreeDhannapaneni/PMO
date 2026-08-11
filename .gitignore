@@ -48,6 +48,7 @@ next-env.d.ts
 CLAUDE.local.md
 .claude/settings.local.json
 .claude/.edit-log.txt
+.claude/worktrees/
 
 # Jira OAuth tokens (contains live access tokens)
 backend/.jira-oauth-tokens.json
