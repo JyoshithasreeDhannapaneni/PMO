@@ -116,6 +116,7 @@ type ProjectRow = {
   plannedStart: string | null;
   plannedEnd: string | null;
   expectedEnd: string | null;
+  isOveraged?: boolean;
   migrationTypes: string;
   trackType: 'migration' | 'poc';
   pocOutcome?: string | null;
@@ -259,14 +260,20 @@ export default function AccountManagerPage() {
       (STATUS_RANK[m.status] || 0) > (STATUS_RANK[w.status] || 0) ? m : w
     , tracks[0]);
 
-    // Earliest kickoff, earliest SOW start, latest SOW end, latest expected end
+    // Earliest kickoff, earliest SOW start, latest SOW end, latest project end
     const starts       = tracks.map((m: any) => m.actualStart).filter(Boolean).sort();
     const sowStarts    = tracks.map((m: any) => m.plannedStart).filter(Boolean).sort();
     const ends         = tracks.map((m: any) => m.plannedEnd).filter(Boolean).sort();
-    const expectedEnds = tracks.map((m: any) => m.expectedEnd).filter(Boolean).sort();
+    // Same rule as the All Projects table: overaged projects show the extension
+    // deadline (expectedEnd), everything else shows the raw actualEnd.
+    const projectEnds  = tracks
+      .map((m: any) => (m.isOveraged && m.expectedEnd) ? m.expectedEnd : m.actualEnd)
+      .filter(Boolean)
+      .sort();
 
     // Any escalated project means this row is escalated
     const anyEscalated = tracks.some((m: any) => m.isEscalated);
+    const anyOveraged  = tracks.some((m: any) => m.isOveraged);
 
     const primary = tracks[0];
 
@@ -285,7 +292,8 @@ export default function AccountManagerPage() {
       actualStart: starts[0] || null,
       plannedStart: sowStarts[0] || null,
       plannedEnd: ends[ends.length - 1] || null,
-      expectedEnd: expectedEnds[expectedEnds.length - 1] || null,
+      expectedEnd: projectEnds[projectEnds.length - 1] || null,
+      isOveraged: anyOveraged,
       migrationTypes: allTypes.join(', '),
       trackType: 'migration' as const,
       isEscalated: anyEscalated,
@@ -689,7 +697,7 @@ export default function AccountManagerPage() {
                       <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-600">
                         <span className="flex items-center gap-1">
                           <CalendarDays className="w-3 h-3 text-gray-400" />
-                          {fmtDate(row.expectedEnd || row.plannedEnd)}
+                          {fmtDate(row.expectedEnd)}
                         </span>
                       </td>
                     )}
