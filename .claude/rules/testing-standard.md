@@ -1,5 +1,7 @@
 # Testing Standards — PMO Tracker
 
+> **Current state (verified by repo audit):** none of this exists yet. `backend/package.json` has a `"test": "jest"` script but `jest` is not in its dependencies; `frontend/package.json` has no test script at all; there are zero `.test.*` files anywhere in `backend/src` or `frontend/src`. This document describes the *intended* approach for when tests are added, not a working setup today. The first test added to either side needs to also install and configure `jest`/`ts-jest`/`@testing-library/react` — see the `test-writer` agent (`.claude/agents/test-writer.md`), which knows this gap.
+
 ## Philosophy
 - Test business logic in services, not in controllers.
 - Integration tests hit the real PostgreSQL test DB — no mocking the database (mock/prod divergence caused a broken migration incident).

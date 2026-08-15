@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "postgres": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-postgres", "${DATABASE_MCP_URL}"],
+      "description": "Read/inspect the pmo_tracker PostgreSQL database directly (schema, ad-hoc queries) — useful given the schema is spread across db/init.ts + index.ts's runMigrations() rather than one migration tool. Set DATABASE_MCP_URL in your own shell environment, e.g. postgresql://pmo_user:<password>@localhost:5432/pmo_tracker — do NOT hardcode credentials in this file or commit them. (The old root-level mcp.json hardcoded a real password and is already committed to git history — rotate that password and stop using that file.)"
+    },
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_PERSONAL_ACCESS_TOKEN}"
+      },
+      "description": "Read issues/PRs and open PRs against this repo from Claude Code, matching the PR workflow in .claude/rules/pr.md. Set GITHUB_PERSONAL_ACCESS_TOKEN in your own shell environment — do not hardcode it here."
+    }
+  }
+}

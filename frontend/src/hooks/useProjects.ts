@@ -2,7 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect } from 'react';
-import { projectsApi, dashboardApi, statusReportsApi, managerGoalsApi, migrationTypeApi, pocProjectsApi, accountManagerApi, customerSuccessApi, hubspotApi, psEngagementsApi, kbArticlesApi, emailHygieneApi, callHygieneApi, escalationMailsApi } from '@/services/api';
+import { projectsApi, dashboardApi, statusReportsApi, managerGoalsApi, migrationTypeApi, pocProjectsApi, accountManagerApi, customerSuccessApi, hubspotApi, psEngagementsApi, kbArticlesApi, emailHygieneApi, callHygieneApi, callTranscriptsApi, escalationMailsApi } from '@/services/api';
 import type { CreateProjectInput, UpdateProjectInput } from '@/types';
 
 export function useProjects(params?: {
@@ -1065,6 +1065,35 @@ export function useCallHygiene(enabled = true) {
     staleTime: 2 * 60 * 60 * 1000,
     gcTime: 2 * 60 * 60 * 1000,
     retry: 0, // First fetch can take 2-4 min — don't retry on timeout
+  });
+}
+
+export function useCallTranscriptRating(eventId: string | null, userEmail: string | null) {
+  return useQuery({
+    queryKey: ['call-transcript-rating', eventId, userEmail],
+    queryFn: () => callTranscriptsApi.getRating(eventId!, userEmail!),
+    enabled: !!eventId && !!userEmail,
+    staleTime: Infinity, // a graded call's rating doesn't change until re-graded
+    retry: 0,
+  });
+}
+
+export function useRateCallTranscript() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: {
+      eventId: string;
+      subject: string;
+      meetingStart: string | null;
+      organizerEmail: string;
+      joinUrl: string;
+      internalUserEmail: string;
+      internalUserName: string;
+      customerAttendees: Array<{ name: string; email: string }>;
+    }) => callTranscriptsApi.rate(payload),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: ['call-transcript-rating', variables.eventId, variables.internalUserEmail] });
+    },
   });
 }
 

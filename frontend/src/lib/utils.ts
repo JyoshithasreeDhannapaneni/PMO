@@ -7,7 +7,25 @@ export function cn(...inputs: ClassValue[]) {
 
 export function formatDate(date: string | Date | null): string {
   if (!date) return 'N/A';
-  return new Date(date).toLocaleDateString('en-US', {
+  // Dates from the API are date-only values serialized as UTC-midnight ISO
+  // strings (e.g. "2026-08-13T00:00:00.000Z"). Reading them back with local
+  // Date getters/toLocaleDateString shifts the calendar day for any timezone
+  // behind UTC (PST/EST), showing "yesterday" instead of the selected date.
+  // Pull the Y/M/D straight off the string (or the UTC parts of a Date) and
+  // rebuild a local Date from those exact numbers so no timezone shift occurs.
+  let year: number, month: number, day: number;
+  if (typeof date === 'string') {
+    const match = date.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!match) return 'N/A';
+    year = Number(match[1]);
+    month = Number(match[2]) - 1;
+    day = Number(match[3]);
+  } else {
+    year = date.getUTCFullYear();
+    month = date.getUTCMonth();
+    day = date.getUTCDate();
+  }
+  return new Date(year, month, day).toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'short',
     day: 'numeric',

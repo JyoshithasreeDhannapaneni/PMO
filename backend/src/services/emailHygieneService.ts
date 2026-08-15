@@ -280,9 +280,12 @@ async function analyzeUser(
     `?$filter=receivedDateTime ge ${sinceEncoded}` +
     `&$select=id,conversationId,subject,bodyPreview,body,from,toRecipients,receivedDateTime&$top=100`;
 
+  // Let a failed mailbox fetch (e.g. a Graph permission or throttling error)
+  // reject analyzeUser rather than silently becoming an empty result — otherwise
+  // it renders as "0 emails" for that user instead of surfacing in the logs.
   const [sentRaw, recvRaw] = await Promise.all([
-    fetchMessages(client, sentUrl, 300).catch(() => [] as GraphMessage[]),
-    fetchMessages(client, recvUrl, 300).catch(() => [] as GraphMessage[]),
+    fetchMessages(client, sentUrl, 300),
+    fetchMessages(client, recvUrl, 300),
   ]);
 
   const externalSent = sentRaw.filter(m =>

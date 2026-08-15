@@ -33,7 +33,7 @@ Domain-specific filters: `?status=ACTIVE&projectManager=Abhishek`
 - Scopes: `read:jira-work read:jira-user offline_access` (never add `manage:servicedesk-customer`).
 - Token stored in `backend/.jira-oauth-tokens.json` (gitignored).
 - `isOAuthConfigured()` must reject placeholder values starting with `PASTE_`.
-- `dotenv.config()` must use `path.resolve(__dirname, '../../.env')`.
+- `dotenv.config()` must use `path.resolve(__dirname, '../.env')` — one level up from `backend/src` (see `.claude/memory/decisions.md` for the correction history on this line).
 
 ## Excel Upload (Jira SLA)
 - `POST /api/jira/upload-excel` accepts `multipart/form-data` with field `file`.

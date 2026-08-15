@@ -46,6 +46,7 @@ import templateCombinationRoutes from './routes/templateCombinationRoutes';
 import jiraRoutes from './routes/jiraRoutes';
 import emailHygieneRoutes from './routes/emailHygieneRoutes';
 import callHygieneRoutes from './routes/callHygieneRoutes';
+import callTranscriptRoutes from './routes/callTranscriptRoutes';
 import { logger } from './utils/logger';
 import { authService } from './services/authService';
 import { templateService } from './services/templateService';
@@ -113,6 +114,7 @@ app.use('/api/template-combinations', templateCombinationRoutes);
 app.use('/api/jira', jiraRoutes);
 app.use('/api/email-hygiene', emailHygieneRoutes);
 app.use('/api/call-hygiene', callHygieneRoutes);
+app.use('/api/call-transcripts', callTranscriptRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
@@ -648,6 +650,22 @@ async function runMigrations() {
     period_end   TIMESTAMPTZ NOT NULL,
     metrics      JSONB NOT NULL DEFAULT '[]',
     computed_at  TIMESTAMPTZ DEFAULT NOW()
+  )`);
+
+  // Call transcript ratings — AI-graded scorecards for how well an internal team
+  // member answered customer questions in a specific Teams meeting (one row per
+  // meeting+person, cached so re-opening a scorecard doesn't re-call OpenAI).
+  await execute(`CREATE TABLE IF NOT EXISTS call_transcript_ratings (
+    id            UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    event_id      VARCHAR(255) NOT NULL,
+    user_email    VARCHAR(255) NOT NULL,
+    user_name     VARCHAR(255),
+    subject       TEXT,
+    meeting_start TIMESTAMPTZ,
+    rating        JSONB NOT NULL DEFAULT '{}',
+    rated_by      VARCHAR(255),
+    created_at    TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(event_id, user_email)
   )`);
 
   // Email hygiene members — definitive list of @cloudfuze.com mailboxes to analyze
