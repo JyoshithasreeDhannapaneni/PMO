@@ -2,15 +2,18 @@
 
 Use this blueprint when building a new end-to-end feature for PMO Tracker.
 
+**If gstack is installed** (see `CLAUDE.md` Pre-flight), wrap this blueprint with: `/office-hours` (clarify the problem) → `/autoplan` (CEO + eng + design review) → **Steps 1-3 below** → `/review` (gstack general review) → `/team-review` (this project's convention checklist) → `/qa <staging-url>` → `/cso` (if security-sensitive, e.g. touches auth or reads per-person data) → `/ship`.
+
 ## Steps
 
 ### 1. Understand
 - Read relevant existing code in `backend/src/services/` and `frontend/src/app/(authenticated)/`
-- Check `.claude/memory/decisions.md` for constraints that apply
+- Check `.claude/memory/decisions.md` for constraints that apply, and `.claude/memory/architecture.md` for how this project actually lays out schema/services
 - Identify: which DB tables are affected, which API routes are needed, which page hosts the UI
+- For anything touching more than 2-3 files, consider the `architect` agent (`.claude/agents/architect.md`) first
 
 ### 2. Backend
-1. Add/update Prisma schema in `backend/prisma/schema.prisma` if DB changes needed
+1. **No Prisma** — this backend uses raw `pg`. If DB changes are needed, add a guarded block to `runMigrations()` in `backend/src/index.ts` (idempotent `ALTER TABLE`/`CREATE TABLE IF NOT EXISTS`, using the existing `columnExists()` helper pattern) — see `.claude/memory/architecture.md`.
 2. Create service function in `backend/src/services/<domain>Service.ts`
 3. Create/update controller in `backend/src/controllers/<domain>Controller.ts`
 4. Add route in `backend/src/routes/<domain>Routes.ts` with `requireAuth`

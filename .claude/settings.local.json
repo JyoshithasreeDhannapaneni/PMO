@@ -156,7 +156,18 @@
       "Bash(node -e \"require\\('dotenv'\\).config\\({ path: require\\('path'\\).resolve\\(__dirname, '../.env'\\) }\\); console.log\\('TENANT:', process.env.MS_GRAPH_TENANT_ID ? 'SET' : 'MISSING'\\); console.log\\('CLIENT_ID:', process.env.MS_GRAPH_CLIENT_ID ? 'SET' : 'MISSING'\\); console.log\\('SECRET:', process.env.MS_GRAPH_CLIENT_SECRET ? 'SET' : 'MISSING'\\);\")",
       "Bash(node -e \"const p=require\\('path'\\); console.log\\('From backend/src:',p.resolve\\('c:\\\\\\\\\\\\\\\\Users\\\\\\\\\\\\\\\\BharathTummaganti\\\\\\\\\\\\\\\\OneDrive - CloudFuze, Inc\\\\\\\\\\\\\\\\Documents\\\\\\\\\\\\\\\\PMO\\\\\\\\\\\\\\\\PMO\\\\\\\\\\\\\\\\backend\\\\\\\\\\\\\\\\src','../../.env'\\)\\); console.log\\('Expected .env at:','c:\\\\\\\\\\\\\\\\Users\\\\\\\\\\\\\\\\BharathTummaganti\\\\\\\\\\\\\\\\OneDrive - CloudFuze, Inc\\\\\\\\\\\\\\\\Documents\\\\\\\\\\\\\\\\PMO\\\\\\\\\\\\\\\\PMO\\\\\\\\\\\\\\\\backend\\\\\\\\\\\\\\\\.env'\\);\")",
       "Bash(python3 -)",
-      "Bash(git config *)"
+      "Bash(git config *)",
+      "Bash(xargs grep -l \"formatDate\")",
+      "Bash(node -e \"console.log\\(require\\('./node_modules/openai/package.json'\\).version\\)\")",
+      "Edit(/.claude/skills/architecture/**)",
+      "Edit(/.claude/skills/api-design/**)",
+      "Edit(/.claude/skills/documentation/**)",
+      "Read(//c/Users/BharathTummaganti/pmo-next-dist/types/app/\\\\\\(authenticated\\\\\\)/**)",
+      "Bash(node -e \"console.log\\(require\\('./node_modules/next/package.json'\\).version\\)\")",
+      "Bash(echo \"EXIT=$?\")",
+      "Bash(rm -f tsconfig.tsbuildinfo)",
+      "Bash(curl -s -v -o /dev/null -w \"frontend: %{http_code}\\\\n\" http://localhost:3000/)",
+      "Bash(npm run *)"
     ],
     "additionalDirectories": [
       "c:\\Users\\BharathTummaganti\\OneDrive - CloudFuze, Inc\\Documents\\PMO\\PMO",
