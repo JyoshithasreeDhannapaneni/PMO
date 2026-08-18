@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useRef, useMemo } from 'react';
+import { useState, useRef, useMemo, Fragment } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useProjects, useEmailHygiene, useCallHygiene } from '@/hooks/useProjects';
+import { useProjects, useEmailHygiene, useCallHygiene, useCallTranscriptRating, useRateCallTranscript } from '@/hooks/useProjects';
 import { useSettings } from '@/context/SettingsContext';
 import { useAuth } from '@/context/AuthContext';
 import { Card } from '@/components/ui/Card';
@@ -407,6 +407,31 @@ export default function AuditDashboardPage() {
     if (score >= 80) return { bg: 'bg-green-100', text: 'text-green-700', ring: 'ring-green-300' };
     if (score >= 60) return { bg: 'bg-yellow-100', text: 'text-yellow-700', ring: 'ring-yellow-300' };
     return { bg: 'bg-red-100', text: 'text-red-700', ring: 'ring-red-300' };
+  }
+
+  const [expandedCallUser, setExpandedCallUser] = useState<string | null>(null);
+  const [ratingModalCall, setRatingModalCall] = useState<{
+    eventId: string;
+    subject: string;
+    meetingStart: string | null;
+    organizerEmail: string;
+    joinUrl: string;
+    internalUserEmail: string;
+    internalUserName: string;
+    customerAttendees: Array<{ name: string; email: string }>;
+  } | null>(null);
+
+  const { data: cachedCallRatingResp, isLoading: isCachedCallRatingLoading } = useCallTranscriptRating(
+    ratingModalCall?.eventId ?? null,
+    ratingModalCall?.internalUserEmail ?? null
+  );
+  const rateCallMutation = useRateCallTranscript();
+  const cachedCallRating = cachedCallRatingResp?.data?.rating ?? null;
+  const activeCallRating = rateCallMutation.data?.data ?? cachedCallRating;
+
+  function closeRatingModal() {
+    setRatingModalCall(null);
+    rateCallMutation.reset();
   }
 
   function handleExportCallHygieneCSV() {
@@ -2252,13 +2277,21 @@ export default function AuditDashboardPage() {
                       <th className="text-center py-2.5 px-3 text-xs font-semibold text-purple-600 whitespace-nowrap">Cadence<span className="font-normal text-purple-400">/30</span></th>
                       <th className="text-center py-2.5 px-3 text-xs font-semibold text-teal-600 whitespace-nowrap">Reliability<span className="font-normal text-teal-400">/30</span></th>
                       <th className="text-center py-2.5 px-3 text-xs font-semibold text-gray-800 whitespace-nowrap">Hygiene<span className="font-normal text-gray-400">/100</span></th>
+                      <th className="text-center py-2.5 px-3 text-xs font-semibold text-gray-500 whitespace-nowrap">Calls</th>
                     </tr>
                   </thead>
                   <tbody>
                     {callMetrics.map((m: any, i: number) => {
                       const sc = callScoreColor(m.callHygieneScore);
+                      const isExpanded = expandedCallUser === m.userEmail;
+                      const gradableCalls = (m.calls ?? []) as Array<{
+                        eventId: string; subject: string; start: string;
+                        organizerEmail: string; organizerName: string; joinUrl: string | null;
+                        customerAttendees: Array<{ name: string; email: string }>;
+                      }>;
                       return (
-                        <tr key={m.userEmail} className={`border-b border-gray-50 ${i % 2 === 0 ? '' : 'bg-gray-50/30'} hover:bg-indigo-50/20 transition-colors`}>
+                      <Fragment key={m.userEmail}>
+                        <tr className={`border-b border-gray-50 ${i % 2 === 0 ? '' : 'bg-gray-50/30'} hover:bg-indigo-50/20 transition-colors`}>
                           <td className="py-3 px-3 whitespace-nowrap">
                             <div className="font-medium text-gray-800">{m.userName}</div>
                             <div className="text-xs text-gray-400">{m.userEmail}</div>
@@ -2301,7 +2334,57 @@ export default function AuditDashboardPage() {
                               {m.callHygieneScore ?? 0}
                             </span>
                           </td>
+                          <td className="py-3 px-3 text-center">
+                            {gradableCalls.length > 0 ? (
+                              <button
+                                onClick={() => setExpandedCallUser(isExpanded ? null : m.userEmail)}
+                                className="inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 font-medium"
+                              >
+                                {gradableCalls.length} {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                              </button>
+                            ) : (
+                              <span className="text-xs text-gray-300">—</span>
+                            )}
+                          </td>
                         </tr>
+                        {isExpanded && gradableCalls.length > 0 && (
+                          <tr className="bg-indigo-50/30 border-b border-gray-100">
+                            <td colSpan={9} className="px-3 py-3">
+                              <div className="text-[11px] font-semibold text-gray-500 mb-2">
+                                Customer calls in the last 30 days — pick one to grade this person's answers against the transcript
+                              </div>
+                              <div className="space-y-1.5">
+                                {gradableCalls.map(call => (
+                                  <div key={call.eventId} className="flex items-center justify-between gap-3 bg-white rounded-lg border border-gray-100 px-3 py-2">
+                                    <div className="min-w-0">
+                                      <div className="text-xs font-medium text-gray-800 truncate">{call.subject || '(no subject)'}</div>
+                                      <div className="text-[10px] text-gray-400">
+                                        {new Date(call.start).toLocaleString()} · {call.customerAttendees.map(a => a.name || a.email).join(', ') || 'unknown attendees'}
+                                      </div>
+                                    </div>
+                                    <button
+                                      onClick={() => setRatingModalCall({
+                                        eventId: call.eventId,
+                                        subject: call.subject,
+                                        meetingStart: call.start,
+                                        organizerEmail: call.organizerEmail,
+                                        joinUrl: call.joinUrl || '',
+                                        internalUserEmail: m.userEmail,
+                                        internalUserName: m.userName,
+                                        customerAttendees: call.customerAttendees,
+                                      })}
+                                      disabled={!call.joinUrl}
+                                      className="flex-shrink-0 inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full bg-indigo-600 text-white hover:bg-indigo-700 disabled:bg-gray-200 disabled:text-gray-400"
+                                    >
+                                      <MessageSquare size={11} /> Rate
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
                       );
                     })}
                   </tbody>
@@ -2373,6 +2456,81 @@ export default function AuditDashboardPage() {
                 {scheduleSubmitting ? 'Scheduling…' : 'Schedule Send'}
               </button>
             </div>
+          </div>
+        </ScorecardModal>
+      )}
+
+      {ratingModalCall && (
+        <ScorecardModal title={`Rate: ${ratingModalCall.internalUserName}`} onClose={closeRatingModal}>
+          <div className="space-y-4">
+            <div className="text-xs text-gray-500">
+              <div className="font-medium text-gray-700">{ratingModalCall.subject || '(no subject)'}</div>
+              {ratingModalCall.meetingStart && <div>{new Date(ratingModalCall.meetingStart).toLocaleString()}</div>}
+            </div>
+
+            {isCachedCallRatingLoading && !activeCallRating ? (
+              <div className="flex items-center gap-2 text-sm text-gray-500 py-6 justify-center">
+                <Loader2 size={16} className="animate-spin" /> Checking for an existing rating…
+              </div>
+            ) : rateCallMutation.isPending ? (
+              <div className="flex flex-col items-center gap-2 text-sm text-gray-500 py-8">
+                <Loader2 size={20} className="animate-spin" />
+                Fetching transcript and grading with AI — this can take up to a minute…
+              </div>
+            ) : rateCallMutation.isError ? (
+              <div className="text-sm text-red-600 flex items-start gap-2 bg-red-50 border border-red-100 rounded-lg p-3">
+                <AlertCircle size={14} className="flex-shrink-0 mt-0.5" />
+                <span>{(rateCallMutation.error as any)?.response?.data?.error?.message || (rateCallMutation.error as any)?.message || 'Grading failed.'}</span>
+              </div>
+            ) : activeCallRating ? (
+              <div className="space-y-3">
+                <div className="flex items-center gap-3">
+                  {(() => {
+                    const sc = callScoreColor(activeCallRating.overallScore ?? 0);
+                    return (
+                      <span className={`inline-block text-lg font-bold px-3 py-1 rounded-full ring-1 ${sc.bg} ${sc.text} ${sc.ring}`}>
+                        {activeCallRating.overallScore ?? 0}/100
+                      </span>
+                    );
+                  })()}
+                  <p className="text-xs text-gray-500 flex-1">{activeCallRating.summary}</p>
+                </div>
+                {activeCallRating.qaPairs?.length > 0 ? (
+                  <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                    {activeCallRating.qaPairs.map((qa: any, idx: number) => (
+                      <div key={idx} className="border border-gray-100 rounded-lg p-3 text-xs space-y-1">
+                        <div className="text-gray-400">Q ({qa.askedBy}):</div>
+                        <div className="text-gray-700 italic">&ldquo;{qa.question}&rdquo;</div>
+                        <div className="text-gray-400 mt-1">A ({qa.answeredBy}):</div>
+                        <div className="text-gray-700 italic">&ldquo;{qa.answer}&rdquo;</div>
+                        <div className="flex items-center justify-between pt-1">
+                          <span className="font-semibold text-gray-800">{qa.score}/100</span>
+                          <span className="text-gray-500">{qa.feedback}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-400">No customer questions answered by this person were found in the transcript.</p>
+                )}
+                <button
+                  onClick={() => rateCallMutation.mutate(ratingModalCall)}
+                  className="text-xs text-indigo-600 hover:text-indigo-700 font-medium"
+                >
+                  Re-grade from transcript
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center gap-3 py-6">
+                <p className="text-xs text-gray-500 text-center">No rating yet for this call. This will fetch the Teams transcript and grade it with AI.</p>
+                <button
+                  onClick={() => rateCallMutation.mutate(ratingModalCall)}
+                  className="flex items-center gap-1.5 px-4 py-1.5 text-sm text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors"
+                >
+                  <MessageSquare size={13} /> Grade this call
+                </button>
+              </div>
+            )}
           </div>
         </ScorecardModal>
       )}

@@ -759,6 +759,26 @@ export const callHygieneApi = {
   },
 };
 
+export const callTranscriptsApi = {
+  getRating: async (eventId: string, userEmail: string) => {
+    const { data } = await api.get('/call-transcripts/rating', { params: { eventId, userEmail } });
+    return data;
+  },
+  rate: async (payload: {
+    eventId: string;
+    subject: string;
+    meetingStart: string | null;
+    organizerEmail: string;
+    joinUrl: string;
+    internalUserEmail: string;
+    internalUserName: string;
+    customerAttendees: Array<{ name: string; email: string }>;
+  }) => {
+    const { data } = await api.post('/call-transcripts/rate', payload);
+    return data;
+  },
+};
+
 export const auditApi = {
   getAll: async (params?: {
     page?: number; limit?: number; userId?: string; entityType?: string;

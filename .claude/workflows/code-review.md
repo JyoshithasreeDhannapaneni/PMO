@@ -2,6 +2,8 @@
 
 Use this blueprint for a thorough code review of a branch or set of changes.
 
+**Relationship to gstack**: if gstack is installed, run gstack's `/review` first for general-purpose correctness/bug review, then this blueprint (exposed as `/team-review`) for PMO-Tracker-specific convention checks. Both, not either/or.
+
 ## Steps
 
 ### 1. Scope

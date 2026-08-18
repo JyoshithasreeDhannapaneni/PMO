@@ -34,9 +34,7 @@
     "next-env.d.ts",
     "**/*.ts",
     "**/*.tsx",
-    ".next/types/**/*.ts",
-    "C:\\Users\\BharathTummaganti\\pmo-next-dist/types/**/*.ts",
-    "..\\..\\..\\..\\..\\pmo-next-dist/types/**/*.ts"
+    ".next/types/**/*.ts"
   ],
   "exclude": [
     "node_modules"
