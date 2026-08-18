@@ -805,12 +805,12 @@ export const auditApi = {
     const { data } = await api.get('/audit/export/leaderboard', { params, responseType: 'blob' });
     return data as Blob;
   },
-  getHygieneBoard: async () => {
-    const { data } = await api.get('/audit/hygiene-board');
+  getHygieneBoard: async (params: { startDate: string; endDate: string }) => {
+    const { data } = await api.get('/audit/hygiene-board', { params });
     return data;
   },
-  exportHygieneExcel: async () => {
-    const { data } = await api.get('/audit/export/hygiene-board', { responseType: 'blob' });
+  exportHygieneExcel: async (params: { startDate: string; endDate: string }) => {
+    const { data } = await api.get('/audit/export/hygiene-board', { params, responseType: 'blob' });
     return data as Blob;
   },
   runHygieneScorecardNow: async () => {

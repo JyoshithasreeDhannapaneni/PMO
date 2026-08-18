@@ -285,10 +285,13 @@ export default function AuditDashboardPage() {
   // ── Hygiene Board ──────────────────────────────────────────────
   // Computed live from audit_logs + projects on every request (no server-side
   // cache) — refetchInterval keeps the on-screen numbers current automatically
-  // while this tab is open, not just on manual refresh/navigation.
+  // while this tab is open, not just on manual refresh/navigation. Activity
+  // Score and Case Study Score are scoped to queryStart/queryEnd (the page's
+  // shared date range); Data Quality, Delay, and Date-Integrity always reflect
+  // current project state regardless of the selected range.
   const { data: hygieneData, isLoading: isHygieneLoading, refetch: refetchHygiene } = useQuery({
-    queryKey: ['hygieneBoard'],
-    queryFn: () => auditApi.getHygieneBoard(),
+    queryKey: ['hygieneBoard', queryStart, queryEnd],
+    queryFn: () => auditApi.getHygieneBoard({ startDate: queryStart, endDate: queryEnd }),
     staleTime: 30_000,
     refetchInterval: 60_000,
     refetchOnWindowFocus: true,
@@ -410,6 +413,7 @@ export default function AuditDashboardPage() {
   }
 
   const [expandedCallUser, setExpandedCallUser] = useState<string | null>(null);
+  const [expandedHygienePM, setExpandedHygienePM] = useState<string | null>(null);
   const [ratingModalCall, setRatingModalCall] = useState<{
     eventId: string;
     subject: string;
@@ -475,7 +479,7 @@ export default function AuditDashboardPage() {
     const rows = [
       [
         'Project Manager', 'Total Projects', 'Active / On-Hold', 'Completed / Archived',
-        'Logins (30d)', 'Project Updates (30d)', 'Case Study Updates (30d)',
+        'Logins (period)', 'Project Updates (period)', 'Case Study Updates (period)',
         'Last Login', 'Last Action', 'Days Since Last Action',
         'Missing Kickoff Date', 'Missing Planned Dates', 'Missing Customer Email', 'Missing Notes',
         'Overdue (Not Flagged)', 'Missing Project Size', 'Missing Budget',
@@ -498,15 +502,15 @@ export default function AuditDashboardPage() {
         pm.delayScore, pm.dateIntegrityScore, pm.hygieneScore,
       ]),
     ];
-    downloadCSV(rows, `hygiene-board-${format(new Date(), 'yyyy-MM-dd')}.csv`);
+    downloadCSV(rows, `hygiene-board-${queryStart}-to-${queryEnd}.csv`);
   }
 
   async function handleExportHygieneExcel() {
     try {
-      const blob = await auditApi.exportHygieneExcel();
+      const blob = await auditApi.exportHygieneExcel({ startDate: queryStart, endDate: queryEnd });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = `hygiene-board-${format(new Date(), 'yyyy-MM-dd')}.xlsx`;
+      a.download = `hygiene-board-${queryStart}-to-${queryEnd}.xlsx`;
       a.click();
     } catch {}
   }
@@ -1554,7 +1558,7 @@ export default function AuditDashboardPage() {
             </h2>
             <p className="text-xs text-gray-500 mt-0.5">
               {hygieneTab === 'project'
-                ? 'PM login & update activity (audit logs), data completeness, and case study completion'
+                ? <>PM login &amp; update activity, data completeness, and case study completion — Activity &amp; Case Study scores for <strong>{format(new Date(queryStart), 'MMM d, yyyy')} – {format(new Date(queryEnd), 'MMM d, yyyy')}</strong>; Data Quality, Delay, and Date Integrity reflect current project state</>
                 : hygieneTab === 'email'
                 ? 'Speed (35%) · Quality (35%) · Resolution (20%) · Tone (10%) — scored from Microsoft 365 mailbox data for all @cloudfuze.com team members (last 30 days)'
                 : 'Volume (40%) · Cadence (30%) · Reliability (30%) — scored from Outlook calendar data for all @cloudfuze.com team members (last 30 days)'}
@@ -1723,7 +1727,7 @@ export default function AuditDashboardPage() {
           const missingCS = hygieneBoard.reduce((s: number, pm: any) => s + pm.csMissing, 0);
           const kpis = [
             { label: 'Fleet Hygiene Score', value: avg, color: hygieneScoreColor(avg) },
-            { label: 'PMs Never Logged In (30d)', value: neverLoggedIn, color: { bg: 'bg-red-50', text: 'text-red-700', ring: '' } },
+            { label: 'PMs Never Logged In (period)', value: neverLoggedIn, color: { bg: 'bg-red-50', text: 'text-red-700', ring: '' } },
             { label: 'Overdue (unflagged)', value: overdue, color: { bg: 'bg-amber-50', text: 'text-amber-700', ring: '' } },
             { label: 'Missing Case Studies', value: missingCS, color: { bg: 'bg-orange-50', text: 'text-orange-700', ring: '' } },
           ];
@@ -1776,55 +1780,19 @@ export default function AuditDashboardPage() {
             <div className="text-center py-10 text-gray-400 text-sm">No project data available</div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm" style={{ minWidth: '2600px' }}>
+              <table className="w-full text-sm">
                 <thead>
-                  {/* Column-group labels */}
-                  <tr className="border-b border-gray-100">
-                    <th colSpan={4} className="text-left text-xs font-medium text-gray-400 py-1.5 px-3" />
-                    <th colSpan={6} className="text-center text-xs font-semibold text-blue-600 py-1.5 bg-blue-50">Activity (last 30 days)</th>
-                    <th colSpan={7} className="text-center text-xs font-semibold text-purple-600 py-1.5 bg-purple-50">Data Quality (active projects)</th>
-                    <th colSpan={3} className="text-center text-xs font-semibold text-teal-600 py-1.5 bg-teal-50">Case Studies</th>
-                    <th colSpan={2} className="text-center text-xs font-semibold text-orange-600 py-1.5 bg-orange-50">Delay Accountability</th>
-                    <th colSpan={1} className="text-center text-xs font-semibold text-rose-600 py-1.5 bg-rose-50">Phase Date Integrity</th>
-                    <th colSpan={6} className="text-center text-xs font-medium text-gray-400 py-1.5" />
-                  </tr>
                   <tr className="border-b border-gray-200 bg-gray-50/60">
-                    {/* Identity */}
                     <th className="text-left font-semibold text-gray-700 py-2.5 px-3 whitespace-nowrap text-xs">Project Manager</th>
-                    <th className="text-center font-semibold text-gray-500 py-2.5 px-2 whitespace-nowrap text-xs">Total Projects</th>
                     <th className="text-center font-semibold text-gray-500 py-2.5 px-2 whitespace-nowrap text-xs">Active / On-Hold</th>
                     <th className="text-center font-semibold text-gray-500 py-2.5 px-2 whitespace-nowrap text-xs">Completed / Archived</th>
-                    {/* Activity */}
-                    <th className="text-center font-semibold text-blue-600 py-2.5 px-2 whitespace-nowrap text-xs bg-blue-50/70">Logins (30d)</th>
-                    <th className="text-center font-semibold text-blue-600 py-2.5 px-2 whitespace-nowrap text-xs bg-blue-50/70">Project Updates (30d)</th>
-                    <th className="text-center font-semibold text-blue-600 py-2.5 px-2 whitespace-nowrap text-xs bg-blue-50/70">Case Study Updates (30d)</th>
-                    <th className="text-center font-semibold text-blue-600 py-2.5 px-2 whitespace-nowrap text-xs bg-blue-50/70">Last Login</th>
-                    <th className="text-center font-semibold text-blue-600 py-2.5 px-2 whitespace-nowrap text-xs bg-blue-50/70">Last Action</th>
-                    <th className="text-center font-semibold text-blue-600 py-2.5 px-2 whitespace-nowrap text-xs bg-blue-50/70">Days Since Last Action</th>
-                    {/* Data quality */}
-                    <th className="text-center font-semibold text-purple-600 py-2.5 px-2 whitespace-nowrap text-xs bg-purple-50/70">Missing Kickoff Date</th>
-                    <th className="text-center font-semibold text-purple-600 py-2.5 px-2 whitespace-nowrap text-xs bg-purple-50/70">Missing Planned Dates</th>
-                    <th className="text-center font-semibold text-purple-600 py-2.5 px-2 whitespace-nowrap text-xs bg-purple-50/70">Missing Customer Email</th>
-                    <th className="text-center font-semibold text-purple-600 py-2.5 px-2 whitespace-nowrap text-xs bg-purple-50/70">Missing Notes</th>
-                    <th className="text-center font-semibold text-purple-600 py-2.5 px-2 whitespace-nowrap text-xs bg-purple-50/70">Overdue (Not Flagged)</th>
-                    <th className="text-center font-semibold text-purple-600 py-2.5 px-2 whitespace-nowrap text-xs bg-purple-50/70">Missing Project Size</th>
-                    <th className="text-center font-semibold text-purple-600 py-2.5 px-2 whitespace-nowrap text-xs bg-purple-50/70">Missing Budget</th>
-                    {/* Case studies */}
-                    <th className="text-center font-semibold text-teal-600 py-2.5 px-2 whitespace-nowrap text-xs bg-teal-50/70">Case Studies Done</th>
-                    <th className="text-center font-semibold text-teal-600 py-2.5 px-2 whitespace-nowrap text-xs bg-teal-50/70">Case Studies Pending</th>
-                    <th className="text-center font-semibold text-teal-600 py-2.5 px-2 whitespace-nowrap text-xs bg-teal-50/70">No Case Study</th>
-                    {/* Delay accountability */}
-                    <th className="text-center font-semibold text-orange-600 py-2.5 px-2 whitespace-nowrap text-xs bg-orange-50/70">Delayed Projects</th>
-                    <th className="text-center font-semibold text-orange-600 py-2.5 px-2 whitespace-nowrap text-xs bg-orange-50/70">Missing RCA</th>
-                    {/* Phase-date integrity */}
-                    <th className="text-center font-semibold text-rose-600 py-2.5 px-2 whitespace-nowrap text-xs bg-rose-50/70">Same-Day Violations</th>
-                    {/* Scores */}
-                    <th className="text-center font-semibold text-blue-700 py-2.5 px-2 whitespace-nowrap text-xs">Activity Score</th>
-                    <th className="text-center font-semibold text-purple-700 py-2.5 px-2 whitespace-nowrap text-xs">Data Quality Score</th>
-                    <th className="text-center font-semibold text-teal-700 py-2.5 px-2 whitespace-nowrap text-xs">Case Study Score</th>
-                    <th className="text-center font-semibold text-orange-700 py-2.5 px-2 whitespace-nowrap text-xs">Delay Accountability Score</th>
-                    <th className="text-center font-semibold text-rose-700 py-2.5 px-2 whitespace-nowrap text-xs">Phase Date Integrity Score</th>
+                    <th className="text-center font-semibold text-blue-700 py-2.5 px-2 whitespace-nowrap text-xs">Activity</th>
+                    <th className="text-center font-semibold text-purple-700 py-2.5 px-2 whitespace-nowrap text-xs">Data Quality</th>
+                    <th className="text-center font-semibold text-teal-700 py-2.5 px-2 whitespace-nowrap text-xs">Case Studies</th>
+                    <th className="text-center font-semibold text-orange-700 py-2.5 px-2 whitespace-nowrap text-xs">Delay Accountability</th>
+                    <th className="text-center font-semibold text-rose-700 py-2.5 px-2 whitespace-nowrap text-xs">Date Integrity</th>
                     <th className="text-center font-semibold text-gray-800 py-2.5 px-3 whitespace-nowrap text-xs">Hygiene Score</th>
+                    <th className="text-center font-semibold text-gray-400 py-2.5 px-3 whitespace-nowrap text-xs">Detail</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1833,73 +1801,13 @@ export default function AuditDashboardPage() {
                     const bad = (n: number) => n > 0 ? 'text-red-600 font-semibold' : 'text-gray-300';
                     const neverLoggedIn = !pm.lastLoginAt;
                     const daysIdle = pm.daysSinceLastAction;
+                    const isExpanded = expandedHygienePM === pm.projectManager;
                     return (
-                      <tr key={pm.projectManager} className={`border-b border-gray-50 ${i % 2 === 0 ? '' : 'bg-gray-50/30'} hover:bg-indigo-50/20 transition-colors`}>
-                        {/* Identity */}
+                      <Fragment key={pm.projectManager}>
+                      <tr className={`border-b border-gray-50 ${i % 2 === 0 ? '' : 'bg-gray-50/30'} hover:bg-indigo-50/20 transition-colors`}>
                         <td className="py-3 px-3 font-medium text-gray-800 whitespace-nowrap">{pm.projectManager}</td>
-                        <td className="py-3 px-2 text-center text-gray-600">{pm.totalProjects}</td>
                         <td className="py-3 px-2 text-center text-gray-600">{pm.activeProjects}</td>
                         <td className="py-3 px-2 text-center text-gray-600">{pm.completedProjects}</td>
-                        {/* Activity cols */}
-                        <td className="py-3 px-2 text-center bg-blue-50/40">
-                          <span className={neverLoggedIn ? 'text-red-500 font-semibold' : pm.logins30d >= 4 ? 'text-green-600 font-semibold' : 'text-gray-700'}>
-                            {pm.logins30d}
-                          </span>
-                        </td>
-                        <td className="py-3 px-2 text-center bg-blue-50/40">
-                          <span className={pm.projectUpdates30d === 0 && pm.activeProjects > 0 ? 'text-red-500 font-semibold' : 'text-gray-700'}>
-                            {pm.projectUpdates30d}
-                          </span>
-                        </td>
-                        <td className="py-3 px-2 text-center bg-blue-50/40 text-gray-700">{pm.caseStudyUpdates30d}</td>
-                        <td className="py-3 px-2 text-center bg-blue-50/40">
-                          <span className={neverLoggedIn ? 'text-red-400 italic text-xs' : 'text-gray-500 text-xs'}>
-                            {pm.lastLoginAt ? pm.lastLoginAt.slice(0, 10) : 'Never'}
-                          </span>
-                        </td>
-                        <td className="py-3 px-2 text-center bg-blue-50/40">
-                          <span className={pm.lastActionAt ? 'text-gray-500 text-xs' : 'text-red-400 italic text-xs'}>
-                            {pm.lastActionAt ? pm.lastActionAt.slice(0, 10) : 'Never'}
-                          </span>
-                        </td>
-                        <td className="py-3 px-2 text-center bg-blue-50/40">
-                          {daysIdle === null ? (
-                            <span className="text-red-400 text-xs italic">Never</span>
-                          ) : (
-                            <span className={daysIdle > 21 ? 'text-red-600 font-semibold' : daysIdle > 14 ? 'text-yellow-600 font-semibold' : 'text-green-600 font-semibold'}>
-                              {daysIdle}d
-                            </span>
-                          )}
-                        </td>
-                        {/* Data quality cols */}
-                        <td className="py-3 px-2 text-center bg-purple-50/40"><span className={bad(pm.missingKickoffDate)}>{pm.missingKickoffDate}</span></td>
-                        <td className="py-3 px-2 text-center bg-purple-50/40"><span className={bad(pm.missingPlannedDates)}>{pm.missingPlannedDates}</span></td>
-                        <td className="py-3 px-2 text-center bg-purple-50/40"><span className={bad(pm.missingCustomerEmail)}>{pm.missingCustomerEmail}</span></td>
-                        <td className="py-3 px-2 text-center bg-purple-50/40"><span className={bad(pm.missingNotes)}>{pm.missingNotes}</span></td>
-                        <td className="py-3 px-2 text-center bg-purple-50/40"><span className={bad(pm.overdueNotFlagged)}>{pm.overdueNotFlagged}</span></td>
-                        <td className="py-3 px-2 text-center bg-purple-50/40"><span className={bad(pm.missingProjectSize)}>{pm.missingProjectSize}</span></td>
-                        <td className="py-3 px-2 text-center bg-purple-50/40"><span className={bad(pm.missingBudget)}>{pm.missingBudget}</span></td>
-                        {/* Case study cols */}
-                        <td className="py-3 px-2 text-center bg-teal-50/40">
-                          <span className={pm.csDone > 0 ? 'text-teal-600 font-semibold' : 'text-gray-300'}>{pm.csDone}</span>
-                        </td>
-                        <td className="py-3 px-2 text-center bg-teal-50/40">
-                          <span className={pm.csPending > 0 ? 'text-yellow-600 font-semibold' : 'text-gray-300'}>{pm.csPending}</span>
-                        </td>
-                        <td className="py-3 px-2 text-center bg-teal-50/40">
-                          <span className={bad(pm.csMissing)}>{pm.csMissing}</span>
-                          {pm.csInGrace > 0 && (
-                            <span className="ml-1 text-[10px] text-gray-400" title={`${pm.csInGrace} completed in the last 30 days — excluded from the Case Study score`}>
-                              ({pm.csInGrace} new)
-                            </span>
-                          )}
-                        </td>
-                        {/* Delay accountability cols */}
-                        <td className="py-3 px-2 text-center bg-orange-50/40"><span className={bad(pm.delayedProjectsCount)}>{pm.delayedProjectsCount}</span></td>
-                        <td className="py-3 px-2 text-center bg-orange-50/40"><span className={bad(pm.missingRcaCount)}>{pm.missingRcaCount}</span></td>
-                        {/* Phase-date integrity col */}
-                        <td className="py-3 px-2 text-center bg-rose-50/40"><span className={bad(pm.dateViolationsCount)}>{pm.dateViolationsCount}</span></td>
-                        {/* Score pills */}
                         <td className="py-3 px-2 text-center">
                           <span className="inline-block text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">{pm.activityScore}</span>
                         </td>
@@ -1920,7 +1828,75 @@ export default function AuditDashboardPage() {
                             {pm.hygieneScore}
                           </span>
                         </td>
+                        <td className="py-3 px-3 text-center">
+                          <button
+                            onClick={() => setExpandedHygienePM(isExpanded ? null : pm.projectManager)}
+                            className="inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 font-medium"
+                          >
+                            {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                          </button>
+                        </td>
                       </tr>
+                      {isExpanded && (
+                        <tr className="bg-indigo-50/20 border-b border-gray-100">
+                          <td colSpan={10} className="px-3 py-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                              <div className="bg-blue-50/70 rounded-lg p-3">
+                                <div className="text-[11px] font-semibold text-blue-600 mb-2">
+                                  Activity <span className="text-gray-400 font-normal">({format(new Date(queryStart), 'MMM d')}–{format(new Date(queryEnd), 'MMM d')})</span>
+                                </div>
+                                <div className="space-y-1 text-xs text-gray-700">
+                                  <div className="flex justify-between"><span>Logins</span><span className={neverLoggedIn ? 'text-red-500 font-semibold' : pm.logins30d >= 4 ? 'text-green-600 font-semibold' : ''}>{pm.logins30d}</span></div>
+                                  <div className="flex justify-between"><span>Project Updates</span><span className={pm.projectUpdates30d === 0 && pm.activeProjects > 0 ? 'text-red-500 font-semibold' : ''}>{pm.projectUpdates30d}</span></div>
+                                  <div className="flex justify-between"><span>Case Study Updates</span><span>{pm.caseStudyUpdates30d}</span></div>
+                                  <div className="flex justify-between"><span>Last Login</span><span className={neverLoggedIn ? 'text-red-400 italic' : 'text-gray-500'}>{pm.lastLoginAt ? pm.lastLoginAt.slice(0, 10) : 'Never'}</span></div>
+                                  <div className="flex justify-between"><span>Last Action</span><span className={pm.lastActionAt ? 'text-gray-500' : 'text-red-400 italic'}>{pm.lastActionAt ? pm.lastActionAt.slice(0, 10) : 'Never'}</span></div>
+                                  <div className="flex justify-between"><span>Days Idle</span>{daysIdle === null ? <span className="text-red-400 italic">Never</span> : <span className={daysIdle > 21 ? 'text-red-600 font-semibold' : daysIdle > 14 ? 'text-yellow-600 font-semibold' : 'text-green-600 font-semibold'}>{daysIdle}d</span>}</div>
+                                </div>
+                              </div>
+                              <div className="bg-purple-50/70 rounded-lg p-3">
+                                <div className="text-[11px] font-semibold text-purple-600 mb-2">Data Quality <span className="text-gray-400 font-normal">(current state)</span></div>
+                                <div className="space-y-1 text-xs text-gray-700">
+                                  <div className="flex justify-between"><span>Missing Kickoff Date</span><span className={bad(pm.missingKickoffDate)}>{pm.missingKickoffDate}</span></div>
+                                  <div className="flex justify-between"><span>Missing Planned Dates</span><span className={bad(pm.missingPlannedDates)}>{pm.missingPlannedDates}</span></div>
+                                  <div className="flex justify-between"><span>Missing Customer Email</span><span className={bad(pm.missingCustomerEmail)}>{pm.missingCustomerEmail}</span></div>
+                                  <div className="flex justify-between"><span>Missing Notes</span><span className={bad(pm.missingNotes)}>{pm.missingNotes}</span></div>
+                                  <div className="flex justify-between"><span>Overdue (Not Flagged)</span><span className={bad(pm.overdueNotFlagged)}>{pm.overdueNotFlagged}</span></div>
+                                  <div className="flex justify-between"><span>Missing Project Size</span><span className={bad(pm.missingProjectSize)}>{pm.missingProjectSize}</span></div>
+                                  <div className="flex justify-between"><span>Missing Budget</span><span className={bad(pm.missingBudget)}>{pm.missingBudget}</span></div>
+                                </div>
+                              </div>
+                              <div className="bg-teal-50/70 rounded-lg p-3">
+                                <div className="text-[11px] font-semibold text-teal-600 mb-2">Case Studies <span className="text-gray-400 font-normal">(current state)</span></div>
+                                <div className="space-y-1 text-xs text-gray-700">
+                                  <div className="flex justify-between"><span>Done</span><span className={pm.csDone > 0 ? 'text-teal-600 font-semibold' : 'text-gray-300'}>{pm.csDone}</span></div>
+                                  <div className="flex justify-between"><span>Pending</span><span className={pm.csPending > 0 ? 'text-yellow-600 font-semibold' : 'text-gray-300'}>{pm.csPending}</span></div>
+                                  <div className="flex justify-between"><span>Missing</span><span className={bad(pm.csMissing)}>{pm.csMissing}</span></div>
+                                  {pm.csInGrace > 0 && (
+                                    <div className="flex justify-between text-gray-400" title="Completed within the 30-day grace window — excluded from the Case Study score">
+                                      <span>In Grace Period</span><span>{pm.csInGrace}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="bg-orange-50/70 rounded-lg p-3">
+                                <div className="text-[11px] font-semibold text-orange-600 mb-2">Delay Accountability <span className="text-gray-400 font-normal">(current state)</span></div>
+                                <div className="space-y-1 text-xs text-gray-700">
+                                  <div className="flex justify-between"><span>Delayed Projects</span><span className={bad(pm.delayedProjectsCount)}>{pm.delayedProjectsCount}</span></div>
+                                  <div className="flex justify-between"><span>Missing RCA</span><span className={bad(pm.missingRcaCount)}>{pm.missingRcaCount}</span></div>
+                                </div>
+                              </div>
+                              <div className="bg-rose-50/70 rounded-lg p-3">
+                                <div className="text-[11px] font-semibold text-rose-600 mb-2">Phase Date Integrity <span className="text-gray-400 font-normal">(current state)</span></div>
+                                <div className="space-y-1 text-xs text-gray-700">
+                                  <div className="flex justify-between"><span>Same-Day Violations</span><span className={bad(pm.dateViolationsCount)}>{pm.dateViolationsCount}</span></div>
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                      </Fragment>
                     );
                   })}
                 </tbody>
