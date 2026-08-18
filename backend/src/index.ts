@@ -46,6 +46,8 @@ import templateCombinationRoutes from './routes/templateCombinationRoutes';
 import jiraRoutes from './routes/jiraRoutes';
 import emailHygieneRoutes from './routes/emailHygieneRoutes';
 import callHygieneRoutes from './routes/callHygieneRoutes';
+import escalationMailsRoutes from './routes/escalationMailsRoutes';
+import { ntaSyncService, isNtaConfigured } from './services/ntaSyncService';
 import callTranscriptRoutes from './routes/callTranscriptRoutes';
 import { logger } from './utils/logger';
 import { authService } from './services/authService';
@@ -114,6 +116,7 @@ app.use('/api/template-combinations', templateCombinationRoutes);
 app.use('/api/jira', jiraRoutes);
 app.use('/api/email-hygiene', emailHygieneRoutes);
 app.use('/api/call-hygiene', callHygieneRoutes);
+app.use('/api/escalation-mails', escalationMailsRoutes);
 app.use('/api/call-transcripts', callTranscriptRoutes);
 
 app.use(notFoundHandler);
@@ -780,6 +783,12 @@ const server = app.listen(PORT, async () => {
   if (process.env.ENABLE_CRON_JOBS === 'true') {
     initializeCronJobs();
     logger.info('⏰ Cron jobs initialized');
+  }
+
+  if (isNtaConfigured()) {
+    ntaSyncService.getDbCount().then((count) => {
+      logger.info(`NTA tickets DB: ${count} tickets stored. Use POST /api/ticketing/sync to sync manually.`);
+    }).catch(() => {});
   }
 
 });
