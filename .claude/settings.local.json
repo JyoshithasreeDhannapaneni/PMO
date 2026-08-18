@@ -167,11 +167,39 @@
       "Bash(echo \"EXIT=$?\")",
       "Bash(rm -f tsconfig.tsbuildinfo)",
       "Bash(curl -s -v -o /dev/null -w \"frontend: %{http_code}\\\\n\" http://localhost:3000/)",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(powershell -NoProfile -Command \"Get-Process -Id 23888 | Select-Object Id,ProcessName,Path,StartTime\")",
+      "Bash(powershell -NoProfile -Command \"Stop-Process -Id 23888 -Force\")",
+      "Bash(powershell -NoProfile -Command \"Get-Process -Id 16324 | Select-Object Id,ProcessName,Path,StartTime\")",
+      "Bash(powershell -NoProfile -Command \"Get-Process -Id 16324,31824 | Select-Object Id,ProcessName,Path,StartTime\")",
+      "Bash(powershell -NoProfile -Command \"Stop-Process -Id 16324,31824 -Force\")",
+      "Bash(find \"c:/Users/BharathTummaganti/OneDrive - CloudFuze, Inc/Documents/PMO/PMO\" -maxdepth 4 -iname \"gstack\" 2>/dev/null; echo \"---\"; find \"c:/Users/BharathTummaganti\" -maxdepth 2 -iname \"*claude*\" 2>/dev/null; echo \"---\"; test -d ~/.claude/skills/gstack && echo \"found at ~/.claude/skills/gstack\" || echo \"not at ~/.claude/skills/gstack\")",
+      "Read(//c/Users/BharathTummaganti/**)",
+      "Bash(git check-ignore *)",
+      "Bash(cd \"c:/Users/BharathTummaganti/OneDrive - CloudFuze, Inc/Documents/PMO/PMO\" && rm -rf './~' && test -d './~' && echo \"still present\" || echo \"removed\")",
+      "Skill(gstack)",
+      "Skill(gstack:*)",
+      "WebSearch",
+      "Read(//c/Users/BharathTummaganti/.claude/skills/gstack/office-hours/**)",
+      "Bash(npx jest *)",
+      "Bash(node -e \"console.log\\(require\\('typescript'\\).version\\)\")",
+      "Bash(powershell -NoProfile -Command \"Get-Process -Id 32048 | Select-Object Id,ProcessName,Path,StartTime\")",
+      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\\\\n\" http://localhost:3001/api/health)",
+      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\\\\n\" http://localhost:3001/)",
+      "Bash(curl -s -w \"\\\\nHTTP %{http_code}\\\\n\" http://localhost:3001/api/call-hygiene)",
+      "Bash(grep -E \"^MS_GRAPH_\\(TENANT_ID|CLIENT_ID|CLIENT_SECRET\\)=\\(.*\\)$\" .env)",
+      "Bash(awk -F= '{print $1\"=\"length\\($2\\)\" chars\"}')",
+      "Bash(powershell -NoProfile -Command \"Get-Process -Id 7376 | Select-Object Id,ProcessName,StartTime\")",
+      "Bash(powershell -NoProfile -Command \"\\(Get-CimInstance Win32_Process -Filter 'ProcessId = 7376'\\).CommandLine\")",
+      "Bash(powershell -NoProfile -Command ' *)",
+      "Bash(wmic process *)",
+      "Bash(npx tsx -e ' *)",
+      "Bash(powershell -NoProfile -Command 'Get-Process -Name node -ErrorAction SilentlyContinue | Where-Object { $_.Id -ne 7376 } | Select-Object Id,StartTime,Path')"
     ],
     "additionalDirectories": [
       "c:\\Users\\BharathTummaganti\\OneDrive - CloudFuze, Inc\\Documents\\PMO\\PMO",
-      "\\tmp"
+      "\\tmp",
+      "C:\\Users\\BharathTummaganti\\.gstack\\projects\\JyoshithasreeDhannapaneni-PMO"
     ]
   }
 }

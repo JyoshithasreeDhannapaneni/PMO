@@ -664,9 +664,24 @@ async function runMigrations() {
     meeting_start TIMESTAMPTZ,
     rating        JSONB NOT NULL DEFAULT '{}',
     rated_by      VARCHAR(255),
+    status        VARCHAR(20) NOT NULL DEFAULT 'graded',
+    na_reason     VARCHAR(30),
     created_at    TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE(event_id, user_email)
   )`);
+
+  // status/na_reason distinguish an automated grade ('graded') from a call permanently
+  // excluded from Quality scoring ('excluded', na_reason='external_organizer' — organizer
+  // is the customer, not a CF mailbox, so the transcript can never be resolved). A failed
+  // grading attempt (Graph/OpenAI error) is deliberately NOT persisted here — it's logged
+  // and retried on the next callGradingJob cycle, not permanently cached as a failure.
+  if (!await columnExists('call_transcript_ratings', 'status')) {
+    try { await execute(`ALTER TABLE call_transcript_ratings ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'graded'`); } catch {}
+  }
+  if (!await columnExists('call_transcript_ratings', 'na_reason')) {
+    try { await execute(`ALTER TABLE call_transcript_ratings ADD COLUMN na_reason VARCHAR(30)`); } catch {}
+  }
+  try { await execute(`CREATE INDEX IF NOT EXISTS idx_ctr_meeting_start ON call_transcript_ratings(meeting_start)`); } catch {}
 
   // Email hygiene members — definitive list of @cloudfuze.com mailboxes to analyze
   await execute(`CREATE TABLE IF NOT EXISTS email_hygiene_members (

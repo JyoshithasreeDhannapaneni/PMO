@@ -72,10 +72,43 @@ export function initializeCronJobs(): void {
     }
   }, { timezone: 'Asia/Kolkata' });
 
+  // Call hygiene refresh — daily at 5:00 AM IST. Call Hygiene's Quality score used to
+  // inherit staleness only from whoever last opened the dashboard (no cron of its own);
+  // this closes that gap and also gives the grading job below a fresh held-call list to
+  // work from every cycle instead of depending on someone visiting the page first.
+  cron.schedule('0 5 * * *', async () => {
+    logger.info('[CallHygiene] Starting daily 5 AM IST refresh...');
+    try {
+      const { callHygieneService } = require('../services/callHygieneService');
+      if (!callHygieneService.isConfigured()) {
+        logger.info('[CallHygiene] Graph API not configured — skipping refresh');
+        return;
+      }
+      const result = await callHygieneService.getHygieneMetrics(true);
+      logger.info(`[CallHygiene] Daily refresh complete — ${result.metrics.length} users, computed at ${result.computedAt}`);
+    } catch (error) {
+      logger.error('[CallHygiene] Daily refresh failed:', error);
+    }
+  }, { timezone: 'Asia/Kolkata' });
+
+  // Call transcript grading — daily at 5:30 AM IST, after the refresh above has populated
+  // call_hygiene_cache with this cycle's held-call list.
+  cron.schedule('30 5 * * *', async () => {
+    logger.info('[CallGrading] Starting daily 5:30 AM IST grading job...');
+    try {
+      const { callGradingJob } = require('./callGradingJob');
+      await callGradingJob.run();
+    } catch (error) {
+      logger.error('[CallGrading] Daily grading job failed:', error);
+    }
+  }, { timezone: 'Asia/Kolkata' });
+
   logger.info('Cron jobs scheduled:');
   logger.info('  - Delay check: Daily at 6:00 AM');
   logger.info('  - Server alerts: Daily at 8:00 AM');
   logger.info('  - PMO Hygiene & Score Card email: Daily at 6:00 PM IST');
   logger.info('  - PMO Hygiene & Score Card scheduled-send poll: Every minute');
   logger.info('  - Email hygiene sync: Daily at 7:00 AM IST');
+  logger.info('  - Call hygiene refresh: Daily at 5:00 AM IST');
+  logger.info('  - Call transcript grading: Daily at 5:30 AM IST');
 }

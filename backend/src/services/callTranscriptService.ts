@@ -8,6 +8,24 @@ export interface TranscriptCue {
 }
 
 const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
+const CF_DOMAIN = 'cloudfuze.com';
+
+// Thrown when a call's organizer is not a CloudFuze mailbox (e.g. the customer organized
+// the meeting) — Graph's onlineMeetings lookup only resolves against a mailbox inside this
+// tenant, so these calls can never be graded. Callers should treat this as a permanent,
+// non-retryable exclusion, not a transient failure — never key this off the
+// `externallyScheduled` flag in callHygieneService.ts, which means "organizer isn't this
+// person" and includes calls a DIFFERENT CF colleague organized (still gradable).
+export class ExternalOrganizerError extends Error {
+  constructor(organizerEmail: string) {
+    super(`Meeting organizer ${organizerEmail} is not a CloudFuze mailbox — transcript cannot be resolved for this call.`);
+    this.name = 'ExternalOrganizerError';
+  }
+}
+
+function isInternalOrganizer(organizerEmail: string): boolean {
+  return organizerEmail.toLowerCase().endsWith(`@${CF_DOMAIN}`);
+}
 
 function isGraphConfigured(): boolean {
   const { MS_GRAPH_TENANT_ID, MS_GRAPH_CLIENT_ID, MS_GRAPH_CLIENT_SECRET } = process.env;
@@ -117,6 +135,9 @@ export const callTranscriptService = {
   async getTranscriptCues(organizerEmail: string, joinUrl: string): Promise<TranscriptCue[]> {
     if (!isGraphConfigured()) {
       throw new Error('Microsoft Graph is not configured (MS_GRAPH_* env vars missing).');
+    }
+    if (!isInternalOrganizer(organizerEmail)) {
+      throw new ExternalOrganizerError(organizerEmail);
     }
     const token = await getAccessToken();
     const client = graphClient(token);

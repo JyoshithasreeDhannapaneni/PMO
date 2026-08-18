@@ -67,13 +67,16 @@ const CF_DOMAIN = 'cloudfuze.com';
 // Team Distribution Lists — each maps to the manager who owns that support queue.
 // The DL must be provisioned as a shared mailbox in Exchange Online so Graph API
 // can read its SentItems (replies sent by team members on behalf of the DL).
-const DL_MANAGER_MAP: Array<{ dlEmail: string; firstName: string }> = [
-  { dlEmail: 'cfmigrationsupport_team1@cloudfuze.com', firstName: 'Harika' },
-  { dlEmail: 'cfmigrationsupport_team2@cloudfuze.com', firstName: 'Raghu' },
-  { dlEmail: 'cfmigrationsupport_team3@cloudfuze.com', firstName: 'Sravan' },
-  { dlEmail: 'cfmigrationsupport_team4@cloudfuze.com', firstName: 'Lakshmi' },
-  { dlEmail: 'cfmigrationsupport_team5@cloudfuze.com', firstName: 'Abhishikth' },
-  { dlEmail: 'cfmigrationsupport_team6@cloudfuze.com', firstName: 'Pranavi' },
+// Matched to the manager by exact email (see email_hygiene_members / TEAM_MEMBERS in
+// index.ts) — NOT by first-name string matching, which broke if two team members shared
+// a first name (e.g. two "Sravan"s would both match the first result.find() hit).
+const DL_MANAGER_MAP: Array<{ dlEmail: string; managerEmail: string }> = [
+  { dlEmail: 'cfmigrationsupport_team1@cloudfuze.com', managerEmail: 'Harika.Velidi@cloudfuze.com' },
+  { dlEmail: 'cfmigrationsupport_team2@cloudfuze.com', managerEmail: 'Raghu.Yellani@cloudfuze.com' },
+  { dlEmail: 'cfmigrationsupport_team3@cloudfuze.com', managerEmail: 'Sravan.Kesaram@cloudfuze.com' },
+  { dlEmail: 'cfmigrationsupport_team4@cloudfuze.com', managerEmail: 'Lakshmi.Prasanna@cloudfuze.com' },
+  { dlEmail: 'cfmigrationsupport_team5@cloudfuze.com', managerEmail: 'Abhishikth.Yenugula@cloudfuze.com' },
+  { dlEmail: 'cfmigrationsupport_team6@cloudfuze.com', managerEmail: 'Pranavi@cloudfuze.com' },
 ];
 const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
 // Cache is only refreshed by the daily 7 AM IST cron job (or admin force-refresh).
@@ -703,25 +706,23 @@ export const emailHygieneService = {
     }
 
     // Analyze team DL mailboxes and stamp the matching manager's record
-    for (const { dlEmail, firstName } of DL_MANAGER_MAP) {
+    for (const { dlEmail, managerEmail } of DL_MANAGER_MAP) {
       try {
         const dlExists = await userMailboxExists(client, encodeURIComponent(dlEmail));
         if (!dlExists) {
           logger.info(`[EmailHygiene] DL ${dlEmail} not accessible as shared mailbox — skipping`);
           continue;
         }
-        logger.info(`[EmailHygiene] Analyzing DL ${dlEmail} for ${firstName}`);
-        const dlResult = await analyzeUser(client, dlEmail, `Team-${firstName}`, since);
-        const manager = results.find(r =>
-          r.userName.toLowerCase().startsWith(firstName.toLowerCase())
-        );
-        if (manager) {
-          manager.teamHygieneScore = dlResult.emailHygieneScore;
-          manager.teamDlEmail = dlEmail;
-          logger.info(`[EmailHygiene] DL ${dlEmail} → ${manager.userName}: teamScore=${dlResult.emailHygieneScore}`);
-        } else {
-          logger.warn(`[EmailHygiene] DL ${dlEmail}: no manager found matching firstName="${firstName}"`);
+        const manager = results.find(r => r.userEmail.toLowerCase() === managerEmail.toLowerCase());
+        if (!manager) {
+          logger.warn(`[EmailHygiene] DL ${dlEmail}: no manager found with email="${managerEmail}" (not in email_hygiene_members, or inactive)`);
+          continue;
         }
+        logger.info(`[EmailHygiene] Analyzing DL ${dlEmail} for ${manager.userName}`);
+        const dlResult = await analyzeUser(client, dlEmail, `Team-${manager.userName}`, since);
+        manager.teamHygieneScore = dlResult.emailHygieneScore;
+        manager.teamDlEmail = dlEmail;
+        logger.info(`[EmailHygiene] DL ${dlEmail} → ${manager.userName}: teamScore=${dlResult.emailHygieneScore}`);
       } catch (err: any) {
         logger.warn(`[EmailHygiene] DL ${dlEmail} analysis failed: ${err?.message ?? err}`);
       }

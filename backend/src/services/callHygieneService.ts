@@ -1,6 +1,7 @@
 import axios, { type AxiosInstance } from 'axios';
 import { query, execute } from '../config/database';
 import { logger } from '../utils/logger';
+import { bucketQAScore } from '../utils/qaBucketing';
 
 interface GraphEvent {
   id: string;
@@ -25,29 +26,37 @@ export interface HeldCustomerCall {
   customerAttendees: Array<{ name: string; email: string }>;
 }
 
+export interface QualityCoverage {
+  graded: number;      // calls with a real transcript grade contributing to qualityScore
+  noQuestion: number;  // graded successfully, but the customer never asked a question
+  excluded: number;    // permanently ungradable — externally-organized call
+  pending: number;     // held call, not yet processed by callGradingJob (or awaiting retry)
+  total: number;       // all held calls with an online-meeting link (the denominator)
+}
+
 export interface UserCallHygiene {
   userEmail: string;
   userName: string;
-  // Volume
+  // Call activity — context only, no longer scored. Call Hygiene is a pure measure of
+  // response quality (see 2026-08-16 design doc revision); these fields answer "how many
+  // calls, how often" but say nothing about whether the person actually helped the
+  // customer, which is what qualityScore below measures instead.
   totalCustomerCalls: number;
   uniqueCustomers: number;
   internallyScheduled: number;    // held calls this person organized
   externallyScheduled: number;    // held calls the customer (or someone else) organized, this person attended
-  // Cadence
   callsPerWeek: number;
   daysSinceLastCustomerCall: number | null;
   lastCustomerCallAt: string | null;
-  // Reliability
   cancelledCalls: number;
   declinedCalls: number;          // invited but this person declined/never responded — not counted as held
   cancelledRate: number;          // 0-100 %
   onlineMeetingRate: number;      // 0-100 % — proper Teams link vs. plain calendar block
-  // Category scores
-  volumeScore: number;            // 0-40
-  cadenceScore: number;           // 0-30
-  reliabilityScore: number;       // 0-30
-  // Overall
-  callHygieneScore: number;       // 0-100
+  // Quality — THE score. Percentage of graded customer Q&A exchanges bucketed as
+  // "answered well" (see utils/qaBucketing.ts). null means no gradable signal exists yet
+  // (not the same as a bad score).
+  qualityScore: number | null;    // 0-100, or null if qualityCoverage.total === 0 or nothing graded yet
+  qualityCoverage: QualityCoverage;
   // Individual held customer calls in the period — lets the UI offer
   // "rate this call" against a specific transcript rather than the aggregate.
   calls: HeldCustomerCall[];
@@ -160,7 +169,7 @@ async function analyzeUser(
   userName: string,
   since: string,
   until: string
-): Promise<UserCallHygiene> {
+): Promise<CalendarContext> {
   const userPath = encodeURIComponent(userEmail);
   const url = `/users/${userPath}/calendarView` +
     `?startDateTime=${encodeURIComponent(since)}&endDateTime=${encodeURIComponent(until)}` +
@@ -228,24 +237,12 @@ async function analyzeUser(
   const onlineMeetingRate = held.length > 0 ? Math.round((onlineMeetingCount / held.length) * 100) : 100;
   const cancelledRate = customerCalls.length > 0 ? Math.round((cancelled.length / customerCalls.length) * 100) : 0;
 
-  // ── Volume /40 — held customer calls, saturating at 12+ over the period ──
-  const volumeScore = Math.min(40, Math.round((held.length / 12) * 40));
-
-  // ── Cadence /30 — recency of last customer touch + steady weekly rate ──
-  const recencyPts =
-    daysSinceLastCustomerCall === null ? 0 :
-    daysSinceLastCustomerCall <= 7  ? 15 :
-    daysSinceLastCustomerCall <= 14 ? 10 :
-    daysSinceLastCustomerCall <= 30 ? 5  : 0;
-  const ratePts = Math.min(15, Math.round(callsPerWeek * 7.5));
-  const cadenceScore = recencyPts + ratePts;
-
-  // ── Reliability /30 — few cancellations, proper Teams links (not bare calendar blocks) ──
-  const cancelPts = Math.max(0, 15 - Math.round(cancelledRate / 100 * 15 * 2));
-  const onlinePts = Math.round((onlineMeetingRate / 100) * 15);
-  const reliabilityScore = Math.min(30, cancelPts + onlinePts);
-
-  const callHygieneScore = volumeScore + cadenceScore + reliabilityScore;
+  // Volume/Cadence/Reliability scoring was removed 2026-08-16 — calendar attendance
+  // metadata doesn't measure whether the person actually helped the customer. The fields
+  // above stay as call-activity context; the actual score comes from transcript-graded
+  // response quality, computed separately in getHygieneMetrics() (needs a DB read against
+  // call_transcript_ratings, which analyzeUser() — a pure Graph-calendar function — doesn't
+  // have reason to touch).
 
   const calls: HeldCustomerCall[] = held
     .filter(e => e.isOnlineMeeting && e.onlineMeeting?.joinUrl)
@@ -275,12 +272,64 @@ async function analyzeUser(
     declinedCalls: declined,
     cancelledRate,
     onlineMeetingRate,
-    volumeScore,
-    cadenceScore,
-    reliabilityScore,
-    callHygieneScore,
     calls,
   };
+}
+
+// Everything analyzeUser() can compute from Graph calendar data alone, before the
+// separate DB-backed Quality aggregation pass in getHygieneMetrics() fills in the rest.
+type CalendarContext = Omit<UserCallHygiene, 'qualityScore' | 'qualityCoverage'>;
+
+// Aggregates transcript-graded Q&A exchanges for one user's gradable held calls into a
+// single Quality percentage + coverage breakdown. A single batched query per user (not one
+// query per call) — see Performance review #2 in the 2026-08-15 eng review.
+export async function aggregateQuality(userEmail: string, calls: HeldCustomerCall[]): Promise<{
+  qualityScore: number | null;
+  qualityCoverage: QualityCoverage;
+}> {
+  const gradable = calls.filter(c => !!c.joinUrl);
+  const total = gradable.length;
+  if (total === 0) {
+    return { qualityScore: null, qualityCoverage: { graded: 0, noQuestion: 0, excluded: 0, pending: 0, total: 0 } };
+  }
+
+  const eventIds = gradable.map(c => c.eventId);
+  const result = await query(
+    `SELECT event_id, status, rating FROM call_transcript_ratings WHERE event_id = ANY($1) AND user_email = $2`,
+    [eventIds, userEmail]
+  );
+  const byEventId = new Map(
+    (result.rows as Array<{ event_id: string; status: string; rating: any }>).map(r => [r.event_id, r])
+  );
+
+  let graded = 0, noQuestion = 0, excluded = 0;
+  let wellCount = 0, scoredCount = 0;
+
+  for (const call of gradable) {
+    const row = byEventId.get(call.eventId);
+    if (!row) continue; // pending — job hasn't graded this call yet (or is retrying after a transient failure)
+
+    if (row.status === 'excluded') {
+      excluded++;
+      continue;
+    }
+
+    // status === 'graded'
+    const qaPairs = (row.rating?.qaPairs ?? []) as Array<{ score: number }>;
+    if (qaPairs.length === 0) {
+      noQuestion++; // a successful grade with nothing to score — not the same as a failure
+      continue;
+    }
+    graded++;
+    for (const qa of qaPairs) {
+      scoredCount++;
+      if (bucketQAScore(qa.score) === 'answered_well') wellCount++;
+    }
+  }
+
+  const pending = total - graded - noQuestion - excluded;
+  const qualityScore = scoredCount > 0 ? Math.round((wellCount / scoredCount) * 100) : null;
+  return { qualityScore, qualityCoverage: { graded, noQuestion, excluded, pending, total } };
 }
 
 export const callHygieneService = {
@@ -371,7 +420,7 @@ export const callHygieneService = {
     }
     logger.info(`Call hygiene: ${validUsers.length}/${allUsers.length} users have accessible mailboxes`);
 
-    const results: UserCallHygiene[] = [];
+    const results: CalendarContext[] = [];
     for (let i = 0; i < validUsers.length; i += 3) {
       const batch = validUsers.slice(i, i + 3);
       const settled = await Promise.allSettled(
@@ -398,7 +447,29 @@ export const callHygieneService = {
       };
     }
 
-    const sorted = results.sort((a, b) => b.callHygieneScore - a.callHygieneScore);
+    // Quality aggregation — one batched call_transcript_ratings query per user (see
+    // aggregateQuality doc comment), not folded into analyzeUser() since that function is
+    // a pure Graph-calendar computation with no reason to touch the database.
+    const merged: UserCallHygiene[] = [];
+    for (let i = 0; i < results.length; i += 3) {
+      const batch = results.slice(i, i + 3);
+      const settled = await Promise.allSettled(
+        batch.map(async r => ({ ...r, ...(await aggregateQuality(r.userEmail, r.calls)) }))
+      );
+      for (const r of settled) {
+        if (r.status === 'fulfilled') merged.push(r.value);
+        else logger.error('Call hygiene: Quality aggregation error:', r.reason);
+      }
+    }
+
+    // null (no gradable signal) sorts last, not first — treating "no data" as the worst
+    // score would be misleading for someone whose customers mostly organize their own calls.
+    const sorted = merged.sort((a, b) => {
+      if (a.qualityScore === null && b.qualityScore === null) return 0;
+      if (a.qualityScore === null) return 1;
+      if (b.qualityScore === null) return -1;
+      return b.qualityScore - a.qualityScore;
+    });
 
     await execute(
       `INSERT INTO call_hygiene_cache (period_start, period_end, metrics) VALUES ($1, $2, $3)`,
