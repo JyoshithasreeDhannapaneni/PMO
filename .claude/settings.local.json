@@ -167,7 +167,8 @@
       "Bash(echo \"EXIT=$?\")",
       "Bash(rm -f tsconfig.tsbuildinfo)",
       "Bash(curl -s -v -o /dev/null -w \"frontend: %{http_code}\\\\n\" http://localhost:3000/)",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(curl -s -X POST http://localhost:3001/api/auth/login -H \"Content-Type: application/json\" -d '{\"email\":\"admin@company.com\",\"password\":\"admin2026\"}')"
     ],
     "additionalDirectories": [
       "c:\\Users\\BharathTummaganti\\OneDrive - CloudFuze, Inc\\Documents\\PMO\\PMO",
