@@ -1,10 +1,12 @@
 import { Router } from 'express';
 import { callHygieneController } from '../controllers/callHygieneController';
-import { requireAuth } from '../middleware/auth';
+import { requireRole } from '../middleware/auth';
 
 const router = Router();
 
-router.get('/', requireAuth, callHygieneController.getMetrics);
-router.get('/export', requireAuth, callHygieneController.exportExcel);
+// Quality is HR-adjacent content — ADMIN sees everyone, PROJECT_MANAGER sees only their
+// own row (enforced in the controller). Other roles get a 403, not an empty table.
+router.get('/', requireRole('ADMIN', 'PROJECT_MANAGER'), callHygieneController.getMetrics);
+router.get('/export', requireRole('ADMIN', 'PROJECT_MANAGER'), callHygieneController.exportExcel);
 
 export default router;

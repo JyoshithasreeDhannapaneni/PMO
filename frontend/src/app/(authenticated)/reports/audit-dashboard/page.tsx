@@ -237,6 +237,13 @@ function monthStart(offset = 0) { return format(startOfMonth(subMonths(new Date(
 function monthEnd(offset = 0) { return format(endOfMonth(subMonths(new Date(), offset)), 'yyyy-MM-dd'); }
 
 export default function AuditDashboardPage() {
+  const { user: currentUser } = useAuth();
+  const isAdmin = currentUser?.role === 'ADMIN';
+  // Quality (backend/src/services/callHygieneService.ts) is HR-adjacent content — ADMIN
+  // sees everyone, PROJECT_MANAGER sees only their own row (enforced server-side too;
+  // this just decides whether to call the endpoint at all and what to show if not).
+  const canSeeCallHygiene = isAdmin || currentUser?.role === 'PROJECT_MANAGER';
+
   const [mode, setMode] = useState<Mode>('weekly');
   const [draftStart, setDraftStart] = useState(weekStart);
   const [draftEnd, setDraftEnd] = useState(todayStr);
@@ -393,7 +400,7 @@ export default function AuditDashboardPage() {
     isLoading: isCallHygieneLoading,
     refetch: refetchCallHygiene,
     isFetching: isCallHygieneFetching,
-  } = useCallHygiene(hygieneTab === 'call');
+  } = useCallHygiene(hygieneTab === 'call' && canSeeCallHygiene);
 
   const callHygieneResult = callHygieneData?.data ?? {};
   const callMetrics: any[] = callHygieneResult.metrics ?? [];
@@ -403,7 +410,10 @@ export default function AuditDashboardPage() {
   const callHygienePeriodEnd: string = callHygieneResult.periodEnd ?? '';
   const callHygieneComputedAt: string = callHygieneResult.computedAt ?? '';
 
-  function callScoreColor(score: number) {
+  // score is null when a person has no gradable calls yet (no signal, not a bad score) —
+  // rendered as a distinct neutral state, never folded into the red "bad score" bucket.
+  function callScoreColor(score: number | null) {
+    if (score === null) return { bg: 'bg-gray-100', text: 'text-gray-500', ring: 'ring-gray-300' };
     if (score >= 80) return { bg: 'bg-green-100', text: 'text-green-700', ring: 'ring-green-300' };
     if (score >= 60) return { bg: 'bg-yellow-100', text: 'text-yellow-700', ring: 'ring-yellow-300' };
     return { bg: 'bg-red-100', text: 'text-red-700', ring: 'ring-red-300' };
@@ -437,11 +447,11 @@ export default function AuditDashboardPage() {
   function handleExportCallHygieneCSV() {
     if (!callMetrics.length) return;
     const rows = [
-      ['Team Member', 'Email', 'Customer Calls (30d)', 'PM-Scheduled', 'Customer-Scheduled', 'Unique Customers', 'Calls / Week', 'Days Since Last Call', 'Cancelled Calls', 'Declined/No-Response', 'Cancelled Rate (%)', 'Online Meeting Rate (%)', 'Volume /40', 'Cadence /30', 'Reliability /30', 'Hygiene /100'],
+      ['Team Member', 'Email', 'Customer Calls (30d)', 'PM-Scheduled', 'Customer-Scheduled', 'Unique Customers', 'Calls / Week', 'Days Since Last Call', 'Cancelled Calls', 'Declined/No-Response', 'Cancelled Rate (%)', 'Online Meeting Rate (%)', 'Hygiene /100', 'Graded', 'No Q&A', 'Excluded', 'Pending', 'Total Gradable'],
       ...callMetrics.map((m: any) => [
         m.userName, m.userEmail, m.totalCustomerCalls, m.internallyScheduled ?? 0, m.externallyScheduled ?? 0, m.uniqueCustomers, m.callsPerWeek,
         m.daysSinceLastCustomerCall ?? 'N/A', m.cancelledCalls, m.declinedCalls ?? 0, m.cancelledRate, m.onlineMeetingRate,
-        m.volumeScore ?? 0, m.cadenceScore ?? 0, m.reliabilityScore ?? 0, m.callHygieneScore ?? 0,
+        m.qualityScore ?? 'N/A', m.qualityCoverage?.graded ?? 0, m.qualityCoverage?.noQuestion ?? 0, m.qualityCoverage?.excluded ?? 0, m.qualityCoverage?.pending ?? 0, m.qualityCoverage?.total ?? 0,
       ]),
     ];
     downloadCSV(rows, `call-hygiene-${format(new Date(), 'yyyy-MM-dd')}.csv`);
@@ -555,9 +565,6 @@ export default function AuditDashboardPage() {
   }
 
   // ── Hygiene scorecard email — send now / scheduled send ──────────
-  const { user: currentUser } = useAuth();
-  const isAdmin = currentUser?.role === 'ADMIN';
-
   const [isSyncingOutlook, setIsSyncingOutlook] = useState(false);
   const [syncOutlookStatus, setSyncOutlookStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [syncOutlookError, setSyncOutlookError] = useState('');
@@ -2173,8 +2180,19 @@ export default function AuditDashboardPage() {
 
         {/* ── Call Hygiene Tab ────────────────────────────────────── */}
         {hygieneTab === 'call' && (<>
+          {/* Not available for this role — Quality is HR-adjacent content, ADMIN + PROJECT_MANAGER only */}
+          {!canSeeCallHygiene && (
+            <Card>
+              <div className="py-12 text-center space-y-2">
+                <Phone size={32} className="mx-auto text-gray-300" />
+                <p className="font-semibold text-gray-600">Call Hygiene isn't available for your role</p>
+                <p className="text-sm text-gray-400 max-w-md mx-auto">Contact an admin if you believe you should have access.</p>
+              </div>
+            </Card>
+          )}
+
           {/* Credentials missing */}
-          {!isCallHygieneLoading && !callHygieneConfigured && !callHygieneAuthError && (
+          {canSeeCallHygiene && !isCallHygieneLoading && !callHygieneConfigured && !callHygieneAuthError && (
             <Card>
               <div className="py-12 text-center space-y-3">
                 <Phone size={32} className="mx-auto text-gray-300" />
@@ -2191,7 +2209,7 @@ export default function AuditDashboardPage() {
           )}
 
           {/* Credentials present but Graph API authentication / permission failed */}
-          {!isCallHygieneLoading && callHygieneConfigured && callHygieneAuthError && (
+          {canSeeCallHygiene && !isCallHygieneLoading && callHygieneConfigured && callHygieneAuthError && (
             <Card>
               <div className="py-12 text-center space-y-3">
                 <AlertCircle size={32} className="mx-auto text-red-400" />
@@ -2212,7 +2230,7 @@ export default function AuditDashboardPage() {
           )}
 
           {/* Loading */}
-          {isCallHygieneLoading && (
+          {canSeeCallHygiene && isCallHygieneLoading && (
             <div className="flex flex-col items-center justify-center py-16 gap-3">
               <div className="flex items-center gap-3">
                 <Loader2 size={28} className="animate-spin text-indigo-500" />
@@ -2226,7 +2244,10 @@ export default function AuditDashboardPage() {
 
           {/* KPI cards */}
           {callMetrics.length > 0 && (() => {
-            const avgScore = Math.round(callMetrics.reduce((s: number, m: any) => s + m.callHygieneScore, 0) / callMetrics.length);
+            const scored = callMetrics.filter((m: any) => m.qualityScore !== null && m.qualityScore !== undefined);
+            const avgScore = scored.length > 0
+              ? Math.round(scored.reduce((s: number, m: any) => s + m.qualityScore, 0) / scored.length)
+              : null;
             const totalCalls = callMetrics.reduce((s: number, m: any) => s + m.totalCustomerCalls, 0);
             const avgCallsPerWeek = Math.round((callMetrics.reduce((s: number, m: any) => s + m.callsPerWeek, 0) / callMetrics.length) * 10) / 10;
             const avgCancelRate = Math.round(callMetrics.reduce((s: number, m: any) => s + m.cancelledRate, 0) / callMetrics.length);
@@ -2235,8 +2256,13 @@ export default function AuditDashboardPage() {
             return (
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div className={`${sc.bg} rounded-xl p-4 border border-white`}>
-                  <div className={`text-2xl font-bold ${sc.text}`}>{avgScore}</div>
-                  <div className="text-xs text-gray-500 mt-0.5">Fleet Call Hygiene Score</div>
+                  <div className={`text-2xl font-bold ${sc.text}`}>{avgScore ?? '—'}</div>
+                  <div className="text-xs text-gray-500 mt-0.5">
+                    Fleet Call Hygiene Score
+                    {scored.length < callMetrics.length && (
+                      <span className="block text-[10px] text-gray-400">{scored.length}/{callMetrics.length} scored</span>
+                    )}
+                  </div>
                 </div>
                 <div className="bg-blue-50 rounded-xl p-4 border border-white">
                   <div className="text-2xl font-bold text-blue-700">{totalCalls}</div>
@@ -2273,16 +2299,14 @@ export default function AuditDashboardPage() {
                       <th className="text-center py-2.5 px-3 text-xs font-semibold text-gray-500 whitespace-nowrap">Calls (30d)<span className="block font-normal text-gray-400 text-[10px]">PM / Customer sched.</span></th>
                       <th className="text-center py-2.5 px-3 text-xs font-semibold text-gray-500 whitespace-nowrap">Customers</th>
                       <th className="text-center py-2.5 px-3 text-xs font-semibold text-gray-500 whitespace-nowrap">Last Call</th>
-                      <th className="text-center py-2.5 px-3 text-xs font-semibold text-blue-600 whitespace-nowrap">Volume<span className="font-normal text-blue-400">/40</span></th>
-                      <th className="text-center py-2.5 px-3 text-xs font-semibold text-purple-600 whitespace-nowrap">Cadence<span className="font-normal text-purple-400">/30</span></th>
-                      <th className="text-center py-2.5 px-3 text-xs font-semibold text-teal-600 whitespace-nowrap">Reliability<span className="font-normal text-teal-400">/30</span></th>
-                      <th className="text-center py-2.5 px-3 text-xs font-semibold text-gray-800 whitespace-nowrap">Hygiene<span className="font-normal text-gray-400">/100</span></th>
+                      <th className="text-center py-2.5 px-3 text-xs font-semibold text-gray-800 whitespace-nowrap">Hygiene<span className="font-normal text-gray-400">/100</span><span className="block font-normal text-gray-400 text-[10px]">% questions answered well</span></th>
                       <th className="text-center py-2.5 px-3 text-xs font-semibold text-gray-500 whitespace-nowrap">Calls</th>
                     </tr>
                   </thead>
                   <tbody>
                     {callMetrics.map((m: any, i: number) => {
-                      const sc = callScoreColor(m.callHygieneScore);
+                      const sc = callScoreColor(m.qualityScore ?? null);
+                      const coverage = m.qualityCoverage ?? { graded: 0, noQuestion: 0, excluded: 0, pending: 0, total: 0 };
                       const isExpanded = expandedCallUser === m.userEmail;
                       const gradableCalls = (m.calls ?? []) as Array<{
                         eventId: string; subject: string; start: string;
@@ -2309,30 +2333,12 @@ export default function AuditDashboardPage() {
                             )}
                           </td>
                           <td className="py-3 px-3 text-center">
-                            <span className={`inline-block text-xs font-semibold px-2.5 py-0.5 rounded-full ${
-                              (m.volumeScore ?? 0) >= 28 ? 'bg-blue-100 text-blue-700' :
-                              (m.volumeScore ?? 0) >= 16 ? 'bg-yellow-100 text-yellow-700' :
-                              'bg-red-100 text-red-700'
-                            }`}>{m.volumeScore ?? 0}</span>
-                          </td>
-                          <td className="py-3 px-3 text-center">
-                            <span className={`inline-block text-xs font-semibold px-2.5 py-0.5 rounded-full ${
-                              (m.cadenceScore ?? 0) >= 21 ? 'bg-purple-100 text-purple-700' :
-                              (m.cadenceScore ?? 0) >= 12 ? 'bg-yellow-100 text-yellow-700' :
-                              'bg-red-100 text-red-700'
-                            }`}>{m.cadenceScore ?? 0}</span>
-                          </td>
-                          <td className="py-3 px-3 text-center">
-                            <span className={`inline-block text-xs font-semibold px-2.5 py-0.5 rounded-full ${
-                              (m.reliabilityScore ?? 0) >= 21 ? 'bg-teal-100 text-teal-700' :
-                              (m.reliabilityScore ?? 0) >= 12 ? 'bg-yellow-100 text-yellow-700' :
-                              'bg-red-100 text-red-700'
-                            }`}>{m.reliabilityScore ?? 0}</span>
-                          </td>
-                          <td className="py-3 px-3 text-center">
                             <span className={`inline-block text-sm font-bold px-3 py-1 rounded-full ring-1 ${sc.bg} ${sc.text} ${sc.ring}`}>
-                              {m.callHygieneScore ?? 0}
+                              {m.qualityScore ?? '—'}
                             </span>
+                            <div className="text-[10px] text-gray-400 mt-0.5">
+                              {coverage.total === 0 ? 'no gradable calls' : `${coverage.graded}/${coverage.total} graded`}
+                            </div>
                           </td>
                           <td className="py-3 px-3 text-center">
                             {gradableCalls.length > 0 ? (
@@ -2349,7 +2355,7 @@ export default function AuditDashboardPage() {
                         </tr>
                         {isExpanded && gradableCalls.length > 0 && (
                           <tr className="bg-indigo-50/30 border-b border-gray-100">
-                            <td colSpan={9} className="px-3 py-3">
+                            <td colSpan={6} className="px-3 py-3">
                               <div className="text-[11px] font-semibold text-gray-500 mb-2">
                                 Customer calls in the last 30 days — pick one to grade this person's answers against the transcript
                               </div>
@@ -2394,7 +2400,7 @@ export default function AuditDashboardPage() {
                 <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-green-400 inline-block" /> ≥80 Good</span>
                 <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-yellow-400 inline-block" /> 60–79 Fair</span>
                 <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-red-400 inline-block" /> &lt;60 Needs Attention</span>
-                <span className="ml-auto text-gray-400">Volume /40 + Cadence /30 + Reliability /30 = Hygiene /100</span>
+                <span className="ml-auto text-gray-400">Hygiene = % of graded customer questions answered well (transcript-graded, not calendar attendance)</span>
               </div>
             </Card>
           )}

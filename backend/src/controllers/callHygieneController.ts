@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import * as XLSX from 'xlsx';
-import { callHygieneService } from '../services/callHygieneService';
+import { callHygieneService, type UserCallHygiene } from '../services/callHygieneService';
 import { asyncHandler } from '../middleware/errorHandler';
 
 function sendWorkbook(res: Response, sheets: Record<string, any[]>, filename: string) {
@@ -14,16 +14,29 @@ function sendWorkbook(res: Response, sheets: Record<string, any[]>, filename: st
   res.send(buf);
 }
 
+// Quality is HR-adjacent content (an AI grade of what someone said in a meeting), so
+// unlike the old calendar-metadata score, exposure needs real per-person scoping, not
+// just a field strip. ADMIN sees everyone; PROJECT_MANAGER sees only their own row.
+function scopeToRole(metrics: UserCallHygiene[], role: string, email: string): UserCallHygiene[] {
+  if (role === 'ADMIN') return metrics;
+  const lower = email.toLowerCase();
+  return metrics.filter(m => m.userEmail.toLowerCase() === lower);
+}
+
 export const callHygieneController = {
   getMetrics: asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const forceRefresh = req.query.refresh === 'true';
     const result = await callHygieneService.getHygieneMetrics(forceRefresh);
-    res.json({ success: true, data: result });
+    const user = (req as any).user;
+    const metrics = scopeToRole(result.metrics, user.role, user.email);
+    res.json({ success: true, data: { ...result, metrics } });
   }),
 
-  exportExcel: asyncHandler(async (_req: Request, res: Response): Promise<void> => {
+  exportExcel: asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const { metrics } = await callHygieneService.getHygieneMetrics(false);
-    const rows = metrics.map(m => ({
+    const user = (req as any).user;
+    const scoped = scopeToRole(metrics, user.role, user.email);
+    const rows = scoped.map(m => ({
       'Team Member': m.userName,
       Email: m.userEmail,
       'Customer Calls (30d)': m.totalCustomerCalls,
@@ -36,10 +49,8 @@ export const callHygieneController = {
       'Declined/No-Response Calls': m.declinedCalls,
       'Cancelled Rate (%)': m.cancelledRate,
       'Online Meeting Rate (%)': m.onlineMeetingRate,
-      'Volume Score (/40)': m.volumeScore,
-      'Cadence Score (/30)': m.cadenceScore,
-      'Reliability Score (/30)': m.reliabilityScore,
-      'Call Hygiene Score (/100)': m.callHygieneScore,
+      'Quality Score (/100)': m.qualityScore ?? 'N/A',
+      'Quality Coverage': `${m.qualityCoverage.graded} graded / ${m.qualityCoverage.noQuestion} no-Q&A / ${m.qualityCoverage.excluded} excluded / ${m.qualityCoverage.pending} pending (of ${m.qualityCoverage.total})`,
     }));
     sendWorkbook(
       res,
