@@ -24,6 +24,9 @@ export const accountManagerController = {
         migration_types,
         is_escalated,
         escalation_priority,
+        is_overaged,
+        extended_end_date,
+        overage_amount,
         project_manager,
         poc_qualification_status,
         poc_env_setup_status,
@@ -133,22 +136,39 @@ function mapProjectRow(row: any) {
     const pe = new Date(row.planned_end);
     const as = row.actual_start ? new Date(row.actual_start) : null;
     const extEnd = row.extended_end_date ? new Date(row.extended_end_date) : null;
-    expectedEnd = (extEnd || pe).toISOString().split('T')[0];
 
-    // Only pass actualEnd for truly finished projects — ACTIVE/ON_HOLD projects
-    // may have actualEnd filled as "expected end" by users, which would cause
-    // calculateDelay to treat them as completed (always NOT_DELAYED).
+    // Kickoff-adjusted expected end — mirrors projectService.mapProjectRow so
+    // this page's "Project End" matches the All Projects page for the same project.
+    const sowMs = pe.getTime() - ps.getTime();
+    const kickoffEnd = as ? new Date(as.getTime() + sowMs) : pe;
+
     const isFinished = row.status === 'COMPLETED' || row.status === 'CANCELLED' || row.status === 'INACTIVE' || row.phase === 'COMPLETED';
-    if (isFinished) {
+    const isOveraged = !!row.is_overaged;
+
+    if (isOveraged && !isFinished) {
+      // planned_end is the original SOW end and must not be used for delay calculation.
+      // extended_end_date is the agreed extension deadline; delay is days past that.
+      const deadline = extEnd || pe;
+      expectedEnd = extEnd ? extEnd.toISOString().split('T')[0] : null;
+      const diffMs = new Date().getTime() - deadline.getTime();
+      liveDelayDays   = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+      liveDelayStatus = 'EXTENDED';
+    } else if (isFinished) {
       // Freeze at whatever was last stored — inactive/completed projects should
       // stop accruing delay days rather than keep counting against today's date.
       liveDelayStatus = row.delay_status;
       liveDelayDays   = Number(row.delay_days) || 0;
-      expectedEnd = (extEnd || pe).toISOString().split('T')[0];
+      expectedEnd = (extEnd || kickoffEnd).toISOString().split('T')[0];
     } else {
+      expectedEnd = (extEnd || kickoffEnd).toISOString().split('T')[0];
       const result = calculateDelay(ps, pe, as, null, new Date(), extEnd);
       liveDelayStatus = result.delayStatus;
       liveDelayDays   = result.delayDays;
+    }
+
+    if (row.phase === 'COMPLETED') {
+      liveDelayDays   = 0;
+      liveDelayStatus = 'NOT_DELAYED';
     }
   }
 
@@ -171,6 +191,9 @@ function mapProjectRow(row: any) {
     migrationTypes: row.migration_types,
     isEscalated: !!row.is_escalated,
     escalationPriority: row.escalation_priority ?? null,
+    isOveraged: !!row.is_overaged,
+    overageAmount: row.overage_amount ?? null,
+    extendedEndDate: row.extended_end_date ?? null,
     projectType: row.project_type ?? 'MIGRATION',
     pocQualificationStatus: row.poc_qualification_status ?? 'not_started',
     pocEnvSetupStatus: row.poc_env_setup_status ?? 'not_started',

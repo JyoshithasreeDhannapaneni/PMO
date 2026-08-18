@@ -12,6 +12,17 @@ interface GraphEvent {
   isOnlineMeeting: boolean;
   isCancelled: boolean;
   responseStatus?: { response: string };
+  onlineMeeting?: { joinUrl: string } | null;
+}
+
+export interface HeldCustomerCall {
+  eventId: string;
+  subject: string;
+  start: string;
+  organizerEmail: string;
+  organizerName: string;
+  joinUrl: string | null;
+  customerAttendees: Array<{ name: string; email: string }>;
 }
 
 export interface UserCallHygiene {
@@ -37,6 +48,9 @@ export interface UserCallHygiene {
   reliabilityScore: number;       // 0-30
   // Overall
   callHygieneScore: number;       // 0-100
+  // Individual held customer calls in the period — lets the UI offer
+  // "rate this call" against a specific transcript rather than the aggregate.
+  calls: HeldCustomerCall[];
 }
 
 const CF_DOMAIN = 'cloudfuze.com';
@@ -150,10 +164,14 @@ async function analyzeUser(
   const userPath = encodeURIComponent(userEmail);
   const url = `/users/${userPath}/calendarView` +
     `?startDateTime=${encodeURIComponent(since)}&endDateTime=${encodeURIComponent(until)}` +
-    `&$select=id,subject,organizer,attendees,start,end,isOnlineMeeting,isCancelled,responseStatus` +
+    `&$select=id,subject,organizer,attendees,start,end,isOnlineMeeting,isCancelled,responseStatus,onlineMeeting` +
     `&$top=100`;
 
-  const events = await fetchEvents(client, url, 500).catch(() => [] as GraphEvent[]);
+  // Let a failed calendar fetch (e.g. 403 from missing Calendars.Read consent)
+  // reject analyzeUser rather than silently becoming an empty result — otherwise
+  // every user renders as "0 calls" instead of the permissionDenied/authError
+  // path below ever getting a chance to fire.
+  const events = await fetchEvents(client, url, 500);
 
   // Customer-facing = at least one external attendee AND this person is on the invite
   // (as organizer OR attendee) — counts calls the PM scheduled as well as calls the
@@ -229,6 +247,20 @@ async function analyzeUser(
 
   const callHygieneScore = volumeScore + cadenceScore + reliabilityScore;
 
+  const calls: HeldCustomerCall[] = held
+    .filter(e => e.isOnlineMeeting && e.onlineMeeting?.joinUrl)
+    .map(e => ({
+      eventId: e.id,
+      subject: e.subject,
+      start: toUtcIso(e.start.dateTime),
+      organizerEmail: e.organizer?.emailAddress?.address ?? '',
+      organizerName: e.organizer?.emailAddress?.name ?? '',
+      joinUrl: e.onlineMeeting?.joinUrl ?? null,
+      customerAttendees: (e.attendees ?? [])
+        .filter(a => isExternal(a.emailAddress.address))
+        .map(a => ({ name: a.emailAddress.name, email: a.emailAddress.address })),
+    }));
+
   return {
     userEmail,
     userName,
@@ -247,6 +279,7 @@ async function analyzeUser(
     cadenceScore,
     reliabilityScore,
     callHygieneScore,
+    calls,
   };
 }
 
