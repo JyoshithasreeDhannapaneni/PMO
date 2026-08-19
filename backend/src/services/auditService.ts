@@ -503,8 +503,16 @@ class AuditService {
     };
   }
 
-  async getHygieneBoard() {
-    // ── 1. Real activity from audit_logs (last 30 days), matched by user account ──
+  // Activity Score and Case Study Score are range-aware — pass startDate/endDate
+  // to score a specific period. Data Quality, Delay Accountability, and
+  // Phase-Date Integrity always reflect *current* project state (e.g. "is this
+  // field filled in right now"), not events in a window, so they ignore the
+  // range and stay consistent regardless of the period picked.
+  async getHygieneBoard(startDate?: string, endDate?: string) {
+    const rangeEnd   = endDate   ? new Date(endDate)   : new Date();
+    const rangeStart = startDate ? new Date(startDate) : new Date(rangeEnd.getTime() - 30 * 86400000);
+
+    // ── 1. Real activity from audit_logs within the selected range ──
     const activityResult = await query(`
       SELECT
         u.id   AS user_id,
@@ -520,10 +528,11 @@ class AuditService {
       FROM users u
       LEFT JOIN audit_logs a
         ON a.user_id = u.id
-       AND a.created_at >= NOW() - INTERVAL '30 days'
+       AND a.created_at >= $1
+       AND a.created_at <= $2
       WHERE u.role IN ('PROJECT_MANAGER', 'ADMIN')
       GROUP BY u.id, u.name, u.email
-    `);
+    `, [rangeStart.toISOString(), rangeEnd.toISOString()]);
 
     // Keyed by both display name and email local-part, so a project_manager
     // value of "shruthi" resolves whether it matches the account name or the
@@ -631,9 +640,11 @@ class AuditService {
       // ── Case study metrics ────────────────────────────────────────────
       // Projects finished within the grace window are excluded from scoring —
       // a project completed days ago cannot yet be expected to have a case
-      // study. They still surface in the counts below.
+      // study. They still surface in the counts below. Grace is measured from
+      // the end of the selected range (not real "now"), so viewing a past
+      // period doesn't count projects finished after that period as "in grace."
       const CS_GRACE_DAYS = 30;
-      const csGraceCutoff = new Date(now.getTime() - CS_GRACE_DAYS * 86400000);
+      const csGraceCutoff = new Date(rangeEnd.getTime() - CS_GRACE_DAYS * 86400000);
       const csScopeCompleted = completed.filter(
         (p) => !p.actual_end || new Date(p.actual_end) <= csGraceCutoff
       );
