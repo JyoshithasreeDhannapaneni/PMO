@@ -36,7 +36,7 @@ export const emailHygieneController = {
   }),
 
   exportExcel: asyncHandler(async (_req: Request, res: Response): Promise<void> => {
-    const { metrics } = await emailHygieneService.getHygieneMetrics(false);
+    const { metrics, teamHygiene, segmentHeads } = await emailHygieneService.getHygieneMetrics(false);
     const rows = metrics.map(m => ({
       'Team Member': m.userName,
       Email: m.userEmail,
@@ -59,12 +59,32 @@ export const emailHygieneController = {
       'Quality Score (/30)': m.qualityScore,
       'Resolution Score (/20)': m.resolutionScore,
       'Email Hygiene Score (/100)': m.emailHygieneScore,
-      'Team DL Email': m.teamDlEmail ?? '',
-      'Team Hygiene Score (/100)': m.teamHygieneScore ?? '',
     }));
+    const teamRows = teamHygiene.map(t => ({
+      Level: 'Team',
+      Segment: t.segment,
+      Manager: t.managerName,
+      'Manager Email': t.managerEmail,
+      'Hygiene Score (/100)': t.teamScore ?? 'N/A',
+      Basis: `${t.scoredMemberCount}/${t.memberCount} members scored`,
+    }));
+    // Segment head rows — their score IS the average of their segment's team scores
+    // (mean(team4, team6) for ENT; mean(team1,2,3,5) for SMB), not their own mailbox
+    // activity. Appended to the same sheet so the export is a complete rollup.
+    const segmentRows = (['ENT', 'SMB'] as const).map(seg => {
+      const head = segmentHeads[seg];
+      return {
+        Level: 'Segment',
+        Segment: seg,
+        Manager: head.name,
+        'Manager Email': head.email,
+        'Hygiene Score (/100)': head.score ?? 'N/A',
+        Basis: `avg of ${head.teamIds.join(', ')}`,
+      };
+    });
     sendWorkbook(
       res,
-      { 'Email Hygiene': rows },
+      { 'Email Hygiene': rows, 'Team Hygiene': [...segmentRows, ...teamRows] },
       `email-hygiene-${new Date().toISOString().slice(0, 10)}.xlsx`
     );
   }),

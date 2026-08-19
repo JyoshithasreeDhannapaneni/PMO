@@ -312,11 +312,16 @@ export default function AuditDashboardPage() {
 
   const emailHygieneResult = emailHygieneData?.data ?? {};
   const emailMetrics: any[] = emailHygieneResult.metrics ?? [];
+  const emailTeamHygiene: any[] = emailHygieneResult.teamHygiene ?? [];
+  type SegmentHeadInfo = { email: string; name: string; score: number | null; teamIds: string[] };
+  const emailSegmentHeads: { ENT?: SegmentHeadInfo; SMB?: SegmentHeadInfo } = emailHygieneResult.segmentHeads ?? {};
   const emailHygieneConfigured: boolean = emailHygieneResult.isConfigured ?? false;
   const emailHygieneAuthError: string | undefined = emailHygieneResult.authError;
   const emailHygienePeriodStart: string = emailHygieneResult.periodStart ?? '';
   const emailHygienePeriodEnd: string = emailHygieneResult.periodEnd ?? '';
   const emailHygieneComputedAt: string = emailHygieneResult.computedAt ?? '';
+  const [emailHygieneView, setEmailHygieneView] = useState<'everyone' | 'managers'>('everyone');
+  const [expandedTeamId, setExpandedTeamId] = useState<string | null>(null);
 
   function emailScoreColor(score: number) {
     if (score >= 80) return { bg: 'bg-green-100', text: 'text-green-700', ring: 'ring-green-300' };
@@ -334,15 +339,29 @@ export default function AuditDashboardPage() {
   function handleExportEmailHygieneCSV() {
     if (!emailMetrics.length) return;
     const rows = [
-      ['Team Member', 'Email', 'Threads', 'Speed /30', 'Quality /30', 'Resolution /20', 'Tone /20', 'Hygiene /100', 'Team Hygiene /100', 'Team DL'],
+      ['Team Member', 'Email', 'Threads', 'Speed /30', 'Quality /30', 'Resolution /20', 'Tone /20', 'Hygiene /100'],
       ...emailMetrics.map((m: any) => [
         m.userName, m.userEmail, m.uniqueCustomerThreads,
         m.speedScore ?? 0, m.qualityScore ?? 0, m.resolutionScore ?? 0, m.toneScore ?? 0, m.emailHygieneScore ?? 0,
-        m.teamHygieneScore != null ? Math.round(m.teamHygieneScore) : '',
-        m.teamDlEmail ?? '',
       ]),
     ];
     downloadCSV(rows, `email-hygiene-${format(new Date(), 'yyyy-MM-dd')}.csv`);
+  }
+
+  function handleExportTeamHygieneCSV() {
+    if (!emailTeamHygiene.length) return;
+    const rows = [
+      ['Level', 'Segment', 'Manager', 'Manager Email', 'Hygiene /100', 'Basis'],
+      ...(['ENT', 'SMB'] as const).map(seg => {
+        const head = emailSegmentHeads[seg];
+        return ['Segment', seg, head?.name ?? '', head?.email ?? '', head?.score ?? '', `avg of ${head?.teamIds?.join(', ') ?? ''}`];
+      }),
+      ...emailTeamHygiene.map((t: any) => [
+        'Team', t.segment, t.managerName, t.managerEmail,
+        t.teamScore ?? '', `${t.scoredMemberCount}/${t.memberCount} members scored`,
+      ]),
+    ];
+    downloadCSV(rows, `team-email-hygiene-${format(new Date(), 'yyyy-MM-dd')}.csv`);
   }
 
   async function handleExportEmailHygieneExcel() {
@@ -540,6 +559,18 @@ export default function AuditDashboardPage() {
     );
   }
 
+  // A manager's "team-wise" score: for the two segment heads (Abhishek/Ajay) that's their
+  // segment average (mean of that segment's team scores); for a team manager, it's the
+  // score of the specific team they run. Never their own personal mailbox activity.
+  function teamWiseScoreFor(email: string | undefined): number | null {
+    if (!email) return null;
+    const lower = email.toLowerCase();
+    if (emailSegmentHeads.ENT?.email.toLowerCase() === lower) return emailSegmentHeads.ENT.score;
+    if (emailSegmentHeads.SMB?.email.toLowerCase() === lower) return emailSegmentHeads.SMB.score;
+    const team = emailTeamHygiene.find((t: any) => t.managerEmail?.toLowerCase() === lower);
+    return team ? team.teamScore : null;
+  }
+
   function handleDownloadEmailHygieneImage() {
     if (!emailMetrics.length) return;
     const allPMs = new Set(SEGMENT_CONFIG.flatMap(s => s.managers).map(m => m.toLowerCase()));
@@ -551,16 +582,16 @@ export default function AuditDashboardPage() {
       .map((m: any) => ({
         name: m.userName,
         score: Math.round(m.emailHygieneScore ?? 0),
-        teamScore: m.teamHygieneScore != null ? Math.round(m.teamHygieneScore) : null,
+        teamScore: teamWiseScoreFor(m.userEmail),
       }))
       .sort((a: { score: number }, b: { score: number }) => b.score - a.score);
     downloadHygieneTableImage(
       'Email Hygiene',
       'Managers',
-      'Hygiene Score (/100)',
+      'Individual Score (/100)',
       pmRows,
       `email-hygiene-${format(new Date(), 'yyyy-MM-dd')}.png`,
-      'Team Hygiene (/100)',
+      'Team-wise Score (/100)',
     );
   }
 
@@ -1666,8 +1697,8 @@ export default function AuditDashboardPage() {
                 <p className="text-xs text-red-600 mt-1 w-full">{syncOutlookError}</p>
               )}
               <button
-                onClick={handleExportEmailHygieneCSV}
-                disabled={!emailMetrics.length}
+                onClick={emailHygieneView === 'managers' ? handleExportTeamHygieneCSV : handleExportEmailHygieneCSV}
+                disabled={emailHygieneView === 'managers' ? !emailTeamHygiene.length : !emailMetrics.length}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-40"
               >
                 <Download size={13} /> CSV
@@ -2000,6 +2031,27 @@ export default function AuditDashboardPage() {
             </div>
           )}
 
+          {/* Everyone / Managers sub-tabs */}
+          {!isEmailHygieneLoading && emailHygieneConfigured && !emailHygieneAuthError && (
+            <div className="inline-flex bg-gray-100 rounded-lg p-1 gap-1">
+              <button
+                onClick={() => setEmailHygieneView('everyone')}
+                className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all flex items-center gap-1.5 ${emailHygieneView === 'everyone' ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                <User size={11} /> Everyone
+              </button>
+              <button
+                onClick={() => setEmailHygieneView('managers')}
+                className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all flex items-center gap-1.5 ${emailHygieneView === 'managers' ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                <Users size={11} /> Managers
+              </button>
+            </div>
+          )}
+
+          {/* ── Everyone view ──────────────────────────────────────── */}
+          {emailHygieneView === 'everyone' && (<>
+
           {/* KPI cards */}
           {emailMetrics.length > 0 && (() => {
             const avgScore = Math.round(emailMetrics.reduce((s: number, m: any) => s + m.emailHygieneScore, 0) / emailMetrics.length);
@@ -2055,7 +2107,6 @@ export default function AuditDashboardPage() {
                       <th className="text-center py-2.5 px-3 text-xs font-semibold text-teal-600 whitespace-nowrap">Resolution<span className="font-normal text-teal-400">/20</span></th>
                       <th className="text-center py-2.5 px-3 text-xs font-semibold text-orange-600 whitespace-nowrap">Tone<span className="font-normal text-orange-400">/20</span></th>
                       <th className="text-center py-2.5 px-3 text-xs font-semibold text-gray-800 whitespace-nowrap">Hygiene<span className="font-normal text-gray-400">/100</span></th>
-                      <th className="text-center py-2.5 px-3 text-xs font-semibold text-indigo-700 whitespace-nowrap">Team<span className="font-normal text-indigo-400">/100</span></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2100,16 +2151,6 @@ export default function AuditDashboardPage() {
                             <span className={`inline-block text-sm font-bold px-3 py-1 rounded-full ring-1 ${sc.bg} ${sc.text} ${sc.ring}`}>
                               {m.emailHygieneScore ?? 0}
                             </span>
-                          </td>
-                          <td className="py-3 px-3 text-center">
-                            {m.teamHygieneScore != null ? (
-                              <span className={`inline-block text-sm font-bold px-3 py-1 rounded-full ring-1 ${emailScoreColor(Math.round(m.teamHygieneScore)).bg} ${emailScoreColor(Math.round(m.teamHygieneScore)).text} ${emailScoreColor(Math.round(m.teamHygieneScore)).ring}`}
-                                title={m.teamDlEmail ?? ''}>
-                                {Math.round(m.teamHygieneScore)}
-                              </span>
-                            ) : (
-                              <span className="text-gray-300 text-xs">—</span>
-                            )}
                           </td>
                         </tr>
                       );
@@ -2176,6 +2217,111 @@ export default function AuditDashboardPage() {
               </div>
             </Card>
           )}
+          </>)}
+
+          {/* ── Managers view ────────────────────────────────────────── */}
+          {emailHygieneView === 'managers' && (<>
+            {emailTeamHygiene.length > 0 && (() => {
+              const ent = emailSegmentHeads.ENT;
+              const smb = emailSegmentHeads.SMB;
+              return (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className={`${ent?.score != null ? emailScoreColor(ent.score).bg : 'bg-gray-100'} rounded-xl p-4 border border-white flex items-center gap-3`}>
+                    <Building2 size={22} className={ent?.score != null ? emailScoreColor(ent.score).text : 'text-gray-400'} />
+                    <div>
+                      <div className={`text-2xl font-bold ${ent?.score != null ? emailScoreColor(ent.score).text : 'text-gray-400'}`}>{ent?.score ?? '—'}</div>
+                      <div className="text-xs text-gray-500 mt-0.5">{ent?.name ?? 'Unassigned'} — ENT ({ent?.teamIds?.join(', ')})</div>
+                    </div>
+                  </div>
+                  <div className={`${smb?.score != null ? emailScoreColor(smb.score).bg : 'bg-gray-100'} rounded-xl p-4 border border-white flex items-center gap-3`}>
+                    <Building2 size={22} className={smb?.score != null ? emailScoreColor(smb.score).text : 'text-gray-400'} />
+                    <div>
+                      <div className={`text-2xl font-bold ${smb?.score != null ? emailScoreColor(smb.score).text : 'text-gray-400'}`}>{smb?.score ?? '—'}</div>
+                      <div className="text-xs text-gray-500 mt-0.5">{smb?.name ?? 'Unassigned'} — SMB ({smb?.teamIds?.join(', ')})</div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {emailTeamHygiene.length > 0 && (
+              <Card>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-200 bg-gray-50/60">
+                        <th className="text-left py-2.5 px-3 text-xs font-semibold text-gray-700 whitespace-nowrap">Manager</th>
+                        <th className="text-center py-2.5 px-3 text-xs font-semibold text-gray-500 whitespace-nowrap">Segment</th>
+                        <th className="text-center py-2.5 px-3 text-xs font-semibold text-gray-500 whitespace-nowrap">Members Scored</th>
+                        <th className="text-center py-2.5 px-3 text-xs font-semibold text-gray-800 whitespace-nowrap">Team Hygiene<span className="font-normal text-gray-400">/100</span></th>
+                        <th className="text-center py-2.5 px-3 text-xs font-semibold text-gray-500 whitespace-nowrap">Members</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {emailTeamHygiene.map((t: any, i: number) => {
+                        const isExpanded = expandedTeamId === t.teamId;
+                        const sc = t.teamScore !== null ? emailScoreColor(t.teamScore) : { bg: 'bg-gray-100', text: 'text-gray-400', ring: 'ring-gray-200' };
+                        return (
+                          <Fragment key={t.teamId}>
+                            <tr className={`border-b border-gray-50 ${i % 2 === 0 ? '' : 'bg-gray-50/30'} hover:bg-indigo-50/20 transition-colors`}>
+                              <td className="py-3 px-3 whitespace-nowrap">
+                                <div className="font-medium text-gray-800">{t.managerName}</div>
+                                <div className="text-xs text-gray-400">{t.managerEmail}</div>
+                              </td>
+                              <td className="py-3 px-3 text-center">
+                                <span className={`inline-block text-xs font-semibold px-2.5 py-0.5 rounded-full ${t.segment === 'ENT' ? 'bg-indigo-100 text-indigo-700' : 'bg-teal-100 text-teal-700'}`}>
+                                  {t.segment}
+                                </span>
+                              </td>
+                              <td className="py-3 px-3 text-center text-gray-600">{t.scoredMemberCount}/{t.memberCount}</td>
+                              <td className="py-3 px-3 text-center">
+                                <span className={`inline-block text-sm font-bold px-3 py-1 rounded-full ring-1 ${sc.bg} ${sc.text} ${sc.ring}`}>
+                                  {t.teamScore ?? '—'}
+                                </span>
+                              </td>
+                              <td className="py-3 px-3 text-center">
+                                <button
+                                  onClick={() => setExpandedTeamId(isExpanded ? null : t.teamId)}
+                                  className="inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 font-medium"
+                                >
+                                  {t.memberCount} {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                                </button>
+                              </td>
+                            </tr>
+                            {isExpanded && (
+                              <tr className="bg-indigo-50/30 border-b border-gray-100">
+                                <td colSpan={5} className="px-3 py-3">
+                                  <div className="space-y-1.5">
+                                    {t.members.map((mem: any) => (
+                                      <div key={mem.email} className="flex items-center justify-between gap-3 bg-white rounded-lg border border-gray-100 px-3 py-2">
+                                        <div className="min-w-0">
+                                          <div className="text-xs font-medium text-gray-800 truncate">{mem.name}{mem.email.toLowerCase() === t.managerEmail.toLowerCase() ? ' (Manager)' : ''}</div>
+                                          <div className="text-[10px] text-gray-400">{mem.email}</div>
+                                        </div>
+                                        <span className={`flex-shrink-0 text-xs font-semibold px-2.5 py-0.5 rounded-full ${mem.score !== null ? emailScoreColor(mem.score).bg : 'bg-gray-100'} ${mem.score !== null ? emailScoreColor(mem.score).text : 'text-gray-400'}`}>
+                                          {mem.score ?? 'no score yet'}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </Fragment>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="flex items-center gap-4 pt-3 mt-3 border-t border-gray-100 text-xs text-gray-500 flex-wrap">
+                  <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-green-400 inline-block" /> ≥80 Good</span>
+                  <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-yellow-400 inline-block" /> 60–79 Fair</span>
+                  <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-red-400 inline-block" /> &lt;60 Needs Attention</span>
+                  <span className="ml-auto text-gray-400">Team score = average of each member's individual Hygiene score</span>
+                </div>
+              </Card>
+            )}
+          </>)}
         </>)}
 
         {/* ── Call Hygiene Tab ────────────────────────────────────── */}

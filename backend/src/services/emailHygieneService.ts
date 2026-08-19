@@ -55,29 +55,129 @@ export interface UserEmailHygiene {
   resolutionScore: number;              // 0–20  (1-Reply/10 + Reopened/10)
   // Overall
   emailHygieneScore: number;            // 0–100
-  // Team DL hygiene — score from the shared DL mailbox this manager owns
-  teamHygieneScore: number | null;
-  teamDlEmail: string | null;
   // Improvement suggestions (only for weak areas)
   insights: ImprovementInsight[];
 }
 
+export interface TeamHygieneMember {
+  email: string;
+  name: string;
+  score: number | null; // null if this person has no computed individual score yet
+}
+
+export interface TeamHygieneRow {
+  teamId: string;
+  managerEmail: string;
+  managerName: string;
+  segment: 'ENT' | 'SMB';
+  teamScore: number | null;       // average emailHygieneScore across scored members (manager included)
+  memberCount: number;            // total roster size for this team
+  scoredMemberCount: number;      // how many of those actually have a computed score
+  members: TeamHygieneMember[];
+}
+
 const CF_DOMAIN = 'cloudfuze.com';
 
-// Team Distribution Lists — each maps to the manager who owns that support queue.
-// The DL must be provisioned as a shared mailbox in Exchange Online so Graph API
-// can read its SentItems (replies sent by team members on behalf of the DL).
-// Matched to the manager by exact email (see email_hygiene_members / TEAM_MEMBERS in
-// index.ts) — NOT by first-name string matching, which broke if two team members shared
-// a first name (e.g. two "Sravan"s would both match the first result.find() hit).
-const DL_MANAGER_MAP: Array<{ dlEmail: string; managerEmail: string }> = [
-  { dlEmail: 'cfmigrationsupport_team1@cloudfuze.com', managerEmail: 'Harika.Velidi@cloudfuze.com' },
-  { dlEmail: 'cfmigrationsupport_team2@cloudfuze.com', managerEmail: 'Raghu.Yellani@cloudfuze.com' },
-  { dlEmail: 'cfmigrationsupport_team3@cloudfuze.com', managerEmail: 'Sravan.Kesaram@cloudfuze.com' },
-  { dlEmail: 'cfmigrationsupport_team4@cloudfuze.com', managerEmail: 'Lakshmi.Prasanna@cloudfuze.com' },
-  { dlEmail: 'cfmigrationsupport_team5@cloudfuze.com', managerEmail: 'Abhishikth.Yenugula@cloudfuze.com' },
-  { dlEmail: 'cfmigrationsupport_team6@cloudfuze.com', managerEmail: 'Pranavi@cloudfuze.com' },
+// Team rosters — explicit membership (not a Distribution List lookup). The original
+// design tried to read each team's shared-DL mailbox via Graph, but the 6
+// cfmigrationsupport_teamN@cloudfuze.com addresses are plain distribution lists with no
+// mailbox of their own (Graph 404s on them — a DL forwards mail, it doesn't store any),
+// and reading real DL *membership* would need Group.Read.All, which this app registration
+// doesn't have. Team hygiene is computed instead as the average of each listed member's
+// own individual emailHygieneScore (manager included) — needs no extra Graph permission.
+interface TeamRosterEntry {
+  teamId: string;
+  managerEmail: string;
+  memberEmails: string[]; // includes the manager
+  segment: 'ENT' | 'SMB';
+}
+
+const TEAM_ROSTER: TeamRosterEntry[] = [
+  {
+    teamId: 'team1', segment: 'SMB', managerEmail: 'Harika.Velidi@cloudfuze.com',
+    memberEmails: ['Harika.Velidi@cloudfuze.com', 'Siva.Kota@cloudfuze.com', 'Ravi.Hemanth@cloudfuze.com', 'Meena.Lakshmi@cloudfuze.com'],
+  },
+  {
+    teamId: 'team2', segment: 'SMB', managerEmail: 'Raghu.Yellani@cloudfuze.com',
+    memberEmails: ['Raghu.Yellani@cloudfuze.com', 'sriram.ramakrishnan@cloudfuze.com', 'Vineetha.Yenti@cloudfuze.com', 'Ramana.Reddy@cloudfuze.com'],
+  },
+  {
+    teamId: 'team3', segment: 'SMB', managerEmail: 'Sravan.Kesaram@cloudfuze.com',
+    memberEmails: ['Sravan.Kesaram@cloudfuze.com', 'swaroop@cloudfuze.com', 'Dathu.Kaluvala@cloudfuze.com', 'Saikumar.Kustapuram@cloudfuze.com'],
+  },
+  {
+    teamId: 'team4', segment: 'ENT', managerEmail: 'Lakshmi.Prasanna@cloudfuze.com',
+    memberEmails: ['Lakshmi.Prasanna@cloudfuze.com', 'Chaitanya.Gupta@cloudfuze.com', 'Davidraj.Dumpala@cloudfuze.com', 'harshith.kaduluri@cloudfuze.com', 'LakshmaReddy@cloudfuze.com', 'Ganesh.Kondameedi@cloudfuze.com'],
+  },
+  {
+    teamId: 'team5', segment: 'SMB', managerEmail: 'Abhishikth.Yenugula@cloudfuze.com',
+    memberEmails: ['Abhishikth.Yenugula@cloudfuze.com', 'neelima.krotta@cloudfuze.com', 'Amulya.Anapuram@cloudfuze.com', 'Ranadeep.Muddam@cloudfuze.com', 'Vijendar.Burgula@cloudfuze.com', 'Habeebunnisa.Begum@cloudfuze.com'],
+  },
+  {
+    teamId: 'team6', segment: 'ENT', managerEmail: 'Pranavi@cloudfuze.com',
+    memberEmails: ['Pranavi@cloudfuze.com', 'chandra.mouli@cloudfuze.com', 'Arun@cloudfuze.com', 'Manoj.Bathula@cloudfuze.com', 'Pallavi.Kosuvaripalli@cloudfuze.com'],
+  },
 ];
+
+// Segment heads — org-level owners, not team-level managers themselves.
+const SEGMENT_HEADS: Record<'ENT' | 'SMB', { email: string; name: string }> = {
+  ENT: { email: 'Abhishek.Sakala@cloudfuze.com', name: 'Abhishek Sakala' },
+  SMB: { email: 'ajay.singh@cloudfuze.com', name: 'Ajay Singh' },
+};
+
+export function computeTeamHygiene(results: UserEmailHygiene[]): TeamHygieneRow[] {
+  const byEmail = new Map(results.map(r => [r.userEmail.toLowerCase(), r]));
+  return TEAM_ROSTER.map(team => {
+    const members: TeamHygieneMember[] = team.memberEmails.map(email => {
+      const r = byEmail.get(email.toLowerCase());
+      return { email, name: r?.userName ?? email, score: r?.emailHygieneScore ?? null };
+    });
+    const scored = members.filter(m => m.score !== null);
+    const teamScore = scored.length > 0
+      ? Math.round(scored.reduce((sum, m) => sum + (m.score as number), 0) / scored.length)
+      : null;
+    const manager = byEmail.get(team.managerEmail.toLowerCase());
+    return {
+      teamId: team.teamId,
+      managerEmail: team.managerEmail,
+      managerName: manager?.userName ?? team.managerEmail,
+      segment: team.segment,
+      teamScore,
+      memberCount: members.length,
+      scoredMemberCount: scored.length,
+      members,
+    };
+  });
+}
+
+export interface SegmentHead {
+  email: string;
+  name: string;
+  segment: 'ENT' | 'SMB';
+  // The segment head's score IS the average of their segment's team scores — not their
+  // own individual mailbox activity. Abhishek's score = mean(team4, team6); Ajay's =
+  // mean(team1, team2, team3, team5). This is a deliberate choice: they're scored on how
+  // their teams perform, not on their own personal email volume.
+  score: number | null;
+  teamIds: string[];
+}
+
+export function computeSegmentHeads(teamHygiene: TeamHygieneRow[]): Record<'ENT' | 'SMB', SegmentHead> {
+  const segScore = (seg: 'ENT' | 'SMB') => {
+    const teams = teamHygiene.filter(t => t.segment === seg);
+    const scored = teams.filter(t => t.teamScore !== null);
+    return {
+      score: scored.length > 0 ? Math.round(scored.reduce((sum, t) => sum + (t.teamScore as number), 0) / scored.length) : null,
+      teamIds: teams.map(t => t.teamId),
+    };
+  };
+  const ent = segScore('ENT');
+  const smb = segScore('SMB');
+  return {
+    ENT: { ...SEGMENT_HEADS.ENT, segment: 'ENT', score: ent.score, teamIds: ent.teamIds },
+    SMB: { ...SEGMENT_HEADS.SMB, segment: 'SMB', score: smb.score, teamIds: smb.teamIds },
+  };
+}
 const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
 // Cache is only refreshed by the daily 7 AM IST cron job (or admin force-refresh).
 // Regular HTTP requests always serve from cache — never trigger a live Graph API sync.
@@ -568,8 +668,6 @@ async function analyzeUser(
     qualityScore,
     resolutionScore,
     emailHygieneScore,
-    teamHygieneScore: null,
-    teamDlEmail: null,
     insights,
   };
 }
@@ -605,6 +703,8 @@ export const emailHygieneService = {
 
   async getHygieneMetrics(forceRefresh = false): Promise<{
     metrics: UserEmailHygiene[];
+    teamHygiene: TeamHygieneRow[];
+    segmentHeads: Record<'ENT' | 'SMB', SegmentHead>;
     computedAt: string;
     periodStart: string;
     periodEnd: string;
@@ -614,6 +714,8 @@ export const emailHygieneService = {
     if (!isGraphConfigured()) {
       return {
         metrics: [],
+        teamHygiene: [],
+        segmentHeads: computeSegmentHeads([]),
         computedAt: new Date().toISOString(),
         periodStart: '',
         periodEnd: '',
@@ -630,11 +732,16 @@ export const emailHygieneService = {
         if (cached.rows.length > 0) {
           const row = cached.rows[0];
           const metrics = row.metrics as any[];
-          // Invalidate if written with old schema — check for insights array + new score ranges
+          // Invalidate if written with an older schema — team_hygiene column holds the
+          // roster-based teamHygiene array added 2026-08-19 (replacing the old
+          // per-user teamHygieneScore/teamDlEmail fields from the dead DL-mailbox approach).
           const isNewSchema = metrics.length === 0 || Array.isArray(metrics[0]?.insights);
-          if (isNewSchema && Date.now() - new Date(row.computed_at).getTime() < CACHE_TTL_MS) {
+          if (isNewSchema && row.team_hygiene !== null && Date.now() - new Date(row.computed_at).getTime() < CACHE_TTL_MS) {
+            const cachedTeamHygiene = row.team_hygiene as TeamHygieneRow[];
             return {
               metrics: metrics as UserEmailHygiene[],
+              teamHygiene: cachedTeamHygiene,
+              segmentHeads: computeSegmentHeads(cachedTeamHygiene),
               computedAt: row.computed_at as string,
               periodStart: row.period_start as string,
               periodEnd: row.period_end as string,
@@ -658,6 +765,8 @@ export const emailHygieneService = {
       logger.error('Email hygiene: Graph API token fetch failed:', detail);
       return {
         metrics: [],
+        teamHygiene: [],
+        segmentHeads: computeSegmentHeads([]),
         computedAt: new Date().toISOString(),
         periodStart: '',
         periodEnd: '',
@@ -705,35 +814,13 @@ export const emailHygieneService = {
       }
     }
 
-    // Analyze team DL mailboxes and stamp the matching manager's record
-    for (const { dlEmail, managerEmail } of DL_MANAGER_MAP) {
-      try {
-        const dlExists = await userMailboxExists(client, encodeURIComponent(dlEmail));
-        if (!dlExists) {
-          logger.info(`[EmailHygiene] DL ${dlEmail} not accessible as shared mailbox — skipping`);
-          continue;
-        }
-        const manager = results.find(r => r.userEmail.toLowerCase() === managerEmail.toLowerCase());
-        if (!manager) {
-          logger.warn(`[EmailHygiene] DL ${dlEmail}: no manager found with email="${managerEmail}" (not in email_hygiene_members, or inactive)`);
-          continue;
-        }
-        logger.info(`[EmailHygiene] Analyzing DL ${dlEmail} for ${manager.userName}`);
-        const dlResult = await analyzeUser(client, dlEmail, `Team-${manager.userName}`, since);
-        manager.teamHygieneScore = dlResult.emailHygieneScore;
-        manager.teamDlEmail = dlEmail;
-        logger.info(`[EmailHygiene] DL ${dlEmail} → ${manager.userName}: teamScore=${dlResult.emailHygieneScore}`);
-      } catch (err: any) {
-        logger.warn(`[EmailHygiene] DL ${dlEmail} analysis failed: ${err?.message ?? err}`);
-      }
-    }
-
     const sorted = results.sort((a, b) => b.emailHygieneScore - a.emailHygieneScore);
+    const teamHygiene = computeTeamHygiene(sorted);
 
     // Persist cache
     await execute(
-      `INSERT INTO email_hygiene_cache (period_start, period_end, metrics) VALUES ($1, $2, $3)`,
-      [periodStart.toISOString(), periodEnd.toISOString(), JSON.stringify(sorted)]
+      `INSERT INTO email_hygiene_cache (period_start, period_end, metrics, team_hygiene) VALUES ($1, $2, $3, $4)`,
+      [periodStart.toISOString(), periodEnd.toISOString(), JSON.stringify(sorted), JSON.stringify(teamHygiene)]
     );
     // Keep only 5 entries
     await execute(
@@ -744,6 +831,8 @@ export const emailHygieneService = {
 
     return {
       metrics: sorted,
+      teamHygiene,
+      segmentHeads: computeSegmentHeads(teamHygiene),
       computedAt: new Date().toISOString(),
       periodStart: periodStart.toISOString(),
       periodEnd: periodEnd.toISOString(),

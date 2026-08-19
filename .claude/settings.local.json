@@ -194,7 +194,13 @@
       "Bash(powershell -NoProfile -Command ' *)",
       "Bash(wmic process *)",
       "Bash(npx tsx -e ' *)",
-      "Bash(powershell -NoProfile -Command 'Get-Process -Name node -ErrorAction SilentlyContinue | Where-Object { $_.Id -ne 7376 } | Select-Object Id,StartTime,Path')"
+      "Bash(powershell -NoProfile -Command 'Get-Process -Name node -ErrorAction SilentlyContinue | Where-Object { $_.Id -ne 7376 } | Select-Object Id,StartTime,Path')",
+      "Bash(powershell -NoProfile -Command \"Get-Process -Id 43848 | Select-Object Id,ProcessName,Path,StartTime\")",
+      "Bash(curl -s -w \"\\\\nHTTP %{http_code}\\\\n\" http://localhost:3001/health)",
+      "Bash(powershell -NoProfile -Command \"Stop-Process -Id 43848 -Force\")",
+      "Bash(powershell -NoProfile -Command \"Stop-Process -Id 47176 -Force\")",
+      "Bash(awk ' *)",
+      "Bash(mv .env.tmp .env)"
     ],
     "additionalDirectories": [
       "c:\\Users\\BharathTummaganti\\OneDrive - CloudFuze, Inc\\Documents\\PMO\\PMO",

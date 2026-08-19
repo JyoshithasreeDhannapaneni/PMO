@@ -23,6 +23,18 @@ export class ExternalOrganizerError extends Error {
   }
 }
 
+// Thrown when the organizer's address is on the CF domain but doesn't resolve to a real
+// Azure AD user object at all (Graph 404 on /users/{email}) — e.g. a resource/booking
+// account like m365@cloudfuze.com, not a person. Confirmed live: ~78 of ~200 held calls
+// in this tenant are organized by exactly such an address. Same permanent-exclusion
+// treatment as ExternalOrganizerError — retrying every cron cycle would never succeed.
+export class OrganizerNotFoundError extends Error {
+  constructor(organizerEmail: string) {
+    super(`Meeting organizer ${organizerEmail} does not resolve to a real Azure AD user (likely a resource/booking account, not a person) — transcript cannot be resolved for this call.`);
+    this.name = 'OrganizerNotFoundError';
+  }
+}
+
 function isInternalOrganizer(organizerEmail: string): boolean {
   return organizerEmail.toLowerCase().endsWith(`@${CF_DOMAIN}`);
 }
@@ -91,28 +103,44 @@ function parseVtt(vtt: string): TranscriptCue[] {
   return cues;
 }
 
+// Graph's onlineMeetings endpoints require the organizer's Azure AD object GUID in the
+// URL path, not their email/UPN — unlike most other /users/{id}/... endpoints (e.g.
+// mailFolders), which accept either. Passing an email here fails with
+// "InvalidArgument: The userId in request URL is not a valid GUID" (confirmed live against
+// this tenant — every graded call failed on this before the fix). Resolve the GUID once
+// per call and reuse it for both the meeting lookup and the transcript fetch below.
+async function resolveUserId(client: AxiosInstance, email: string): Promise<string> {
+  try {
+    const res = await client.get(`/users/${encodeURIComponent(email)}?$select=id`);
+    return res.data.id as string;
+  } catch (err: any) {
+    if (err?.response?.status === 404) {
+      throw new OrganizerNotFoundError(email);
+    }
+    throw err;
+  }
+}
+
 async function resolveOnlineMeetingId(
   client: AxiosInstance,
-  organizerEmail: string,
+  organizerId: string,
   joinUrl: string
 ): Promise<string> {
-  const userPath = encodeURIComponent(organizerEmail);
   const filter = encodeURIComponent(`JoinWebUrl eq '${joinUrl.replace(/'/g, "''")}'`);
-  const res = await client.get(`/users/${userPath}/onlineMeetings?$filter=${filter}`);
+  const res = await client.get(`/users/${organizerId}/onlineMeetings?$filter=${filter}`);
   const meeting = res.data.value?.[0];
   if (!meeting) {
-    throw new Error(`No online meeting found for organizer ${organizerEmail} matching the given join URL`);
+    throw new Error(`No online meeting found for organizer (id ${organizerId}) matching the given join URL`);
   }
   return meeting.id as string;
 }
 
 async function fetchTranscriptVtt(
   client: AxiosInstance,
-  organizerEmail: string,
+  organizerId: string,
   onlineMeetingId: string
 ): Promise<string> {
-  const userPath = encodeURIComponent(organizerEmail);
-  const listRes = await client.get(`/users/${userPath}/onlineMeetings/${onlineMeetingId}/transcripts`);
+  const listRes = await client.get(`/users/${organizerId}/onlineMeetings/${onlineMeetingId}/transcripts`);
   const transcripts = listRes.data.value ?? [];
   if (transcripts.length === 0) {
     throw new Error('No transcript was generated for this meeting (transcription may not have been enabled).');
@@ -123,7 +151,7 @@ async function fetchTranscriptVtt(
   )[0];
 
   const contentRes = await client.get(
-    `/users/${userPath}/onlineMeetings/${onlineMeetingId}/transcripts/${latest.id}/content?$format=text/vtt`,
+    `/users/${organizerId}/onlineMeetings/${onlineMeetingId}/transcripts/${latest.id}/content?$format=text/vtt`,
     { responseType: 'text', transformResponse: (data) => data }
   );
   return contentRes.data as string;
@@ -142,8 +170,9 @@ export const callTranscriptService = {
     const token = await getAccessToken();
     const client = graphClient(token);
 
-    const onlineMeetingId = await resolveOnlineMeetingId(client, organizerEmail, joinUrl);
-    const vtt = await fetchTranscriptVtt(client, organizerEmail, onlineMeetingId);
+    const organizerId = await resolveUserId(client, organizerEmail);
+    const onlineMeetingId = await resolveOnlineMeetingId(client, organizerId, joinUrl);
+    const vtt = await fetchTranscriptVtt(client, organizerId, onlineMeetingId);
     const cues = parseVtt(vtt);
 
     if (cues.length === 0) {
