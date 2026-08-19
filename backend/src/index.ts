@@ -643,8 +643,15 @@ async function runMigrations() {
     period_start TIMESTAMPTZ NOT NULL,
     period_end   TIMESTAMPTZ NOT NULL,
     metrics      JSONB NOT NULL DEFAULT '[]',
+    team_hygiene JSONB,
     computed_at  TIMESTAMPTZ DEFAULT NOW()
   )`);
+  // team_hygiene added 2026-08-19 — roster-based team/manager rollup (see
+  // emailHygieneService.ts TEAM_ROSTER), replacing the old per-user
+  // teamHygieneScore/teamDlEmail fields from the dead DL-mailbox-reading approach.
+  if (!await columnExists('email_hygiene_cache', 'team_hygiene')) {
+    try { await execute(`ALTER TABLE email_hygiene_cache ADD COLUMN team_hygiene JSONB`); } catch {}
+  }
 
   // Call hygiene cache — stores computed Outlook-calendar-derived metrics (refreshed every 25h)
   await execute(`CREATE TABLE IF NOT EXISTS call_hygiene_cache (
@@ -708,6 +715,7 @@ async function runMigrations() {
     ['Davidraj.Dumpala@cloudfuze.com',        'Davidraj Dumpala'],
     ['Ganesh.Kondameedi@cloudfuze.com',       'Ganesh Kondameedi'],
     ['Habeebunnisa.Begum@cloudfuze.com',      'Habeebunnisa Begum'],
+    ['harshith.kaduluri@cloudfuze.com',       'Harshith Kaduluri'],
     ['Harika.Velidi@cloudfuze.com',           'Harika Velidi'],
     ['LakshmaReddy@cloudfuze.com',            'LakshmaReddy'],
     ['Lakshmi.Prasanna@cloudfuze.com',        'Lakshmi Prasanna'],

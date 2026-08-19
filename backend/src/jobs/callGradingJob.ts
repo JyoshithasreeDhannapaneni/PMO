@@ -1,6 +1,6 @@
 import { query, execute } from '../config/database';
 import { logger } from '../utils/logger';
-import { callTranscriptService, ExternalOrganizerError } from '../services/callTranscriptService';
+import { callTranscriptService, ExternalOrganizerError, OrganizerNotFoundError } from '../services/callTranscriptService';
 import { transcriptGradingService } from '../services/transcriptGradingService';
 import type { UserCallHygiene, HeldCustomerCall } from '../services/callHygieneService';
 
@@ -44,6 +44,19 @@ async function gradeOneCall(
       await execute(
         `INSERT INTO call_transcript_ratings (event_id, user_email, user_name, subject, meeting_start, rating, status, na_reason, rated_by)
          VALUES ($1, $2, $3, $4, $5, '{}', 'excluded', 'external_organizer', 'system:callGradingJob')
+         ON CONFLICT (event_id, user_email) DO NOTHING`,
+        [call.eventId, userEmail, userName, call.subject, call.start]
+      );
+      return 'excluded';
+    }
+    if (err instanceof OrganizerNotFoundError) {
+      // Same permanent-exclusion treatment — a resource/booking account (e.g.
+      // m365@cloudfuze.com) will never resolve to a real Azure AD user, so retrying
+      // every cycle would never succeed. Confirmed live: ~78 of ~200 held calls in this
+      // tenant hit this exact case.
+      await execute(
+        `INSERT INTO call_transcript_ratings (event_id, user_email, user_name, subject, meeting_start, rating, status, na_reason, rated_by)
+         VALUES ($1, $2, $3, $4, $5, '{}', 'excluded', 'organizer_not_found', 'system:callGradingJob')
          ON CONFLICT (event_id, user_email) DO NOTHING`,
         [call.eventId, userEmail, userName, call.subject, call.start]
       );
