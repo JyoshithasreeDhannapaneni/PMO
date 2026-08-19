@@ -174,22 +174,24 @@ export const auditController = {
     res.json({ success: true, data: logs });
   }),
 
-  getHygieneBoard: asyncHandler(async (_req: Request, res: Response): Promise<void> => {
-    const data = await auditService.getHygieneBoard();
+  getHygieneBoard: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const { startDate, endDate } = req.query;
+    const data = await auditService.getHygieneBoard(startDate as string, endDate as string);
     res.json({ success: true, data });
   }),
 
-  exportHygieneExcel: asyncHandler(async (_req: Request, res: Response): Promise<void> => {
-    const board = await auditService.getHygieneBoard();
+  exportHygieneExcel: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const { startDate, endDate } = req.query;
+    const board = await auditService.getHygieneBoard(startDate as string, endDate as string);
     const rows = board.map((pm) => ({
       'Project Manager': pm.projectManager,
       'Total Projects': pm.totalProjects,
       'Active / On-Hold': pm.activeProjects,
       'Completed / Archived': pm.completedProjects,
-      // Activity (from audit_logs)
-      'Logins (30d)': pm.logins30d,
-      'Project Updates (30d)': pm.projectUpdates30d,
-      'Case Study Updates (30d)': pm.caseStudyUpdates30d,
+      // Activity (from audit_logs, scoped to the selected date range)
+      'Logins (period)': pm.logins30d,
+      'Project Updates (period)': pm.projectUpdates30d,
+      'Case Study Updates (period)': pm.caseStudyUpdates30d,
       'Last Login': pm.lastLoginAt ? new Date(pm.lastLoginAt).toISOString().slice(0, 10) : '',
       'Last Action': pm.lastActionAt ? new Date(pm.lastActionAt).toISOString().slice(0, 10) : '',
       'Days Since Last Action': pm.daysSinceLastAction ?? 'Never',

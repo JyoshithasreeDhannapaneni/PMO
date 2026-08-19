@@ -200,7 +200,11 @@
       "Bash(powershell -NoProfile -Command \"Stop-Process -Id 43848 -Force\")",
       "Bash(powershell -NoProfile -Command \"Stop-Process -Id 47176 -Force\")",
       "Bash(awk ' *)",
-      "Bash(mv .env.tmp .env)"
+      "Bash(mv .env.tmp .env)",
+      "Bash(curl -s -X POST http://localhost:3001/api/auth/login -H \"Content-Type: application/json\" -d '{\"email\":\"admin@company.com\",\"password\":\"admin2026\"}')",
+      "Bash(git fetch *)",
+      "Bash(echo \"--- exit code: $? ---\")",
+      "Bash(git stash *)"
     ],
     "additionalDirectories": [
       "c:\\Users\\BharathTummaganti\\OneDrive - CloudFuze, Inc\\Documents\\PMO\\PMO",
