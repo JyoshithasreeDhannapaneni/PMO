@@ -204,7 +204,10 @@
       "Bash(curl -s -X POST http://localhost:3001/api/auth/login -H \"Content-Type: application/json\" -d '{\"email\":\"admin@company.com\",\"password\":\"admin2026\"}')",
       "Bash(git fetch *)",
       "Bash(echo \"--- exit code: $? ---\")",
-      "Bash(git stash *)"
+      "Bash(git stash *)",
+      "Bash(echo \"--- exit: $? ---\")",
+      "Bash(curl -s http://localhost:3001/api/projects?limit=1 -H 'Authorization: Bearer 187e93907cc50f7aa07e8748eeb0d27a1429a0d9376d8996ce730b1a825a20bbabc45a370f45ad441d2d56441de6588f')",
+      "Bash(curl -s -X PUT http://localhost:3001/api/projects/43b3fce3-0ed0-4aae-a188-ff872fa7a1e0 -H 'Authorization: Bearer 187e93907cc50f7aa07e8748eeb0d27a1429a0d9376d8996ce730b1a825a20bbabc45a370f45ad441d2d56441de6588f' -H 'Content-Type: application/json' -d '{\"notes\":\"Imported from CPQ document \\(Martinez_JosephVinsky_02950\\)\\\\nMigration scopes:\\\\n  • OneDrive → OneDrive \\(content\\)\\\\n  • OneDrive → OneDrive \\(content\\)\\\\n  • OneDrive → OneDrive \\(content\\)\\\\n  • Box → the \\(content\\)\\\\nServers:\\\\n  • 1× Standard — data migration \\(Egnyte to\\)\\\\n  • 1× Standard — data migration \\(OneDrive / SharePoint - OneDrive /\\)\\\\nTemplate: Multi Combination\\\\nQuote ID: Q-609045-O9Z271\"}' -o /dev/null -w 'HTTP %{http_code}\\\\n')"
     ],
     "additionalDirectories": [
       "c:\\Users\\BharathTummaganti\\OneDrive - CloudFuze, Inc\\Documents\\PMO\\PMO",

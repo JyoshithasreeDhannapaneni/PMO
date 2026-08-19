@@ -2,6 +2,7 @@ import cron from 'node-cron';
 import { logger } from '../utils/logger';
 import { projectService } from '../services/projectService';
 import { emailHygieneService } from '../services/emailHygieneService';
+import { execute } from '../config/database';
 
 /**
  * Initialize all cron jobs
@@ -103,6 +104,22 @@ export function initializeCronJobs(): void {
     }
   }, { timezone: 'Asia/Kolkata' });
 
+  // Global logout — every active session is cleared at 6:00 AM IST daily, forcing
+  // everyone back to the login screen regardless of where they left off. Sessions are
+  // server-side (see `sessions` table / authService.getUserFromToken) — deleting the row
+  // is a real logout, not just a client-side gesture: the next API call from any open tab
+  // gets a 401, and the frontend's response interceptor (services/api.ts) already clears
+  // localStorage and redirects to /login on that, so no frontend change was needed.
+  cron.schedule('0 6 * * *', async () => {
+    logger.info('[GlobalLogout] Running daily 6 AM IST session clear...');
+    try {
+      const result = await execute(`DELETE FROM sessions`);
+      logger.info(`[GlobalLogout] Cleared ${result.rowCount ?? 0} active session(s)`);
+    } catch (error) {
+      logger.error('[GlobalLogout] Daily session clear failed:', error);
+    }
+  }, { timezone: 'Asia/Kolkata' });
+
   logger.info('Cron jobs scheduled:');
   logger.info('  - Delay check: Daily at 6:00 AM');
   logger.info('  - Server alerts: Daily at 8:00 AM');
@@ -111,4 +128,5 @@ export function initializeCronJobs(): void {
   logger.info('  - Email hygiene sync: Daily at 7:00 AM IST');
   logger.info('  - Call hygiene refresh: Daily at 5:00 AM IST');
   logger.info('  - Call transcript grading: Daily at 5:30 AM IST');
+  logger.info('  - Global logout (clear all sessions): Daily at 6:00 AM IST');
 }
