@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import * as XLSX from 'xlsx';
 import { callHygieneService, type UserCallHygiene } from '../services/callHygieneService';
-import { asyncHandler } from '../middleware/errorHandler';
+import { asyncHandler, AppError } from '../middleware/errorHandler';
 
 function sendWorkbook(res: Response, sheets: Record<string, any[]>, filename: string) {
   const wb = XLSX.utils.book_new();
@@ -57,5 +57,23 @@ export const callHygieneController = {
       { 'Call Hygiene': rows },
       `call-hygiene-${new Date().toISOString().slice(0, 10)}.xlsx`
     );
+  }),
+
+  // Best/worst-scored Q&A exchange across ALL of one person's graded calls, not just one
+  // meeting. ADMIN can look up anyone; everyone else can only look up their own email —
+  // same HR-adjacent scoping as scopeToRole() above.
+  getBestWorst: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const user = (req as any).user;
+    const targetEmail = String(req.query.userEmail || user.email);
+    if (user.role !== 'ADMIN' && targetEmail.toLowerCase() !== user.email.toLowerCase()) {
+      throw new AppError('You can only view your own best/worst answers', 403);
+    }
+    const result = await callHygieneService.getBestWorstForUser(targetEmail);
+    res.json({ success: true, data: result });
+  }),
+
+  getOrgBestWorst: asyncHandler(async (_req: Request, res: Response): Promise<void> => {
+    const result = await callHygieneService.getBestWorstOrgWide();
+    res.json({ success: true, data: result });
   }),
 };

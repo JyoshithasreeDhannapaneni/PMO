@@ -207,7 +207,12 @@
       "Bash(git stash *)",
       "Bash(echo \"--- exit: $? ---\")",
       "Bash(curl -s http://localhost:3001/api/projects?limit=1 -H 'Authorization: Bearer 187e93907cc50f7aa07e8748eeb0d27a1429a0d9376d8996ce730b1a825a20bbabc45a370f45ad441d2d56441de6588f')",
-      "Bash(curl -s -X PUT http://localhost:3001/api/projects/43b3fce3-0ed0-4aae-a188-ff872fa7a1e0 -H 'Authorization: Bearer 187e93907cc50f7aa07e8748eeb0d27a1429a0d9376d8996ce730b1a825a20bbabc45a370f45ad441d2d56441de6588f' -H 'Content-Type: application/json' -d '{\"notes\":\"Imported from CPQ document \\(Martinez_JosephVinsky_02950\\)\\\\nMigration scopes:\\\\n  • OneDrive → OneDrive \\(content\\)\\\\n  • OneDrive → OneDrive \\(content\\)\\\\n  • OneDrive → OneDrive \\(content\\)\\\\n  • Box → the \\(content\\)\\\\nServers:\\\\n  • 1× Standard — data migration \\(Egnyte to\\)\\\\n  • 1× Standard — data migration \\(OneDrive / SharePoint - OneDrive /\\)\\\\nTemplate: Multi Combination\\\\nQuote ID: Q-609045-O9Z271\"}' -o /dev/null -w 'HTTP %{http_code}\\\\n')"
+      "Bash(curl -s -X PUT http://localhost:3001/api/projects/43b3fce3-0ed0-4aae-a188-ff872fa7a1e0 -H 'Authorization: Bearer 187e93907cc50f7aa07e8748eeb0d27a1429a0d9376d8996ce730b1a825a20bbabc45a370f45ad441d2d56441de6588f' -H 'Content-Type: application/json' -d '{\"notes\":\"Imported from CPQ document \\(Martinez_JosephVinsky_02950\\)\\\\nMigration scopes:\\\\n  • OneDrive → OneDrive \\(content\\)\\\\n  • OneDrive → OneDrive \\(content\\)\\\\n  • OneDrive → OneDrive \\(content\\)\\\\n  • Box → the \\(content\\)\\\\nServers:\\\\n  • 1× Standard — data migration \\(Egnyte to\\)\\\\n  • 1× Standard — data migration \\(OneDrive / SharePoint - OneDrive /\\)\\\\nTemplate: Multi Combination\\\\nQuote ID: Q-609045-O9Z271\"}' -o /dev/null -w 'HTTP %{http_code}\\\\n')",
+      "Read(//c/Users/BharathTummaganti/.claude/skills/gstack/**)",
+      "Read(//c/Users/BharathTummaganti/.claude/skills/gstack/plan-eng-review/**)",
+      "Read(//c/Users/BharathTummaganti/OneDrive - CloudFuje, Inc/Documents/PMO/PMO/frontend/src/hooks/**)",
+      "Bash(powershell -NoProfile -Command \"Get-Process -Id 29300 | Select-Object Id, StartTime\")",
+      "Bash(powershell -NoProfile -Command \"Get-Item 'c:\\\\Users\\\\BharathTummaganti\\\\OneDrive - CloudFuze, Inc\\\\Documents\\\\PMO\\\\PMO\\\\backend\\\\src\\\\routes\\\\callHygieneRoutes.ts' | Select-Object LastWriteTime\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\BharathTummaganti\\OneDrive - CloudFuze, Inc\\Documents\\PMO\\PMO",

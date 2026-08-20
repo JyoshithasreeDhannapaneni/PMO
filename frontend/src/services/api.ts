@@ -757,6 +757,14 @@ export const callHygieneApi = {
     const { data } = await api.get('/call-hygiene/export', { responseType: 'blob' });
     return data as Blob;
   },
+  getBestWorst: async (userEmail?: string) => {
+    const { data } = await api.get('/call-hygiene/best-worst', { params: userEmail ? { userEmail } : {} });
+    return data;
+  },
+  getOrgBestWorst: async () => {
+    const { data } = await api.get('/call-hygiene/best-worst/org');
+    return data;
+  },
 };
 
 export const callTranscriptsApi = {

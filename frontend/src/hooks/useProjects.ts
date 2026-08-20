@@ -1068,6 +1068,26 @@ export function useCallHygiene(enabled = true) {
   });
 }
 
+export function useCallHygieneBestWorst(userEmail: string | null, enabled = true) {
+  return useQuery({
+    queryKey: ['call-hygiene-best-worst', userEmail],
+    queryFn: () => callHygieneApi.getBestWorst(userEmail ?? undefined),
+    enabled,
+    staleTime: 2 * 60 * 60 * 1000,
+    retry: 0,
+  });
+}
+
+export function useCallHygieneOrgBestWorst(enabled = true) {
+  return useQuery({
+    queryKey: ['call-hygiene-best-worst-org'],
+    queryFn: () => callHygieneApi.getOrgBestWorst(),
+    enabled,
+    staleTime: 2 * 60 * 60 * 1000,
+    retry: 0,
+  });
+}
+
 export function useCallTranscriptRating(eventId: string | null, userEmail: string | null) {
   return useQuery({
     queryKey: ['call-transcript-rating', eventId, userEmail],
