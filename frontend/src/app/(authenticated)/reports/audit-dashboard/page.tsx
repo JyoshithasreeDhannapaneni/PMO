@@ -2,7 +2,7 @@
 
 import { useState, useRef, useMemo, Fragment } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useProjects, useEmailHygiene, useCallHygiene, useCallTranscriptRating, useRateCallTranscript } from '@/hooks/useProjects';
+import { useProjects, useEmailHygiene, useCallHygiene, useCallTranscriptRating, useRateCallTranscript, useCallHygieneBestWorst, useCallHygieneOrgBestWorst } from '@/hooks/useProjects';
 import { useSettings } from '@/context/SettingsContext';
 import { useAuth } from '@/context/AuthContext';
 import { Card } from '@/components/ui/Card';
@@ -35,6 +35,49 @@ function ScorecardModal({ title, onClose, children }: { title: string; onClose: 
         </div>
         <div className="p-6">{children}</div>
       </div>
+    </div>
+  );
+}
+
+// Best/worst-scored Q&A exchange across ALL of this person's graded calls, not just the
+// one meeting being looked at. A separate component (not inline in the table's .map())
+// because it needs its own hook call, which React's rules of hooks don't allow inside a
+// loop — this only fires the query once its row is actually expanded (enabled={enabled}).
+function CallBestWorstPanel({ userEmail, enabled }: { userEmail: string; enabled: boolean }) {
+  const { data, isLoading } = useCallHygieneBestWorst(userEmail, enabled);
+  if (!enabled) return null;
+  if (isLoading) {
+    return (
+      <div className="text-[11px] text-gray-400 flex items-center gap-1.5 mb-2">
+        <Loader2 size={11} className="animate-spin" /> Loading best/worst across all their calls…
+      </div>
+    );
+  }
+  const result = data?.data as { best: any; worst: any } | undefined;
+  if (!result || (!result.best && !result.worst)) return null;
+  const { best, worst } = result;
+  const sameExchange = best && worst && best.eventId === worst.eventId && best.question === worst.question && best.answer === worst.answer;
+
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
+      {best && (
+        <div className="border border-green-200 bg-green-50 rounded-lg p-2.5">
+          <div className="text-[10px] font-semibold text-green-700 uppercase tracking-wide mb-1">Best answer overall · {best.score}/100</div>
+          <div className="text-xs text-gray-700 italic line-clamp-2">&ldquo;{best.answer}&rdquo;</div>
+          <div className="text-[10px] text-gray-400 mt-1 truncate">
+            {best.subject}{best.meetingStart ? ` · ${new Date(best.meetingStart).toLocaleDateString()}` : ''}
+          </div>
+        </div>
+      )}
+      {worst && !sameExchange && (
+        <div className="border border-red-200 bg-red-50 rounded-lg p-2.5">
+          <div className="text-[10px] font-semibold text-red-700 uppercase tracking-wide mb-1">Needs work overall · {worst.score}/100</div>
+          <div className="text-xs text-gray-700 italic line-clamp-2">&ldquo;{worst.answer}&rdquo;</div>
+          <div className="text-[10px] text-gray-400 mt-1 truncate">
+            {worst.subject}{worst.meetingStart ? ` · ${new Date(worst.meetingStart).toLocaleDateString()}` : ''}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -431,6 +474,11 @@ export default function AuditDashboardPage() {
   const callHygienePeriodStart: string = callHygieneResult.periodStart ?? '';
   const callHygienePeriodEnd: string = callHygieneResult.periodEnd ?? '';
   const callHygieneComputedAt: string = callHygieneResult.computedAt ?? '';
+
+  const { data: orgBestWorstData } = useCallHygieneOrgBestWorst(
+    hygieneTab === 'call' && canSeeCallHygiene && isAdmin
+  );
+  const orgBestWorst = orgBestWorstData?.data as { best: any; worst: any } | undefined;
 
   // score is null when a person has no gradable calls yet (no signal, not a bad score) —
   // rendered as a distinct neutral state, never folded into the red "bad score" bucket.
@@ -2410,6 +2458,34 @@ export default function AuditDashboardPage() {
             </p>
           )}
 
+          {/* Team-wide best/worst — ADMIN only, across every graded call for everyone */}
+          {isAdmin && orgBestWorst && (orgBestWorst.best || orgBestWorst.worst) && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {orgBestWorst.best && (
+                <div className="border border-green-200 bg-green-50 rounded-xl p-3">
+                  <div className="text-[10px] font-semibold text-green-700 uppercase tracking-wide mb-1">
+                    Team&apos;s best answer · {orgBestWorst.best.score}/100 · {orgBestWorst.best.userName}
+                  </div>
+                  <div className="text-xs text-gray-700 italic line-clamp-2">&ldquo;{orgBestWorst.best.answer}&rdquo;</div>
+                  <div className="text-[10px] text-gray-400 mt-1 truncate">
+                    {orgBestWorst.best.subject}{orgBestWorst.best.meetingStart ? ` · ${new Date(orgBestWorst.best.meetingStart).toLocaleDateString()}` : ''}
+                  </div>
+                </div>
+              )}
+              {orgBestWorst.worst && (
+                <div className="border border-red-200 bg-red-50 rounded-xl p-3">
+                  <div className="text-[10px] font-semibold text-red-700 uppercase tracking-wide mb-1">
+                    Team needs coaching most · {orgBestWorst.worst.score}/100 · {orgBestWorst.worst.userName}
+                  </div>
+                  <div className="text-xs text-gray-700 italic line-clamp-2">&ldquo;{orgBestWorst.worst.answer}&rdquo;</div>
+                  <div className="text-[10px] text-gray-400 mt-1 truncate">
+                    {orgBestWorst.worst.subject}{orgBestWorst.worst.meetingStart ? ` · ${new Date(orgBestWorst.worst.meetingStart).toLocaleDateString()}` : ''}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Call table */}
           {callMetrics.length > 0 && (
             <Card>
@@ -2478,6 +2554,7 @@ export default function AuditDashboardPage() {
                         {isExpanded && gradableCalls.length > 0 && (
                           <tr className="bg-indigo-50/30 border-b border-gray-100">
                             <td colSpan={6} className="px-3 py-3">
+                              <CallBestWorstPanel userEmail={m.userEmail} enabled={isExpanded} />
                               <div className="text-[11px] font-semibold text-gray-500 mb-2">
                                 Customer calls in the last 30 days — pick one to grade this person's answers against the transcript
                               </div>
@@ -2623,22 +2700,59 @@ export default function AuditDashboardPage() {
                   })()}
                   <p className="text-xs text-gray-500 flex-1">{activeCallRating.summary}</p>
                 </div>
-                {activeCallRating.qaPairs?.length > 0 ? (
-                  <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-                    {activeCallRating.qaPairs.map((qa: any, idx: number) => (
-                      <div key={idx} className="border border-gray-100 rounded-lg p-3 text-xs space-y-1">
-                        <div className="text-gray-400">Q ({qa.askedBy}):</div>
-                        <div className="text-gray-700 italic">&ldquo;{qa.question}&rdquo;</div>
-                        <div className="text-gray-400 mt-1">A ({qa.answeredBy}):</div>
-                        <div className="text-gray-700 italic">&ldquo;{qa.answer}&rdquo;</div>
-                        <div className="flex items-center justify-between pt-1">
-                          <span className="font-semibold text-gray-800">{qa.score}/100</span>
-                          <span className="text-gray-500">{qa.feedback}</span>
+                {activeCallRating.qaPairs?.length > 0 ? (() => {
+                  const pairs = activeCallRating.qaPairs as any[];
+                  let bestIdx = 0, worstIdx = 0;
+                  pairs.forEach((qa, idx) => {
+                    if (qa.score > pairs[bestIdx].score) bestIdx = idx;
+                    if (qa.score < pairs[worstIdx].score) worstIdx = idx;
+                  });
+                  const showSplit = pairs.length > 1 && bestIdx !== worstIdx;
+                  return (
+                    <div className="space-y-3">
+                      {showSplit && (
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="border border-green-200 bg-green-50 rounded-lg p-2.5">
+                            <div className="text-[10px] font-semibold text-green-700 uppercase tracking-wide mb-1">Best answer · {pairs[bestIdx].score}/100</div>
+                            <div className="text-xs text-gray-700 italic line-clamp-3">&ldquo;{pairs[bestIdx].answer}&rdquo;</div>
+                          </div>
+                          <div className="border border-red-200 bg-red-50 rounded-lg p-2.5">
+                            <div className="text-[10px] font-semibold text-red-700 uppercase tracking-wide mb-1">Needs work · {pairs[worstIdx].score}/100</div>
+                            <div className="text-xs text-gray-700 italic line-clamp-3">&ldquo;{pairs[worstIdx].answer}&rdquo;</div>
+                          </div>
                         </div>
+                      )}
+                      <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                        {pairs.map((qa, idx) => {
+                          const isBest = showSplit && idx === bestIdx;
+                          const isWorst = showSplit && idx === worstIdx;
+                          return (
+                            <div
+                              key={idx}
+                              className={`border rounded-lg p-3 text-xs space-y-1 ${
+                                isBest ? 'border-green-200 bg-green-50/40' : isWorst ? 'border-red-200 bg-red-50/40' : 'border-gray-100'
+                              }`}
+                            >
+                              {(isBest || isWorst) && (
+                                <div className={`text-[10px] font-semibold uppercase tracking-wide ${isBest ? 'text-green-700' : 'text-red-700'}`}>
+                                  {isBest ? 'Best answer' : 'Needs work'}
+                                </div>
+                              )}
+                              <div className="text-gray-400">Q ({qa.askedBy}):</div>
+                              <div className="text-gray-700 italic">&ldquo;{qa.question}&rdquo;</div>
+                              <div className="text-gray-400 mt-1">A ({qa.answeredBy}):</div>
+                              <div className="text-gray-700 italic">&ldquo;{qa.answer}&rdquo;</div>
+                              <div className="flex items-center justify-between pt-1">
+                                <span className="font-semibold text-gray-800">{qa.score}/100</span>
+                                <span className="text-gray-500">{qa.feedback}</span>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
-                    ))}
-                  </div>
-                ) : (
+                    </div>
+                  );
+                })() : (
                   <p className="text-xs text-gray-400">No customer questions answered by this person were found in the transcript.</p>
                 )}
                 <button

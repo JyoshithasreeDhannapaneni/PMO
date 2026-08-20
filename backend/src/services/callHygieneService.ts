@@ -332,8 +332,77 @@ export async function aggregateQuality(userEmail: string, calls: HeldCustomerCal
   return { qualityScore, qualityCoverage: { graded, noQuestion, excluded, pending, total } };
 }
 
+export interface BestWorstQA {
+  question: string;
+  askedBy: string;
+  answeredBy: string;
+  answer: string;
+  score: number;
+  feedback: string;
+  eventId: string;
+  subject: string;
+  meetingStart: string | null;
+  userEmail: string;
+  userName: string;
+}
+
+// Flattens every qaPair out of a set of graded rows into one list carrying enough meeting
+// context (subject/date/whose call) to render outside the single-meeting view. Shared by
+// the per-user and org-wide best/worst lookups below so the "pick the extreme score" logic
+// only lives in one place.
+function flattenGradedQAPairs(
+  rows: Array<{ event_id: string; user_email: string; user_name: string | null; subject: string | null; meeting_start: string | null; rating: any }>
+): BestWorstQA[] {
+  const flattened: BestWorstQA[] = [];
+  for (const row of rows) {
+    const qaPairs = (row.rating?.qaPairs ?? []) as Array<{ question: string; askedBy: string; answeredBy: string; answer: string; score: number; feedback: string }>;
+    for (const qa of qaPairs) {
+      flattened.push({
+        ...qa,
+        eventId: row.event_id,
+        subject: row.subject ?? '(no subject)',
+        meetingStart: row.meeting_start,
+        userEmail: row.user_email,
+        userName: row.user_name ?? row.user_email,
+      });
+    }
+  }
+  return flattened;
+}
+
+function pickBestAndWorst(pairs: BestWorstQA[]): { best: BestWorstQA | null; worst: BestWorstQA | null } {
+  if (pairs.length === 0) return { best: null, worst: null };
+  let best = pairs[0], worst = pairs[0];
+  for (const qa of pairs) {
+    if (qa.score > best.score) best = qa;
+    if (qa.score < worst.score) worst = qa;
+  }
+  return { best, worst };
+}
+
 export const callHygieneService = {
   isConfigured: isGraphConfigured,
+
+  // Single best-scored and single worst-scored customer Q&A exchange across every call
+  // this person has had graded, not just one meeting at a time.
+  async getBestWorstForUser(userEmail: string): Promise<{ best: BestWorstQA | null; worst: BestWorstQA | null }> {
+    const result = await query(
+      `SELECT event_id, user_email, user_name, subject, meeting_start, rating
+       FROM call_transcript_ratings WHERE status = 'graded' AND user_email = $1`,
+      [userEmail]
+    );
+    return pickBestAndWorst(flattenGradedQAPairs(result.rows));
+  },
+
+  // Same, but across every graded call for every person — ADMIN-only in the controller
+  // since this surfaces one person's worst-scored answer to whoever views it.
+  async getBestWorstOrgWide(): Promise<{ best: BestWorstQA | null; worst: BestWorstQA | null }> {
+    const result = await query(
+      `SELECT event_id, user_email, user_name, subject, meeting_start, rating
+       FROM call_transcript_ratings WHERE status = 'graded'`
+    );
+    return pickBestAndWorst(flattenGradedQAPairs(result.rows));
+  },
 
   async getHygieneMetrics(forceRefresh = false): Promise<{
     metrics: UserCallHygiene[];

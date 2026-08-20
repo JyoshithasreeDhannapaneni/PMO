@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
+import * as XLSX from 'xlsx';
 import { Card } from '@/components/ui/Card';
 import { MultiSelectDropdown } from '@/components/ui/MultiSelectDropdown';
 import { useAuth } from '@/context/AuthContext';
@@ -10,7 +11,7 @@ import {
   Building2, Loader2, AlertTriangle,
   FlaskConical, FolderKanban, RefreshCw, Calendar,
   Search, SlidersHorizontal, X, ChevronsUpDown,
-  ArrowUp, ArrowDown, CalendarDays,
+  ArrowUp, ArrowDown, CalendarDays, Download,
 } from 'lucide-react';
 
 const DELAY_COLORS: Record<string, string> = {
@@ -353,6 +354,105 @@ export default function AccountManagerPage() {
 
   const activeFilterCount = [search, statusFilter, phaseFilter, delayFilter, planFilter, pmFilter, amFilter, attentionFilter].filter(Boolean).length;
 
+  // Exports every section currently on this page — the projects table honors whatever
+  // tab/filters/sort are active (so the export matches what's on screen), the rest
+  // (escalations, renewal, overage, upsell) are always exported in full since nothing
+  // on the page filters them independently.
+  function handleExportExcel() {
+    const wb = XLSX.utils.book_new();
+
+    const summaryRows = [
+      { Metric: 'Customer Accounts', Value: accounts.length },
+      { Metric: 'Total Projects', Value: totalProjects },
+      { Metric: 'Escalations', Value: escalatedAccounts.length },
+      { Metric: 'Renewal Due', Value: renewalDueAccounts.length },
+      { Metric: 'Overaged', Value: overagedAccounts.length },
+      { Metric: 'Upsell / Cross-sell Accounts', Value: upsellAccounts.length },
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summaryRows), 'Summary');
+
+    const projectRows = sortedRows.map(row => ({
+      Project: row.name,
+      Customer: row.customerName,
+      'Migration Types': row.migrationTypes || '',
+      'Account Manager': row.accountManager || '',
+      'Project Manager': row.projectManager || '',
+      Status: row.status || '',
+      Phase: row.phase || '',
+      Delay: row.delayStatus ? `${row.delayStatus}${row.delayDays && row.delayStatus === 'DELAYED' ? ` (${row.delayDays}d)` : ''}` : '',
+      Plan: row.planType || '',
+      'SOW Start': fmtDate(row.plannedStart),
+      'SOW End': fmtDate(row.plannedEnd),
+      Duration: sowDuration(row.plannedStart, row.plannedEnd),
+      'Kickoff Date': fmtDate(row.actualStart),
+      ...(activeTab === 'poc'
+        ? { 'POC Outcome': row.pocOutcome ? row.pocOutcome.replace('_', ' ') : 'In Progress' }
+        : { 'Project End': fmtDate(row.expectedEnd) }),
+      'C-SAT': row.csatScore ?? '',
+      'Delay Happened': row.delayHappened === 'CUSTOMER_DELAY' ? 'Customer' : row.delayHappened === 'BOTH' ? 'Both' : row.delayHappened === 'INTERNAL_DELAY' ? 'Internal' : '',
+    }));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(projectRows), activeTab === 'poc' ? 'POC Projects' : 'All Projects');
+
+    const escalationRows = escalatedAccounts.flatMap(a =>
+      (a.migrationTracks || []).filter((t: any) => t.isEscalated).map((t: any) => ({
+        Customer: a.customerName,
+        'Account Manager': a.accountManager || '',
+        Project: t.name,
+        Priority: t.escalationPriority || 'Escalated',
+        Phase: t.phase || '',
+      }))
+    );
+    if (escalationRows.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(escalationRows), 'Escalations');
+
+    const renewalRows = renewalDueAccounts.flatMap(a =>
+      (a.migrationTracks || [])
+        .filter(t => t.plannedEnd && new Date(t.plannedEnd) < today && t.status !== 'COMPLETED' && t.status !== 'CANCELLED')
+        .map(t => ({
+          Project: t.name,
+          Customer: a.customerName,
+          'Account Manager': a.accountManager || '',
+          'Project Manager': t.projectManager || '',
+          'Planned End': fmtDate(t.plannedEnd),
+          'Overdue (days)': Math.floor((today.getTime() - new Date(t.plannedEnd!).getTime()) / 86400000),
+          Phase: t.phase || '',
+        }))
+    );
+    if (renewalRows.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(renewalRows), 'Renewal Due');
+
+    const overageRows = overagedAccounts.flatMap(a =>
+      (a.migrationTracks || []).filter((t: any) => t.isOveraged).map((t: any) => ({
+        Customer: a.customerName,
+        Project: t.name,
+        'Account Manager': a.accountManager || '',
+        'Project Manager': t.projectManager || '',
+        Plan: t.planType || '',
+        'Overage Amount': t.overageAmount ?? '',
+        Phase: t.phase || '',
+        Status: (t.status || '').replace(/_/g, ' '),
+      }))
+    );
+    if (overageRows.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(overageRows), 'Overaged Projects');
+
+    const upsellRows = upsellAccounts.flatMap(a => {
+      const hs = hubspotFor(a.customerName);
+      if (!hs) return [];
+      return hs.deals
+        .filter(d => d.category === 'upsell' || d.category === 'cross_sell')
+        .map(d => ({
+          Customer: a.customerName,
+          'Account Manager': a.accountManager || '',
+          Deal: d.name,
+          Category: DEAL_CATEGORY_CFG[d.category].label,
+          Stage: d.isClosedWon ? 'Closed won' : d.stage,
+          'Close Date': d.closeDate ? fmtDate(d.closeDate) : '',
+          Amount: d.amount ?? '',
+        }));
+    });
+    if (upsellRows.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(upsellRows), 'Upsell & Cross-sell');
+
+    XLSX.writeFile(wb, `account-manager-view-${new Date().toISOString().slice(0, 10)}.xlsx`);
+  }
+
   if (isLoading) return (
     <div className="flex items-center justify-center h-64">
       <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
@@ -364,17 +464,26 @@ export default function AccountManagerPage() {
     <div className="p-6 space-y-6">
 
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <Building2 className="w-7 h-7 text-indigo-600" />
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Account Manager View</h1>
-          <p className="text-sm text-gray-500">
-            {accounts.length} customer account{accounts.length !== 1 ? 's' : ''}
-            {totalProjects > 0 && (
-              <span className="ml-2 text-indigo-600 font-medium">· {totalProjects} total project{totalProjects !== 1 ? 's' : ''}</span>
-            )}
-          </p>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-3">
+          <Building2 className="w-7 h-7 text-indigo-600" />
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Account Manager View</h1>
+            <p className="text-sm text-gray-500">
+              {accounts.length} customer account{accounts.length !== 1 ? 's' : ''}
+              {totalProjects > 0 && (
+                <span className="ml-2 text-indigo-600 font-medium">· {totalProjects} total project{totalProjects !== 1 ? 's' : ''}</span>
+              )}
+            </p>
+          </div>
         </div>
+        <button
+          onClick={handleExportExcel}
+          disabled={accounts.length === 0}
+          className="flex items-center gap-1.5 px-3 py-2 text-sm text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-40"
+        >
+          <Download size={14} /> Download Excel
+        </button>
       </div>
 
       {/* Summary strip */}
