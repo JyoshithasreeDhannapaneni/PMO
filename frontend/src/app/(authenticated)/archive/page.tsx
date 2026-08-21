@@ -57,9 +57,12 @@ export default function ArchivePage() {
   const [page, setPage]                   = useState(1);
   const [expandedId, setExpandedId]       = useState<string | null>(null);
   const [detailProject, setDetailProject] = useState<any | null>(null);
+  const [isExportingCSV, setIsExportingCSV] = useState(false);
   const PER_PAGE = 20;
 
-  const queryParams = useMemo(() => {
+  // Shared by the paginated table fetch and the "export everything" fetch below —
+  // both need the same filters, just a different page/limit.
+  const buildFilterParams = useCallback(() => {
     const p = new URLSearchParams();
     p.set('tab', tab);
     if (search)        p.set('search', search);
@@ -68,10 +71,15 @@ export default function ArchivePage() {
     if (monthTo)       p.set('monthTo', monthTo);
     p.set('sortBy', sortBy);
     p.set('sortOrder', sortOrder);
+    return p;
+  }, [tab, search, managerFilter, monthFrom, monthTo, sortBy, sortOrder]);
+
+  const queryParams = useMemo(() => {
+    const p = buildFilterParams();
     p.set('page', String(page));
     p.set('limit', String(PER_PAGE));
     return p.toString();
-  }, [tab, search, managerFilter, monthFrom, monthTo, sortBy, sortOrder, page]);
+  }, [buildFilterParams, page]);
 
   const { data: archiveData, isLoading, refetch } = useQuery({
     queryKey: ['archive', queryParams],
@@ -121,27 +129,44 @@ export default function ArchivePage() {
     }
   }
 
-  function downloadCSV() {
-    const headers = ['Project Name','Customer','Project Manager','Account Manager',
-      'Status','Phase','Migration Types','Plan Type','Planned Start','Planned End',
-      'Actual Start','Actual End','Delay Days','Overage Amount','Actual Cost',
-      'Archived At','Archive Reason','Archived By'];
-    const rows = projects.map((p) => [
-      p.name, p.customerName, p.projectManager, p.accountManager || '',
-      p.status, p.phase || '', p.migrationTypes || '', p.planType || '',
-      p.plannedStart ? format(new Date(p.plannedStart), 'yyyy-MM-dd') : '',
-      p.plannedEnd   ? format(new Date(p.plannedEnd),   'yyyy-MM-dd') : '',
-      p.actualStart  ? format(new Date(p.actualStart),  'yyyy-MM-dd') : '',
-      p.actualEnd    ? format(new Date(p.actualEnd),    'yyyy-MM-dd') : '',
-      p.delayDays || 0, p.overageAmount || '', p.actualCost || '',
-      p.archivedAt  ? format(new Date(p.archivedAt),  'yyyy-MM-dd HH:mm') : '',
-      p.archiveReason || '', p.archivedBy || '',
-    ]);
-    const csv = [headers, ...rows].map(r => r.map((v: any) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-    a.download = `archive-export-${format(new Date(), 'yyyy-MM-dd')}.csv`;
-    a.click();
+  // Exports every project matching the current filters/tab/sort, not just the page
+  // currently on screen — `projects` above is only PER_PAGE (20) rows at a time, so this
+  // re-fetches with the same filters and a limit high enough to cover the whole result set.
+  async function downloadCSV() {
+    setIsExportingCSV(true);
+    try {
+      const p = buildFilterParams();
+      p.set('page', '1');
+      p.set('limit', String(Math.max(total, PER_PAGE, 1) + 1000));
+      const res = await authFetch(`${API_BASE}/api/archive?${p.toString()}`);
+      const allProjects: any[] = res?.projects || [];
+      if (!allProjects.length) { alert('No projects to export.'); return; }
+
+      const headers = ['Project Name','Customer','Project Manager','Account Manager',
+        'Status','Phase','Migration Types','Plan Type','Planned Start','Planned End',
+        'Actual Start','Actual End','Delay Days','Overage Amount','Actual Cost',
+        'Archived At','Archive Reason','Archived By'];
+      const rows = allProjects.map((p) => [
+        p.name, p.customerName, p.projectManager, p.accountManager || '',
+        p.status, p.phase || '', p.migrationTypes || '', p.planType || '',
+        p.plannedStart ? format(new Date(p.plannedStart), 'yyyy-MM-dd') : '',
+        p.plannedEnd   ? format(new Date(p.plannedEnd),   'yyyy-MM-dd') : '',
+        p.actualStart  ? format(new Date(p.actualStart),  'yyyy-MM-dd') : '',
+        p.actualEnd    ? format(new Date(p.actualEnd),    'yyyy-MM-dd') : '',
+        p.delayDays || 0, p.overageAmount || '', p.actualCost || '',
+        p.archivedAt  ? format(new Date(p.archivedAt),  'yyyy-MM-dd HH:mm') : '',
+        p.archiveReason || '', p.archivedBy || '',
+      ]);
+      const csv = [headers, ...rows].map(r => r.map((v: any) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+      a.download = `archive-export-${format(new Date(), 'yyyy-MM-dd')}.csv`;
+      a.click();
+    } catch (e) {
+      alert('Export failed. Please try again.');
+    } finally {
+      setIsExportingCSV(false);
+    }
   }
 
   async function handleRestore(project: any) {
@@ -190,8 +215,13 @@ export default function ArchivePage() {
         </div>
         <div className="flex items-center gap-2">
           {!isViewer && (
-            <button onClick={downloadCSV} className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-              <Download size={14} /> Export CSV
+            <button
+              onClick={downloadCSV}
+              disabled={isExportingCSV}
+              className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
+            >
+              {isExportingCSV ? <RefreshCw size={14} className="animate-spin" /> : <Download size={14} />}
+              {isExportingCSV ? `Exporting all ${total}…` : 'Export CSV (all)'}
             </button>
           )}
         </div>
@@ -364,7 +394,7 @@ export default function ArchivePage() {
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 dark:bg-gray-700/50">
                   <tr>
-                    {['', 'Project Name', 'Manager', 'Migration Type', 'Status', 'SOW End', 'Actual End', 'Delay', 'Cost', 'Archived On', 'Actions'].map((h) => (
+                    {['', 'Project Name', 'Manager', 'Migration Type', 'Status', 'SOW Start', 'SOW End', 'Kickoff Date', 'Actual End', 'Delay', 'Cost', 'Archived On', 'Actions'].map((h) => (
                       <th key={h} className={`py-3 px-3 text-xs font-semibold text-gray-500 dark:text-gray-400 whitespace-nowrap ${h === 'Project Name' ? 'text-left' : 'text-center'}`}>{h}</th>
                     ))}
                   </tr>
@@ -397,7 +427,13 @@ export default function ArchivePage() {
                             </span>
                           </td>
                           <td className="py-3 px-3 text-center text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                            {p.plannedStart ? format(new Date(p.plannedStart), 'MMM d, yyyy') : '—'}
+                          </td>
+                          <td className="py-3 px-3 text-center text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
                             {p.plannedEnd ? format(new Date(p.plannedEnd), 'MMM d, yyyy') : '—'}
+                          </td>
+                          <td className="py-3 px-3 text-center text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                            {p.actualStart ? format(new Date(p.actualStart), 'MMM d, yyyy') : '—'}
                           </td>
                           <td className="py-3 px-3 text-center text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
                             {p.actualEnd ? format(new Date(p.actualEnd), 'MMM d, yyyy') : '—'}
@@ -432,7 +468,7 @@ export default function ArchivePage() {
                         </tr>
                         {isExpanded && (
                           <tr key={`${p.id}-exp`} className="bg-gray-50/60 dark:bg-gray-800/40">
-                            <td colSpan={11} className="px-6 py-4">
+                            <td colSpan={13} className="px-6 py-4">
                               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
                                 <div>
                                   <span className="font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide text-[10px]">Account Manager</span>
