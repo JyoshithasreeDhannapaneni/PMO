@@ -260,6 +260,7 @@ function mapProjectRow(row: any) {
     onetimeProgress: row.onetime_progress ?? null,
     customerSuccess: row.customer_success ?? null,
     csatScore: row.csat_score != null ? parseFloat(row.csat_score) : null,
+    archiveCsatStatus: row.archive_csat_status ?? null,
     delayHappened: row.delay_happened ?? null,
     rcaDocUrl: row.rca_doc_url ?? null,
     createdAt: row.created_at,
@@ -795,6 +796,15 @@ class ProjectService {
       const cv = (data as any).csatScore;
       updates.push(`csat_score = $${params.length + 1}`);
       params.push(cv !== null && cv !== '' ? parseFloat(cv) : null);
+    }
+    if ((data as any).archiveCsatStatus !== undefined) {
+      const av = (data as any).archiveCsatStatus;
+      const allowed = ['SATISFIED', 'NEUTRAL', 'NOT_HAPPY'];
+      if (av !== null && !allowed.includes(av)) {
+        throw new AppError(`archiveCsatStatus must be one of ${allowed.join(', ')} or null`, 400);
+      }
+      updates.push(`archive_csat_status = $${params.length + 1}`);
+      params.push(av ?? null);
     }
     if ((data as any).delayHappened !== undefined) { updates.push(`delay_happened = $${params.length + 1}`); params.push((data as any).delayHappened ?? null); }
     if ((data as any).rcaDocUrl !== undefined) { updates.push(`rca_doc_url = $${params.length + 1}`); params.push((data as any).rcaDocUrl ?? null); }

@@ -74,6 +74,7 @@ export function useUpdateProject() {
       queryClient.invalidateQueries({ queryKey: ['project', variables.id] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['statusReports', variables.id] });
+      queryClient.invalidateQueries({ queryKey: ['archive'] });
     },
   });
 }

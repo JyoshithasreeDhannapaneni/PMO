@@ -404,6 +404,13 @@ async function runMigrations() {
   if (!await columnExists('projects', 'csat_score')) {
     try { await execute(`ALTER TABLE projects ADD COLUMN csat_score DECIMAL(3,1) DEFAULT NULL`); } catch {}
   }
+  // History Archive's CSAT dropdown (Satisfied / Neutral / Not Happy) — a
+  // separate column from csat_score above, which is a numeric /5 score used
+  // by the Account Manager and Projects pages. Keeping them separate avoids
+  // breaking those pages' numeric comparisons/sorting.
+  if (!await columnExists('projects', 'archive_csat_status')) {
+    try { await execute(`ALTER TABLE projects ADD COLUMN archive_csat_status VARCHAR(20) DEFAULT NULL`); } catch {}
+  }
   if (!await columnExists('projects', 'delay_happened')) {
     try { await execute(`ALTER TABLE projects ADD COLUMN delay_happened VARCHAR(50) DEFAULT NULL`); } catch {}
   }
