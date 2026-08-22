@@ -459,13 +459,13 @@ export default function EscalationMailsPage() {
                 <thead>
                   <tr className="text-left text-[11px] uppercase tracking-wide text-slate-400 border-b border-slate-100">
                     <th className="px-5 py-3.5 font-bold">Date Raised</th>
-                    <th className="px-5 py-3.5 font-bold">Leader Name</th>
+                    <th className="px-5 py-3.5 font-bold" title="The account/segment lead over this customer — not who's assigned to fix it (see Escalated To).">Account Lead</th>
                     <th className="px-5 py-3.5 font-bold">Manager (Project)</th>
                     <th className="px-5 py-3.5 font-bold">Customer / Project</th>
                     <th className="px-5 py-3.5 font-bold">Issue (Why Escalated)</th>
-                    <th className="px-5 py-3.5 font-bold">Raised By</th>
+                    <th className="px-5 py-3.5 font-bold" title="The customer contact or requester who raised the issue.">Raised By</th>
                     <th className="px-5 py-3.5 font-bold">Raised Via</th>
-                    <th className="px-5 py-3.5 font-bold">Escalated To</th>
+                    <th className="px-5 py-3.5 font-bold" title="Who owns resolving this escalation — auto-routed by issue type, editable.">Escalated To</th>
                     {boardTab === 'history' && <th className="px-5 py-3.5 font-bold">Resolved Date</th>}
                     <th className="px-5 py-3.5 font-bold">Status</th>
                     <th className="px-5 py-3.5 font-bold text-center">Actions</th>
@@ -621,7 +621,7 @@ export default function EscalationMailsPage() {
           ) : (
             <div className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Field label="Leader Name">
+                <Field label="Account Lead — the segment lead over this customer (not who fixes it)">
                   <select value={draft.leaderName} onChange={(e) => setDraft({ ...draft, leaderName: e.target.value })} className={fieldCls}>
                     {LEADERS.map((l) => <option key={l} value={l}>{l}</option>)}
                   </select>
@@ -768,7 +768,7 @@ export default function EscalationMailsPage() {
                 className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-60"
               />
             </div>
-            <DetailRow label="Leader Name" value={viewRecord.leaderName} />
+            <DetailRow label="Account Lead" value={viewRecord.leaderName} />
             <DetailRow label="Manager (Project)" value={viewRecord.projectManager || '—'} />
             <DetailRow label="Customer / Project" value={viewRecord.customerName} />
             <DetailRow label="Issue Type" value={(ISSUE_TYPE_META[viewRecord.issueType] || {}).label || viewRecord.issueType} />

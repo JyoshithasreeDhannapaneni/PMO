@@ -129,6 +129,7 @@ export interface Project {
   onetimeProgress?: number | null;
   customerSuccess?: string | null;
   csatScore?: number | null;
+  archiveCsatStatus?: 'SATISFIED' | 'NEUTRAL' | 'NOT_HAPPY' | null;
   delayHappened?: 'CUSTOMER_DELAY' | 'INTERNAL_DELAY' | 'BOTH' | null;
   rcaDocUrl?: string | null;
   createdAt: string;
@@ -313,6 +314,9 @@ export interface CreateProjectInput {
 
 export interface UpdateProjectInput extends Partial<CreateProjectInput> {
   projectType?: string;
+  // History Archive's CSAT dropdown — separate from csatScore (a numeric /5
+  // score used elsewhere), Account-Manager-editable only, see archive/page.tsx.
+  archiveCsatStatus?: 'SATISFIED' | 'NEUTRAL' | 'NOT_HAPPY' | null;
   pocQualificationStatus?: PocPhaseStatus;
   pocEnvSetupStatus?: PocPhaseStatus;
   pocTrialStatus?: PocPhaseStatus;

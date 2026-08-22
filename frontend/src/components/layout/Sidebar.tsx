@@ -26,14 +26,20 @@ const allNavigation = [
   { name: 'Escalated Projects',   href: '/escalation-projects',    icon: Bell,            color: '#ea580c', adminOnly: false },
   { name: 'Escalation Mails',     href: '/escalation-mails',       icon: Megaphone,       color: '#c2410c', adminOnly: false },
   { name: 'Reviews',              href: '/reviews',                icon: Star,            color: '#eab308', adminOnly: false },
-  { name: 'Manager Dashboard',    href: '/manager-dashboard',      icon: Users,           color: '#0891b2', adminOnly: true },
+  {
+    name: 'Manager Dashboard', href: '/manager-dashboard', icon: Users, color: '#0891b2', adminOnly: true,
+    children: [
+      { name: 'Overview', href: '/manager-dashboard' },
+      { name: 'Metrics',  href: '/manager-dashboard/metrics' },
+    ],
+  },
   { name: 'Pre-sales',            href: '/poc-projects',           icon: Target,          color: '#db2777', adminOnly: false },
   { name: 'Account Manager View', href: '/account-manager',        icon: CircleUserRound, color: '#4f46e5', adminOnly: false },
   { name: 'Customer Success',     href: '/customer-success',       icon: Handshake,       color: '#16a34a', adminOnly: false },
   { name: 'History Archive',      href: '/archive',                icon: Archive,         color: '#78716c', adminOnly: false },
   { name: 'Server Notifications', href: '/server-alerts',          icon: Megaphone,       color: '#f59e0b', adminOnly: false },
-  { name: 'Templates',            href: '/templates',              icon: FileText,        color: '#0d9488', adminOnly: false },
-  { name: 'Deal Desk',            href: '/deal-desk',              icon: HandCoins,       color: '#65a30d', adminOnly: false },
+  { name: 'Templates',            href: '/templates',              icon: FileText,        color: '#0d9488', adminOnly: true },
+  { name: 'Deal Desk',            href: '/deal-desk',              icon: HandCoins,       color: '#65a30d', adminOnly: true },
   { name: 'Case Studies',         href: '/case-studies',           icon: BookMarked,      color: '#9333ea', adminOnly: false },
   { name: 'KB Articles',          href: '/kb-articles',            icon: BookOpen,        color: '#0284c7', adminOnly: false },
   {
