@@ -3,6 +3,7 @@
 import { useState, useMemo, useCallback, Fragment } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
+import { useUpdateProject } from '@/hooks/useProjects';
 import { Card } from '@/components/ui/Card';
 import Link from 'next/link';
 import {
@@ -41,10 +42,68 @@ function formatCurrency(n?: number | null) {
   return `$${Number(n).toLocaleString()}`;
 }
 
+// Inline-editable CSAT cell. Edit access is Account-Manager-only (and only for
+// projects they personally manage — enforced again server-side in
+// projectController.update, this is not just a UI convenience) or Admin.
+// Every other role sees the value read-only, matching how every other archive
+// column behaves.
+const CSAT_STATUS_OPTIONS = [
+  { value: 'SATISFIED', label: 'Satisfied', className: 'bg-green-100 text-green-700' },
+  { value: 'NEUTRAL',   label: 'Neutral',   className: 'bg-yellow-100 text-yellow-700' },
+  { value: 'NOT_HAPPY', label: 'Not Happy', className: 'bg-red-100 text-red-700' },
+] as const;
+
+function csatStatusMeta(status: string | null) {
+  return CSAT_STATUS_OPTIONS.find((o) => o.value === status) ?? null;
+}
+
+function CsatCell({ project, canEdit }: { project: any; canEdit: boolean }) {
+  const updateMutation = useUpdateProject();
+  const meta = csatStatusMeta(project.archiveCsatStatus);
+
+  const handleChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const next = e.target.value || null;
+    try {
+      await updateMutation.mutateAsync({ id: project.id, data: { archiveCsatStatus: next as any } });
+    } catch (err: any) {
+      alert('Could not save CSAT: ' + (err?.response?.data?.error?.message || err?.message || 'Unknown error'));
+    }
+  };
+
+  if (!canEdit) {
+    return (
+      <div className="flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
+        {meta ? (
+          <span className={`px-1.5 py-0.5 rounded-full text-xs font-semibold ${meta.className}`}>{meta.label}</span>
+        ) : (
+          <span className="text-xs text-gray-400">—</span>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
+      <select
+        value={project.archiveCsatStatus || ''}
+        onChange={handleChange}
+        disabled={updateMutation.isPending}
+        className={`text-xs px-2 py-1 rounded-full font-semibold border-0 outline-none cursor-pointer disabled:opacity-50 ${meta ? meta.className : 'bg-gray-100 text-gray-500'}`}
+      >
+        <option value="">— Not set</option>
+        {CSAT_STATUS_OPTIONS.map((o) => (
+          <option key={o.value} value={o.value}>{o.label}</option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 export default function ArchivePage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'ADMIN';
   const isViewer = user?.role === 'VIEWER';
+  const isAccountManager = user?.role === 'ACCOUNT_MANAGER';
   const queryClient = useQueryClient();
 
   const [tab, setTab]                       = useState<'completed' | 'cancelled'>('completed');
@@ -144,7 +203,7 @@ export default function ArchivePage() {
 
       const headers = ['Project Name','Customer','Project Manager','Account Manager',
         'Status','Phase','Migration Types','Plan Type','Planned Start','Planned End',
-        'Actual Start','Actual End','Delay Days','Overage Amount','Actual Cost',
+        'Actual Start','Actual End','Delay Days','Overage Amount','Actual Cost','CSAT',
         'Archived At','Archive Reason','Archived By'];
       const rows = allProjects.map((p) => [
         p.name, p.customerName, p.projectManager, p.accountManager || '',
@@ -153,7 +212,7 @@ export default function ArchivePage() {
         p.plannedEnd   ? format(new Date(p.plannedEnd),   'yyyy-MM-dd') : '',
         p.actualStart  ? format(new Date(p.actualStart),  'yyyy-MM-dd') : '',
         p.actualEnd    ? format(new Date(p.actualEnd),    'yyyy-MM-dd') : '',
-        p.delayDays || 0, p.overageAmount || '', p.actualCost || '',
+        p.delayDays || 0, p.overageAmount || '', p.actualCost || '', csatStatusMeta(p.archiveCsatStatus)?.label ?? '',
         p.archivedAt  ? format(new Date(p.archivedAt),  'yyyy-MM-dd HH:mm') : '',
         p.archiveReason || '', p.archivedBy || '',
       ]);
@@ -394,7 +453,7 @@ export default function ArchivePage() {
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 dark:bg-gray-700/50">
                   <tr>
-                    {['', 'Project Name', 'Manager', 'Migration Type', 'Status', 'SOW Start', 'SOW End', 'Kickoff Date', 'Actual End', 'Delay', 'Cost', 'Archived On', 'Actions'].map((h) => (
+                    {['', 'Project Name', 'Manager', 'Migration Type', 'Status', 'SOW Start', 'SOW End', 'Kickoff Date', 'Actual End', 'Delay', 'Cost', 'CSAT', 'Archived On', 'Actions'].map((h) => (
                       <th key={h} className={`py-3 px-3 text-xs font-semibold text-gray-500 dark:text-gray-400 whitespace-nowrap ${h === 'Project Name' ? 'text-left' : 'text-center'}`}>{h}</th>
                     ))}
                   </tr>
@@ -446,6 +505,9 @@ export default function ArchivePage() {
                             ) : <span className="text-xs text-green-600">On time</span>}
                           </td>
                           <td className="py-3 px-3 text-center text-xs text-gray-500 dark:text-gray-400">{formatCurrency(p.actualCost)}</td>
+                          <td className="py-3 px-3 text-center">
+                            <CsatCell project={p} canEdit={isAdmin || (isAccountManager && p.accountManager === user?.name)} />
+                          </td>
                           <td className="py-3 px-3 text-center text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
                             {p.archivedAt ? format(new Date(p.archivedAt), 'MMM d, yyyy') : '—'}
                             {p.archiveReason && <div className="text-[10px] text-gray-400">{p.archiveReason}</div>}
@@ -468,7 +530,7 @@ export default function ArchivePage() {
                         </tr>
                         {isExpanded && (
                           <tr key={`${p.id}-exp`} className="bg-gray-50/60 dark:bg-gray-800/40">
-                            <td colSpan={13} className="px-6 py-4">
+                            <td colSpan={14} className="px-6 py-4">
                               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
                                 <div>
                                   <span className="font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide text-[10px]">Account Manager</span>
@@ -610,6 +672,7 @@ export default function ArchivePage() {
                     ['Estimated Cost', formatCurrency(detailProject.project.estimatedCost)],
                     ['Actual Cost', formatCurrency(detailProject.project.actualCost)],
                     ['Delay Days', `${detailProject.project.delayDays || 0} days`],
+                    ['CSAT', csatStatusMeta(detailProject.project.archiveCsatStatus)?.label ?? '—'],
                     ['Archived On', detailProject.project.archivedAt ? format(new Date(detailProject.project.archivedAt), 'MMM d, yyyy HH:mm') : '—'],
                   ].map(([label, value]) => (
                     <div key={label} className="bg-gray-50 dark:bg-gray-800 rounded-lg p-2.5">

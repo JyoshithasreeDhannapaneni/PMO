@@ -113,7 +113,17 @@ getAll: asyncHandler(async (req: Request, res: Response): Promise<void> => {
       try {
         const user = await authService.getUserFromToken(token);
         actingUser = user;
-        if (user && user.role !== 'ADMIN' && user.role !== 'PROJECT_MANAGER') {
+        // Account Managers get one narrow exception: they can submit an
+        // update that touches ONLY archiveCsatStatus (the CSAT dropdown
+        // column in History Archive) — this is the one field they own
+        // post-completion. Any other field in the same request still
+        // requires ADMIN/PROJECT_MANAGER, so an Account Manager can't
+        // smuggle other edits in alongside it.
+        const bodyKeys = Object.keys(req.body || {});
+        const isCsatOnlyEdit = bodyKeys.length > 0 && bodyKeys.every((k) => k === 'archiveCsatStatus');
+        const isAccountManagerCsatEdit = user?.role === 'ACCOUNT_MANAGER' && isCsatOnlyEdit;
+
+        if (user && user.role !== 'ADMIN' && user.role !== 'PROJECT_MANAGER' && !isAccountManagerCsatEdit) {
           res.status(403).json({ success: false, error: { message: 'Only Admins and Project Managers can edit projects' } });
           return;
         }
@@ -121,6 +131,10 @@ getAll: asyncHandler(async (req: Request, res: Response): Promise<void> => {
         previousStatus = existing.status;
         if (user && user.role === 'PROJECT_MANAGER' && existing.projectManager !== user.name) {
           res.status(403).json({ success: false, error: { message: 'You can only edit projects assigned to you' } });
+          return;
+        }
+        if (user && user.role === 'ACCOUNT_MANAGER' && existing.accountManager !== user.name) {
+          res.status(403).json({ success: false, error: { message: 'You can only edit the CSAT status for projects you manage' } });
           return;
         }
       } catch {}

@@ -5,7 +5,7 @@ import { useSettings } from '@/context/SettingsContext';
 import { useAuth } from '@/context/AuthContext';
 import {
   FolderOpen, Mail, MessageSquare, Upload, Download,
-  Trash2, FileText, ChevronRight, ArrowRight, Plus, X, Check, Pencil, Loader2,
+  Trash2, FileText, ChevronRight, ArrowRight, Plus, X, Check, Pencil, Loader2, AlertCircle,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { templateCombinationsApi } from '@/services/api';
@@ -60,7 +60,7 @@ const DOC_TYPES_KEY = 'templateDocTypes';
 
 export default function TemplatesPage() {
   const { settings } = useSettings();
-  const { user } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
   const isViewer = user?.role === 'VIEWER';
 
   // Tab
@@ -318,6 +318,24 @@ export default function TemplatesPage() {
   };
 
   // ─── Render ───────────────────────────────────────────────────────────────
+
+  if (authLoading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="w-7 h-7 animate-spin text-primary-600" />
+      </div>
+    );
+  }
+
+  if (user?.role !== 'ADMIN') {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 gap-3">
+        <AlertCircle size={40} className="text-red-400" />
+        <p className="text-lg font-semibold text-gray-700">Access Denied</p>
+        <p className="text-sm text-gray-400">This page is only accessible to administrators.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="animate-fadeIn h-full flex flex-col">
