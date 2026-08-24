@@ -109,7 +109,7 @@ class ArchiveService {
               planned_start, planned_end, actual_start, actual_end, migration_types,
               source_platform, target_platform, plan_type, description, notes,
               estimated_cost, actual_cost, delay_days, delay_status,
-              is_escalated, is_overaged, overage_amount,
+              is_escalated, is_overaged, overage_amount, csat_score, archive_csat_status,
               archived_at, archive_reason, archived_by, restore_count,
               created_at, updated_at
        FROM projects ${where}
@@ -258,6 +258,8 @@ class ArchiveService {
       delayDays: r.delay_days, delayStatus: r.delay_status,
       isEscalated: !!r.is_escalated, isOveraged: !!r.is_overaged,
       overageAmount: r.overage_amount,
+      csatScore: r.csat_score != null ? parseFloat(r.csat_score) : null,
+      archiveCsatStatus: r.archive_csat_status ?? null,
       archivedAt: r.archived_at, archiveReason: r.archive_reason,
       archivedBy: r.archived_by, restoreCount: r.restore_count || 0,
       createdAt: r.created_at, updatedAt: r.updated_at,

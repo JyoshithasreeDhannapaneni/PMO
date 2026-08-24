@@ -69,7 +69,7 @@ interface Deal {
 }
 
 export default function DealDeskPage() {
-  const { user } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
   const isViewer = user?.role === 'VIEWER';
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -237,6 +237,24 @@ export default function DealDeskPage() {
         (d.status ?? '').toLowerCase().includes(docsSearchLower)
       )
     : zenopDocs;
+
+  if (authLoading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <RefreshCw className="w-7 h-7 animate-spin text-primary-600" />
+      </div>
+    );
+  }
+
+  if (user?.role !== 'ADMIN') {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 gap-3">
+        <AlertCircle size={40} className="text-red-400" />
+        <p className="text-lg font-semibold text-gray-700">Access Denied</p>
+        <p className="text-sm text-gray-400">This page is only accessible to administrators.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 space-y-6">
