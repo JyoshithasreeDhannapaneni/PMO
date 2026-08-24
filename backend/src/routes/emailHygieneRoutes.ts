@@ -8,5 +8,6 @@ router.get('/', requireAuth, emailHygieneController.getMetrics);
 router.get('/export', requireAuth, emailHygieneController.exportExcel);
 router.post('/sync', requireAuth, emailHygieneController.triggerSync);
 router.get('/sync-status', requireAuth, emailHygieneController.getSyncStatus);
+router.get('/weekly-trend', requireAuth, emailHygieneController.getWeeklyTrend);
 
 export default router;

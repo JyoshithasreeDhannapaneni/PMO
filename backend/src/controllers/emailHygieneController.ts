@@ -35,6 +35,11 @@ export const emailHygieneController = {
     res.json({ success: true, data: emailHygieneService.getSyncState() });
   }),
 
+  getWeeklyTrend: asyncHandler(async (_req: Request, res: Response): Promise<void> => {
+    const data = await emailHygieneService.getWeeklyTrend();
+    res.json({ success: true, data });
+  }),
+
   exportExcel: asyncHandler(async (_req: Request, res: Response): Promise<void> => {
     const { metrics, teamHygiene, segmentHeads } = await emailHygieneService.getHygieneMetrics(false);
     const rows = metrics.map(m => ({

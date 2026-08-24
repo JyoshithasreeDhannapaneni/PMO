@@ -160,7 +160,18 @@ async function fetchTranscriptVtt(
 export const callTranscriptService = {
   isConfigured: isGraphConfigured,
 
-  async getTranscriptCues(organizerEmail: string, joinUrl: string): Promise<TranscriptCue[]> {
+  // fallbackUserEmail is the internal team member being graded for this call — not
+  // necessarily the calendar event's organizer. Added 2026-08-25: confirmed live that
+  // calendar invites are sometimes sent "as" a shared internal mailbox (e.g. a
+  // "Migration Meeting Recordings" account) that has no real Azure AD user object of its
+  // own (resolveUserId 404s → OrganizerNotFoundError), even though the *actual* Teams
+  // meeting is hosted under the real internal attendee's own identity the whole time —
+  // /users/{attendee}/onlineMeetings resolves it and the transcript fetches normally. Only
+  // attempted when the organizer is on our own domain but isn't a real mailbox; a genuinely
+  // external (customer-organized) meeting still fails at the transcript step even via this
+  // fallback (confirmed live — cross-tenant, not recoverable), so ExternalOrganizerError is
+  // still thrown immediately for those rather than wasting a retry cycle every night.
+  async getTranscriptCues(organizerEmail: string, joinUrl: string, fallbackUserEmail?: string): Promise<TranscriptCue[]> {
     if (!isGraphConfigured()) {
       throw new Error('Microsoft Graph is not configured (MS_GRAPH_* env vars missing).');
     }
@@ -170,9 +181,20 @@ export const callTranscriptService = {
     const token = await getAccessToken();
     const client = graphClient(token);
 
-    const organizerId = await resolveUserId(client, organizerEmail);
-    const onlineMeetingId = await resolveOnlineMeetingId(client, organizerId, joinUrl);
-    const vtt = await fetchTranscriptVtt(client, organizerId, onlineMeetingId);
+    let resolvedId: string;
+    try {
+      resolvedId = await resolveUserId(client, organizerEmail);
+    } catch (err) {
+      if (err instanceof OrganizerNotFoundError && fallbackUserEmail) {
+        logger.info(`Call transcript: organizer ${organizerEmail} has no mailbox — falling back to attendee ${fallbackUserEmail}`);
+        resolvedId = await resolveUserId(client, fallbackUserEmail);
+      } else {
+        throw err;
+      }
+    }
+
+    const onlineMeetingId = await resolveOnlineMeetingId(client, resolvedId, joinUrl);
+    const vtt = await fetchTranscriptVtt(client, resolvedId, onlineMeetingId);
     const cues = parseVtt(vtt);
 
     if (cues.length === 0) {

@@ -23,7 +23,7 @@ async function gradeOneCall(
   userName: string
 ): Promise<GradeOutcome> {
   try {
-    const cues = await callTranscriptService.getTranscriptCues(call.organizerEmail, call.joinUrl!);
+    const cues = await callTranscriptService.getTranscriptCues(call.organizerEmail, call.joinUrl!, userEmail);
     const rating = await transcriptGradingService.gradeTranscript({
       cues,
       internalUserName: userName,

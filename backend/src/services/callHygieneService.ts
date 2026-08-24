@@ -2,6 +2,7 @@ import axios, { type AxiosInstance } from 'axios';
 import { query, execute } from '../config/database';
 import { logger } from '../utils/logger';
 import { bucketQAScore } from '../utils/qaBucketing';
+import { getIstWeekBounds, istDateStr, weeksInCurrentIstMonth } from '../utils/weekBounds';
 
 interface GraphEvent {
   id: string;
@@ -380,6 +381,78 @@ function pickBestAndWorst(pairs: BestWorstQA[]): { best: BestWorstQA | null; wor
   return { best, worst };
 }
 
+// Shared by the rolling 30-day cache path (getHygieneMetrics) and the weekly-window path
+// (finalizeWeek/getWeeklyTrend below) — discovers users, filters to valid mailboxes,
+// analyzes calendar activity for [since, until], then aggregates transcript-graded Quality
+// per user. Returns permissionDenied so callers can distinguish "no data" from "no access."
+async function computeMetricsForWindow(
+  client: AxiosInstance,
+  since: string,
+  until: string
+): Promise<{ metrics: UserCallHygiene[]; permissionDenied: boolean }> {
+  const allUsers = await getCFUsers();
+  logger.info(`Call hygiene: discovered ${allUsers.length} candidate CF users`);
+
+  const validUsers: Array<{ email: string; name: string }> = [];
+  let permissionDenied = false;
+  for (let i = 0; i < allUsers.length; i += 5) {
+    const batch = allUsers.slice(i, i + 5);
+    const checks = await Promise.allSettled(
+      batch.map(async u => {
+        const exists = await userMailboxExists(client, encodeURIComponent(u.email));
+        return exists ? u : null;
+      })
+    );
+    for (const r of checks) {
+      if (r.status === 'fulfilled' && r.value) validUsers.push(r.value);
+      else if (r.status === 'rejected') logger.warn('Mailbox existence check error:', r.reason?.message);
+    }
+  }
+  logger.info(`Call hygiene: ${validUsers.length}/${allUsers.length} users have accessible mailboxes`);
+
+  const results: CalendarContext[] = [];
+  for (let i = 0; i < validUsers.length; i += 3) {
+    const batch = validUsers.slice(i, i + 3);
+    const settled = await Promise.allSettled(
+      batch.map(u => analyzeUser(client, u.email, u.name, since, until))
+    );
+    for (const r of settled) {
+      if (r.status === 'fulfilled') results.push(r.value);
+      else {
+        const status = (r.reason as any)?.response?.status;
+        if (status === 403 || status === 401) permissionDenied = true;
+        logger.error('Call hygiene analysis error:', r.reason);
+      }
+    }
+  }
+
+  const merged: UserCallHygiene[] = [];
+  for (let i = 0; i < results.length; i += 3) {
+    const batch = results.slice(i, i + 3);
+    const settled = await Promise.allSettled(
+      batch.map(async r => ({ ...r, ...(await aggregateQuality(r.userEmail, r.calls)) }))
+    );
+    for (const r of settled) {
+      if (r.status === 'fulfilled') merged.push(r.value);
+      else logger.error('Call hygiene: Quality aggregation error:', r.reason);
+    }
+  }
+
+  // null (no gradable signal) sorts last, not first — treating "no data" as the worst
+  // score would be misleading for someone whose customers mostly organize their own calls.
+  const sorted = merged.sort((a, b) => {
+    if (a.qualityScore === null && b.qualityScore === null) return 0;
+    if (a.qualityScore === null) return 1;
+    if (b.qualityScore === null) return -1;
+    return b.qualityScore - a.qualityScore;
+  });
+
+  return { metrics: sorted, permissionDenied };
+}
+
+const CURRENT_WEEK_TTL_MS = 30 * 60 * 1000;
+let _currentWeekCache: { weekStartDate: string; computedAt: number; metrics: UserCallHygiene[] } | null = null;
+
 export const callHygieneService = {
   isConfigured: isGraphConfigured,
 
@@ -463,49 +536,17 @@ export const callHygieneService = {
       };
     }
     const client = graphClient(token);
-
-    const allUsers = await getCFUsers();
-    logger.info(`Call hygiene: discovered ${allUsers.length} candidate CF users`);
-
+    // 2026-08-25: changed from a rolling 30-day window to the current Mon-Sun (IST)
+    // calendar week to date, per the weekly-hygiene redesign — this is the "live current
+    // week" number; the separate *_weekly tables hold the permanent finalized history.
     const periodEnd = new Date();
-    const periodStart = new Date(periodEnd.getTime() - 30 * 24 * 3600 * 1000);
+    const periodStart = getIstWeekBounds(0).weekStart;
     const since = periodStart.toISOString();
     const until = periodEnd.toISOString();
 
-    const validUsers: Array<{ email: string; name: string }> = [];
-    let permissionDenied = false;
-    for (let i = 0; i < allUsers.length; i += 5) {
-      const batch = allUsers.slice(i, i + 5);
-      const checks = await Promise.allSettled(
-        batch.map(async u => {
-          const exists = await userMailboxExists(client, encodeURIComponent(u.email));
-          return exists ? u : null;
-        })
-      );
-      for (const r of checks) {
-        if (r.status === 'fulfilled' && r.value) validUsers.push(r.value);
-        else if (r.status === 'rejected') logger.warn('Mailbox existence check error:', r.reason?.message);
-      }
-    }
-    logger.info(`Call hygiene: ${validUsers.length}/${allUsers.length} users have accessible mailboxes`);
+    const { metrics: sorted, permissionDenied } = await computeMetricsForWindow(client, since, until);
 
-    const results: CalendarContext[] = [];
-    for (let i = 0; i < validUsers.length; i += 3) {
-      const batch = validUsers.slice(i, i + 3);
-      const settled = await Promise.allSettled(
-        batch.map(u => analyzeUser(client, u.email, u.name, since, until))
-      );
-      for (const r of settled) {
-        if (r.status === 'fulfilled') results.push(r.value);
-        else {
-          const status = (r.reason as any)?.response?.status;
-          if (status === 403 || status === 401) permissionDenied = true;
-          logger.error('Call hygiene analysis error:', r.reason);
-        }
-      }
-    }
-
-    if (results.length === 0 && permissionDenied) {
+    if (sorted.length === 0 && permissionDenied) {
       return {
         metrics: [],
         computedAt: new Date().toISOString(),
@@ -515,30 +556,6 @@ export const callHygieneService = {
         authError: 'Calendars.Read application permission is missing or not admin-consented for this Azure AD app registration.',
       };
     }
-
-    // Quality aggregation — one batched call_transcript_ratings query per user (see
-    // aggregateQuality doc comment), not folded into analyzeUser() since that function is
-    // a pure Graph-calendar computation with no reason to touch the database.
-    const merged: UserCallHygiene[] = [];
-    for (let i = 0; i < results.length; i += 3) {
-      const batch = results.slice(i, i + 3);
-      const settled = await Promise.allSettled(
-        batch.map(async r => ({ ...r, ...(await aggregateQuality(r.userEmail, r.calls)) }))
-      );
-      for (const r of settled) {
-        if (r.status === 'fulfilled') merged.push(r.value);
-        else logger.error('Call hygiene: Quality aggregation error:', r.reason);
-      }
-    }
-
-    // null (no gradable signal) sorts last, not first — treating "no data" as the worst
-    // score would be misleading for someone whose customers mostly organize their own calls.
-    const sorted = merged.sort((a, b) => {
-      if (a.qualityScore === null && b.qualityScore === null) return 0;
-      if (a.qualityScore === null) return 1;
-      if (b.qualityScore === null) return -1;
-      return b.qualityScore - a.qualityScore;
-    });
 
     await execute(
       `INSERT INTO call_hygiene_cache (period_start, period_end, metrics) VALUES ($1, $2, $3)`,
@@ -557,5 +574,81 @@ export const callHygieneService = {
       periodEnd: periodEnd.toISOString(),
       isConfigured: true,
     };
+  },
+
+  // Locks in a permanent snapshot for the most recently completed Mon-Sun (IST) week —
+  // called by the Monday 7AM IST cron. Idempotent (UNIQUE on week_start). Per the
+  // 2026-08-24 decision, this is locked in even if some of the week's calls haven't been
+  // graded yet by the overnight grading job — coverageNote records how complete Quality
+  // was AT finalize time, and the snapshot is never silently revised afterward even if
+  // more calls get graded later, so the trend line stays stable.
+  async finalizeWeek(): Promise<{ finalized: boolean; weekStartDate: string }> {
+    const { weekStart, weekEnd } = getIstWeekBounds(1);
+    const weekStartDate = istDateStr(weekStart);
+    if (!isGraphConfigured()) return { finalized: false, weekStartDate };
+
+    const existing = await query(`SELECT id FROM call_hygiene_weekly WHERE week_start = $1`, [weekStartDate]);
+    if (existing.rows.length > 0) return { finalized: false, weekStartDate };
+
+    const token = await getAccessToken();
+    const client = graphClient(token);
+    const { metrics } = await computeMetricsForWindow(client, weekStart.toISOString(), weekEnd.toISOString());
+
+    const totalGraded = metrics.reduce((s, m) => s + m.qualityCoverage.graded, 0);
+    const totalGradable = metrics.reduce((s, m) => s + m.qualityCoverage.total - m.qualityCoverage.excluded, 0);
+    const coverageNote = `${totalGraded}/${totalGradable} gradable calls graded as of finalize`;
+
+    await execute(
+      `INSERT INTO call_hygiene_weekly (week_start, week_end, metrics, coverage_note) VALUES ($1, $2, $3, $4)
+       ON CONFLICT (week_start) DO NOTHING`,
+      [weekStartDate, istDateStr(weekEnd), JSON.stringify(metrics), coverageNote]
+    );
+    logger.info(`[CallHygiene] Finalized week of ${weekStartDate} — ${metrics.length} users, ${coverageNote}`);
+    return { finalized: true, weekStartDate };
+  },
+
+  // Every finalized week whose Monday falls in the current IST calendar month, plus the
+  // current in-progress week computed live (isCurrent: true, never persisted).
+  async getWeeklyTrend(): Promise<{
+    weeks: Array<{ weekStart: string; weekEnd: string; isCurrent: boolean; coverageNote: string | null; metrics: UserCallHygiene[] }>;
+    isConfigured: boolean;
+  }> {
+    if (!isGraphConfigured()) return { weeks: [], isConfigured: false };
+
+    const monthWeeks = weeksInCurrentIstMonth();
+    const { weekStart: currentWeekStart, weekEnd: currentWeekEnd } = getIstWeekBounds(0);
+    const currentWeekStartDate = istDateStr(currentWeekStart);
+    const finalizedWeekDates = monthWeeks.filter(d => d !== currentWeekStartDate);
+
+    const finalizedRows = finalizedWeekDates.length
+      ? (await query(
+          `SELECT week_start, week_end, metrics, coverage_note FROM call_hygiene_weekly WHERE week_start = ANY($1) ORDER BY week_start ASC`,
+          [finalizedWeekDates]
+        )).rows
+      : [];
+
+    const weeks = finalizedRows.map((r: any) => ({
+      weekStart: istDateStr(new Date(r.week_start)),
+      weekEnd: istDateStr(new Date(r.week_end)),
+      isCurrent: false,
+      coverageNote: r.coverage_note as string | null,
+      metrics: r.metrics as UserCallHygiene[],
+    }));
+
+    try {
+      if (_currentWeekCache?.weekStartDate === currentWeekStartDate && Date.now() - _currentWeekCache.computedAt < CURRENT_WEEK_TTL_MS) {
+        weeks.push({ weekStart: currentWeekStartDate, weekEnd: istDateStr(currentWeekEnd), isCurrent: true, coverageNote: null, metrics: _currentWeekCache.metrics });
+      } else {
+        const token = await getAccessToken();
+        const client = graphClient(token);
+        const { metrics } = await computeMetricsForWindow(client, currentWeekStart.toISOString(), new Date().toISOString());
+        _currentWeekCache = { weekStartDate: currentWeekStartDate, computedAt: Date.now(), metrics };
+        weeks.push({ weekStart: currentWeekStartDate, weekEnd: istDateStr(currentWeekEnd), isCurrent: true, coverageNote: null, metrics });
+      }
+    } catch (err) {
+      logger.error('[CallHygiene] Current-week trend fetch failed:', err);
+    }
+
+    return { weeks, isConfigured: true };
   },
 };

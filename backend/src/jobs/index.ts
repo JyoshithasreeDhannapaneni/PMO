@@ -2,6 +2,7 @@ import cron from 'node-cron';
 import { logger } from '../utils/logger';
 import { projectService } from '../services/projectService';
 import { emailHygieneService } from '../services/emailHygieneService';
+import { auditService } from '../services/auditService';
 import { execute } from '../config/database';
 
 /**
@@ -120,6 +121,29 @@ export function initializeCronJobs(): void {
     }
   }, { timezone: 'Asia/Kolkata' });
 
+  // Weekly hygiene finalize — every Monday at 7:00 AM IST, locks in a permanent snapshot
+  // of the Mon-Sun (IST) week that just ended for all three hygiene systems (2026-08-24
+  // weekly-trend feature). Agentic by design: no one has to click anything for last week's
+  // numbers to become part of the trend history — see finalizeWeek() on each service for
+  // the per-system idempotency/coverage-caveat details. Runs after the existing daily
+  // refreshes (5/7 AM) so email/call hygiene have already synced today's data once before
+  // this reads off whatever's cached; it does its own fresh Graph fetch for the exact week
+  // window regardless, so it doesn't depend on those crons' cache state.
+  cron.schedule('0 7 * * 1', async () => {
+    logger.info('[WeeklyHygiene] Starting Monday 7 AM IST weekly finalize...');
+    const { callHygieneService } = require('../services/callHygieneService');
+    const results = await Promise.allSettled([
+      auditService.finalizeWeek(),
+      emailHygieneService.finalizeWeek(),
+      callHygieneService.finalizeWeek(),
+    ]);
+    const labels = ['PmoHygiene', 'EmailHygiene', 'CallHygiene'];
+    results.forEach((r, i) => {
+      if (r.status === 'fulfilled') logger.info(`[WeeklyHygiene] ${labels[i]}: ${JSON.stringify(r.value)}`);
+      else logger.error(`[WeeklyHygiene] ${labels[i]} finalize failed:`, r.reason);
+    });
+  }, { timezone: 'Asia/Kolkata' });
+
   logger.info('Cron jobs scheduled:');
   logger.info('  - Delay check: Daily at 6:00 AM');
   logger.info('  - Server alerts: Daily at 8:00 AM');
@@ -129,4 +153,5 @@ export function initializeCronJobs(): void {
   logger.info('  - Call hygiene refresh: Daily at 5:00 AM IST');
   logger.info('  - Call transcript grading: Daily at 5:30 AM IST');
   logger.info('  - Global logout (clear all sessions): Daily at 6:00 AM IST');
+  logger.info('  - Weekly hygiene finalize (PMO/Email/Call): Every Monday at 7:00 AM IST');
 }
