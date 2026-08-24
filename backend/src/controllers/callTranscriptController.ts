@@ -45,7 +45,7 @@ export const callTranscriptController = {
       throw new AppError('OpenAI is not configured on the server (OPENAI_API_KEY missing).', 400);
     }
 
-    const cues = await callTranscriptService.getTranscriptCues(data.organizerEmail, data.joinUrl);
+    const cues = await callTranscriptService.getTranscriptCues(data.organizerEmail, data.joinUrl, data.internalUserEmail);
 
     const rating = await transcriptGradingService.gradeTranscript({
       cues,

@@ -180,6 +180,11 @@ export const auditController = {
     res.json({ success: true, data });
   }),
 
+  getHygieneWeeklyTrend: asyncHandler(async (_req: Request, res: Response): Promise<void> => {
+    const data = await auditService.getPmoHygieneWeeklyTrend();
+    res.json({ success: true, data });
+  }),
+
   exportHygieneExcel: asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const { startDate, endDate } = req.query;
     const board = await auditService.getHygieneBoard(startDate as string, endDate as string);

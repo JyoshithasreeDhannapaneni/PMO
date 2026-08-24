@@ -673,6 +673,43 @@ async function runMigrations() {
     computed_at  TIMESTAMPTZ DEFAULT NOW()
   )`);
 
+  // Weekly hygiene snapshots (2026-08-24 — weekly trend feature) — one immutable row per
+  // finalized Mon-Sun (Asia/Kolkata) calendar week, written once by the Monday 7AM IST
+  // finalize cron and never overwritten, so a trend graph stays stable even as the current
+  // week's live numbers keep moving. Kept forever (no pruning), unlike the rolling *_cache
+  // tables above — the whole point is durable week-over-week history. week_start is the
+  // natural dedup key (UNIQUE) so a re-run of the finalize job is a no-op, not a duplicate.
+  await execute(`CREATE TABLE IF NOT EXISTS pmo_hygiene_weekly (
+    id          UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    week_start  DATE NOT NULL UNIQUE,
+    week_end    DATE NOT NULL,
+    metrics     JSONB NOT NULL DEFAULT '[]',
+    computed_at TIMESTAMPTZ DEFAULT NOW()
+  )`);
+  await execute(`CREATE TABLE IF NOT EXISTS email_hygiene_weekly (
+    id           UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    week_start   DATE NOT NULL UNIQUE,
+    week_end     DATE NOT NULL,
+    metrics      JSONB NOT NULL DEFAULT '[]',
+    team_hygiene JSONB,
+    computed_at  TIMESTAMPTZ DEFAULT NOW()
+  )`);
+  await execute(`CREATE TABLE IF NOT EXISTS call_hygiene_weekly (
+    id           UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    week_start   DATE NOT NULL UNIQUE,
+    week_end     DATE NOT NULL,
+    metrics      JSONB NOT NULL DEFAULT '[]',
+    -- Coverage caveat (2026-08-24 decision): Call Hygiene's Quality score depends on
+    -- overnight transcript grading, which has a real backlog and may not have finished
+    -- grading every call from the just-ended week by the time Monday's finalize runs.
+    -- This snapshot is still locked in permanently at finalize time (never recomputed
+    -- later even if more calls get graded afterward) — coverage_note records how complete
+    -- it was AT finalize time, so the UI can show "graded 40/58 as of finalize" honestly
+    -- instead of silently presenting a partial number as if it were complete.
+    coverage_note TEXT,
+    computed_at  TIMESTAMPTZ DEFAULT NOW()
+  )`);
+
   // Call transcript ratings — AI-graded scorecards for how well an internal team
   // member answered customer questions in a specific Teams meeting (one row per
   // meeting+person, cached so re-opening a scorecard doesn't re-call OpenAI).

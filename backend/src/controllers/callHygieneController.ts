@@ -76,4 +76,11 @@ export const callHygieneController = {
     const result = await callHygieneService.getBestWorstOrgWide();
     res.json({ success: true, data: result });
   }),
+
+  getWeeklyTrend: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const result = await callHygieneService.getWeeklyTrend();
+    const user = (req as any).user;
+    const weeks = result.weeks.map(w => ({ ...w, metrics: scopeToRole(w.metrics, user.role, user.email) }));
+    res.json({ success: true, data: { ...result, weeks } });
+  }),
 };

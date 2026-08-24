@@ -746,6 +746,10 @@ export const emailHygieneApi = {
     const { data } = await api.get('/email-hygiene/sync-status');
     return data as { success: boolean; data: { running: boolean; startedAt: string | null; completedAt: string | null; error: string | null } };
   },
+  getWeeklyTrend: async () => {
+    const { data } = await api.get('/email-hygiene/weekly-trend');
+    return data;
+  },
 };
 
 export const callHygieneApi = {
@@ -763,6 +767,10 @@ export const callHygieneApi = {
   },
   getOrgBestWorst: async () => {
     const { data } = await api.get('/call-hygiene/best-worst/org');
+    return data;
+  },
+  getWeeklyTrend: async () => {
+    const { data } = await api.get('/call-hygiene/weekly-trend');
     return data;
   },
 };
@@ -835,6 +843,10 @@ export const auditApi = {
   },
   cancelHygieneScorecardSchedule: async (id: string) => {
     const { data } = await api.delete(`/audit/hygiene-scorecard/schedules/${id}`);
+    return data;
+  },
+  getHygieneWeeklyTrend: async () => {
+    const { data } = await api.get('/audit/hygiene-board/weekly-trend');
     return data;
   },
 };

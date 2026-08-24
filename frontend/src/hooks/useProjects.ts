@@ -2,7 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect } from 'react';
-import { projectsApi, dashboardApi, statusReportsApi, managerGoalsApi, migrationTypeApi, pocProjectsApi, accountManagerApi, customerSuccessApi, hubspotApi, psEngagementsApi, kbArticlesApi, emailHygieneApi, callHygieneApi, callTranscriptsApi, escalationMailsApi } from '@/services/api';
+import { projectsApi, dashboardApi, statusReportsApi, managerGoalsApi, migrationTypeApi, pocProjectsApi, accountManagerApi, customerSuccessApi, hubspotApi, psEngagementsApi, kbArticlesApi, emailHygieneApi, callHygieneApi, callTranscriptsApi, escalationMailsApi, auditApi } from '@/services/api';
 import type { CreateProjectInput, UpdateProjectInput } from '@/types';
 
 export function useProjects(params?: {
@@ -1085,6 +1085,36 @@ export function useCallHygieneOrgBestWorst(enabled = true) {
     queryFn: () => callHygieneApi.getOrgBestWorst(),
     enabled,
     staleTime: 2 * 60 * 60 * 1000,
+    retry: 0,
+  });
+}
+
+export function useCallHygieneWeeklyTrend(enabled = true) {
+  return useQuery({
+    queryKey: ['call-hygiene-weekly-trend'],
+    queryFn: () => callHygieneApi.getWeeklyTrend(),
+    enabled,
+    staleTime: 30 * 60 * 1000,
+    retry: 0,
+  });
+}
+
+export function useEmailHygieneWeeklyTrend(enabled = true) {
+  return useQuery({
+    queryKey: ['email-hygiene-weekly-trend'],
+    queryFn: () => emailHygieneApi.getWeeklyTrend(),
+    enabled,
+    staleTime: 30 * 60 * 1000,
+    retry: 0,
+  });
+}
+
+export function usePmoHygieneWeeklyTrend(enabled = true) {
+  return useQuery({
+    queryKey: ['pmo-hygiene-weekly-trend'],
+    queryFn: () => auditApi.getHygieneWeeklyTrend(),
+    enabled,
+    staleTime: 30 * 60 * 1000,
     retry: 0,
   });
 }

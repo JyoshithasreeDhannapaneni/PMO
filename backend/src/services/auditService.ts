@@ -1,6 +1,7 @@
 import { query, execute } from '../config/database';
 import { logger } from '../utils/logger';
 import { v4 as uuidv4 } from 'uuid';
+import { getIstWeekBounds, istDateStr, weeksInCurrentIstMonth } from '../utils/weekBounds';
 
 type AuditAction = 'CREATE' | 'UPDATE' | 'DELETE' | 'LOGIN' | 'LOGOUT' | 'PASSWORD_CHANGE' | 'STATUS_CHANGE' | 'EXPORT';
 
@@ -784,6 +785,66 @@ class AuditService {
     }
 
     return board.sort((a, b) => b.hygieneScore - a.hygieneScore);
+  }
+
+  // Locks in a permanent snapshot of getHygieneBoard() for the most recently completed
+  // Mon-Sun (IST) week — called by the Monday 7AM IST cron. Idempotent (UNIQUE on
+  // week_start). Worth remembering: only the Activity and Case Study components of this
+  // score are genuinely computed over the week's events — Data Quality, Delay
+  // Accountability, and Phase-Date Integrity always reflect *current* project state (see
+  // the comment on getHygieneBoard above), so for those three, "this week's snapshot" only
+  // ever means "what the board looked like at finalize time," not an aggregate of the week.
+  async finalizeWeek(): Promise<{ finalized: boolean; weekStartDate: string }> {
+    const { weekStart, weekEnd } = getIstWeekBounds(1);
+    const weekStartDate = istDateStr(weekStart);
+
+    const existing = await query(`SELECT id FROM pmo_hygiene_weekly WHERE week_start = $1`, [weekStartDate]);
+    if (existing.rows.length > 0) return { finalized: false, weekStartDate };
+
+    const board = await this.getHygieneBoard(weekStart.toISOString(), weekEnd.toISOString());
+    await execute(
+      `INSERT INTO pmo_hygiene_weekly (week_start, week_end, metrics) VALUES ($1, $2, $3)
+       ON CONFLICT (week_start) DO NOTHING`,
+      [weekStartDate, istDateStr(weekEnd), JSON.stringify(board)]
+    );
+    logger.info(`[PmoHygiene] Finalized week of ${weekStartDate} — ${board.length} PMs`);
+    return { finalized: true, weekStartDate };
+  }
+
+  // Every finalized week whose Monday falls in the current IST calendar month, plus the
+  // current in-progress week computed live (isCurrent: true, never persisted). Named
+  // distinctly from the existing getWeeklyTrend(endDate, weeks) above, which is an
+  // unrelated segment-level Audit Report trend with a different signature/purpose.
+  async getPmoHygieneWeeklyTrend(): Promise<{
+    weeks: Array<{ weekStart: string; weekEnd: string; isCurrent: boolean; metrics: any[] }>;
+  }> {
+    const monthWeeks = weeksInCurrentIstMonth();
+    const { weekStart: currentWeekStart, weekEnd: currentWeekEnd } = getIstWeekBounds(0);
+    const currentWeekStartDate = istDateStr(currentWeekStart);
+    const finalizedWeekDates = monthWeeks.filter(d => d !== currentWeekStartDate);
+
+    const finalizedRows = finalizedWeekDates.length
+      ? (await query(
+          `SELECT week_start, week_end, metrics FROM pmo_hygiene_weekly WHERE week_start = ANY($1) ORDER BY week_start ASC`,
+          [finalizedWeekDates]
+        )).rows
+      : [];
+
+    const weeks = finalizedRows.map((r: any) => ({
+      weekStart: istDateStr(new Date(r.week_start)),
+      weekEnd: istDateStr(new Date(r.week_end)),
+      isCurrent: false,
+      metrics: r.metrics as any[],
+    }));
+
+    try {
+      const currentBoard = await this.getHygieneBoard(currentWeekStart.toISOString(), new Date().toISOString());
+      weeks.push({ weekStart: currentWeekStartDate, weekEnd: istDateStr(currentWeekEnd), isCurrent: true, metrics: currentBoard });
+    } catch (err) {
+      logger.error('[PmoHygiene] Current-week trend fetch failed:', err);
+    }
+
+    return { weeks };
   }
 
   /**

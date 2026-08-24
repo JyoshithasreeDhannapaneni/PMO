@@ -2,7 +2,8 @@
 
 import { useState, useRef, useMemo, Fragment } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useProjects, useEmailHygiene, useCallHygiene, useCallTranscriptRating, useRateCallTranscript, useCallHygieneBestWorst, useCallHygieneOrgBestWorst } from '@/hooks/useProjects';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import { useProjects, useEmailHygiene, useCallHygiene, useCallTranscriptRating, useRateCallTranscript, useCallHygieneBestWorst, useCallHygieneOrgBestWorst, useCallHygieneWeeklyTrend, useEmailHygieneWeeklyTrend, usePmoHygieneWeeklyTrend } from '@/hooks/useProjects';
 import { useSettings } from '@/context/SettingsContext';
 import { useAuth } from '@/context/AuthContext';
 import { Card } from '@/components/ui/Card';
@@ -78,6 +79,70 @@ function CallBestWorstPanel({ userEmail, enabled }: { userEmail: string; enabled
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// Shared "week 1/2/3/4 of this month" trend chart for PMO/Email/Call Hygiene. `weeks` is
+// whatever the backend's getWeeklyTrend()-style endpoint returns (finalized weeks for this
+// IST calendar month, ascending, plus the current in-progress week last with isCurrent:
+// true) — this component only cares about a per-week label and a single 0-100 average
+// score, computed by the caller via `scoreFn` since each system's row shape differs.
+function WeeklyTrendChart({
+  weeks, scoreFn, color = '#4f46e5',
+}: {
+  weeks: Array<{ weekStart: string; weekEnd: string; isCurrent: boolean; metrics: any[] }>;
+  scoreFn: (metrics: any[]) => number | null;
+  color?: string;
+}) {
+  if (!weeks || weeks.length === 0) {
+    return <p className="text-xs text-gray-400 py-6 text-center">No weekly data yet — the first snapshot lands after this Monday's 7AM IST finalize.</p>;
+  }
+
+  const chartData = weeks.map((w, i) => {
+    const score = scoreFn(w.metrics);
+    return {
+      label: `Wk ${i + 1}`,
+      sub: new Date(w.weekStart).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+      value: score ?? 0,
+      hasData: score !== null,
+      isCurrent: w.isCurrent,
+    };
+  });
+
+  const completed = chartData.filter(d => !d.isCurrent && d.hasData);
+  const lastTwo = completed.slice(-2);
+  const delta = lastTwo.length === 2 ? Math.round((lastTwo[1].value - lastTwo[0].value) * 10) / 10 : null;
+
+  return (
+    <div>
+      {delta !== null && (
+        <div className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full mb-2 ${
+          delta > 0 ? 'bg-green-50 text-green-700' : delta < 0 ? 'bg-red-50 text-red-700' : 'bg-gray-100 text-gray-500'
+        }`}>
+          {delta > 0 ? <ChevronUp size={12} /> : delta < 0 ? <ChevronDown size={12} /> : null}
+          {delta === 0 ? 'No change' : `${Math.abs(delta)} pts`} vs. the week before last week
+        </div>
+      )}
+      <ResponsiveContainer width="100%" height={180}>
+        <BarChart data={chartData} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
+          <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#6b7280' }} axisLine={false} tickLine={false} />
+          <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: '#6b7280' }} axisLine={false} tickLine={false} width={30} />
+          <Tooltip
+            formatter={(value: any, _name: any, item: any) => [item.payload.hasData ? value : 'No data yet', item.payload.isCurrent ? 'This week so far' : 'Score']}
+            labelFormatter={(label: any, items: any) => items?.[0]?.payload ? `${label} · ${items[0].payload.sub}` : label}
+          />
+          <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+            {chartData.map((entry, i) => (
+              <Cell key={i} fill={entry.isCurrent ? '#c7d2fe' : color} fillOpacity={entry.hasData || entry.isCurrent ? 1 : 0.15} />
+            ))}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+      <div className="flex items-center gap-3 text-[10px] text-gray-400 mt-1">
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm inline-block" style={{ background: color }} /> Finalized week</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm inline-block bg-indigo-200" /> This week (live, so far)</span>
+      </div>
     </div>
   );
 }
@@ -518,7 +583,7 @@ export default function AuditDashboardPage() {
   function handleExportCallHygieneCSV() {
     if (!callMetrics.length) return;
     const rows = [
-      ['Team Member', 'Email', 'Customer Calls (30d)', 'PM-Scheduled', 'Customer-Scheduled', 'Unique Customers', 'Calls / Week', 'Days Since Last Call', 'Cancelled Calls', 'Declined/No-Response', 'Cancelled Rate (%)', 'Online Meeting Rate (%)', 'Hygiene /100', 'Graded', 'No Q&A', 'Excluded', 'Pending', 'Total Gradable'],
+      ['Team Member', 'Email', 'Customer Calls (this week)', 'PM-Scheduled', 'Customer-Scheduled', 'Unique Customers', 'Calls / Week', 'Days Since Last Call', 'Cancelled Calls', 'Declined/No-Response', 'Cancelled Rate (%)', 'Online Meeting Rate (%)', 'Hygiene /100', 'Graded', 'No Q&A', 'Excluded', 'Pending', 'Total Gradable'],
       ...callMetrics.map((m: any) => [
         m.userName, m.userEmail, m.totalCustomerCalls, m.internallyScheduled ?? 0, m.externallyScheduled ?? 0, m.uniqueCustomers, m.callsPerWeek,
         m.daysSinceLastCustomerCall ?? 'N/A', m.cancelledCalls, m.declinedCalls ?? 0, m.cancelledRate, m.onlineMeetingRate,
@@ -675,6 +740,13 @@ export default function AuditDashboardPage() {
     enabled: hygieneTab === 'project' && isAdmin,
   });
   const pendingSchedules: any[] = (schedulesData?.data ?? []).filter((s: any) => s.status === 'PENDING');
+
+  const { data: pmoWeeklyTrendData } = usePmoHygieneWeeklyTrend(hygieneTab === 'project' && isAdmin);
+  const pmoWeeklyTrend: any[] = pmoWeeklyTrendData?.data?.weeks ?? [];
+  const { data: emailWeeklyTrendData } = useEmailHygieneWeeklyTrend(hygieneTab === 'email');
+  const emailWeeklyTrend: any[] = emailWeeklyTrendData?.data?.weeks ?? [];
+  const { data: callWeeklyTrendData } = useCallHygieneWeeklyTrend(hygieneTab === 'call' && canSeeCallHygiene);
+  const callWeeklyTrend: any[] = callWeeklyTrendData?.data?.weeks ?? [];
 
   async function handleSendNow() {
     setSendNowStatus('sending');
@@ -1646,8 +1718,8 @@ export default function AuditDashboardPage() {
               {hygieneTab === 'project'
                 ? <>PM login &amp; update activity, data completeness, and case study completion — Activity &amp; Case Study scores for <strong>{format(new Date(queryStart), 'MMM d, yyyy')} – {format(new Date(queryEnd), 'MMM d, yyyy')}</strong>; Data Quality, Delay, and Date Integrity reflect current project state</>
                 : hygieneTab === 'email'
-                ? 'Speed (35%) · Quality (35%) · Resolution (20%) · Tone (10%) — scored from Microsoft 365 mailbox data for all @cloudfuze.com team members (last 30 days)'
-                : 'Volume (40%) · Cadence (30%) · Reliability (30%) — scored from Outlook calendar data for all @cloudfuze.com team members (last 30 days)'}
+                ? 'Speed (30%) · Quality (30%) · Resolution (20%) · Tone (20%) — scored from Microsoft 365 mailbox data for all @cloudfuze.com team members (this week)'
+                : 'Hygiene = % of AI-graded customer Q&A exchanges answered well, from Teams call transcripts for all @cloudfuze.com team members (this week)'}
             </p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
@@ -1828,6 +1900,20 @@ export default function AuditDashboardPage() {
             </div>
           );
         })()}
+
+        {/* Weekly trend */}
+        {isAdmin && (
+          <Card>
+            <div className="flex items-center gap-2 text-sm font-semibold text-gray-800 mb-3">
+              <TrendingUp size={14} className="text-indigo-600" /> Weekly Trend — PMO Hygiene
+              <span className="text-xs font-normal text-gray-400">this month, Mon–Sun</span>
+            </div>
+            <WeeklyTrendChart
+              weeks={pmoWeeklyTrend}
+              scoreFn={(metrics) => metrics.length ? Math.round(metrics.reduce((s: number, pm: any) => s + pm.hygieneScore, 0) / metrics.length) : null}
+            />
+          </Card>
+        )}
 
         {/* Scheduled scorecard sends */}
         {isAdmin && pendingSchedules.length > 0 && (
@@ -2116,6 +2202,19 @@ export default function AuditDashboardPage() {
               {' '}Last synced: {emailHygieneComputedAt ? format(new Date(emailHygieneComputedAt), 'MMM d, yyyy HH:mm') : '—'}
             </p>
           )}
+
+          {/* Weekly trend */}
+          <Card>
+            <div className="flex items-center gap-2 text-sm font-semibold text-gray-800 mb-3">
+              <TrendingUp size={14} className="text-indigo-600" /> Weekly Trend — Email Hygiene
+              <span className="text-xs font-normal text-gray-400">this month, Mon–Sun</span>
+            </div>
+            <WeeklyTrendChart
+              weeks={emailWeeklyTrend}
+              scoreFn={(metrics) => metrics.length ? Math.round(metrics.reduce((s: number, m: any) => s + m.emailHygieneScore, 0) / metrics.length) : null}
+              color="#0d9488"
+            />
+          </Card>
 
           {/* Email table */}
           {emailMetrics.length > 0 && (
@@ -2436,7 +2535,7 @@ export default function AuditDashboardPage() {
                 </div>
                 <div className="bg-blue-50 rounded-xl p-4 border border-white">
                   <div className="text-2xl font-bold text-blue-700">{totalCalls}</div>
-                  <div className="text-xs text-gray-500 mt-0.5">Total Customer Calls (30d)</div>
+                  <div className="text-xs text-gray-500 mt-0.5">Total Customer Calls (this week)</div>
                 </div>
                 <div className="bg-teal-50 rounded-xl p-4 border border-white">
                   <div className="text-2xl font-bold text-teal-700">{avgCallsPerWeek}</div>
@@ -2457,6 +2556,29 @@ export default function AuditDashboardPage() {
               {' '}Last synced: {callHygieneComputedAt ? format(new Date(callHygieneComputedAt), 'MMM d, yyyy HH:mm') : '—'}
             </p>
           )}
+
+          {/* Weekly trend */}
+          <Card>
+            <div className="flex items-center gap-2 text-sm font-semibold text-gray-800 mb-3">
+              <TrendingUp size={14} className="text-indigo-600" /> Weekly Trend — Call Hygiene
+              <span className="text-xs font-normal text-gray-400">this month, Mon–Sun</span>
+            </div>
+            <WeeklyTrendChart
+              weeks={callWeeklyTrend}
+              scoreFn={(metrics) => {
+                const scored = metrics.filter((m: any) => m.qualityScore !== null && m.qualityScore !== undefined);
+                return scored.length ? Math.round(scored.reduce((s: number, m: any) => s + m.qualityScore, 0) / scored.length) : null;
+              }}
+              color="#7c3aed"
+            />
+            {callWeeklyTrend.some((w: any) => w.coverageNote) && (
+              <p className="text-[10px] text-gray-400 mt-2">
+                {callWeeklyTrend.filter((w: any) => w.coverageNote).map((w: any, i: number) => (
+                  <span key={i} className="block">Wk of {new Date(w.weekStart).toLocaleDateString()}: {w.coverageNote}</span>
+                ))}
+              </p>
+            )}
+          </Card>
 
           {/* Team-wide best/worst — ADMIN only, across every graded call for everyone */}
           {isAdmin && orgBestWorst && (orgBestWorst.best || orgBestWorst.worst) && (
@@ -2494,7 +2616,7 @@ export default function AuditDashboardPage() {
                   <thead>
                     <tr className="border-b border-gray-200 bg-gray-50/60">
                       <th className="text-left py-2.5 px-3 text-xs font-semibold text-gray-700 whitespace-nowrap">Team Member</th>
-                      <th className="text-center py-2.5 px-3 text-xs font-semibold text-gray-500 whitespace-nowrap">Calls (30d)<span className="block font-normal text-gray-400 text-[10px]">PM / Customer sched.</span></th>
+                      <th className="text-center py-2.5 px-3 text-xs font-semibold text-gray-500 whitespace-nowrap">Calls (this wk)<span className="block font-normal text-gray-400 text-[10px]">PM / Customer sched.</span></th>
                       <th className="text-center py-2.5 px-3 text-xs font-semibold text-gray-500 whitespace-nowrap">Customers</th>
                       <th className="text-center py-2.5 px-3 text-xs font-semibold text-gray-500 whitespace-nowrap">Last Call</th>
                       <th className="text-center py-2.5 px-3 text-xs font-semibold text-gray-800 whitespace-nowrap">Hygiene<span className="font-normal text-gray-400">/100</span><span className="block font-normal text-gray-400 text-[10px]">% questions answered well</span></th>
@@ -2556,7 +2678,7 @@ export default function AuditDashboardPage() {
                             <td colSpan={6} className="px-3 py-3">
                               <CallBestWorstPanel userEmail={m.userEmail} enabled={isExpanded} />
                               <div className="text-[11px] font-semibold text-gray-500 mb-2">
-                                Customer calls in the last 30 days — pick one to grade this person's answers against the transcript
+                                Customer calls this week — pick one to grade this person's answers against the transcript
                               </div>
                               <div className="space-y-1.5">
                                 {gradableCalls.map(call => (

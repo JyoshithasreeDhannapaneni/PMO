@@ -1,6 +1,7 @@
 import axios, { type AxiosInstance } from 'axios';
 import { query, execute } from '../config/database';
 import { logger } from '../utils/logger';
+import { getIstWeekBounds, istDateStr, weeksInCurrentIstMonth } from '../utils/weekBounds';
 
 interface GraphUser {
   id: string;
@@ -370,17 +371,22 @@ async function analyzeUser(
   client: AxiosInstance,
   userEmail: string,
   userName: string,
-  since: string
+  since: string,
+  until?: string
 ): Promise<UserEmailHygiene> {
   const userPath = encodeURIComponent(userEmail);
   const sinceEncoded = encodeURIComponent(since);
+  // until is only passed when finalizing a completed past week — the regular rolling
+  // 30-day-to-now call never sets it, so this stays a no-op for existing behavior.
+  const untilSent = until ? ` and sentDateTime le ${encodeURIComponent(until)}` : '';
+  const untilRecv = until ? ` and receivedDateTime le ${encodeURIComponent(until)}` : '';
 
   const sentUrl = `/users/${userPath}/mailFolders/SentItems/messages` +
-    `?$filter=sentDateTime ge ${sinceEncoded}` +
+    `?$filter=sentDateTime ge ${sinceEncoded}${untilSent}` +
     `&$select=id,conversationId,subject,bodyPreview,body,from,toRecipients,sentDateTime&$top=100`;
 
   const recvUrl = `/users/${userPath}/messages` +
-    `?$filter=receivedDateTime ge ${sinceEncoded}` +
+    `?$filter=receivedDateTime ge ${sinceEncoded}${untilRecv}` +
     `&$select=id,conversationId,subject,bodyPreview,body,from,toRecipients,receivedDateTime&$top=100`;
 
   // Let a failed mailbox fetch (e.g. a Graph permission or throttling error)
@@ -677,6 +683,57 @@ async function analyzeUser(
 type SyncState = { running: boolean; startedAt: string | null; completedAt: string | null; error: string | null };
 let _syncState: SyncState = { running: false, startedAt: null, completedAt: null, error: null };
 
+// Short-lived in-memory cache for the "current week so far" trend point — this is a real
+// week-scoped Graph fetch (not the rolling 30-day cache), so without this, opening the
+// trend chart repeatedly would re-run a full Graph sync every time. 30 min is short enough
+// that "this week so far" still feels live, long enough to absorb repeat page views.
+const CURRENT_WEEK_TTL_MS = 30 * 60 * 1000;
+let _currentWeekCache: { weekStartDate: string; computedAt: number; metrics: UserEmailHygiene[]; teamHygiene: TeamHygieneRow[] } | null = null;
+
+// Shared by the rolling 30-day cache path (getHygieneMetrics) and the weekly-window path
+// (getWeeklyMetrics/finalizeWeek below) — discovers users, filters to valid mailboxes,
+// and analyzes them for an arbitrary [since, until) window. `until` omitted means
+// "through now" (used for the rolling view and the current in-progress week).
+async function computeMetricsForWindow(
+  client: AxiosInstance,
+  since: string,
+  until?: string
+): Promise<{ metrics: UserEmailHygiene[]; teamHygiene: TeamHygieneRow[] }> {
+  const allUsers = await getCFUsers();
+  logger.info(`Email hygiene: discovered ${allUsers.length} candidate CF users`);
+
+  const validUsers: Array<{ email: string; name: string }> = [];
+  for (let i = 0; i < allUsers.length; i += 5) {
+    const batch = allUsers.slice(i, i + 5);
+    const checks = await Promise.allSettled(
+      batch.map(async u => {
+        const exists = await userMailboxExists(client, encodeURIComponent(u.email));
+        return exists ? u : null;
+      })
+    );
+    for (const r of checks) {
+      if (r.status === 'fulfilled' && r.value) validUsers.push(r.value);
+      else if (r.status === 'rejected') logger.warn('Mailbox existence check error:', r.reason?.message);
+    }
+  }
+  logger.info(`Email hygiene: ${validUsers.length}/${allUsers.length} users have accessible mailboxes`);
+
+  const results: UserEmailHygiene[] = [];
+  for (let i = 0; i < validUsers.length; i += 3) {
+    const batch = validUsers.slice(i, i + 3);
+    const settled = await Promise.allSettled(
+      batch.map(u => analyzeUser(client, u.email, u.name, since, until))
+    );
+    for (const r of settled) {
+      if (r.status === 'fulfilled') results.push(r.value);
+      else logger.error('Email hygiene analysis error:', r.reason);
+    }
+  }
+
+  const sorted = results.sort((a, b) => b.emailHygieneScore - a.emailHygieneScore);
+  return { metrics: sorted, teamHygiene: computeTeamHygiene(sorted) };
+}
+
 export const emailHygieneService = {
   isConfigured: isGraphConfigured,
 
@@ -775,47 +832,12 @@ export const emailHygieneService = {
       };
     }
     const client = graphClient(token);
-
-    // Collect users from both the users table and project PM/AM name derivation
-    const allUsers = await getCFUsers();
-    logger.info(`Email hygiene: discovered ${allUsers.length} candidate CF users`);
-
+    // 2026-08-25: changed from a rolling 30-day window to the current Mon-Sun (IST)
+    // calendar week to date, per the weekly-hygiene redesign — see the matching comment
+    // in callHygieneService.ts.
     const periodEnd = new Date();
-    const periodStart = new Date(periodEnd.getTime() - 30 * 24 * 3600 * 1000);
-    const since = periodStart.toISOString();
-
-    // Filter to only users whose mailbox exists in Azure AD, in batches of 5
-    const validUsers: Array<{ email: string; name: string }> = [];
-    for (let i = 0; i < allUsers.length; i += 5) {
-      const batch = allUsers.slice(i, i + 5);
-      const checks = await Promise.allSettled(
-        batch.map(async u => {
-          const exists = await userMailboxExists(client, encodeURIComponent(u.email));
-          return exists ? u : null;
-        })
-      );
-      for (const r of checks) {
-        if (r.status === 'fulfilled' && r.value) validUsers.push(r.value);
-        else if (r.status === 'rejected') logger.warn('Mailbox existence check error:', r.reason?.message);
-      }
-    }
-    logger.info(`Email hygiene: ${validUsers.length}/${allUsers.length} users have accessible mailboxes`);
-
-    // Analyze valid users in batches of 3 to stay within Graph rate limits
-    const results: UserEmailHygiene[] = [];
-    for (let i = 0; i < validUsers.length; i += 3) {
-      const batch = validUsers.slice(i, i + 3);
-      const settled = await Promise.allSettled(
-        batch.map(u => analyzeUser(client, u.email, u.name, since))
-      );
-      for (const r of settled) {
-        if (r.status === 'fulfilled') results.push(r.value);
-        else logger.error('Email hygiene analysis error:', r.reason);
-      }
-    }
-
-    const sorted = results.sort((a, b) => b.emailHygieneScore - a.emailHygieneScore);
-    const teamHygiene = computeTeamHygiene(sorted);
+    const periodStart = getIstWeekBounds(0).weekStart;
+    const { metrics: sorted, teamHygiene } = await computeMetricsForWindow(client, periodStart.toISOString());
 
     // Persist cache
     await execute(
@@ -838,5 +860,90 @@ export const emailHygieneService = {
       periodEnd: periodEnd.toISOString(),
       isConfigured: true,
     };
+  },
+
+  // Locks in a permanent snapshot for the most recently completed Mon-Sun (IST) week —
+  // called by the Monday 7AM IST cron. Idempotent: does nothing if that week already has
+  // a row (UNIQUE on week_start), so a retry or a manual re-run is always safe.
+  async finalizeWeek(): Promise<{ finalized: boolean; weekStartDate: string }> {
+    const { weekStart, weekEnd } = getIstWeekBounds(1);
+    const weekStartDate = istDateStr(weekStart);
+    if (!isGraphConfigured()) return { finalized: false, weekStartDate };
+
+    const existing = await query(`SELECT id FROM email_hygiene_weekly WHERE week_start = $1`, [weekStartDate]);
+    if (existing.rows.length > 0) return { finalized: false, weekStartDate };
+
+    const token = await getAccessToken();
+    const client = graphClient(token);
+    const { metrics, teamHygiene } = await computeMetricsForWindow(client, weekStart.toISOString(), weekEnd.toISOString());
+
+    await execute(
+      `INSERT INTO email_hygiene_weekly (week_start, week_end, metrics, team_hygiene) VALUES ($1, $2, $3, $4)
+       ON CONFLICT (week_start) DO NOTHING`,
+      [weekStartDate, istDateStr(weekEnd), JSON.stringify(metrics), JSON.stringify(teamHygiene)]
+    );
+    logger.info(`[EmailHygiene] Finalized week of ${weekStartDate} — ${metrics.length} users`);
+    return { finalized: true, weekStartDate };
+  },
+
+  // Every finalized week whose Monday falls in the current IST calendar month, plus the
+  // current in-progress week computed live (isCurrent: true, never persisted) — this is
+  // what the "week 1/2/3/4 of this month" trend chart reads directly.
+  async getWeeklyTrend(): Promise<{
+    weeks: Array<{ weekStart: string; weekEnd: string; isCurrent: boolean; metrics: UserEmailHygiene[]; teamHygiene: TeamHygieneRow[] }>;
+    isConfigured: boolean;
+  }> {
+    if (!isGraphConfigured()) return { weeks: [], isConfigured: false };
+
+    const monthWeeks = weeksInCurrentIstMonth();
+    const { weekStart: currentWeekStart } = getIstWeekBounds(0);
+    const currentWeekStartDate = istDateStr(currentWeekStart);
+    const finalizedWeekDates = monthWeeks.filter(d => d !== currentWeekStartDate);
+
+    const finalizedRows = finalizedWeekDates.length
+      ? (await query(
+          `SELECT week_start, week_end, metrics, team_hygiene FROM email_hygiene_weekly WHERE week_start = ANY($1) ORDER BY week_start ASC`,
+          [finalizedWeekDates]
+        )).rows
+      : [];
+
+    const weeks = finalizedRows.map((r: any) => ({
+      weekStart: istDateStr(new Date(r.week_start)),
+      weekEnd: istDateStr(new Date(r.week_end)),
+      isCurrent: false,
+      metrics: r.metrics as UserEmailHygiene[],
+      teamHygiene: (r.team_hygiene ?? []) as TeamHygieneRow[],
+    }));
+
+    // Current week, live and genuinely week-scoped (Monday through now) — a real Graph
+    // fetch, guarded by the short in-memory TTL above so repeat views don't re-sync.
+    try {
+      if (_currentWeekCache?.weekStartDate === currentWeekStartDate && Date.now() - _currentWeekCache.computedAt < CURRENT_WEEK_TTL_MS) {
+        weeks.push({
+          weekStart: currentWeekStartDate,
+          weekEnd: istDateStr(getIstWeekBounds(0).weekEnd),
+          isCurrent: true,
+          metrics: _currentWeekCache.metrics,
+          teamHygiene: _currentWeekCache.teamHygiene,
+        });
+      } else {
+        const token = await getAccessToken();
+        const client = graphClient(token);
+        const { metrics, teamHygiene } = await computeMetricsForWindow(client, currentWeekStart.toISOString());
+        _currentWeekCache = { weekStartDate: currentWeekStartDate, computedAt: Date.now(), metrics, teamHygiene };
+        weeks.push({
+          weekStart: currentWeekStartDate,
+          weekEnd: istDateStr(getIstWeekBounds(0).weekEnd),
+          isCurrent: true,
+          metrics,
+          teamHygiene,
+        });
+      }
+    } catch (err) {
+      logger.error('[EmailHygiene] Current-week trend fetch failed:', err);
+      // Current week just won't have a live point this time — finalized weeks still return.
+    }
+
+    return { weeks, isConfigured: true };
   },
 };

@@ -10,5 +10,6 @@ router.get('/', requireRole('ADMIN', 'PROJECT_MANAGER'), callHygieneController.g
 router.get('/export', requireRole('ADMIN', 'PROJECT_MANAGER'), callHygieneController.exportExcel);
 router.get('/best-worst', requireRole('ADMIN', 'PROJECT_MANAGER'), callHygieneController.getBestWorst);
 router.get('/best-worst/org', requireRole('ADMIN'), callHygieneController.getOrgBestWorst);
+router.get('/weekly-trend', requireRole('ADMIN', 'PROJECT_MANAGER'), callHygieneController.getWeeklyTrend);
 
 export default router;
