@@ -35,6 +35,7 @@ import managerGoalsRoutes from './routes/managerGoalsRoutes';
 import smtpRoutes from './routes/smtpRoutes';
 import pmoSettingsRoutes from './routes/pmoSettingsRoutes';
 import archiveRoutes from './routes/archiveRoutes';
+import psEngagementsRoutes from './routes/psEngagementsRoutes';
 import { initializeCronJobs } from './jobs';
 import settingsRoutes from './routes/settingsRoutes';
 import accountManagerRoutes from './routes/accountManagerRoutes';
@@ -118,6 +119,7 @@ app.use('/api/email-hygiene', emailHygieneRoutes);
 app.use('/api/call-hygiene', callHygieneRoutes);
 app.use('/api/escalation-mails', escalationMailsRoutes);
 app.use('/api/call-transcripts', callTranscriptRoutes);
+app.use('/api/ps-engagements', psEngagementsRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
