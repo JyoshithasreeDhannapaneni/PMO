@@ -5,6 +5,7 @@ import { Header } from '@/components/layout/Header';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { ToastProvider } from '@/context/ToastContext';
 import { ChatWidget } from '@/components/chat/ChatWidget';
+import { FeedbackWidget } from '@/components/feedback/FeedbackWidget';
 
 export default function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -31,6 +32,7 @@ export default function AuthenticatedLayout({ children }: { children: React.Reac
           </div>
 
           <ChatWidget />
+          <FeedbackWidget />
         </div>
       </ToastProvider>
     </ProtectedRoute>

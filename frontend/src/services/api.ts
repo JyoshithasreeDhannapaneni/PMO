@@ -562,6 +562,21 @@ export const overageApi = {
   },
 };
 
+export const feedbackApi = {
+  getAll: async () => {
+    const { data } = await api.get('/feedback');
+    return data;
+  },
+  create: async (payload: { type: 'ISSUE' | 'SUGGESTION'; message: string }) => {
+    const { data } = await api.post('/feedback', payload);
+    return data;
+  },
+  updateStatus: async (id: string, status: 'OPEN' | 'IN_PROGRESS' | 'DONE') => {
+    const { data } = await api.put(`/feedback/${id}/status`, { status });
+    return data;
+  },
+};
+
 // SMTP API
 export const smtpApi = {
   get: async () => {

@@ -37,6 +37,7 @@ import pmoSettingsRoutes from './routes/pmoSettingsRoutes';
 import archiveRoutes from './routes/archiveRoutes';
 import psEngagementsRoutes from './routes/psEngagementsRoutes';
 import overageRoutes from './routes/overageRoutes';
+import feedbackRoutes from './routes/feedbackRoutes';
 import { initializeCronJobs } from './jobs';
 import settingsRoutes from './routes/settingsRoutes';
 import accountManagerRoutes from './routes/accountManagerRoutes';
@@ -122,6 +123,7 @@ app.use('/api/escalation-mails', escalationMailsRoutes);
 app.use('/api/call-transcripts', callTranscriptRoutes);
 app.use('/api/ps-engagements', psEngagementsRoutes);
 app.use('/api/overage', overageRoutes);
+app.use('/api/feedback', feedbackRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
@@ -510,6 +512,22 @@ async function runMigrations() {
     updated_at TIMESTAMP DEFAULT NOW()
   )`);
   await execute(`ALTER TABLE ps_engagements ADD COLUMN IF NOT EXISTS line_items JSONB DEFAULT '[]'`);
+
+  // Feedback items (2026-08-25 — chat-style suggestions/issues widget) — any authenticated
+  // user can raise an ISSUE or SUGGESTION; visible to everyone (a shared feed, not private
+  // per-user); only ADMIN can move status forward.
+  await execute(`CREATE TABLE IF NOT EXISTS feedback_items (
+    id               UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    type             VARCHAR(20) NOT NULL DEFAULT 'ISSUE',
+    message          TEXT NOT NULL,
+    status           VARCHAR(20) NOT NULL DEFAULT 'OPEN',
+    created_by_id    UUID,
+    created_by_name  VARCHAR(255),
+    created_by_email VARCHAR(255),
+    created_at       TIMESTAMPTZ DEFAULT NOW(),
+    updated_at       TIMESTAMPTZ DEFAULT NOW()
+  )`);
+  try { await execute(`CREATE INDEX IF NOT EXISTS idx_feedback_created_at ON feedback_items(created_at)`); } catch {}
 
   // Client reviews (Reviews tab) — structured customer feedback scorecard per project
   await execute(`CREATE TABLE IF NOT EXISTS client_reviews (

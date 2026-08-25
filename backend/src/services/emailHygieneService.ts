@@ -862,11 +862,14 @@ export const emailHygieneService = {
     };
   },
 
-  // Locks in a permanent snapshot for the most recently completed Mon-Sun (IST) week —
-  // called by the Monday 7AM IST cron. Idempotent: does nothing if that week already has
-  // a row (UNIQUE on week_start), so a retry or a manual re-run is always safe.
-  async finalizeWeek(): Promise<{ finalized: boolean; weekStartDate: string }> {
-    const { weekStart, weekEnd } = getIstWeekBounds(1);
+  // Locks in a permanent snapshot for a completed Mon-Sun (IST) week — weeksAgo=1 (the
+  // Monday 7AM IST cron's default) means "the week that just ended"; a larger weeksAgo
+  // lets you backfill weeks that passed before this feature existed (e.g. earlier weeks of
+  // the current month that never got a chance to auto-finalize). Idempotent: does nothing
+  // if that week already has a row (UNIQUE on week_start), so a retry or backfill re-run is
+  // always safe.
+  async finalizeWeek(weeksAgo = 1): Promise<{ finalized: boolean; weekStartDate: string }> {
+    const { weekStart, weekEnd } = getIstWeekBounds(weeksAgo);
     const weekStartDate = istDateStr(weekStart);
     if (!isGraphConfigured()) return { finalized: false, weekStartDate };
 
@@ -890,7 +893,7 @@ export const emailHygieneService = {
   // current in-progress week computed live (isCurrent: true, never persisted) — this is
   // what the "week 1/2/3/4 of this month" trend chart reads directly.
   async getWeeklyTrend(): Promise<{
-    weeks: Array<{ weekStart: string; weekEnd: string; isCurrent: boolean; metrics: UserEmailHygiene[]; teamHygiene: TeamHygieneRow[] }>;
+    weeks: Array<{ weekStart: string; weekEnd: string; isCurrent: boolean; hasData: boolean; metrics: UserEmailHygiene[]; teamHygiene: TeamHygieneRow[] }>;
     isConfigured: boolean;
   }> {
     if (!isGraphConfigured()) return { weeks: [], isConfigured: false };
@@ -902,18 +905,31 @@ export const emailHygieneService = {
 
     const finalizedRows = finalizedWeekDates.length
       ? (await query(
-          `SELECT week_start, week_end, metrics, team_hygiene FROM email_hygiene_weekly WHERE week_start = ANY($1) ORDER BY week_start ASC`,
+          `SELECT week_start, week_end, metrics, team_hygiene FROM email_hygiene_weekly WHERE week_start = ANY($1)`,
           [finalizedWeekDates]
         )).rows
       : [];
+    const byWeekStart = new Map(finalizedRows.map((r: any) => [istDateStr(new Date(r.week_start)), r]));
 
-    const weeks = finalizedRows.map((r: any) => ({
-      weekStart: istDateStr(new Date(r.week_start)),
-      weekEnd: istDateStr(new Date(r.week_end)),
-      isCurrent: false,
-      metrics: r.metrics as UserEmailHygiene[],
-      teamHygiene: (r.team_hygiene ?? []) as TeamHygieneRow[],
-    }));
+    // One slot per week-of-month, in order, even when a week was never finalized (e.g. it
+    // passed before this feature existed) — this is what keeps "Wk 1/2/3/4" correctly
+    // positioned instead of silently collapsing to just whichever weeks happen to have data.
+    const weeks = finalizedWeekDates.map((weekStartDate) => {
+      const r: any = byWeekStart.get(weekStartDate);
+      if (!r) {
+        const d = new Date(weekStartDate);
+        const weekEnd = new Date(d.getTime() + 6 * 86400000);
+        return { weekStart: weekStartDate, weekEnd: istDateStr(weekEnd), isCurrent: false, hasData: false, metrics: [], teamHygiene: [] };
+      }
+      return {
+        weekStart: istDateStr(new Date(r.week_start)),
+        weekEnd: istDateStr(new Date(r.week_end)),
+        isCurrent: false,
+        hasData: true,
+        metrics: r.metrics as UserEmailHygiene[],
+        teamHygiene: (r.team_hygiene ?? []) as TeamHygieneRow[],
+      };
+    });
 
     // Current week, live and genuinely week-scoped (Monday through now) — a real Graph
     // fetch, guarded by the short in-memory TTL above so repeat views don't re-sync.
@@ -923,6 +939,7 @@ export const emailHygieneService = {
           weekStart: currentWeekStartDate,
           weekEnd: istDateStr(getIstWeekBounds(0).weekEnd),
           isCurrent: true,
+          hasData: true,
           metrics: _currentWeekCache.metrics,
           teamHygiene: _currentWeekCache.teamHygiene,
         });
@@ -935,6 +952,7 @@ export const emailHygieneService = {
           weekStart: currentWeekStartDate,
           weekEnd: istDateStr(getIstWeekBounds(0).weekEnd),
           isCurrent: true,
+          hasData: true,
           metrics,
           teamHygiene,
         });
@@ -942,6 +960,7 @@ export const emailHygieneService = {
     } catch (err) {
       logger.error('[EmailHygiene] Current-week trend fetch failed:', err);
       // Current week just won't have a live point this time — finalized weeks still return.
+      weeks.push({ weekStart: currentWeekStartDate, weekEnd: istDateStr(getIstWeekBounds(0).weekEnd), isCurrent: true, hasData: false, metrics: [], teamHygiene: [] });
     }
 
     return { weeks, isConfigured: true };
