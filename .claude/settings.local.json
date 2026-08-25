@@ -242,7 +242,8 @@
       "Bash(rm \"c:\\\\Users\\\\BharathTummaganti\\\\OneDrive - CloudFuze, Inc\\\\Documents\\\\PMO\\\\PMO\\\\backend\\\\_tmp_regrade.ts\")",
       "Bash(powershell -NoProfile -Command 'Get-Process -Id 30416,49480 -ErrorAction SilentlyContinue | Select-Object Id,StartTime,ProcessName')",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3001/health)",
-      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3000/)"
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3000/)",
+      "Bash(node -pe \"const d=JSON.parse\\(require\\('fs'\\).readFileSync\\(0,'utf8'\\)\\); d.data.weeks.map\\(w=>\\({weekStart:w.weekStart,isCurrent:w.isCurrent,hasData:w.hasData,n:w.metrics.length}\\)\\)\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\BharathTummaganti\\OneDrive - CloudFuze, Inc\\Documents\\PMO\\PMO",

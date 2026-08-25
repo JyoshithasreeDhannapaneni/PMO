@@ -2,7 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect } from 'react';
-import { projectsApi, dashboardApi, statusReportsApi, managerGoalsApi, migrationTypeApi, pocProjectsApi, accountManagerApi, customerSuccessApi, hubspotApi, psEngagementsApi, kbArticlesApi, emailHygieneApi, callHygieneApi, callTranscriptsApi, escalationMailsApi, auditApi } from '@/services/api';
+import { projectsApi, dashboardApi, statusReportsApi, managerGoalsApi, migrationTypeApi, pocProjectsApi, accountManagerApi, customerSuccessApi, hubspotApi, psEngagementsApi, kbArticlesApi, emailHygieneApi, callHygieneApi, callTranscriptsApi, escalationMailsApi, auditApi, feedbackApi } from '@/services/api';
 import type { CreateProjectInput, UpdateProjectInput } from '@/types';
 
 export function useProjects(params?: {
@@ -1116,6 +1116,36 @@ export function usePmoHygieneWeeklyTrend(enabled = true) {
     enabled,
     staleTime: 30 * 60 * 1000,
     retry: 0,
+  });
+}
+
+export function useFeedbackItems(enabled = true) {
+  return useQuery({
+    queryKey: ['feedback-items'],
+    queryFn: () => feedbackApi.getAll(),
+    enabled,
+    staleTime: 15_000,
+    refetchInterval: 20_000, // chat-like feed — poll so other users' submissions show up live
+  });
+}
+
+export function useCreateFeedbackItem() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: { type: 'ISSUE' | 'SUGGESTION'; message: string }) => feedbackApi.create(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['feedback-items'] });
+    },
+  });
+}
+
+export function useUpdateFeedbackStatus() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, status }: { id: string; status: 'OPEN' | 'IN_PROGRESS' | 'DONE' }) => feedbackApi.updateStatus(id, status),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['feedback-items'] });
+    },
   });
 }
 

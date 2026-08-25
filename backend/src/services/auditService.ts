@@ -794,8 +794,8 @@ class AuditService {
   // Accountability, and Phase-Date Integrity always reflect *current* project state (see
   // the comment on getHygieneBoard above), so for those three, "this week's snapshot" only
   // ever means "what the board looked like at finalize time," not an aggregate of the week.
-  async finalizeWeek(): Promise<{ finalized: boolean; weekStartDate: string }> {
-    const { weekStart, weekEnd } = getIstWeekBounds(1);
+  async finalizeWeek(weeksAgo = 1): Promise<{ finalized: boolean; weekStartDate: string }> {
+    const { weekStart, weekEnd } = getIstWeekBounds(weeksAgo);
     const weekStartDate = istDateStr(weekStart);
 
     const existing = await query(`SELECT id FROM pmo_hygiene_weekly WHERE week_start = $1`, [weekStartDate]);
@@ -811,12 +811,13 @@ class AuditService {
     return { finalized: true, weekStartDate };
   }
 
-  // Every finalized week whose Monday falls in the current IST calendar month, plus the
-  // current in-progress week computed live (isCurrent: true, never persisted). Named
-  // distinctly from the existing getWeeklyTrend(endDate, weeks) above, which is an
-  // unrelated segment-level Audit Report trend with a different signature/purpose.
+  // One slot per week-of-month, in order, even if it was never finalized (e.g. it passed
+  // before this feature existed), plus the current in-progress week computed live
+  // (isCurrent: true, never persisted). Named distinctly from the existing
+  // getWeeklyTrend(endDate, weeks) above, which is an unrelated segment-level Audit Report
+  // trend with a different signature/purpose.
   async getPmoHygieneWeeklyTrend(): Promise<{
-    weeks: Array<{ weekStart: string; weekEnd: string; isCurrent: boolean; metrics: any[] }>;
+    weeks: Array<{ weekStart: string; weekEnd: string; isCurrent: boolean; hasData: boolean; metrics: any[] }>;
   }> {
     const monthWeeks = weeksInCurrentIstMonth();
     const { weekStart: currentWeekStart, weekEnd: currentWeekEnd } = getIstWeekBounds(0);
@@ -825,23 +826,34 @@ class AuditService {
 
     const finalizedRows = finalizedWeekDates.length
       ? (await query(
-          `SELECT week_start, week_end, metrics FROM pmo_hygiene_weekly WHERE week_start = ANY($1) ORDER BY week_start ASC`,
+          `SELECT week_start, week_end, metrics FROM pmo_hygiene_weekly WHERE week_start = ANY($1)`,
           [finalizedWeekDates]
         )).rows
       : [];
+    const byWeekStart = new Map(finalizedRows.map((r: any) => [istDateStr(new Date(r.week_start)), r]));
 
-    const weeks = finalizedRows.map((r: any) => ({
-      weekStart: istDateStr(new Date(r.week_start)),
-      weekEnd: istDateStr(new Date(r.week_end)),
-      isCurrent: false,
-      metrics: r.metrics as any[],
-    }));
+    const weeks = finalizedWeekDates.map((weekStartDate) => {
+      const r: any = byWeekStart.get(weekStartDate);
+      if (!r) {
+        const d = new Date(weekStartDate);
+        const weekEnd = new Date(d.getTime() + 6 * 86400000);
+        return { weekStart: weekStartDate, weekEnd: istDateStr(weekEnd), isCurrent: false, hasData: false, metrics: [] };
+      }
+      return {
+        weekStart: istDateStr(new Date(r.week_start)),
+        weekEnd: istDateStr(new Date(r.week_end)),
+        isCurrent: false,
+        hasData: true,
+        metrics: r.metrics as any[],
+      };
+    });
 
     try {
       const currentBoard = await this.getHygieneBoard(currentWeekStart.toISOString(), new Date().toISOString());
-      weeks.push({ weekStart: currentWeekStartDate, weekEnd: istDateStr(currentWeekEnd), isCurrent: true, metrics: currentBoard });
+      weeks.push({ weekStart: currentWeekStartDate, weekEnd: istDateStr(currentWeekEnd), isCurrent: true, hasData: true, metrics: currentBoard });
     } catch (err) {
       logger.error('[PmoHygiene] Current-week trend fetch failed:', err);
+      weeks.push({ weekStart: currentWeekStartDate, weekEnd: istDateStr(currentWeekEnd), isCurrent: true, hasData: false, metrics: [] });
     }
 
     return { weeks };

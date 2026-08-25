@@ -582,8 +582,8 @@ export const callHygieneService = {
   // graded yet by the overnight grading job — coverageNote records how complete Quality
   // was AT finalize time, and the snapshot is never silently revised afterward even if
   // more calls get graded later, so the trend line stays stable.
-  async finalizeWeek(): Promise<{ finalized: boolean; weekStartDate: string }> {
-    const { weekStart, weekEnd } = getIstWeekBounds(1);
+  async finalizeWeek(weeksAgo = 1): Promise<{ finalized: boolean; weekStartDate: string }> {
+    const { weekStart, weekEnd } = getIstWeekBounds(weeksAgo);
     const weekStartDate = istDateStr(weekStart);
     if (!isGraphConfigured()) return { finalized: false, weekStartDate };
 
@@ -607,10 +607,11 @@ export const callHygieneService = {
     return { finalized: true, weekStartDate };
   },
 
-  // Every finalized week whose Monday falls in the current IST calendar month, plus the
-  // current in-progress week computed live (isCurrent: true, never persisted).
+  // Every week-of-month gets a slot, in order, even if it was never finalized (e.g. it
+  // passed before this feature existed) — plus the current in-progress week computed live
+  // (isCurrent: true, never persisted).
   async getWeeklyTrend(): Promise<{
-    weeks: Array<{ weekStart: string; weekEnd: string; isCurrent: boolean; coverageNote: string | null; metrics: UserCallHygiene[] }>;
+    weeks: Array<{ weekStart: string; weekEnd: string; isCurrent: boolean; hasData: boolean; coverageNote: string | null; metrics: UserCallHygiene[] }>;
     isConfigured: boolean;
   }> {
     if (!isGraphConfigured()) return { weeks: [], isConfigured: false };
@@ -622,31 +623,42 @@ export const callHygieneService = {
 
     const finalizedRows = finalizedWeekDates.length
       ? (await query(
-          `SELECT week_start, week_end, metrics, coverage_note FROM call_hygiene_weekly WHERE week_start = ANY($1) ORDER BY week_start ASC`,
+          `SELECT week_start, week_end, metrics, coverage_note FROM call_hygiene_weekly WHERE week_start = ANY($1)`,
           [finalizedWeekDates]
         )).rows
       : [];
+    const byWeekStart = new Map(finalizedRows.map((r: any) => [istDateStr(new Date(r.week_start)), r]));
 
-    const weeks = finalizedRows.map((r: any) => ({
-      weekStart: istDateStr(new Date(r.week_start)),
-      weekEnd: istDateStr(new Date(r.week_end)),
-      isCurrent: false,
-      coverageNote: r.coverage_note as string | null,
-      metrics: r.metrics as UserCallHygiene[],
-    }));
+    const weeks = finalizedWeekDates.map((weekStartDate) => {
+      const r: any = byWeekStart.get(weekStartDate);
+      if (!r) {
+        const d = new Date(weekStartDate);
+        const weekEnd = new Date(d.getTime() + 6 * 86400000);
+        return { weekStart: weekStartDate, weekEnd: istDateStr(weekEnd), isCurrent: false, hasData: false, coverageNote: null, metrics: [] };
+      }
+      return {
+        weekStart: istDateStr(new Date(r.week_start)),
+        weekEnd: istDateStr(new Date(r.week_end)),
+        isCurrent: false,
+        hasData: true,
+        coverageNote: r.coverage_note as string | null,
+        metrics: r.metrics as UserCallHygiene[],
+      };
+    });
 
     try {
       if (_currentWeekCache?.weekStartDate === currentWeekStartDate && Date.now() - _currentWeekCache.computedAt < CURRENT_WEEK_TTL_MS) {
-        weeks.push({ weekStart: currentWeekStartDate, weekEnd: istDateStr(currentWeekEnd), isCurrent: true, coverageNote: null, metrics: _currentWeekCache.metrics });
+        weeks.push({ weekStart: currentWeekStartDate, weekEnd: istDateStr(currentWeekEnd), isCurrent: true, hasData: true, coverageNote: null, metrics: _currentWeekCache.metrics });
       } else {
         const token = await getAccessToken();
         const client = graphClient(token);
         const { metrics } = await computeMetricsForWindow(client, currentWeekStart.toISOString(), new Date().toISOString());
         _currentWeekCache = { weekStartDate: currentWeekStartDate, computedAt: Date.now(), metrics };
-        weeks.push({ weekStart: currentWeekStartDate, weekEnd: istDateStr(currentWeekEnd), isCurrent: true, coverageNote: null, metrics });
+        weeks.push({ weekStart: currentWeekStartDate, weekEnd: istDateStr(currentWeekEnd), isCurrent: true, hasData: true, coverageNote: null, metrics });
       }
     } catch (err) {
       logger.error('[CallHygiene] Current-week trend fetch failed:', err);
+      weeks.push({ weekStart: currentWeekStartDate, weekEnd: istDateStr(currentWeekEnd), isCurrent: true, hasData: false, coverageNote: null, metrics: [] });
     }
 
     return { weeks, isConfigured: true };
