@@ -243,7 +243,12 @@
       "Bash(powershell -NoProfile -Command 'Get-Process -Id 30416,49480 -ErrorAction SilentlyContinue | Select-Object Id,StartTime,ProcessName')",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3001/health)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3000/)",
-      "Bash(node -pe \"const d=JSON.parse\\(require\\('fs'\\).readFileSync\\(0,'utf8'\\)\\); d.data.weeks.map\\(w=>\\({weekStart:w.weekStart,isCurrent:w.isCurrent,hasData:w.hasData,n:w.metrics.length}\\)\\)\")"
+      "Bash(node -pe \"const d=JSON.parse\\(require\\('fs'\\).readFileSync\\(0,'utf8'\\)\\); d.data.weeks.map\\(w=>\\({weekStart:w.weekStart,isCurrent:w.isCurrent,hasData:w.hasData,n:w.metrics.length}\\)\\)\")",
+      "Bash(node -e \"console.log\\(require\\('crypto'\\).randomBytes\\(32\\).toString\\('hex'\\)\\)\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3001/api/external/projects)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3001/api/external/projects -H \"X-API-Key: wrong-key\")",
+      "Bash(curl -s http://localhost:3001/api/external/projects -H \"X-API-Key: 71cf7d120493b9c6c7e647d3fdee1b688973b99461c4526713929cf5113cde8c\")",
+      "Bash(node -pe \"const d=JSON.parse\\(require\\('fs'\\).readFileSync\\(0,'utf8'\\)\\); \\({total: d.total, sample: d.data.slice\\(0,2\\).map\\(p=>\\({name:p.name, phase:p.phase, status:p.status}\\)\\)}\\)\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\BharathTummaganti\\OneDrive - CloudFuze, Inc\\Documents\\PMO\\PMO",
