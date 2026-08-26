@@ -2,6 +2,7 @@ import axios, { type AxiosInstance } from 'axios';
 import { query, execute } from '../config/database';
 import { logger } from '../utils/logger';
 import { getIstWeekBounds, istDateStr, weeksInCurrentIstMonth } from '../utils/weekBounds';
+import { emailThreadClassifierService, type AmbiguousThread, type ThreadClassification } from './emailThreadClassifierService';
 
 interface GraphUser {
   id: string;
@@ -281,6 +282,34 @@ function stripHtml(html: string): string {
   return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
+// ── Resolution: Option C heuristic pre-filters (2026-08-26) ──────────────────────
+// Free, run before any AI call. A follow-up in the same thread only needs AI classification
+// if it clears BOTH of these — most closing "thanks" replies and most long-gap re-uses of
+// an old thread get filtered out here for nothing.
+const ACK_PHRASES = [
+  'thanks', 'thank you', 'thanks so much', 'thank you so much', 'thanks a lot', 'thx', 'ty',
+  'got it', 'noted', 'sounds good', 'perfect', 'great, thanks', 'great thanks', 'awesome',
+  'much appreciated', 'appreciate it', 'appreciated', 'will do', 'understood', 'makes sense',
+  'ok thanks', 'okay thanks', 'cool thanks', 'perfect thank you', 'all good', 'looks good',
+  'lgtm', 'great work', 'nice work', 'thanks again', 'many thanks',
+];
+
+// Only matches genuinely short messages, so a long message that happens to open with
+// "thanks" but then asks something new is never incorrectly filtered out.
+function isLikelyAcknowledgment(rawText: string): boolean {
+  const text = stripHtml(rawText).trim().toLowerCase().replace(/[!.,]+$/, '');
+  if (!text || text.length > 120) return false;
+  const firstLine = text.split('\n')[0].trim();
+  return ACK_PHRASES.some(p => firstLine === p || firstLine.startsWith(p + ' ') || firstLine.startsWith(p + ','));
+}
+
+// If the customer's follow-up arrives long after our reply, it's more likely a fresh ask
+// reusing the old thread than a continuation of the same issue.
+const NEW_TOPIC_GAP_DAYS = 5;
+function isLikelyNewTopicByGap(ourReplyTimeMs: number, followUpTimeMs: number): boolean {
+  return (followUpTimeMs - ourReplyTimeMs) / 86400000 >= NEW_TOPIC_GAP_DAYS;
+}
+
 const STOP_WORDS = new Set([
   'that', 'this', 'with', 'from', 'have', 'been', 'will', 'they', 'your',
   'their', 'what', 'when', 'where', 'please', 'thank', 'thanks', 'also',
@@ -426,9 +455,25 @@ async function analyzeUser(
   let within4h = 0;
 
   // ── Resolution ───────────────────────────────────────────────────
+  // Option C (2026-08-26): "reopened" used to mean nothing more than "customer sent
+  // anything else in this thread afterward" — which counts a customer saying "thanks", or
+  // reusing an old thread to ask something unrelated, exactly the same as a genuinely
+  // still-open issue. This pass filters those out: free heuristics first (ack-phrase match,
+  // long time-gap), then a single batched AI classification call per user for whatever's
+  // still ambiguous after that. See emailThreadClassifierService.ts.
   let oneReplySolved = 0;
   let reopenedThreads = 0;
   let threadsWithReply = 0;
+
+  interface ThreadInfo {
+    convId: string;
+    cfRepliesCount: number;
+    customerFollowUps: GraphMessage[];
+    firstCustText: string;
+    firstReplyText: string;
+    firstReplyTime: number;
+  }
+  const threadInfos: ThreadInfo[] = [];
 
   for (const convId of customerConvIds) {
     const custMsgs = recvByConv.get(convId) ?? [];
@@ -455,9 +500,61 @@ async function analyzeUser(
     const customerFollowUps = custMsgs.filter(m =>
       new Date(m.receivedDateTime).getTime() > firstReplyTime
     );
-    const wasReopened = customerFollowUps.length > 0;
+
+    threadInfos.push({
+      convId,
+      cfRepliesCount: cfReplies.length,
+      customerFollowUps,
+      firstCustText: firstCust.body?.content ? stripHtml(firstCust.body.content) : firstCust.bodyPreview ?? '',
+      firstReplyText: firstReply.body?.content ? stripHtml(firstReply.body.content) : firstReply.bodyPreview ?? '',
+      firstReplyTime,
+    });
+  }
+
+  // Pass 1: free heuristics. Each follow-up becomes either `false` (heuristically cleared —
+  // never counts as reopened) or `'AMBIGUOUS'` (needs AI to decide).
+  const followUpFlags = new Map<string, Array<false | 'AMBIGUOUS'>>();
+  const ambiguousThreads: AmbiguousThread[] = [];
+
+  for (const info of threadInfos) {
+    const flags: Array<false | 'AMBIGUOUS'> = info.customerFollowUps.map((followUp, idx) => {
+      const text = followUp.body?.content ? stripHtml(followUp.body.content) : followUp.bodyPreview ?? '';
+      if (isLikelyAcknowledgment(text)) return false;
+      const followUpTime = new Date(followUp.receivedDateTime).getTime();
+      if (isLikelyNewTopicByGap(info.firstReplyTime, followUpTime)) return false;
+
+      const key = `${info.convId}:${idx}`;
+      ambiguousThreads.push({
+        key,
+        customerOriginalMessage: info.firstCustText,
+        ourReply: info.firstReplyText,
+        customerFollowUp: text,
+      });
+      return 'AMBIGUOUS';
+    });
+    followUpFlags.set(info.convId, flags);
+  }
+
+  // Pass 2: one batched AI call for whatever's still ambiguous (empty map if nothing
+  // ambiguous, not configured, or the call failed — handled as fail-closed below).
+  const aiResults: Map<string, ThreadClassification> = ambiguousThreads.length > 0
+    ? await emailThreadClassifierService.classify(ambiguousThreads)
+    : new Map();
+
+  // Pass 3: finalize. Fail closed — an ambiguous follow-up the AI didn't resolve (missing
+  // from the response, or explicitly SAME_ISSUE) still counts as reopened, same as the old
+  // behavior; only a clear NEW_TOPIC/ACKNOWLEDGMENT verdict clears it.
+  for (const info of threadInfos) {
+    const flags = followUpFlags.get(info.convId) ?? [];
+    let wasReopened = false;
+    flags.forEach((flag, idx) => {
+      if (flag === false) return;
+      const aiResult = aiResults.get(`${info.convId}:${idx}`);
+      if (aiResult === 'NEW_TOPIC' || aiResult === 'ACKNOWLEDGMENT') return;
+      wasReopened = true;
+    });
     if (wasReopened) reopenedThreads++;
-    if (cfReplies.length === 1 && !wasReopened) oneReplySolved++;
+    if (info.cfRepliesCount === 1 && !wasReopened) oneReplySolved++;
   }
 
   // ── Quality: accuracy rate ────────────────────────────────────────
