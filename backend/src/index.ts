@@ -38,6 +38,7 @@ import archiveRoutes from './routes/archiveRoutes';
 import psEngagementsRoutes from './routes/psEngagementsRoutes';
 import overageRoutes from './routes/overageRoutes';
 import feedbackRoutes from './routes/feedbackRoutes';
+import externalApiRoutes from './routes/externalApiRoutes';
 import { initializeCronJobs } from './jobs';
 import settingsRoutes from './routes/settingsRoutes';
 import accountManagerRoutes from './routes/accountManagerRoutes';
@@ -124,6 +125,7 @@ app.use('/api/call-transcripts', callTranscriptRoutes);
 app.use('/api/ps-engagements', psEngagementsRoutes);
 app.use('/api/overage', overageRoutes);
 app.use('/api/feedback', feedbackRoutes);
+app.use('/api/external', externalApiRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
