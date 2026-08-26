@@ -175,6 +175,14 @@ CREATE TABLE IF NOT EXISTS projects (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+-- 2026-08-26: template_id was only ever declared inside CREATE TABLE IF NOT EXISTS above,
+-- which is a no-op on any database where projects already existed before this column was
+-- added (confirmed live on production) -- the index below then fails on "column does not
+-- exist", aborting every statement after it in this same batch (the whole schema string is
+-- run as one client.query() in index.ts, so one failure here silently skips everything
+-- after it, including phase_completion_pct and beyond). Explicit ALTER TABLE backfills it
+-- on pre-existing databases; a no-op wherever CREATE TABLE already added it.
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS template_id UUID REFERENCES migration_templates(id);
 CREATE INDEX IF NOT EXISTS idx_projects_template_id ON projects(template_id);
 CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status);
 CREATE INDEX IF NOT EXISTS idx_projects_phase ON projects(phase);
