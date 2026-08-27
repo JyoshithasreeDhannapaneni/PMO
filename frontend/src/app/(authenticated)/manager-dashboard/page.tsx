@@ -270,7 +270,11 @@ function ProjectsTabView({ managerName, dbManager, isOthers }: { managerName: st
     return <div className="flex justify-center py-12"><Loader2 size={24} className="animate-spin text-indigo-500" /></div>;
   }
   if (projects.length === 0) {
-    return <div className="text-center py-12 text-sm text-gray-400">No projects found for {managerName}.</div>;
+    return (
+      <div className="text-center py-12 text-sm text-gray-400">
+        {isOthers ? 'No unmapped projects — every project is mapped to a named ENT/SMB manager.' : `No projects found for ${managerName}.`}
+      </div>
+    );
   }
 
   const delayReasonLabel = (v: string | null | undefined) => {
@@ -614,11 +618,13 @@ function ManagerTabView({
 
       <div className="bg-gradient-to-r from-[#1b4f72] to-[#2980b9] rounded-2xl p-5 flex items-center gap-4">
         <div className="w-14 h-14 rounded-full bg-white/20 flex items-center justify-center text-white text-xl font-bold flex-shrink-0">
-          {isOthers ? 'OT' : toInitials(stat.manager)}
+          {isOthers ? '?' : toInitials(stat.manager)}
         </div>
         <div>
-          <h2 className="text-xl font-bold text-white">{stat.manager}</h2>
-          <p className="text-sm text-blue-100 mt-0.5">Project Manager · {stat.total} total projects</p>
+          <h2 className="text-xl font-bold text-white">{isOthers ? 'Not Mapped to ENT/SMB' : stat.manager}</h2>
+          <p className="text-sm text-blue-100 mt-0.5">
+            {isOthers ? `${stat.total} project${stat.total !== 1 ? 's' : ''} with no ENT/SMB manager` : `Project Manager · ${stat.total} total projects`}
+          </p>
         </div>
         {!isOthers && (
           <Link
@@ -1020,11 +1026,13 @@ function HygienePanel({ metric }: { metric: any }) {
 function OrgNode({
   name,
   isLead,
+  isUnmapped = false,
   stat,
   onClick,
 }: {
   name: string;
   isLead: boolean;
+  isUnmapped?: boolean;
   stat: ManagerStat | null;
   onClick: () => void;
 }) {
@@ -1036,12 +1044,14 @@ function OrgNode({
       className={`rounded-xl border cursor-pointer transition-all hover:shadow-md select-none w-full
         ${isLead
           ? 'bg-gradient-to-br from-indigo-600 to-indigo-700 border-indigo-500'
+          : isUnmapped
+          ? 'bg-amber-50/60 border-dashed border-amber-300 hover:border-amber-400'
           : 'bg-white border-gray-200 hover:border-indigo-300'}`}
     >
       <div className="px-4 py-3 flex items-center gap-3">
         <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0
-          ${isLead ? 'bg-white/20 text-white' : 'bg-indigo-100 text-indigo-700'}`}>
-          {toInitials(name)}
+          ${isLead ? 'bg-white/20 text-white' : isUnmapped ? 'bg-amber-100 text-amber-700' : 'bg-indigo-100 text-indigo-700'}`}>
+          {isUnmapped ? '?' : toInitials(name)}
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
@@ -1076,10 +1086,12 @@ function OrgChart({
   segment,
   getStatForManager,
   onSelectManager,
+  othersStats,
 }: {
   segment: Segment;
   getStatForManager: (name: string) => ManagerStat | null;
   onSelectManager: (name: string) => void;
+  othersStats: ManagerStat | null;
 }) {
   const hier = SEGMENT_HIERARCHY.find(h => h.label === segment);
   if (!hier) return null;
@@ -1119,6 +1131,19 @@ function OrgChart({
             />
           </div>
         ))}
+      </div>
+
+      {/* Not mapped to ENT/SMB — projects whose PM isn't any named manager above.
+          Shown once per segment tab as a click-through to the same underlying
+          "Others" bucket (it's global, not segment-specific). */}
+      <div className="max-w-sm mx-auto mt-4">
+        <OrgNode
+          name="Not Mapped to ENT/SMB"
+          isLead={false}
+          isUnmapped
+          stat={othersStats}
+          onClick={() => onSelectManager('Others')}
+        />
       </div>
     </div>
   );
@@ -1529,6 +1554,7 @@ export default function ManagerDashboardPage() {
             segment={activeSegment}
             getStatForManager={getStatForManager}
             onSelectManager={setSelectedManager}
+            othersStats={othersStats}
           />
         )
       )}

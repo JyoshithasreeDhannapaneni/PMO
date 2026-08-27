@@ -291,7 +291,18 @@
       "Bash(powershell -NoProfile -Command \"Stop-Process -Id 50388,33752,58888 -Force -ErrorAction SilentlyContinue\")",
       "Bash(echo \"started with bg pid $!\")",
       "Bash(curl -s -o /tmp/viewer_users_resp3.json -w 'HTTP %{http_code}\\\\n' http://localhost:3001/api/auth/users -H 'Authorization: Bearer dbf95f2f65c5304dda035848f99422d8700969d24cab2a27378b80a95fd9ab825a2ddf8cb22902cfdcd3342c6b50c622')",
-      "Bash(curl -s -o /dev/null -w \"frontend root HTTP %{http_code}\\\\n\" http://localhost:3000/)"
+      "Bash(curl -s -o /dev/null -w \"frontend root HTTP %{http_code}\\\\n\" http://localhost:3000/)",
+      "Bash(curl -s -o /dev/null -w \"manager-dashboard HTTP %{http_code}\\\\n\" http://localhost:3000/manager-dashboard)",
+      "Bash(powershell -NoProfile -Command \"Stop-Process -Id 57028,57224,26660 -Force -ErrorAction SilentlyContinue\")",
+      "Bash(curl -s -o /dev/null -w \"backend HTTP %{http_code}\\\\n\" http://localhost:3001/api/dashboard/overview -H \"Authorization: Bearer invalid\")",
+      "Bash(curl -s -o /dev/null -w \"frontend HTTP %{http_code}\\\\n\" http://localhost:3000/)",
+      "Bash(powershell -NoProfile -Command \"Get-Process -Id 8184 -ErrorAction SilentlyContinue | Select-Object Id,ProcessName\")",
+      "Bash(curl -s http://localhost:3000/)",
+      "Bash(powershell -NoProfile -Command \"Stop-Process -Id 58252,8184 -Force -ErrorAction SilentlyContinue\")",
+      "Bash(powershell -NoProfile -Command \"Stop-Process -Id 4416,59548,22720 -Force -ErrorAction SilentlyContinue\")",
+      "Bash(powershell -NoProfile -Command 'Get-CimInstance Win32_Process -Filter \"Name = '\\\\''node.exe'\\\\''\" | Where-Object { $_.CommandLine -like '\\\\''*PMO\\\\PMO*'\\\\'' } | Select-Object ProcessId, ParentProcessId, CreationDate, CommandLine')",
+      "Bash(powershell -NoProfile -Command \"Stop-Process -Id 9080,59852 -Force -ErrorAction SilentlyContinue\")",
+      "Bash(powershell -NoProfile -Command \"Stop-Process -Id 58568,9000 -Force -ErrorAction SilentlyContinue\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\BharathTummaganti\\OneDrive - CloudFuze, Inc\\Documents\\PMO\\PMO",
