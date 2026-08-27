@@ -567,8 +567,14 @@ export const feedbackApi = {
     const { data } = await api.get('/feedback');
     return data;
   },
-  create: async (payload: { type: 'ISSUE' | 'SUGGESTION'; message: string }) => {
-    const { data } = await api.post('/feedback', payload);
+  create: async (payload: { type: 'ISSUE' | 'SUGGESTION'; message: string; images?: File[] }) => {
+    const formData = new FormData();
+    formData.append('type', payload.type);
+    formData.append('message', payload.message);
+    (payload.images ?? []).forEach((f) => formData.append('images', f));
+    const { data } = await api.post('/feedback', formData, {
+      headers: { 'Content-Type': undefined },
+    });
     return data;
   },
   updateStatus: async (id: string, status: 'OPEN' | 'IN_PROGRESS' | 'DONE') => {

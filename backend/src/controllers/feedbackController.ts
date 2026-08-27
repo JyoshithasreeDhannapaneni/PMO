@@ -19,6 +19,11 @@ export const feedbackController = {
     if (!VALID_TYPES.includes(type)) {
       throw new AppError(`type must be one of: ${VALID_TYPES.join(', ')}`, 400);
     }
+    const files = (req.files as Express.Multer.File[]) || [];
+    const images = files.map((f) => ({
+      url: `/uploads/feedback-images/${f.filename}`,
+      name: f.originalname,
+    }));
     const user = (req as any).user;
     const item = await feedbackService.create({
       type,
@@ -26,6 +31,7 @@ export const feedbackController = {
       userId: user.id,
       userName: user.name,
       userEmail: user.email,
+      images,
     });
     res.status(201).json({ success: true, data: item });
   }),

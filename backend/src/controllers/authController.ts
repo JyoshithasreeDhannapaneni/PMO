@@ -212,7 +212,15 @@ export const authController = {
 
     const requestingUser = await authService.getUserFromToken(token);
     if (!requestingUser) throw new AppError('Invalid token', 401);
-    if (requestingUser.role !== 'ADMIN' && requestingUser.role !== 'PROJECT_MANAGER') {
+    // VIEWER needs this list to populate the read-only Project Manager filter
+    // dropdown (frontend/src/app/(authenticated)/projects/page.tsx) — the
+    // response carries no sensitive data beyond name/email/role/department,
+    // already visible elsewhere in read-only views.
+    if (
+      requestingUser.role !== 'ADMIN' &&
+      requestingUser.role !== 'PROJECT_MANAGER' &&
+      requestingUser.role !== 'VIEWER'
+    ) {
       throw new AppError('Insufficient permissions', 403);
     }
 
