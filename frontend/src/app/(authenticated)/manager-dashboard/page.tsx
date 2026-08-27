@@ -13,7 +13,7 @@ import {
   ArrowLeft, ExternalLink, Upload, FileSpreadsheet, Trash2,
 } from 'lucide-react';
 import api from '@/services/api';
-import { SEGMENT_CONFIG, SEGMENT_HIERARCHY, MANAGER_QUERY_NAMES, ENGINEER_ASSIGNMENTS, LMS_SCORES, LMS_MAX, MEETING_ATTENDANCE, CHECKIN_DELAYS, segmentOfManager, type Segment } from '@/lib/segments';
+import { SEGMENT_CONFIG, SEGMENT_HIERARCHY, MANAGER_QUERY_NAMES, ENGINEER_ASSIGNMENTS, LMS_SCORES, LMS_MAX, MEETING_ATTENDANCE, CHECKIN_DELAYS, segmentOfManager, isNamedManager, type Segment } from '@/lib/segments';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -35,10 +35,6 @@ interface ManagerStat {
   goalPct: number;
   variance: number;
 }
-
-// ─── Config ───────────────────────────────────────────────────────────────────
-
-const NAMED_MANAGER_SET = new Set(SEGMENT_CONFIG.flatMap((s) => s.managers));
 
 // ─── Badge styles ─────────────────────────────────────────────────────────────
 
@@ -256,7 +252,7 @@ function ProjectsTabView({ managerName, dbManager, isOthers }: { managerName: st
 
   const allFetched: any[] = data?.data ?? [];
   const projects = useMemo(
-    () => isOthers ? allFetched.filter((p: any) => !NAMED_MANAGER_SET.has(p.projectManager)) : allFetched,
+    () => isOthers ? allFetched.filter((p: any) => !isNamedManager(p.projectManager)) : allFetched,
     [allFetched, isOthers]
   );
 
@@ -1432,12 +1428,12 @@ export default function ManagerDashboardPage() {
     };
   };
 
-  // "Others" = aggregate of all managers NOT in NAMED_MANAGER_SET
+  // "Others" = aggregate of all managers that don't resolve to a named ENT/SMB manager
   const EMPTY_STAT: ManagerStat = { manager: 'Others', total: 0, active: 0, inactive: 0, completed: 0, delayed: 0, atRisk: 0, onTime: 0, pctOnTime: 0, avgDelayDays: 0, achievedPct: 0, goalPct: 80, variance: -80 };
 
   const othersStats: ManagerStat | null = useMemo(() => {
     if (statsLoading) return null;
-    const others = allStats.filter((s) => !NAMED_MANAGER_SET.has(s.manager));
+    const others = allStats.filter((s) => !isNamedManager(s.manager));
     if (others.length === 0) return { ...EMPTY_STAT, manager: 'Others' };
     const s = sumStats(others);
     return { ...EMPTY_STAT, manager: 'Others', ...s };
