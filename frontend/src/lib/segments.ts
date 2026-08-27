@@ -137,11 +137,28 @@ export const CHECKIN_DELAYS: { name: string; delayMin: number }[] = [
   { name: 'Harshith',        delayMin: 14.8 },
 ];
 
+// Some data sources (manual entry, imports) store a manager's full name
+// ("Raghu Yellani", "Sriram Ramakrishnan", "Abhishek sakala") while segments.ts
+// uses short canonical first names ("Raghu", "Sriram", "Abhishek"). Treat
+// "canonical name + anything" as the same person -- confirmed identities:
+// Abhishek = Abhishek sakala, Sriram = Sriram Ramakrishnan, Raghu = Raghu Yellani.
+export function managerNameMatches(rawName: string | null | undefined, canonicalName: string): boolean {
+  if (!rawName) return false;
+  const dn = rawName.trim().toLowerCase();
+  const cn = canonicalName.trim().toLowerCase();
+  return dn === cn || dn.startsWith(cn + ' ') || cn.startsWith(dn + ' ');
+}
+
+// True if rawName resolves to any manager in SEGMENT_CONFIG (either segment).
+export function isNamedManager(rawName: string | null | undefined): boolean {
+  if (!rawName) return false;
+  return SEGMENT_CONFIG.some((s) => s.managers.some((m) => managerNameMatches(rawName, m)));
+}
+
 export function segmentOfManager(name: string | null | undefined): Segment | null {
   if (!name) return null;
-  const normalized = name.trim().toLowerCase();
   const found = SEGMENT_CONFIG.find((s) =>
-    s.managers.some((m) => m.toLowerCase() === normalized)
+    s.managers.some((m) => managerNameMatches(name, m))
   );
   return found ? found.label : null;
 }
