@@ -3,11 +3,17 @@ import { query, execute } from '../config/database';
 export type FeedbackType = 'ISSUE' | 'SUGGESTION';
 export type FeedbackStatus = 'OPEN' | 'IN_PROGRESS' | 'DONE';
 
+export interface FeedbackImage {
+  url: string;
+  name: string;
+}
+
 export interface FeedbackItem {
   id: string;
   type: FeedbackType;
   message: string;
   status: FeedbackStatus;
+  images: FeedbackImage[];
   createdById: string | null;
   createdByName: string | null;
   createdByEmail: string | null;
@@ -21,6 +27,7 @@ function toFeedbackItem(r: any): FeedbackItem {
     type: r.type,
     message: r.message,
     status: r.status,
+    images: Array.isArray(r.images) ? r.images : [],
     createdById: r.created_by_id,
     createdByName: r.created_by_name,
     createdByEmail: r.created_by_email,
@@ -43,11 +50,12 @@ export const feedbackService = {
     userId: string;
     userName: string;
     userEmail: string;
+    images?: FeedbackImage[];
   }): Promise<FeedbackItem> {
     const result = await execute(
-      `INSERT INTO feedback_items (type, message, created_by_id, created_by_name, created_by_email)
-       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-      [params.type, params.message, params.userId, params.userName, params.userEmail]
+      `INSERT INTO feedback_items (type, message, created_by_id, created_by_name, created_by_email, images)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [params.type, params.message, params.userId, params.userName, params.userEmail, JSON.stringify(params.images ?? [])]
     );
     return toFeedbackItem((result as any).rows[0]);
   },

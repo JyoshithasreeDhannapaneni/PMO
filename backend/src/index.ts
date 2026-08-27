@@ -530,6 +530,9 @@ async function runMigrations() {
     updated_at       TIMESTAMPTZ DEFAULT NOW()
   )`);
   try { await execute(`CREATE INDEX IF NOT EXISTS idx_feedback_created_at ON feedback_items(created_at)`); } catch {}
+  // images added 2026-08-27 — explicit ALTER TABLE, not a CREATE TABLE edit, since
+  // production already has this table (CREATE TABLE IF NOT EXISTS is a no-op there).
+  try { await execute(`ALTER TABLE feedback_items ADD COLUMN IF NOT EXISTS images JSONB DEFAULT '[]'`); } catch {}
 
   // Client reviews (Reviews tab) — structured customer feedback scorecard per project
   await execute(`CREATE TABLE IF NOT EXISTS client_reviews (

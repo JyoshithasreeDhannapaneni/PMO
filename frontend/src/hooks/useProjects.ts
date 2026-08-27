@@ -1132,7 +1132,7 @@ export function useFeedbackItems(enabled = true) {
 export function useCreateFeedbackItem() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload: { type: 'ISSUE' | 'SUGGESTION'; message: string }) => feedbackApi.create(payload),
+    mutationFn: (payload: { type: 'ISSUE' | 'SUGGESTION'; message: string; images?: File[] }) => feedbackApi.create(payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['feedback-items'] });
     },

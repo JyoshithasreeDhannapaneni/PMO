@@ -3,10 +3,11 @@
 import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useFeedbackItems, useCreateFeedbackItem, useUpdateFeedbackStatus } from '@/hooks/useProjects';
-import { MessageSquare, X, Send, Clock, CheckCircle, AlertCircle } from 'lucide-react';
+import { MessageSquare, X, Send, Clock, CheckCircle, AlertCircle, Camera } from 'lucide-react';
 
 type FeedbackType = 'ISSUE' | 'SUGGESTION';
 type FeedbackStatus = 'OPEN' | 'IN_PROGRESS' | 'DONE';
+type FeedbackImage = { url: string; name: string };
 
 const TYPE_BADGE: Record<FeedbackType, string> = {
   ISSUE: 'bg-red-100 text-red-700',
@@ -18,6 +19,9 @@ const STATUS_CONFIG: Record<FeedbackStatus, { label: string; badge: string; icon
   IN_PROGRESS: { label: 'In Progress', badge: 'bg-amber-100 text-amber-700', icon: Clock },
   DONE: { label: 'Done', badge: 'bg-green-100 text-green-700', icon: CheckCircle },
 };
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
+const MAX_IMAGES = 3;
 
 function timeAgo(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();
@@ -36,14 +40,16 @@ export function FeedbackWidget() {
   const [open, setOpen] = useState(false);
   const [type, setType] = useState<FeedbackType>('ISSUE');
   const [message, setMessage] = useState('');
+  const [attachments, setAttachments] = useState<File[]>([]);
   const feedRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Always enabled (not gated to `open`) so the unread-open-count badge on the closed
   // floating button is accurate without requiring the panel to be opened first — this is
   // a light JSON poll, not an expensive Graph sync, so running it globally is cheap.
   const { data, isLoading } = useFeedbackItems();
   const items: Array<{
-    id: string; type: FeedbackType; message: string; status: FeedbackStatus;
+    id: string; type: FeedbackType; message: string; status: FeedbackStatus; images: FeedbackImage[];
     createdById: string | null; createdByName: string | null; createdAt: string;
   }> = data?.data ?? [];
 
@@ -56,11 +62,31 @@ export function FeedbackWidget() {
     if (open) feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight, behavior: 'smooth' });
   }, [open, items.length]);
 
+  // Preview URLs for attached-but-not-yet-sent images — revoked on cleanup/change so we
+  // don't leak object URLs as attachments get added/removed/sent.
+  const [previewUrls, setPreviewUrls] = useState<string[]>([]);
+  useEffect(() => {
+    const urls = attachments.map((f) => URL.createObjectURL(f));
+    setPreviewUrls(urls);
+    return () => urls.forEach((u) => URL.revokeObjectURL(u));
+  }, [attachments]);
+
+  function handlePickImages(e: React.ChangeEvent<HTMLInputElement>) {
+    const picked = Array.from(e.target.files ?? []);
+    if (picked.length === 0) return;
+    setAttachments((prev) => [...prev, ...picked].slice(0, MAX_IMAGES));
+    e.target.value = ''; // allow picking the same file again later
+  }
+
+  function removeAttachment(idx: number) {
+    setAttachments((prev) => prev.filter((_, i) => i !== idx));
+  }
+
   function handleSend() {
     const trimmed = message.trim();
     if (!trimmed || createMutation.isPending) return;
-    createMutation.mutate({ type, message: trimmed }, {
-      onSuccess: () => setMessage(''),
+    createMutation.mutate({ type, message: trimmed, images: attachments }, {
+      onSuccess: () => { setMessage(''); setAttachments([]); },
     });
   }
 
@@ -121,6 +147,19 @@ export function FeedbackWidget() {
                         </span>
                       </div>
                       <p className="text-gray-800 whitespace-pre-wrap break-words">{item.message}</p>
+                      {item.images?.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1.5">
+                          {item.images.map((img, i) => (
+                            <a key={i} href={`${API_URL}${img.url}`} target="_blank" rel="noopener noreferrer">
+                              <img
+                                src={`${API_URL}${img.url}`}
+                                alt={img.name}
+                                className="w-14 h-14 object-cover rounded-lg border border-gray-200 hover:opacity-80 transition-opacity"
+                              />
+                            </a>
+                          ))}
+                        </div>
+                      )}
                       <div className="flex items-center justify-between mt-1.5 gap-2">
                         <span className="text-[9px] text-gray-400 truncate">
                           {isOwn ? 'You' : item.createdByName || 'Someone'} · {timeAgo(item.createdAt)}
@@ -148,19 +187,54 @@ export function FeedbackWidget() {
 
           {/* Composer */}
           <div className="px-2.5 py-2 border-t border-gray-100 bg-white shrink-0 space-y-1.5">
-            <div className="flex gap-1.5">
-              {(['ISSUE', 'SUGGESTION'] as const).map((t) => (
-                <button
-                  key={t}
-                  onClick={() => setType(t)}
-                  className={`px-2 py-0.5 rounded-full text-[10px] font-semibold transition-colors ${
-                    type === t ? TYPE_BADGE[t] : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
-                  }`}
-                >
-                  {t === 'ISSUE' ? 'Issue' : 'Suggestion'}
-                </button>
-              ))}
+            <div className="flex items-center justify-between">
+              <div className="flex gap-1.5">
+                {(['ISSUE', 'SUGGESTION'] as const).map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => setType(t)}
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-semibold transition-colors ${
+                      type === t ? TYPE_BADGE[t] : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
+                    }`}
+                  >
+                    {t === 'ISSUE' ? 'Issue' : 'Suggestion'}
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={attachments.length >= MAX_IMAGES}
+                title={attachments.length >= MAX_IMAGES ? `Up to ${MAX_IMAGES} images` : 'Attach a screenshot'}
+                className="text-gray-400 hover:text-orange-600 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              >
+                <Camera size={15} />
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={handlePickImages}
+                className="hidden"
+              />
             </div>
+
+            {attachments.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {previewUrls.map((url, idx) => (
+                  <div key={idx} className="relative w-10 h-10 shrink-0">
+                    <img src={url} alt={attachments[idx]?.name} className="w-10 h-10 object-cover rounded-lg border border-gray-200" />
+                    <button
+                      onClick={() => removeAttachment(idx)}
+                      className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-gray-700 text-white flex items-center justify-center hover:bg-red-600 transition-colors"
+                    >
+                      <X size={9} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
             <div className="flex items-end gap-1.5">
               <textarea
                 value={message}
