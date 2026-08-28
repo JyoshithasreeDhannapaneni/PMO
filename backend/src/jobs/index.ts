@@ -121,6 +121,25 @@ export function initializeCronJobs(): void {
     }
   }, { timezone: 'Asia/Kolkata' });
 
+  // 1-hour reply-SLA breach alerts — polled every 15 minutes. Separate from the daily
+  // Email Hygiene sync (which grades on a 4-hour SLA weekly); this is a real-time
+  // trip-wire that emails the responsible person's manager (cc: all admins) the moment
+  // a customer email has gone unreplied for 60+ minutes. See slaBreachAlertService.ts
+  // for the idempotency guard (sla_breach_alerts table) that stops repeat alerts for the
+  // same still-unreplied message on every subsequent poll.
+  cron.schedule('*/15 * * * *', async () => {
+    try {
+      const { slaBreachAlertService } = require('../services/slaBreachAlertService');
+      if (!slaBreachAlertService.isConfigured()) return;
+      const result = await slaBreachAlertService.checkAll();
+      if (result.alerted > 0) {
+        logger.info(`[SlaBreachAlert] Checked ${result.checked} mailboxes, sent ${result.alerted} new alert(s)`);
+      }
+    } catch (error) {
+      logger.error('[SlaBreachAlert] Poll failed:', error);
+    }
+  });
+
   // Weekly hygiene finalize — every Monday at 7:00 AM IST, locks in a permanent snapshot
   // of the Mon-Sun (IST) week that just ended for all three hygiene systems (2026-08-24
   // weekly-trend feature). Agentic by design: no one has to click anything for last week's
@@ -152,6 +171,7 @@ export function initializeCronJobs(): void {
   logger.info('  - Email hygiene sync: Daily at 7:00 AM IST');
   logger.info('  - Call hygiene refresh: Daily at 5:00 AM IST');
   logger.info('  - Call transcript grading: Daily at 5:30 AM IST');
+  logger.info('  - 1-hour reply-SLA breach alerts: Every 15 minutes');
   logger.info('  - Global logout (clear all sessions): Daily at 6:00 AM IST');
   logger.info('  - Weekly hygiene finalize (PMO/Email/Call): Every Monday at 7:00 AM IST');
 }

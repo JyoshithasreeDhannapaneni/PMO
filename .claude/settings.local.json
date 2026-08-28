@@ -302,7 +302,14 @@
       "Bash(powershell -NoProfile -Command \"Stop-Process -Id 4416,59548,22720 -Force -ErrorAction SilentlyContinue\")",
       "Bash(powershell -NoProfile -Command 'Get-CimInstance Win32_Process -Filter \"Name = '\\\\''node.exe'\\\\''\" | Where-Object { $_.CommandLine -like '\\\\''*PMO\\\\PMO*'\\\\'' } | Select-Object ProcessId, ParentProcessId, CreationDate, CommandLine')",
       "Bash(powershell -NoProfile -Command \"Stop-Process -Id 9080,59852 -Force -ErrorAction SilentlyContinue\")",
-      "Bash(powershell -NoProfile -Command \"Stop-Process -Id 58568,9000 -Force -ErrorAction SilentlyContinue\")"
+      "Bash(powershell -NoProfile -Command \"Stop-Process -Id 58568,9000 -Force -ErrorAction SilentlyContinue\")",
+      "Bash(echo \"exit=$?\")",
+      "Bash(rm \"c:\\\\Users\\\\BharathTummaganti\\\\OneDrive - CloudFuze, Inc\\\\Documents\\\\PMO\\\\PMO\\\\backend\\\\verify-delta-webhook.ts\")",
+      "Bash(node -e \"require\\('dotenv'\\).config\\(\\)\")",
+      "Bash(git -C \"c:\\\\Users\\\\BharathTummaganti\\\\OneDrive - CloudFuze, Inc\\\\Documents\\\\PMO\\\\PMO\" status --short backend/verify-hygiene-independent.ts backend/verify-delta-webhook.ts)",
+      "Bash(git -C \"c:\\\\Users\\\\BharathTummaganti\\\\OneDrive - CloudFuze, Inc\\\\Documents\\\\PMO\\\\PMO\" status --short backend/)",
+      "Bash(git -C \"c:\\\\Users\\\\BharathTummaganti\\\\OneDrive - CloudFuze, Inc\\\\Documents\\\\PMO\\\\PMO\" status --short backend/verify-resolution.ts)",
+      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code} \\(connect: %{time_connect}s\\)\\\\n\" --max-time 10 https://deltaprechecks.cftools.live/)"
     ],
     "additionalDirectories": [
       "c:\\Users\\BharathTummaganti\\OneDrive - CloudFuze, Inc\\Documents\\PMO\\PMO",
