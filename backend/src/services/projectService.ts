@@ -4,6 +4,7 @@ import { logger } from '../utils/logger';
 import { calculateDelay } from '../utils/delayCalculator';
 import { taskService } from './taskService';
 import { caseStudyService } from './caseStudyService';
+import { phaseWebhookService } from './phaseWebhookService';
 import { v4 as uuidv4 } from 'uuid';
 
 const AM_CANONICAL = [
@@ -701,7 +702,11 @@ class ProjectService {
     if (data.description !== undefined) { updates.push(`description = $${params.length + 1}`); params.push(data.description); }
     if (data.notes !== undefined) { updates.push(`notes = $${params.length + 1}`); params.push(data.notes); }
     if (data.phase !== undefined) {
-      updates.push(`phase = $${params.length + 1}`); params.push(data.phase.toUpperCase());
+      const newPhase = data.phase.toUpperCase();
+      updates.push(`phase = $${params.length + 1}`); params.push(newPhase);
+      if (newPhase !== (existing.phase || '').toUpperCase()) {
+        updates.push(`phase_changed_at = NOW()`);
+      }
     }
     if (data.phaseCompletionPct !== undefined) { updates.push(`phase_completion_pct = $${params.length + 1}`); params.push(Math.min(100, Math.max(0, data.phaseCompletionPct ?? 0))); }
     if (data.status !== undefined) { updates.push(`status = $${params.length + 1}`); params.push(data.status); }
@@ -845,6 +850,14 @@ class ProjectService {
       } catch (err: any) {
         logger.warn(`Phase-completion trigger failed for project ${id}: ${err?.message}`);
       }
+    }
+
+    // Notify the other internal application when a project newly enters DELTA phase
+    // (not on every edit, and not if it was already DELTA before this update).
+    if (data.phase && data.phase.toUpperCase() === 'DELTA' && (existing.phase || '').toUpperCase() !== 'DELTA') {
+      phaseWebhookService.notifyDeltaPhase(id).catch((err: any) => {
+        logger.warn(`Delta-phase webhook trigger failed for project ${id}: ${err?.message}`);
+      });
     }
 
     const result = await query(`SELECT * FROM projects WHERE id = $1`, [id]);

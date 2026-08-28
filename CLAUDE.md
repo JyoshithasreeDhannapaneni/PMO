@@ -107,6 +107,7 @@ MS_GRAPH_TENANT_ID / MS_GRAPH_CLIENT_ID / MS_GRAPH_CLIENT_SECRET   # Email + Cal
 MICROSOFT_CLIENT_ID / MICROSOFT_CLIENT_SECRET / MICROSOFT_TENANT_ID   # separate app: SSO + Mail.Send alerts
 OPENAI_API_KEY / OPENAI_MODEL   # call-transcript grading (defaults to gpt-4o-mini)
 ALERT_FROM_EMAIL / EXTERNAL_API_KEY / HUBSPOT_ACCESS_TOKEN
+EXTERNAL_PHASE_WEBHOOK_URL   # optional: other internal app's webhook endpoint; POSTed to (with EXTERNAL_API_KEY as X-API-Key) whenever a project's phase newly moves to DELTA. Unset = feature no-ops.
 ```
 
 ## Common Commands

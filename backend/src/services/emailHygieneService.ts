@@ -195,6 +195,10 @@ const SYSTEM_SENDER_DOMAINS = new Set([
   'onmicrosoft.com',
   'azurecomm.net',
   'mimecast.com',
+  // 2026-08-28: caught live via SLA-breach dry-run testing -- admin@neutara.com sends
+  // automated internal check-in/attendance reminders ("Missed Check-in Alert",
+  // "Reportees...") that were being counted as real unreplied customer threads.
+  'neutara.com',
 ]);
 
 function isGraphConfigured(): boolean {
