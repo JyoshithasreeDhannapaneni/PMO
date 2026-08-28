@@ -310,7 +310,9 @@
       "Bash(git -C \"c:\\\\Users\\\\BharathTummaganti\\\\OneDrive - CloudFuze, Inc\\\\Documents\\\\PMO\\\\PMO\" status --short backend/)",
       "Bash(git -C \"c:\\\\Users\\\\BharathTummaganti\\\\OneDrive - CloudFuze, Inc\\\\Documents\\\\PMO\\\\PMO\" status --short backend/verify-resolution.ts)",
       "Bash(curl -s -o /dev/null -w \"HTTP %{http_code} \\(connect: %{time_connect}s\\)\\\\n\" --max-time 10 https://deltaprechecks.cftools.live/)",
-      "Bash(git -C \"c:\\\\Users\\\\BharathTummaganti\\\\OneDrive - CloudFuze, Inc\\\\Documents\\\\PMO\\\\PMO\" status --short backend/ CLAUDE.md)"
+      "Bash(git -C \"c:\\\\Users\\\\BharathTummaganti\\\\OneDrive - CloudFuze, Inc\\\\Documents\\\\PMO\\\\PMO\" status --short backend/ CLAUDE.md)",
+      "Bash(powershell -NoProfile -Command \"Get-CimInstance Win32_Process -Filter \\\\\"ProcessId = 29796\\\\\" | Select-Object ProcessId, CreationDate, CommandLine\")",
+      "Bash(powershell -NoProfile -Command 'Get-CimInstance Win32_Process -Filter \"Name = '\\\\''node.exe'\\\\''\" | Where-Object { $_.CommandLine -like '\\\\''*PMO\\\\PMO\\\\backend*'\\\\'' } | Select-Object ProcessId, ParentProcessId, CreationDate, CommandLine')"
     ],
     "additionalDirectories": [
       "c:\\Users\\BharathTummaganti\\OneDrive - CloudFuze, Inc\\Documents\\PMO\\PMO",
