@@ -103,8 +103,17 @@ async function sendBreachAlert(breach: {
   // Falls back to sending straight to admins (rather than dropping the alert) when no
   // manager is found -- e.g. a top-level lead like Abhishek/Ajay Singh has no one above
   // them in this roster, or the person's name doesn't match any known engineer/manager.
-  const to = manager ? [manager.email] : adminEmails;
-  const cc = manager ? adminEmails : [];
+  const realTo = manager ? [manager.email] : adminEmails;
+  const realCc = manager ? adminEmails : [];
+
+  // 2026-08-29: temporary test mode -- while set, every alert is redirected to this one
+  // address instead of the real manager/admins, so alerts can be watched safely before
+  // going live to real people. The email body below still shows who it WOULD have gone
+  // to, so the manager-resolution logic stays verifiable during testing. Unset this env
+  // var (or remove it) to switch back to real manager+admin delivery -- no code change.
+  const testRecipient = process.env.SLA_BREACH_ALERT_TEST_RECIPIENT;
+  const to = testRecipient ? [testRecipient] : realTo;
+  const cc = testRecipient ? [] : realCc;
 
   if (to.length === 0) {
     logger.warn(`[SlaBreachAlert] No manager or admin recipient found for ${breach.userName} — alert not sent`);
@@ -115,7 +124,15 @@ async function sendBreachAlert(breach: {
     ? `${Math.round(breach.overdueMinutes / 60)} hours`
     : `${breach.overdueMinutes} minutes`;
 
+  const testModeNote = testRecipient
+    ? `<p style="background:#fffbeb;border-left:4px solid #f59e0b;padding:10px 14px;border-radius:4px;font-size:13px;margin:0 0 16px 0;">
+         <strong>Test mode:</strong> redirected here instead of the real recipient(s) —
+         would normally go to <strong>${realTo.join(', ') || '(none resolved)'}</strong>${realCc.length ? ` (cc: ${realCc.join(', ')})` : ''}.
+       </p>`
+    : '';
+
   const body = `
+    ${testModeNote}
     <p>A customer email has not received a reply within the 1-hour SLA.</p>
     <table cellpadding="0" cellspacing="0" style="width:100%;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;margin:16px 0;">
       <tr><td style="padding:8px 12px;font-size:13px;color:#64748b;border-bottom:1px solid #f1f5f9;">Responsible</td><td style="padding:8px 12px;font-size:13px;font-weight:600;border-bottom:1px solid #f1f5f9;">${breach.userName} (${breach.userEmail})</td></tr>
@@ -129,7 +146,7 @@ async function sendBreachAlert(breach: {
   await emailService.sendEmail({
     to,
     cc,
-    subject: `SLA Alert: Unreplied customer email — ${breach.userName} (${overdueLabel} overdue)`,
+    subject: `${testRecipient ? '[TEST] ' : ''}SLA Alert: Unreplied customer email — ${breach.userName} (${overdueLabel} overdue)`,
     html: brandedEmail('1-Hour Reply SLA Breach', body, '#ef4444'),
   });
 
