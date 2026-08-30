@@ -147,6 +147,55 @@ function WeeklyTrendChart({
   );
 }
 
+// Best/worst real example per category (Speed/Quality/Resolution/Tone), mirroring
+// CallBestWorstPanel's green/best-red/worst card style above -- but for 4 categories
+// instead of Call Hygiene's single metric. Unlike Call Hygiene, this data already comes
+// bundled in the email hygiene sync response (m.bestWorst), so no separate query/hook.
+const EMAIL_BEST_WORST_CATEGORIES: { key: 'speed' | 'quality' | 'resolution' | 'tone'; label: string }[] = [
+  { key: 'speed', label: 'Speed' },
+  { key: 'quality', label: 'Quality' },
+  { key: 'resolution', label: 'Resolution' },
+  { key: 'tone', label: 'Tone' },
+];
+
+function EmailBestWorstPanel({ bestWorst }: { bestWorst: any }) {
+  if (!bestWorst) return null;
+  const categoriesWithData = EMAIL_BEST_WORST_CATEGORIES.filter(({ key }) => bestWorst[key]?.best || bestWorst[key]?.worst);
+  if (categoriesWithData.length === 0) {
+    return <p className="text-xs text-gray-400 py-2">No graded examples yet this week for this person.</p>;
+  }
+
+  return (
+    <div className="space-y-3">
+      {categoriesWithData.map(({ key, label }) => {
+        const { best, worst } = bestWorst[key] ?? {};
+        // Only one exchange this week -- best and worst trivially collapse to the same
+        // example. Show it once as "Best" rather than a confusing identical pair.
+        const sameExample = best && worst && best.replyText === worst.replyText && best.label === worst.label;
+        return (
+          <div key={key}>
+            <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5">{label}</div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {best && (
+                <div className="border border-green-200 bg-green-50 rounded-lg p-2.5">
+                  <div className="text-[10px] font-semibold text-green-700 uppercase tracking-wide mb-1">Best · {best.label}</div>
+                  <div className="text-xs text-gray-700 italic line-clamp-2">&ldquo;{best.replyText}&rdquo;</div>
+                </div>
+              )}
+              {worst && !sameExample && (
+                <div className="border border-red-200 bg-red-50 rounded-lg p-2.5">
+                  <div className="text-[10px] font-semibold text-red-700 uppercase tracking-wide mb-1">Needs work · {worst.label}</div>
+                  <div className="text-xs text-gray-700 italic line-clamp-2">&ldquo;{worst.replyText}&rdquo;</div>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
 
@@ -201,9 +250,18 @@ function downloadHygieneTableImage(
   title: string,
   col1: string,
   col2: string,
-  rows: { name: string; score: number; teamScore?: number | null }[],
+  rows: { name: string; score: number; teamScore?: number | null; userEmail?: string }[],
   filename: string,
   col3?: string,
+  weeklyTrend?: {
+    weeks: Array<{ weekStart: string; isCurrent: boolean; metrics: any[] }>;
+    // Per-row (per-manager) score lookup for these weeks -- e.g. matching a row's
+    // userEmail against that week's stored metrics array. Powers both the inline
+    // per-row sparkline column AND the single combined line chart below the table
+    // (one line per manager, all on the same axes). A row with no resolvable score in
+    // any week is simply left out of both rather than shown as an empty line/sparkline.
+    perRowScoreFn: (weekMetrics: any[], row: { name: string; userEmail?: string }) => number | null;
+  },
 ) {
   const BRAND   = '#4B0BC4';
   const WHITE   = '#FFFFFF';
@@ -211,19 +269,75 @@ function downloadHygieneTableImage(
   const PAD     = 18;
   const TITLE_H = 58;
   const HEAD_H  = 40;
-  const ROW_H   = 38;
+  const TREND_TITLE_H = 34;
+  const TREND_PLOT_H = 226; // the bar-plotting area itself, excluding the legend below it
+  const LEGEND_COLS = 3;
+  const LEGEND_ROW_H = 20;
 
   const hasTeam = !!col3;
-  const W       = hasTeam ? 620 : 540;
-  const COL1_X  = hasTeam ? 270 : 340;  // end of name column
-  const COL2_X  = hasTeam ? 445 : W;    // end of personal score column (=W for 2-col)
-  const totalH  = TITLE_H + HEAD_H + rows.length * ROW_H;
+  const W_BASE  = hasTeam ? 620 : 540;
+  const COL1_X  = hasTeam ? 270 : 340;   // end of name column
+  const COL2_X  = hasTeam ? 445 : W_BASE; // end of personal score column (=W_BASE for 2-col)
+  const COL3_X  = W_BASE;                 // end of team-wise score column (only meaningful when hasTeam)
+
+  // One weekly series per row, kept in the SAME order as `rows` (not filtered) so it can
+  // be looked up by index -- a row with no resolvable score in a given week just leaves a
+  // gap there in the combined chart below, rather than being dropped entirely or drawn as
+  // a misleading zero. (There's no more per-row inline sparkline column -- this data now
+  // only feeds the single combined "Weekly Trend — By Manager" chart under the table.)
+  const weeks = weeklyTrend?.weeks ?? [];
+  const perRowTrend = weeklyTrend
+    ? rows.map((row) => weeks.map((w) => {
+        const value = weeklyTrend.perRowScoreFn(w.metrics, row);
+        return { value: value ?? 0, hasData: value !== null, isCurrent: w.isCurrent };
+      }))
+    : null;
+  const hasWeeklyData = !!perRowTrend && perRowTrend.some((series) => series.some((w) => w.hasData));
+
+  // Managers with at least one real data point -- these get a cluster of bars + a legend
+  // entry in the combined chart. Kept alongside their row so the legend can show current score too.
+  const lineChartSeries = (hasWeeklyData && perRowTrend)
+    ? rows.map((row, idx) => ({ row, series: perRowTrend[idx] })).filter(({ series }) => series.some((w) => w.hasData))
+    : [];
+  const legendRows = lineChartSeries.length > 0 ? Math.ceil(weeks.length / LEGEND_COLS) : 0;
+  const TREND_CHART_H = TREND_PLOT_H + (legendRows > 0 ? 14 + legendRows * LEGEND_ROW_H : 0);
+
+  const W = W_BASE;
+  const ROW_H = 38;
+
+  const totalH  = TITLE_H + HEAD_H + rows.length * ROW_H
+    + (lineChartSeries.length > 0 ? TREND_TITLE_H + TREND_CHART_H : 0);
 
   const canvas = document.createElement('canvas');
   canvas.width  = W * 2;
   canvas.height = totalH * 2;
   const ctx = canvas.getContext('2d')!;
   ctx.scale(2, 2);
+
+  function roundRectPath(x: number, y: number, w: number, h: number, r: number) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  // Bar with rounded top corners only (flat bottom) -- matches the softer, rounded-bar
+  // look of the on-page Recharts trend charts instead of harsh rectangular canvas bars.
+  function roundedTopBar(x: number, y: number, w: number, h: number, r: number) {
+    const rr = Math.min(r, w / 2, h);
+    ctx.beginPath();
+    ctx.moveTo(x, y + h);
+    ctx.lineTo(x, y + rr);
+    ctx.arcTo(x, y, x + rr, y, rr);
+    ctx.lineTo(x + w - rr, y);
+    ctx.arcTo(x + w, y, x + w, y + rr, rr);
+    ctx.lineTo(x + w, y + h);
+    ctx.closePath();
+    ctx.fill();
+  }
 
   // White base
   ctx.fillStyle = WHITE;
@@ -252,7 +366,7 @@ function downloadHygieneTableImage(
   ctx.fillText(col2, COL1_X + (COL2_X - COL1_X) / 2, TITLE_H + HEAD_H / 2, COL2_X - COL1_X - PAD);
 
   if (hasTeam && col3) {
-    ctx.fillText(col3, COL2_X + (W - COL2_X) / 2, TITLE_H + HEAD_H / 2, W - COL2_X - PAD);
+    ctx.fillText(col3, COL2_X + (COL3_X - COL2_X) / 2, TITLE_H + HEAD_H / 2, COL3_X - COL2_X - PAD);
   }
 
   // White dividers in sub-heading
@@ -295,11 +409,11 @@ function downloadHygieneTableImage(
         const tc = ts >= 80 ? '#15803D' : ts >= 60 ? '#B45309' : '#B91C1C';
         ctx.fillStyle = tc;
         ctx.font = 'bold 15px Calibri, Arial, sans-serif';
-        ctx.fillText(String(Math.round(ts)), COL2_X + (W - COL2_X) / 2, y + ROW_H / 2);
+        ctx.fillText(String(Math.round(ts)), COL2_X + (COL3_X - COL2_X) / 2, y + ROW_H / 2);
       } else {
         ctx.fillStyle = '#9CA3AF';
         ctx.font = '14px Calibri, Arial, sans-serif';
-        ctx.fillText('—', COL2_X + (W - COL2_X) / 2, y + ROW_H / 2);
+        ctx.fillText('—', COL2_X + (COL3_X - COL2_X) / 2, y + ROW_H / 2);
       }
     }
 
@@ -326,6 +440,127 @@ function downloadHygieneTableImage(
     ctx.moveTo(COL2_X, dataY);
     ctx.lineTo(COL2_X, dataY + rows.length * ROW_H);
     ctx.stroke();
+  }
+
+  // ── Weekly trend, per manager, all in one combined chart ──────────────────────────
+  // Grouped by MANAGER on the X axis (not by week) -- each manager gets its own small
+  // cluster of bars showing that manager's week-over-week trend, side by side with
+  // every other manager's cluster, so a single glance compares both "how did this
+  // person trend" and "how do people compare" without needing separate charts.
+  // CloudFuze's brand purple (#4B0BC4, used as BRAND above) fanned into a ramp -- lightest
+  // for the oldest week, deepening toward the brand color itself for the most recent
+  // finalized week, so the chart reads as CloudFuze's own palette instead of a generic
+  // rainbow. The in-progress "so far" week is still overridden to the lighter indicator
+  // color below, matching the sparkline/legend convention used elsewhere on this page.
+  const WEEK_COLORS = [
+    '#D8CCF5', '#B79AEB', '#9568E0', '#7C3AED', '#5A17CE', '#4B0BC4', '#3A0899', '#2C0673',
+  ];
+  const weekColor = (weekIdx: number, isCurrent: boolean) =>
+    isCurrent ? '#C7D2FE' : WEEK_COLORS[weekIdx % WEEK_COLORS.length];
+
+  if (lineChartSeries.length > 0) {
+    const trendY = TITLE_H + HEAD_H + rows.length * ROW_H;
+
+    ctx.fillStyle = BRAND;
+    ctx.fillRect(0, trendY, W, TREND_TITLE_H);
+    ctx.fillStyle = WHITE;
+    ctx.font = 'bold 13px Calibri, Arial, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Weekly Trend — By Manager', PAD, trendY + TREND_TITLE_H / 2);
+
+    const plotLeft = PAD + 26; // room for the 0/25/50/75/100 axis labels
+    const plotRight = W - PAD;
+    const plotTop = trendY + TREND_TITLE_H + 14;
+    const plotBottom = plotTop + TREND_PLOT_H - 90; // leaves room for the angled manager-name labels underneath
+    const plotHeight = plotBottom - plotTop;
+    const n = weeks.length;
+    const managerCount = lineChartSeries.length;
+    const groupW = (plotRight - plotLeft) / managerCount;
+    // Visible whitespace between one manager's cluster of bars and the next -- the cluster
+    // is centered within its group slot, so this gap is split evenly on both sides.
+    const GROUP_GAP = Math.min(18, groupW * 0.25);
+    const clusterW = groupW - GROUP_GAP;
+    const barSlot = clusterW / n;
+    const barW = Math.max(2, Math.min(14, barSlot * 0.8));
+
+    // Y gridlines at 0/25/50/75/100, with labels
+    ctx.font = '9px Calibri, Arial, sans-serif';
+    ctx.fillStyle = '#9CA3AF';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    [0, 25, 50, 75, 100].forEach((v) => {
+      const y = plotBottom - (v / 100) * plotHeight;
+      ctx.strokeStyle = 'rgba(75,11,196,0.08)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(plotLeft, y);
+      ctx.lineTo(plotRight, y);
+      ctx.stroke();
+      ctx.fillText(String(v), plotLeft - 8, y);
+    });
+
+    // Manager-name labels, angled under each manager's cluster of bars so names don't
+    // collide even with a dozen-plus managers on the axis.
+    ctx.font = '10px Calibri, Arial, sans-serif';
+    ctx.fillStyle = '#6B7280';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    lineChartSeries.forEach(({ row }, idx) => {
+      const groupCenterX = plotLeft + groupW * idx + groupW / 2;
+      ctx.save();
+      ctx.translate(groupCenterX, plotBottom + 8);
+      ctx.rotate(-Math.PI / 4.2);
+      ctx.fillText(row.name, 0, 0);
+      ctx.restore();
+    });
+
+    // Faint separators between each manager's cluster of bars
+    ctx.strokeStyle = ROW_DIV;
+    ctx.lineWidth = 0.75;
+    for (let i = 1; i < managerCount; i++) {
+      const x = plotLeft + groupW * i;
+      ctx.beginPath();
+      ctx.moveTo(x, plotTop);
+      ctx.lineTo(x, plotBottom);
+      ctx.stroke();
+    }
+
+    // One small bar per week, clustered by manager -- a manager with no score that week
+    // gets a faint sliver instead of a bar drawn to zero, so "no data" reads differently
+    // from "actually scored zero."
+    lineChartSeries.forEach(({ series }, idx) => {
+      const clusterX = plotLeft + groupW * idx + GROUP_GAP / 2;
+      series.forEach((wk, weekIdx) => {
+        const barX = clusterX + weekIdx * barSlot + (barSlot - barW) / 2;
+        const barH = Math.max(2, (wk.value / 100) * plotHeight);
+        const barY = plotBottom - barH;
+
+        ctx.globalAlpha = wk.hasData || wk.isCurrent ? 1 : 0.12;
+        ctx.fillStyle = weekColor(weekIdx, wk.isCurrent);
+        roundedTopBar(barX, barY, barW, barH, Math.min(2, barW / 3));
+        ctx.globalAlpha = 1;
+      });
+    });
+
+    // Legend -- one entry per week (not per manager), since color now encodes the week.
+    const legendTop = plotBottom + 100;
+    const legendColW = (W - PAD * 2) / LEGEND_COLS;
+    ctx.font = '11px Calibri, Arial, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    weeks.forEach((w, i) => {
+      const col = i % LEGEND_COLS;
+      const legendRow = Math.floor(i / LEGEND_COLS);
+      const x = PAD + col * legendColW;
+      const y = legendTop + legendRow * LEGEND_ROW_H + LEGEND_ROW_H / 2;
+      ctx.fillStyle = weekColor(i, w.isCurrent);
+      ctx.beginPath();
+      ctx.arc(x + 4, y, 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#374151';
+      ctx.fillText(w.isCurrent ? `Wk ${i + 1} (so far)` : `Wk ${i + 1}`, x + 13, y, legendColW - 18);
+    });
   }
 
   // ── Outer border ─────────────────────────────────────────────────
@@ -555,6 +790,7 @@ export default function AuditDashboardPage() {
   }
 
   const [expandedCallUser, setExpandedCallUser] = useState<string | null>(null);
+  const [expandedEmailBestWorstUser, setExpandedEmailBestWorstUser] = useState<string | null>(null);
   const [expandedHygienePM, setExpandedHygienePM] = useState<string | null>(null);
   const [ratingModalCall, setRatingModalCall] = useState<{
     eventId: string;
@@ -700,8 +936,10 @@ export default function AuditDashboardPage() {
         name: m.userName,
         score: Math.round(m.emailHygieneScore ?? 0),
         teamScore: teamWiseScoreFor(m.userEmail),
+        userEmail: m.userEmail,
       }))
       .sort((a: { score: number }, b: { score: number }) => b.score - a.score);
+
     downloadHygieneTableImage(
       'Email Hygiene',
       'Managers',
@@ -709,6 +947,16 @@ export default function AuditDashboardPage() {
       pmRows,
       `email-hygiene-${format(new Date(), 'yyyy-MM-dd')}.png`,
       'Team-wise Score (/100)',
+      {
+        weeks: emailWeeklyTrend,
+        // Same week's stored metrics array, but looked up for THIS specific manager
+        // instead of averaged across everyone -- powers both the inline sparkline
+        // column and the single combined "all managers" line chart.
+        perRowScoreFn: (weekMetrics: any[], row: { userEmail?: string }) => {
+          const m = weekMetrics.find((x: any) => x.userEmail === row.userEmail);
+          return m ? Math.round(m.emailHygieneScore) : null;
+        },
+      },
     );
   }
 
@@ -2230,13 +2478,16 @@ export default function AuditDashboardPage() {
                       <th className="text-center py-2.5 px-3 text-xs font-semibold text-teal-600 whitespace-nowrap">Resolution<span className="font-normal text-teal-400">/20</span></th>
                       <th className="text-center py-2.5 px-3 text-xs font-semibold text-orange-600 whitespace-nowrap">Tone<span className="font-normal text-orange-400">/20</span></th>
                       <th className="text-center py-2.5 px-3 text-xs font-semibold text-gray-800 whitespace-nowrap">Hygiene<span className="font-normal text-gray-400">/100</span></th>
+                      <th className="text-center py-2.5 px-3 text-xs font-semibold text-gray-500 whitespace-nowrap">Best / Worst</th>
                     </tr>
                   </thead>
                   <tbody>
                     {emailMetrics.map((m: any, i: number) => {
                       const sc = emailScoreColor(m.emailHygieneScore);
+                      const isBwExpanded = expandedEmailBestWorstUser === m.userEmail;
                       return (
-                        <tr key={m.userEmail} className={`border-b border-gray-50 ${i % 2 === 0 ? '' : 'bg-gray-50/30'} hover:bg-indigo-50/20 transition-colors`}>
+                        <Fragment key={m.userEmail}>
+                        <tr className={`border-b border-gray-50 ${i % 2 === 0 ? '' : 'bg-gray-50/30'} hover:bg-indigo-50/20 transition-colors`}>
                           <td className="py-3 px-3 whitespace-nowrap">
                             <div className="font-medium text-gray-800">{m.userName}</div>
                             <div className="text-xs text-gray-400">{m.userEmail}</div>
@@ -2275,7 +2526,26 @@ export default function AuditDashboardPage() {
                               {m.emailHygieneScore ?? 0}
                             </span>
                           </td>
+                          <td className="py-3 px-3 text-center">
+                            <button
+                              onClick={() => setExpandedEmailBestWorstUser(isBwExpanded ? null : m.userEmail)}
+                              className="inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 font-medium"
+                            >
+                              View {isBwExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                            </button>
+                          </td>
                         </tr>
+                        {isBwExpanded && (
+                          <tr className="bg-indigo-50/30 border-b border-gray-100">
+                            <td colSpan={8} className="px-3 py-3">
+                              <div className="text-[11px] font-semibold text-gray-500 mb-2">
+                                Best &amp; worst real example per metric — {m.userName}, this week
+                              </div>
+                              <EmailBestWorstPanel bestWorst={m.bestWorst} />
+                            </td>
+                          </tr>
+                        )}
+                        </Fragment>
                       );
                     })}
                   </tbody>
