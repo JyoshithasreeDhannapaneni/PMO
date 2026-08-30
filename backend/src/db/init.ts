@@ -549,6 +549,12 @@ CREATE TABLE IF NOT EXISTS sla_breach_alerts (
   alerted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_sla_breach_alerts_user_email ON sla_breach_alerts(user_email);
+-- 2026-08-29 team-aware redesign: one alert now covers ALL tracked recipients of a shared
+-- customer email (not one alert per recipient), and a previously-alerted message that
+-- later gets a real reply from anyone gets a quiet "resolved" follow-up instead of being
+-- left as a permanent, unresolved-looking flag forever.
+ALTER TABLE sla_breach_alerts ADD COLUMN IF NOT EXISTS recipients JSONB DEFAULT '[]';
+ALTER TABLE sla_breach_alerts ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMP;
 
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$

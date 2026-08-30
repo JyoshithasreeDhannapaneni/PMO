@@ -59,18 +59,22 @@ export function initializeCronJobs(): void {
     }
   });
 
-  // Email hygiene sync — daily at 7:00 AM IST
-  cron.schedule('0 7 * * *', async () => {
-    logger.info('[EmailHygiene] Starting daily 7 AM IST sync...');
+  // Email hygiene sync — hourly, on the hour (IST). Was daily at 7 AM until 2026-08-31;
+  // that made sense for the old rolling-30-day metric, but the score now reflects "the
+  // current week, to date" (2026-08-25 redesign), so a once-a-day sync left it showing a
+  // stale, near-empty snapshot from early that morning for most of the day. See the
+  // matching CACHE_TTL_MS comment in emailHygieneService.ts.
+  cron.schedule('0 * * * *', async () => {
+    logger.info('[EmailHygiene] Starting hourly sync...');
     try {
       if (!emailHygieneService.isConfigured()) {
         logger.info('[EmailHygiene] Graph API not configured — skipping sync');
         return;
       }
       const result = await emailHygieneService.getHygieneMetrics(true);
-      logger.info(`[EmailHygiene] Daily sync complete — ${result.metrics.length} users, computed at ${result.computedAt}`);
+      logger.info(`[EmailHygiene] Hourly sync complete — ${result.metrics.length} users, computed at ${result.computedAt}`);
     } catch (error) {
-      logger.error('[EmailHygiene] Daily sync failed:', error);
+      logger.error('[EmailHygiene] Hourly sync failed:', error);
     }
   }, { timezone: 'Asia/Kolkata' });
 
@@ -123,17 +127,20 @@ export function initializeCronJobs(): void {
 
   // 1-hour reply-SLA breach alerts — polled every 15 minutes. Separate from the daily
   // Email Hygiene sync (which grades on a 4-hour SLA weekly); this is a real-time
-  // trip-wire that emails the responsible person's manager (cc: all admins) the moment
-  // a customer email has gone unreplied for 60+ minutes. See slaBreachAlertService.ts
-  // for the idempotency guard (sla_breach_alerts table) that stops repeat alerts for the
-  // same still-unreplied message on every subsequent poll.
+  // trip-wire that emails the responsible manager(s) (cc: all admins) the moment a
+  // customer email has gone unreplied by ANYONE on the team for 60+ minutes. Team-aware
+  // redesign (2026-08-29): one alert covers every tracked recipient of a shared email
+  // (not one per recipient), a teammate's reply anywhere protects everyone else on that
+  // thread, a closing "thanks" is never treated as needing a reply, and a previously
+  // flagged message that later gets answered triggers one quiet "resolved" follow-up.
+  // See slaBreachAlertService.ts / teamConversationTimeline.ts for the full design.
   cron.schedule('*/15 * * * *', async () => {
     try {
       const { slaBreachAlertService } = require('../services/slaBreachAlertService');
       if (!slaBreachAlertService.isConfigured()) return;
       const result = await slaBreachAlertService.checkAll();
-      if (result.alerted > 0) {
-        logger.info(`[SlaBreachAlert] Checked ${result.checked} mailboxes, sent ${result.alerted} new alert(s)`);
+      if (result.alerted > 0 || result.resolved > 0) {
+        logger.info(`[SlaBreachAlert] Checked ${result.checked} mailboxes, sent ${result.alerted} new alert(s), ${result.resolved} resolved follow-up(s)`);
       }
     } catch (error) {
       logger.error('[SlaBreachAlert] Poll failed:', error);
@@ -168,7 +175,7 @@ export function initializeCronJobs(): void {
   logger.info('  - Server alerts: Daily at 8:00 AM');
   logger.info('  - PMO Hygiene & Score Card email: Daily at 6:00 PM IST');
   logger.info('  - PMO Hygiene & Score Card scheduled-send poll: Every minute');
-  logger.info('  - Email hygiene sync: Daily at 7:00 AM IST');
+  logger.info('  - Email hygiene sync: Hourly, on the hour (IST)');
   logger.info('  - Call hygiene refresh: Daily at 5:00 AM IST');
   logger.info('  - Call transcript grading: Daily at 5:30 AM IST');
   logger.info('  - 1-hour reply-SLA breach alerts: Every 15 minutes');

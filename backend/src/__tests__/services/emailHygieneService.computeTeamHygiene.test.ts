@@ -21,6 +21,12 @@ function fakeUser(email: string, score: number): UserEmailHygiene {
     resolutionScore: 20,
     emailHygieneScore: score,
     insights: [],
+    bestWorst: {
+      speed: { best: null, worst: null },
+      quality: { best: null, worst: null },
+      resolution: { best: null, worst: null },
+      tone: { best: null, worst: null },
+    },
   };
 }
 

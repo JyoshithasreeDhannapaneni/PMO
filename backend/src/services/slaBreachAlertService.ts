@@ -1,79 +1,17 @@
-import axios, { AxiosInstance } from 'axios';
 import { query, execute } from '../config/database';
 import { logger } from '../utils/logger';
 import { emailService, brandedEmail } from './emailService';
 import { resolveManagerCanonicalName, nameMatches } from '../config/teamRoster';
+import {
+  isGraphConfigured, getAccessToken, graphClient, buildTeamTimelines, buildExchanges, type Exchange,
+} from './teamConversationTimeline';
 
-const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
 const SLA_MINUTES = 60;
 // How far back to look each run -- generous enough that a message can't slip through
-// between cron ticks, small enough to keep each mailbox query cheap. Once a message is
-// alerted on, it's recorded in sla_breach_alerts and skipped on every later run even
-// though it stays inside this window.
+// between cron ticks, small enough to keep the shared-timeline fetch cheap. Once a
+// message is alerted on, it's recorded in sla_breach_alerts and skipped on every later
+// run even though it stays inside this window.
 const LOOKBACK_HOURS = 6;
-
-const CF_DOMAIN = 'cloudfuze.com';
-const SYSTEM_SENDER_DOMAINS = new Set([
-  'microsoft.com', 'microsoftonline.com', 'teams.microsoft.com', 'sharepointonline.com',
-  'outlook.com', 'onmicrosoft.com', 'azurecomm.net', 'mimecast.com', 'neutara.com',
-]);
-
-function isExternal(email: string): boolean {
-  const lower = email.toLowerCase();
-  if (lower.endsWith(`@${CF_DOMAIN}`)) return false;
-  const domain = lower.split('@')[1] ?? '';
-  if (SYSTEM_SENDER_DOMAINS.has(domain)) return false;
-  if (lower.startsWith('noreply@') || lower.startsWith('no-reply@') || lower.startsWith('donotreply@')) return false;
-  return true;
-}
-
-function isGraphConfigured(): boolean {
-  const { MS_GRAPH_TENANT_ID, MS_GRAPH_CLIENT_ID, MS_GRAPH_CLIENT_SECRET } = process.env;
-  return !!(
-    MS_GRAPH_TENANT_ID && MS_GRAPH_CLIENT_ID && MS_GRAPH_CLIENT_SECRET &&
-    !MS_GRAPH_TENANT_ID.startsWith('PASTE_') && !MS_GRAPH_CLIENT_ID.startsWith('PASTE_') && !MS_GRAPH_CLIENT_SECRET.startsWith('PASTE_')
-  );
-}
-
-async function getAccessToken(): Promise<string> {
-  const { MS_GRAPH_TENANT_ID, MS_GRAPH_CLIENT_ID, MS_GRAPH_CLIENT_SECRET } = process.env;
-  const res = await axios.post(
-    `https://login.microsoftonline.com/${MS_GRAPH_TENANT_ID}/oauth2/v2.0/token`,
-    new URLSearchParams({ client_id: MS_GRAPH_CLIENT_ID!, client_secret: MS_GRAPH_CLIENT_SECRET!, scope: 'https://graph.microsoft.com/.default', grant_type: 'client_credentials' }),
-    { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 15000 }
-  );
-  return res.data.access_token as string;
-}
-
-function graphClient(token: string): AxiosInstance {
-  return axios.create({ baseURL: GRAPH_BASE, headers: { Authorization: `Bearer ${token}` }, timeout: 30000 });
-}
-
-interface GraphMsg {
-  id: string;
-  conversationId: string;
-  subject?: string;
-  from?: { emailAddress?: { address: string; name?: string } };
-  toRecipients?: { emailAddress: { address: string } }[];
-  receivedDateTime?: string;
-  sentDateTime?: string;
-}
-
-async function fetchAll(client: AxiosInstance, url: string, cap = 100): Promise<GraphMsg[]> {
-  const msgs: GraphMsg[] = [];
-  let next: string | null = url;
-  while (next && msgs.length < cap) {
-    const res: any = await client.get(next);
-    msgs.push(...(res.data.value ?? []));
-    next = res.data['@odata.nextLink'] ?? null;
-  }
-  return msgs;
-}
-
-async function alreadyAlerted(messageId: string): Promise<boolean> {
-  const r = await query(`SELECT 1 FROM sla_breach_alerts WHERE message_id = $1`, [messageId]);
-  return r.rows.length > 0;
-}
 
 async function getAdminEmails(): Promise<string[]> {
   const r = await query(`SELECT email FROM users WHERE role = 'ADMIN'`);
@@ -86,43 +24,46 @@ async function resolveMemberEmail(canonicalName: string): Promise<{ email: strin
   return match ? { email: match.email, name: match.name } : null;
 }
 
-async function sendBreachAlert(breach: {
-  messageId: string;
-  conversationId: string;
-  userEmail: string;
-  userName: string;
-  customerEmail: string;
-  subject: string;
-  receivedAt: Date;
-  overdueMinutes: number;
-}): Promise<void> {
-  const managerCanonical = resolveManagerCanonicalName(breach.userName);
-  const manager = managerCanonical ? await resolveMemberEmail(managerCanonical) : null;
+interface AlertRow { message_id: string; resolved_at: string | null }
+async function getAlertState(dedupKey: string): Promise<AlertRow | null> {
+  const r = await query(`SELECT message_id, resolved_at FROM sla_breach_alerts WHERE message_id = $1`, [dedupKey]);
+  return r.rows[0] ?? null;
+}
+
+// 2026-08-29 team-aware redesign: a shared customer email can land in several tracked
+// mailboxes at once (everyone in the To line). Resolve EVERY recipient's manager, dedup
+// them, and send ONE combined alert naming all responsible people -- instead of the old
+// per-recipient design, which sent up to N separate emails for what is really one
+// unresolved message.
+async function resolveRecipientsAndManagers(recipients: { email: string; name: string }[]) {
   const adminEmails = await getAdminEmails();
+  const managerEmails = new Map<string, { email: string; name: string }>();
+  for (const r of recipients) {
+    const canonical = resolveManagerCanonicalName(r.name);
+    const manager = canonical ? await resolveMemberEmail(canonical) : null;
+    if (manager) managerEmails.set(manager.email, manager);
+  }
+  const realTo = managerEmails.size > 0 ? [...managerEmails.keys()] : adminEmails;
+  const realCc = managerEmails.size > 0 ? adminEmails : [];
+  return { realTo, realCc };
+}
 
-  // Falls back to sending straight to admins (rather than dropping the alert) when no
-  // manager is found -- e.g. a top-level lead like Abhishek/Ajay Singh has no one above
-  // them in this roster, or the person's name doesn't match any known engineer/manager.
-  const realTo = manager ? [manager.email] : adminEmails;
-  const realCc = manager ? adminEmails : [];
+function applyTestOverride(realTo: string[], realCc: string[]): { to: string[]; cc: string[]; testRecipient: string | null } {
+  const testRecipient = process.env.SLA_BREACH_ALERT_TEST_RECIPIENT || null;
+  if (!testRecipient) return { to: realTo, cc: realCc, testRecipient: null };
+  return { to: [testRecipient], cc: [], testRecipient };
+}
 
-  // 2026-08-29: temporary test mode -- while set, every alert is redirected to this one
-  // address instead of the real manager/admins, so alerts can be watched safely before
-  // going live to real people. The email body below still shows who it WOULD have gone
-  // to, so the manager-resolution logic stays verifiable during testing. Unset this env
-  // var (or remove it) to switch back to real manager+admin delivery -- no code change.
-  const testRecipient = process.env.SLA_BREACH_ALERT_TEST_RECIPIENT;
-  const to = testRecipient ? [testRecipient] : realTo;
-  const cc = testRecipient ? [] : realCc;
-
+async function sendBreachAlert(ex: Exchange, recipients: { email: string; name: string }[], overdueMinutes: number): Promise<void> {
+  const { realTo, realCc } = await resolveRecipientsAndManagers(recipients);
+  const { to, cc, testRecipient } = applyTestOverride(realTo, realCc);
   if (to.length === 0) {
-    logger.warn(`[SlaBreachAlert] No manager or admin recipient found for ${breach.userName} — alert not sent`);
+    logger.warn(`[SlaBreachAlert] No manager or admin recipient found for conversation ${ex.conversationId} — alert not sent`);
     return;
   }
 
-  const overdueLabel = breach.overdueMinutes >= 120
-    ? `${Math.round(breach.overdueMinutes / 60)} hours`
-    : `${breach.overdueMinutes} minutes`;
+  const overdueLabel = overdueMinutes >= 120 ? `${Math.round(overdueMinutes / 60)} hours` : `${overdueMinutes} minutes`;
+  const namesList = recipients.map((r) => r.name).join(', ');
 
   const testModeNote = testRecipient
     ? `<p style="background:#fffbeb;border-left:4px solid #f59e0b;padding:10px 14px;border-radius:4px;font-size:13px;margin:0 0 16px 0;">
@@ -133,100 +74,118 @@ async function sendBreachAlert(breach: {
 
   const body = `
     ${testModeNote}
-    <p>A customer email has not received a reply within the 1-hour SLA.</p>
+    <p>A customer email has not received a reply from anyone on the team within the 1-hour SLA.</p>
     <table cellpadding="0" cellspacing="0" style="width:100%;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;margin:16px 0;">
-      <tr><td style="padding:8px 12px;font-size:13px;color:#64748b;border-bottom:1px solid #f1f5f9;">Responsible</td><td style="padding:8px 12px;font-size:13px;font-weight:600;border-bottom:1px solid #f1f5f9;">${breach.userName} (${breach.userEmail})</td></tr>
-      <tr><td style="padding:8px 12px;font-size:13px;color:#64748b;border-bottom:1px solid #f1f5f9;">Customer</td><td style="padding:8px 12px;font-size:13px;font-weight:600;border-bottom:1px solid #f1f5f9;">${breach.customerEmail}</td></tr>
-      <tr><td style="padding:8px 12px;font-size:13px;color:#64748b;border-bottom:1px solid #f1f5f9;">Subject</td><td style="padding:8px 12px;font-size:13px;font-weight:600;border-bottom:1px solid #f1f5f9;">${breach.subject || '(no subject)'}</td></tr>
-      <tr><td style="padding:8px 12px;font-size:13px;color:#64748b;border-bottom:1px solid #f1f5f9;">Received</td><td style="padding:8px 12px;font-size:13px;font-weight:600;border-bottom:1px solid #f1f5f9;">${breach.receivedAt.toISOString()}</td></tr>
+      <tr><td style="padding:8px 12px;font-size:13px;color:#64748b;border-bottom:1px solid #f1f5f9;">Recipient(s) on this email</td><td style="padding:8px 12px;font-size:13px;font-weight:600;border-bottom:1px solid #f1f5f9;">${namesList}</td></tr>
+      <tr><td style="padding:8px 12px;font-size:13px;color:#64748b;border-bottom:1px solid #f1f5f9;">Customer</td><td style="padding:8px 12px;font-size:13px;font-weight:600;border-bottom:1px solid #f1f5f9;">${ex.customerMessage.customerEmail}</td></tr>
+      <tr><td style="padding:8px 12px;font-size:13px;color:#64748b;border-bottom:1px solid #f1f5f9;">Subject</td><td style="padding:8px 12px;font-size:13px;font-weight:600;border-bottom:1px solid #f1f5f9;">${ex.customerMessage.subject || '(no subject)'}</td></tr>
+      <tr><td style="padding:8px 12px;font-size:13px;color:#64748b;border-bottom:1px solid #f1f5f9;">Received</td><td style="padding:8px 12px;font-size:13px;font-weight:600;border-bottom:1px solid #f1f5f9;">${new Date(ex.customerMessage.time).toISOString()}</td></tr>
       <tr><td style="padding:8px 12px;font-size:13px;color:#64748b;">Overdue by</td><td style="padding:8px 12px;font-size:13px;font-weight:700;color:#ef4444;">${overdueLabel}</td></tr>
     </table>
-    <p style="font-size:13px;color:#64748b;">This is a real-time 1-hour reply trip-wire, separate from the weekly Email Hygiene score (which grades on a 4-hour SLA).</p>`;
+    <p style="font-size:13px;color:#64748b;">This is a real-time 1-hour reply trip-wire, separate from the weekly Email Hygiene score (which grades on a 4-hour SLA). One alert covers everyone this email was sent to — you'll get a follow-up note here once anyone on the team replies.</p>`;
 
   await emailService.sendEmail({
     to,
     cc,
-    subject: `${testRecipient ? '[TEST] ' : ''}SLA Alert: Unreplied customer email — ${breach.userName} (${overdueLabel} overdue)`,
+    subject: `${testRecipient ? '[TEST] ' : ''}SLA Alert: Unreplied customer email (${namesList}) — ${overdueLabel} overdue`,
     html: brandedEmail('1-Hour Reply SLA Breach', body, '#ef4444'),
   });
 
   await execute(
-    `INSERT INTO sla_breach_alerts (message_id, conversation_id, user_email, user_name, customer_email, subject, received_at, overdue_minutes, manager_email)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+    `INSERT INTO sla_breach_alerts (message_id, conversation_id, user_email, user_name, customer_email, subject, received_at, overdue_minutes, manager_email, recipients)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
      ON CONFLICT (message_id) DO NOTHING`,
-    [breach.messageId, breach.conversationId, breach.userEmail, breach.userName, breach.customerEmail, breach.subject, breach.receivedAt, breach.overdueMinutes, manager?.email ?? null]
+    [
+      ex.customerMessage.dedupKey, ex.conversationId,
+      recipients[0]?.email ?? null, recipients.map((r) => r.name).join(', '),
+      ex.customerMessage.customerEmail, ex.customerMessage.subject, new Date(ex.customerMessage.time),
+      overdueMinutes, realTo.join(', ') || null, JSON.stringify(recipients),
+    ]
   );
 
-  logger.info(`[SlaBreachAlert] Sent for ${breach.userName} (${breach.overdueMinutes}m overdue) → to=${to.join(',')} cc=${cc.join(',')}`);
+  logger.info(`[SlaBreachAlert] Sent for conversation ${ex.conversationId} (${namesList}, ${overdueMinutes}m overdue) → to=${to.join(',')} cc=${cc.join(',')}`);
 }
 
-async function checkMember(client: AxiosInstance, userEmail: string, userName: string): Promise<number> {
-  const since = new Date(Date.now() - LOOKBACK_HOURS * 3600000).toISOString();
-  const userPath = encodeURIComponent(userEmail);
+async function sendResolvedFollowUp(ex: Exchange, dedupKey: string): Promise<void> {
+  const alertRow = await query(`SELECT recipients FROM sla_breach_alerts WHERE message_id = $1`, [dedupKey]);
+  const recipients: { email: string; name: string }[] = alertRow.rows[0]?.recipients ?? [];
+  const { realTo, realCc } = await resolveRecipientsAndManagers(recipients);
+  const { to, cc, testRecipient } = applyTestOverride(realTo, realCc);
+  if (to.length === 0) return;
 
-  const [recvRaw, sentRaw] = await Promise.all([
-    fetchAll(client, `/users/${userPath}/messages?$filter=receivedDateTime ge ${since}&$select=id,conversationId,subject,from,receivedDateTime&$top=100`),
-    fetchAll(client, `/users/${userPath}/mailFolders/SentItems/messages?$filter=sentDateTime ge ${since}&$select=id,conversationId,toRecipients,sentDateTime&$top=100`),
-  ]);
+  const replier = ex.teamReplies[0];
+  const body = `
+    ${testRecipient ? `<p style="background:#fffbeb;border-left:4px solid #f59e0b;padding:10px 14px;border-radius:4px;font-size:13px;margin:0 0 16px 0;"><strong>Test mode:</strong> redirected here instead of ${realTo.join(', ')}.</p>` : ''}
+    <p>Update: the previously-flagged customer email has now been answered${replier ? ` by <strong>${replier.teamMemberName}</strong>` : ''}. No further action needed.</p>
+    <p style="font-size:13px;color:#64748b;">Customer: ${ex.customerMessage.customerEmail} — Subject: ${ex.customerMessage.subject || '(no subject)'}</p>`;
 
-  const externalRecv = recvRaw.filter((m) => m.from?.emailAddress?.address && isExternal(m.from.emailAddress.address));
-  const externalSent = sentRaw.filter((m) => m.toRecipients?.some((r) => isExternal(r.emailAddress.address)));
+  await emailService.sendEmail({
+    to,
+    cc,
+    subject: `${testRecipient ? '[TEST] ' : ''}Resolved: ${ex.customerMessage.subject || 'customer email'} — now answered`,
+    html: brandedEmail('SLA Alert Resolved', body, '#16a34a'),
+  });
 
-  const sentByConv = new Map<string, GraphMsg[]>();
-  for (const m of externalSent) {
-    if (!sentByConv.has(m.conversationId)) sentByConv.set(m.conversationId, []);
-    sentByConv.get(m.conversationId)!.push(m);
-  }
-
-  let alerted = 0;
-  for (const msg of externalRecv) {
-    const receivedAt = new Date(msg.receivedDateTime!);
-    const overdueMinutes = Math.round((Date.now() - receivedAt.getTime()) / 60000);
-    if (overdueMinutes < SLA_MINUTES) continue;
-
-    const replies = sentByConv.get(msg.conversationId) ?? [];
-    const hasReply = replies.some((r) => new Date(r.sentDateTime!).getTime() > receivedAt.getTime());
-    if (hasReply) continue;
-
-    if (await alreadyAlerted(msg.id)) continue;
-
-    try {
-      await sendBreachAlert({
-        messageId: msg.id,
-        conversationId: msg.conversationId,
-        userEmail,
-        userName,
-        customerEmail: msg.from?.emailAddress?.address ?? 'unknown',
-        subject: msg.subject ?? '',
-        receivedAt,
-        overdueMinutes,
-      });
-      alerted++;
-    } catch (err: any) {
-      logger.error(`[SlaBreachAlert] Failed to send/record alert for ${userEmail} message ${msg.id}: ${err?.message}`);
-    }
-  }
-  return alerted;
+  await execute(`UPDATE sla_breach_alerts SET resolved_at = NOW() WHERE message_id = $1`, [dedupKey]);
+  logger.info(`[SlaBreachAlert] Sent resolved follow-up for conversation ${ex.conversationId}`);
 }
 
 export const slaBreachAlertService = {
   isConfigured: isGraphConfigured,
 
-  async checkAll(): Promise<{ checked: number; alerted: number }> {
-    if (!isGraphConfigured()) return { checked: 0, alerted: 0 };
+  async checkAll(): Promise<{ checked: number; alerted: number; resolved: number }> {
+    if (!isGraphConfigured()) return { checked: 0, alerted: 0, resolved: 0 };
 
-    const members = await query(`SELECT email, display_name AS name FROM email_hygiene_members WHERE is_active = true`);
+    const members = (await query(`SELECT email, display_name AS name FROM email_hygiene_members WHERE is_active = true`)).rows;
     const token = await getAccessToken();
     const client = graphClient(token);
+    const since = new Date(Date.now() - LOOKBACK_HOURS * 3600000).toISOString();
+
+    const timelines = await buildTeamTimelines(client, members, since);
+    const allExchanges: Exchange[] = [];
+    for (const tl of timelines.values()) allExchanges.push(...buildExchanges(tl));
 
     let alerted = 0;
-    for (const m of members.rows) {
+    let resolved = 0;
+
+    for (const ex of allExchanges) {
+      const dedupKey = ex.customerMessage.dedupKey;
+      if (!dedupKey) continue;
+
+      // A closing "thanks, all set" never needs a reply -- never alert on it, ever.
+      if (ex.customerMessage.isAcknowledgment) continue;
+
+      const hasTeamReply = ex.teamReplies.length > 0;
+
+      if (hasTeamReply) {
+        // Someone on the team already answered -- if this was previously flagged and
+        // still open, send the "all clear" follow-up once.
+        const state = await getAlertState(dedupKey);
+        if (state && !state.resolved_at) {
+          try { await sendResolvedFollowUp(ex, dedupKey); resolved++; }
+          catch (err: any) { logger.error(`[SlaBreachAlert] Failed to send resolved follow-up for ${dedupKey}: ${err?.message}`); }
+        }
+        continue;
+      }
+
+      // Still unanswered by anyone on the team -- check the SLA clock.
+      const overdueMinutes = Math.round((Date.now() - ex.customerMessage.time) / 60000);
+      if (overdueMinutes < SLA_MINUTES) continue;
+
+      const state = await getAlertState(dedupKey);
+      if (state) continue; // already alerted once for this exact message -- idempotent
+
+      const recipients = ex.customerMessage.recipients ?? [];
+      if (recipients.length === 0) continue;
+
       try {
-        alerted += await checkMember(client, m.email, m.name);
+        await sendBreachAlert(ex, recipients, overdueMinutes);
+        alerted++;
       } catch (err: any) {
-        logger.warn(`[SlaBreachAlert] Skipped ${m.email}: ${err?.message}`);
+        logger.error(`[SlaBreachAlert] Failed to send/record alert for conversation ${ex.conversationId}: ${err?.message}`);
       }
     }
-    return { checked: members.rows.length, alerted };
+
+    return { checked: members.length, alerted, resolved };
   },
 };

@@ -1,28 +1,12 @@
-import axios, { type AxiosInstance } from 'axios';
+import { type AxiosInstance } from 'axios';
 import { query, execute } from '../config/database';
 import { logger } from '../utils/logger';
 import { getIstWeekBounds, istDateStr, weeksInCurrentIstMonth } from '../utils/weekBounds';
-import { emailThreadClassifierService, type AmbiguousThread, type ThreadClassification } from './emailThreadClassifierService';
-
-interface GraphUser {
-  id: string;
-  displayName: string;
-  mail: string;
-  userPrincipalName: string;
-}
-
-interface GraphMessage {
-  id: string;
-  conversationId: string;
-  subject: string;
-  bodyPreview: string;
-  body: { contentType: string; content: string };
-  from: { emailAddress: { name: string; address: string } };
-  toRecipients: Array<{ emailAddress: { name: string; address: string } }>;
-  ccRecipients?: Array<{ emailAddress: { name: string; address: string } }>;
-  receivedDateTime: string;
-  sentDateTime: string;
-}
+import { emailThreadClassifierService, type AmbiguousThread } from './emailThreadClassifierService';
+import {
+  isGraphConfigured, getAccessToken, graphClient, buildTeamTimelines, buildExchanges,
+  isLikelyNewTopicByGap, type Exchange, type TimelineEntry,
+} from './teamConversationTimeline';
 
 export interface ImprovementInsight {
   category: 'speed' | 'quality' | 'tone' | 'resolution';
@@ -31,6 +15,21 @@ export interface ImprovementInsight {
   maxScore: number;
   originalLine: string;
   improvedLine: string;
+}
+
+// A single real example backing a category's score -- same "show the actual evidence"
+// idea as Call Hygiene's per-person Best/Worst answer panel, generalized to all 4 email
+// hygiene categories (Call Hygiene only has one metric, so it never needed per-category
+// buckets).
+export interface HygieneExample {
+  customerText: string;
+  replyText: string;
+  label: string; // human-readable score for this example, e.g. "0.7h reply time", "94/100 relevancy", "Resolved in 1 reply", "Reopened 2x"
+}
+
+export interface CategoryBestWorst {
+  best: HygieneExample | null;
+  worst: HygieneExample | null;
 }
 
 export interface UserEmailHygiene {
@@ -59,6 +58,14 @@ export interface UserEmailHygiene {
   emailHygieneScore: number;            // 0–100
   // Improvement suggestions (only for weak areas)
   insights: ImprovementInsight[];
+  // Real best/worst example per category, for the "show the evidence" panel (mirrors
+  // Call Hygiene's per-person Best/Worst answer UI, one bucket per category here).
+  bestWorst: {
+    speed: CategoryBestWorst;
+    quality: CategoryBestWorst;
+    resolution: CategoryBestWorst;
+    tone: CategoryBestWorst;
+  };
 }
 
 export interface TeamHygieneMember {
@@ -77,8 +84,6 @@ export interface TeamHygieneRow {
   scoredMemberCount: number;      // how many of those actually have a computed score
   members: TeamHygieneMember[];
 }
-
-const CF_DOMAIN = 'cloudfuze.com';
 
 // Team rosters — explicit membership (not a Distribution List lookup). The original
 // design tried to read each team's shared-DL mailbox via Graph, but the 6
@@ -180,87 +185,16 @@ export function computeSegmentHeads(teamHygiene: TeamHygieneRow[]): Record<'ENT'
     SMB: { ...SEGMENT_HEADS.SMB, segment: 'SMB', score: smb.score, teamIds: smb.teamIds },
   };
 }
-const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
-// Cache is only refreshed by the daily 7 AM IST cron job (or admin force-refresh).
-// Regular HTTP requests always serve from cache — never trigger a live Graph API sync.
-const CACHE_TTL_MS = 25 * 3600 * 1000; // 25 h — longer than the daily cron cycle
-
-// Microsoft system notification senders to exclude from "external received"
-const SYSTEM_SENDER_DOMAINS = new Set([
-  'microsoft.com',
-  'microsoftonline.com',
-  'teams.microsoft.com',
-  'sharepointonline.com',
-  'outlook.com',
-  'onmicrosoft.com',
-  'azurecomm.net',
-  'mimecast.com',
-  // 2026-08-28: caught live via SLA-breach dry-run testing -- admin@neutara.com sends
-  // automated internal check-in/attendance reminders ("Missed Check-in Alert",
-  // "Reportees...") that were being counted as real unreplied customer threads.
-  'neutara.com',
-]);
-
-function isGraphConfigured(): boolean {
-  const { MS_GRAPH_TENANT_ID, MS_GRAPH_CLIENT_ID, MS_GRAPH_CLIENT_SECRET } = process.env;
-  return !!(
-    MS_GRAPH_TENANT_ID && MS_GRAPH_CLIENT_ID && MS_GRAPH_CLIENT_SECRET &&
-    !MS_GRAPH_TENANT_ID.startsWith('PASTE_') &&
-    !MS_GRAPH_CLIENT_ID.startsWith('PASTE_') &&
-    !MS_GRAPH_CLIENT_SECRET.startsWith('PASTE_')
-  );
-}
-
-async function getAccessToken(): Promise<string> {
-  const { MS_GRAPH_TENANT_ID, MS_GRAPH_CLIENT_ID, MS_GRAPH_CLIENT_SECRET } = process.env;
-  const res = await axios.post(
-    `https://login.microsoftonline.com/${MS_GRAPH_TENANT_ID}/oauth2/v2.0/token`,
-    new URLSearchParams({
-      client_id: MS_GRAPH_CLIENT_ID!,
-      client_secret: MS_GRAPH_CLIENT_SECRET!,
-      scope: 'https://graph.microsoft.com/.default',
-      grant_type: 'client_credentials',
-    }),
-    { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 15000 }
-  );
-  return res.data.access_token as string;
-}
-
-function graphClient(token: string): AxiosInstance {
-  return axios.create({
-    baseURL: GRAPH_BASE,
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    timeout: 30000,
-  });
-}
-
-async function fetchMessages(
-  client: AxiosInstance,
-  url: string,
-  cap = 200
-): Promise<GraphMessage[]> {
-  const msgs: GraphMessage[] = [];
-  let next: string | null = url;
-  while (next && msgs.length < cap) {
-    const res: { data: { value?: GraphMessage[]; '@odata.nextLink'?: string } } =
-      await client.get(next);
-    msgs.push(...(res.data.value ?? []));
-    next = res.data['@odata.nextLink'] ?? null;
-  }
-  return msgs;
-}
-
-function isExternal(email: string): boolean {
-  const lower = email.toLowerCase();
-  if (lower.endsWith(`@${CF_DOMAIN}`)) return false;
-  const domain = lower.split('@')[1] ?? '';
-  // Exclude Microsoft system notifications and no-reply senders
-  if (SYSTEM_SENDER_DOMAINS.has(domain)) return false;
-  if (domain.endsWith('.microsoft.com') || domain.endsWith('.microsoftonline.com')) return false;
-  if (lower.startsWith('noreply@') || lower.startsWith('no-reply@') || lower.startsWith('donotreply@')) return false;
-  return true;
-}
-
+// Cache is only refreshed by the hourly sync cron job (or admin force-refresh). Regular
+// HTTP requests always serve from cache — never trigger a live Graph API sync.
+// 2026-08-31: cut from 25h to 90m. The metric itself changed on 2026-08-25 from a rolling
+// 30-day average (where hour-to-hour freshness didn't matter) to "the current Mon-Sun IST
+// week, to date" -- but this TTL was never shortened to match, so a snapshot taken right
+// after a week rolled over (when almost nobody has a reply attributed to them yet, and
+// every score defaults to a neutral 50) was being served as-is for nearly a full day
+// instead of picking up the day's real activity. 90m gives headroom over the hourly cron
+// below without reintroducing a live sync from a plain page load.
+const CACHE_TTL_MS = 90 * 60 * 1000;
 
 async function getCFUsers(): Promise<Array<{ email: string; name: string }>> {
   const result = await query(
@@ -280,38 +214,6 @@ async function userMailboxExists(client: AxiosInstance, userPath: string): Promi
     if (status === 403) return false;
     throw err;
   }
-}
-
-function stripHtml(html: string): string {
-  return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-}
-
-// ── Resolution: Option C heuristic pre-filters (2026-08-26) ──────────────────────
-// Free, run before any AI call. A follow-up in the same thread only needs AI classification
-// if it clears BOTH of these — most closing "thanks" replies and most long-gap re-uses of
-// an old thread get filtered out here for nothing.
-const ACK_PHRASES = [
-  'thanks', 'thank you', 'thanks so much', 'thank you so much', 'thanks a lot', 'thx', 'ty',
-  'got it', 'noted', 'sounds good', 'perfect', 'great, thanks', 'great thanks', 'awesome',
-  'much appreciated', 'appreciate it', 'appreciated', 'will do', 'understood', 'makes sense',
-  'ok thanks', 'okay thanks', 'cool thanks', 'perfect thank you', 'all good', 'looks good',
-  'lgtm', 'great work', 'nice work', 'thanks again', 'many thanks',
-];
-
-// Only matches genuinely short messages, so a long message that happens to open with
-// "thanks" but then asks something new is never incorrectly filtered out.
-function isLikelyAcknowledgment(rawText: string): boolean {
-  const text = stripHtml(rawText).trim().toLowerCase().replace(/[!.,]+$/, '');
-  if (!text || text.length > 120) return false;
-  const firstLine = text.split('\n')[0].trim();
-  return ACK_PHRASES.some(p => firstLine === p || firstLine.startsWith(p + ' ') || firstLine.startsWith(p + ','));
-}
-
-// If the customer's follow-up arrives long after our reply, it's more likely a fresh ask
-// reusing the old thread than a continuation of the same issue.
-const NEW_TOPIC_GAP_DAYS = 5;
-function isLikelyNewTopicByGap(ourReplyTimeMs: number, followUpTimeMs: number): boolean {
-  return (followUpTimeMs - ourReplyTimeMs) / 86400000 >= NEW_TOPIC_GAP_DAYS;
 }
 
 const STOP_WORDS = new Set([
@@ -400,215 +302,196 @@ function scoreCompleteness(customerText: string, cfReplyText: string): number {
   return Math.min(100, Math.round(replyWords / (numQuestions * 30) * 100));
 }
 
-async function analyzeUser(
-  client: AxiosInstance,
-  userEmail: string,
-  userName: string,
-  since: string,
-  until?: string
-): Promise<UserEmailHygiene> {
-  const userPath = encodeURIComponent(userEmail);
-  const sinceEncoded = encodeURIComponent(since);
-  // until is only passed when finalizing a completed past week — the regular rolling
-  // 30-day-to-now call never sets it, so this stays a no-op for existing behavior.
-  const untilSent = until ? ` and sentDateTime le ${encodeURIComponent(until)}` : '';
-  const untilRecv = until ? ` and receivedDateTime le ${encodeURIComponent(until)}` : '';
+// ── 2026-08-29 team-aware redesign ──────────────────────────────────────────────
+// analyzeUser() used to fetch + judge each mailbox in complete isolation: "did I
+// personally reply" instead of "did the team reply," "how long since the very first
+// message" instead of "how long since the message actually being answered," and a
+// content-free "solved in one reply" that a placeholder acknowledgment could win just
+// as easily as a real answer -- all documented in detail in the conversation that led
+// to this rewrite. The fix: build ONE shared timeline per conversation across the whole
+// tracked roster (teamConversationTimeline.ts), segment it into "exchanges" (a customer
+// message paired with whichever team reply(ies) actually follow it, from ANYONE), judge
+// every exchange ONCE, then attribute credit per person from that shared judgment.
 
-  const sentUrl = `/users/${userPath}/mailFolders/SentItems/messages` +
-    `?$filter=sentDateTime ge ${sinceEncoded}${untilSent}` +
-    `&$select=id,conversationId,subject,bodyPreview,body,from,toRecipients,sentDateTime&$top=100`;
+interface ExchangeJudgment {
+  exchange: Exchange;
+  firstResponder: TimelineEntry | null;     // chronologically first team reply -- gets Speed credit
+  substantiveReplier: TimelineEntry | null; // chronologically last team reply -- gets Resolution/reopened attribution
+  firstResponseHours: number | null;
+  fullResolutionHours: number | null;       // customer message -> substantiveReplier
+  wasReopened: boolean;
+}
 
-  const recvUrl = `/users/${userPath}/messages` +
-    `?$filter=receivedDateTime ge ${sinceEncoded}${untilRecv}` +
-    `&$select=id,conversationId,subject,bodyPreview,body,from,toRecipients,receivedDateTime&$top=100`;
+// Judges every exchange across the whole team in one pass, with ONE batched AI call for
+// whatever's ambiguous after the free heuristics (not one call per user) -- and critically,
+// the AI is given the team's actual last reply as "our answer," not one person's own
+// possibly-uninformed view of it.
+async function judgeAllExchanges(allExchanges: Exchange[]): Promise<ExchangeJudgment[]> {
+  const judgments: ExchangeJudgment[] = allExchanges.map((exchange) => {
+    const replies = exchange.teamReplies;
+    const firstResponder = replies[0] ?? null;
+    const substantiveReplier = replies[replies.length - 1] ?? null;
+    return {
+      exchange,
+      firstResponder,
+      substantiveReplier,
+      firstResponseHours: firstResponder ? (firstResponder.time - exchange.customerMessage.time) / 3600000 : null,
+      fullResolutionHours: substantiveReplier ? (substantiveReplier.time - exchange.customerMessage.time) / 3600000 : null,
+      wasReopened: false,
+    };
+  });
 
-  // Let a failed mailbox fetch (e.g. a Graph permission or throttling error)
-  // reject analyzeUser rather than silently becoming an empty result — otherwise
-  // it renders as "0 emails" for that user instead of surfacing in the logs.
-  const [sentRaw, recvRaw] = await Promise.all([
-    fetchMessages(client, sentUrl, 300),
-    fetchMessages(client, recvUrl, 300),
-  ]);
-
-  const externalSent = sentRaw.filter(m =>
-    m.toRecipients?.some(r => isExternal(r.emailAddress.address))
-  );
-  const externalReceived = recvRaw.filter(m =>
-    m.from?.emailAddress?.address && isExternal(m.from.emailAddress.address)
-  );
-
-  const sentByConv = new Map<string, GraphMessage[]>();
-  for (const m of externalSent) {
-    if (!sentByConv.has(m.conversationId)) sentByConv.set(m.conversationId, []);
-    sentByConv.get(m.conversationId)!.push(m);
-  }
-  const recvByConv = new Map<string, GraphMessage[]>();
-  for (const m of externalReceived) {
-    if (!recvByConv.has(m.conversationId)) recvByConv.set(m.conversationId, []);
-    recvByConv.get(m.conversationId)!.push(m);
-  }
-  for (const [, msgs] of sentByConv) msgs.sort((a, b) => new Date(a.sentDateTime).getTime() - new Date(b.sentDateTime).getTime());
-  for (const [, msgs] of recvByConv) msgs.sort((a, b) => new Date(a.receivedDateTime).getTime() - new Date(b.receivedDateTime).getTime());
-
-  const customerConvIds = new Set(recvByConv.keys());
-  const uniqueCustomerThreads = customerConvIds.size;
-
-  // ── Speed ────────────────────────────────────────────────────────
-  const firstReplyTimes: number[] = [];
-  const fullResolutionTimes: number[] = [];
-  let within4h = 0;
-
-  // ── Resolution ───────────────────────────────────────────────────
-  // Option C (2026-08-26): "reopened" used to mean nothing more than "customer sent
-  // anything else in this thread afterward" — which counts a customer saying "thanks", or
-  // reusing an old thread to ask something unrelated, exactly the same as a genuinely
-  // still-open issue. This pass filters those out: free heuristics first (ack-phrase match,
-  // long time-gap), then a single batched AI classification call per user for whatever's
-  // still ambiguous after that. See emailThreadClassifierService.ts.
-  let oneReplySolved = 0;
-  let reopenedThreads = 0;
-  let threadsWithReply = 0;
-
-  interface ThreadInfo {
-    convId: string;
-    cfRepliesCount: number;
-    customerFollowUps: GraphMessage[];
-    firstCustText: string;
-    firstReplyText: string;
-    firstReplyTime: number;
-  }
-  const threadInfos: ThreadInfo[] = [];
-
-  for (const convId of customerConvIds) {
-    const custMsgs = recvByConv.get(convId) ?? [];
-    const cfReplies = sentByConv.get(convId) ?? [];
-
-    const firstCust = custMsgs[0];
-    if (!firstCust) continue;
-    const custTime = new Date(firstCust.receivedDateTime).getTime();
-
-    const firstReply = cfReplies.find(r => new Date(r.sentDateTime).getTime() > custTime);
-    if (!firstReply) continue;
-
-    const diffH = (new Date(firstReply.sentDateTime).getTime() - custTime) / 3600000;
-    firstReplyTimes.push(diffH);
-    if (diffH <= 4) within4h++;
-    threadsWithReply++;
-
-    const lastCfReply = cfReplies[cfReplies.length - 1];
-    fullResolutionTimes.push(
-      (new Date(lastCfReply.sentDateTime).getTime() - custTime) / 3600000
-    );
-
-    const firstReplyTime = new Date(firstReply.sentDateTime).getTime();
-    const customerFollowUps = custMsgs.filter(m =>
-      new Date(m.receivedDateTime).getTime() > firstReplyTime
-    );
-
-    threadInfos.push({
-      convId,
-      cfRepliesCount: cfReplies.length,
-      customerFollowUps,
-      firstCustText: firstCust.body?.content ? stripHtml(firstCust.body.content) : firstCust.bodyPreview ?? '',
-      firstReplyText: firstReply.body?.content ? stripHtml(firstReply.body.content) : firstReply.bodyPreview ?? '',
-      firstReplyTime,
-    });
-  }
-
-  // Pass 1: free heuristics. Each follow-up becomes either `false` (heuristically cleared —
-  // never counts as reopened) or `'AMBIGUOUS'` (needs AI to decide).
-  const followUpFlags = new Map<string, Array<false | 'AMBIGUOUS'>>();
   const ambiguousThreads: AmbiguousThread[] = [];
+  const pendingKeys: { index: number; key: string }[] = [];
 
-  for (const info of threadInfos) {
-    const flags: Array<false | 'AMBIGUOUS'> = info.customerFollowUps.map((followUp, idx) => {
-      const text = followUp.body?.content ? stripHtml(followUp.body.content) : followUp.bodyPreview ?? '';
-      if (isLikelyAcknowledgment(text)) return false;
-      const followUpTime = new Date(followUp.receivedDateTime).getTime();
-      if (isLikelyNewTopicByGap(info.firstReplyTime, followUpTime)) return false;
-
-      const key = `${info.convId}:${idx}`;
-      ambiguousThreads.push({
-        key,
-        customerOriginalMessage: info.firstCustText,
-        ourReply: info.firstReplyText,
-        customerFollowUp: text,
-      });
-      return 'AMBIGUOUS';
+  judgments.forEach((j, index) => {
+    const { exchange } = j;
+    if (!exchange.nextCustomerMessage || !j.substantiveReplier) return; // nothing to reopen
+    if (exchange.nextCustomerMessage.isAcknowledgment) return;          // free heuristic: closed
+    if (isLikelyNewTopicByGap(j.substantiveReplier.time, exchange.nextCustomerMessage.time)) return; // free heuristic: closed
+    const key = `${exchange.conversationId}:${exchange.customerMessage.messageId}`;
+    ambiguousThreads.push({
+      key,
+      customerOriginalMessage: exchange.customerMessage.text,
+      ourReply: j.substantiveReplier.text,
+      customerFollowUp: exchange.nextCustomerMessage.text,
     });
-    followUpFlags.set(info.convId, flags);
+    pendingKeys.push({ index, key });
+    j.wasReopened = true; // fail-closed default, same semantics as before AI resolves it
+  });
+
+  if (ambiguousThreads.length > 0) {
+    const aiResults = await emailThreadClassifierService.classify(ambiguousThreads);
+    for (const { index, key } of pendingKeys) {
+      const verdict = aiResults.get(key);
+      if (verdict === 'NEW_TOPIC' || verdict === 'ACKNOWLEDGMENT') judgments[index].wasReopened = false;
+      // else: missing from the AI response, or explicitly SAME_ISSUE -> stays reopened (fail closed)
+    }
   }
 
-  // Pass 2: one batched AI call for whatever's still ambiguous (empty map if nothing
-  // ambiguous, not configured, or the call failed — handled as fail-closed below).
-  const aiResults: Map<string, ThreadClassification> = ambiguousThreads.length > 0
-    ? await emailThreadClassifierService.classify(ambiguousThreads)
-    : new Map();
+  return judgments;
+}
 
-  // Pass 3: finalize. Fail closed — an ambiguous follow-up the AI didn't resolve (missing
-  // from the response, or explicitly SAME_ISSUE) still counts as reopened, same as the old
-  // behavior; only a clear NEW_TOPIC/ACKNOWLEDGMENT verdict clears it.
-  for (const info of threadInfos) {
-    const flags = followUpFlags.get(info.convId) ?? [];
-    let wasReopened = false;
-    flags.forEach((flag, idx) => {
-      if (flag === false) return;
-      const aiResult = aiResults.get(`${info.convId}:${idx}`);
-      if (aiResult === 'NEW_TOPIC' || aiResult === 'ACKNOWLEDGMENT') return;
-      wasReopened = true;
-    });
-    if (wasReopened) reopenedThreads++;
-    if (info.cfRepliesCount === 1 && !wasReopened) oneReplySolved++;
+// Pure aggregation + the scoring formula -- unchanged from the original design, just fed
+// by team-aware, correctly-paired inputs instead of one person's isolated, first-message-
+// anchored view of their own mailbox.
+function deriveUserMetrics(userEmail: string, userName: string, judgments: ExchangeJudgment[]): UserEmailHygiene {
+  // "Threads" for volume purposes: any conversation where I received a copy of the
+  // customer's message, or personally sent a reply into it.
+  const myConvIds = new Set<string>();
+  for (const j of judgments) {
+    const ex = j.exchange;
+    if (ex.customerMessage.recipients?.some((r) => r.email === userEmail)) myConvIds.add(ex.conversationId);
+    if (ex.teamReplies.some((r) => r.teamMemberEmail === userEmail)) myConvIds.add(ex.conversationId);
+  }
+  const uniqueCustomerThreads = myConvIds.size;
+
+  // ── Speed: exchanges where I was specifically the FIRST team responder ──────────
+  const myFirstResponses = judgments.filter((j) => j.firstResponder?.teamMemberEmail === userEmail);
+  const firstReplyTimes = myFirstResponses.map((j) => j.firstResponseHours!).filter((h): h is number => h !== null);
+  const within4h = firstReplyTimes.filter((h) => h <= 4).length;
+  const threadsWithReply = myFirstResponses.length;
+
+  // Best = fastest first response, worst = slowest -- real evidence behind the Speed score.
+  let bestSpeed: HygieneExample | null = null;
+  let bestSpeedHours = Infinity;
+  let worstSpeed: HygieneExample | null = null;
+  let worstSpeedHours = -Infinity;
+  for (const j of myFirstResponses) {
+    if (j.firstResponseHours === null) continue;
+    const hours = j.firstResponseHours;
+    const ex: HygieneExample = {
+      customerText: j.exchange.customerMessage.text,
+      replyText: j.firstResponder!.text,
+      label: `${hours < 1 ? Math.round(hours * 60) + ' min' : hours.toFixed(1) + 'h'} reply time`,
+    };
+    if (hours < bestSpeedHours) { bestSpeedHours = hours; bestSpeed = ex; }
+    if (hours > worstSpeedHours) { worstSpeedHours = hours; worstSpeed = ex; }
   }
 
-  // ── Quality: accuracy rate ────────────────────────────────────────
+  // ── Resolution: exchanges where I sent the SUBSTANTIVE (last, most representative) reply ──
+  const mySubstantiveReplies = judgments.filter((j) => j.substantiveReplier?.teamMemberEmail === userEmail);
+  const fullResolutionTimes = mySubstantiveReplies.map((j) => j.fullResolutionHours!).filter((h): h is number => h !== null);
+  const oneReplySolved = mySubstantiveReplies.filter((j) => j.exchange.teamReplies.length === 1 && !j.wasReopened).length;
+  const reopenedThreads = mySubstantiveReplies.filter((j) => j.wasReopened).length;
+  const substantiveCount = mySubstantiveReplies.length;
+
+  // Best = resolved in one reply with no follow-up needed; worst = a reply the customer
+  // had to come back on (most recent example of each, so it stays relevant week to week).
+  let bestResolution: HygieneExample | null = null;
+  let worstResolution: HygieneExample | null = null;
+  for (const j of mySubstantiveReplies) {
+    const replyText = j.substantiveReplier!.text;
+    const customerText = j.exchange.customerMessage.text;
+    if (j.exchange.teamReplies.length === 1 && !j.wasReopened) {
+      bestResolution = { customerText, replyText, label: 'Resolved in 1 reply' };
+    }
+    if (j.wasReopened) {
+      worstResolution = { customerText, replyText, label: 'Reopened by the customer' };
+    }
+  }
+
+  // ── Quality: accuracy rate, checked on my own first-response reply in each exchange
+  // I first-responded to (exhaustive, not sampled -- it's a cheap length/auto-reply check) ──
   let accurateReplies = 0;
-  for (const convId of customerConvIds) {
-    if (!sentByConv.has(convId)) continue;
-    const cfReply = sentByConv.get(convId)?.[0];
-    if (!cfReply) continue;
-    const isAuto = /^(automatic reply|out of office|auto.?reply)/i.test(cfReply.subject ?? '');
-    const text = cfReply.body?.content ? stripHtml(cfReply.body.content) : cfReply.bodyPreview ?? '';
-    if (!isAuto && text.length > 100) accurateReplies++;
+  for (const j of myFirstResponses) {
+    const reply = j.firstResponder!;
+    const isAuto = /^(automatic reply|out of office|auto.?reply)/i.test(reply.subject ?? '');
+    if (!isAuto && reply.text.length > 100) accurateReplies++;
   }
   const accuracyRate = threadsWithReply > 0
     ? Math.round((accurateReplies / threadsWithReply) * 100)
     : 100;
 
-  // ── Resolution derived ────────────────────────────────────────────
-  const oneReplyResolutionRate = threadsWithReply > 0
-    ? Math.round((oneReplySolved / threadsWithReply) * 100)
+  const oneReplyResolutionRate = substantiveCount > 0
+    ? Math.round((oneReplySolved / substantiveCount) * 100)
     : 0;
-  const reopenedThreadRate = threadsWithReply > 0
-    ? Math.round((reopenedThreads / threadsWithReply) * 100)
+  const reopenedThreadRate = substantiveCount > 0
+    ? Math.round((reopenedThreads / substantiveCount) * 100)
     : 0;
 
-  // ── Sample threads for relevancy + completeness + tone ───────────
-  const sampleIds = [...customerConvIds].filter(id => sentByConv.has(id)).slice(0, 5);
+  // ── Sample MY OWN replies (up to 5) for relevancy + completeness + tone -- each paired
+  // against the specific customer message it's actually answering, not always message #1 ──
+  const myReplySamples: { customerText: string; replyText: string }[] = [];
+  for (const j of judgments) {
+    for (const reply of j.exchange.teamReplies) {
+      if (reply.teamMemberEmail === userEmail) {
+        myReplySamples.push({ customerText: j.exchange.customerMessage.text, replyText: reply.text });
+      }
+    }
+  }
+  const sample = myReplySamples.slice(0, 5);
+
   const relevancyScores: number[] = [];
   const completenessScores: number[] = [];
   const rawToneScores: number[] = [];
   let lastReason = '';
-
-  // Track worst samples for insight generation
   let worstToneEntry: { cfText: string; raw: number } | null = null;
   let worstComplEntry: { custText: string; cfText: string; score: number } | null = null;
+  let bestQuality: HygieneExample | null = null;
+  let bestQualityScore = -1;
+  let worstQuality: HygieneExample | null = null;
+  let worstQualityScore = 101;
+  let bestTone: HygieneExample | null = null;
+  let bestToneScore = -1;
+  let worstTone: HygieneExample | null = null;
+  let worstToneScore = 101;
 
-  for (const convId of sampleIds) {
-    const custMsg = recvByConv.get(convId)?.[0];
-    const cfReply = sentByConv.get(convId)?.[0];
-    if (!custMsg || !cfReply) continue;
-    const custText = custMsg.body?.content ? stripHtml(custMsg.body.content) : custMsg.bodyPreview ?? '';
-    const cfText = cfReply.body?.content ? stripHtml(cfReply.body.content) : cfReply.bodyPreview ?? '';
-    const rel = scoreRelevancy(custText, cfText);
+  for (const { customerText, replyText } of sample) {
+    const rel = scoreRelevancy(customerText, replyText);
     relevancyScores.push(rel.score);
     lastReason = rel.reason;
-    const cs = scoreCompleteness(custText, cfText);
+    const cs = scoreCompleteness(customerText, replyText);
     completenessScores.push(cs);
-    const ts = scoreTone(cfText);
+    const ts = scoreTone(replyText);
     rawToneScores.push(ts);
-    if (worstToneEntry === null || ts < worstToneEntry.raw) worstToneEntry = { cfText, raw: ts };
-    if (worstComplEntry === null || cs < worstComplEntry.score) worstComplEntry = { custText, cfText, score: cs };
+    if (worstToneEntry === null || ts < worstToneEntry.raw) worstToneEntry = { cfText: replyText, raw: ts };
+    if (worstComplEntry === null || cs < worstComplEntry.score) worstComplEntry = { custText: customerText, cfText: replyText, score: cs };
+
+    if (rel.score > bestQualityScore) { bestQualityScore = rel.score; bestQuality = { customerText, replyText, label: `${rel.score}/100 relevancy` }; }
+    if (rel.score < worstQualityScore) { worstQualityScore = rel.score; worstQuality = { customerText, replyText, label: `${rel.score}/100 relevancy` }; }
+    if (ts > bestToneScore) { bestToneScore = ts; bestTone = { customerText, replyText, label: `${ts}/100 tone` }; }
+    if (ts < worstToneScore) { worstToneScore = ts; worstTone = { customerText, replyText, label: `${ts}/100 tone` }; }
   }
 
   const relevancyScore = relevancyScores.length > 0
@@ -776,6 +659,12 @@ async function analyzeUser(
     resolutionScore,
     emailHygieneScore,
     insights,
+    bestWorst: {
+      speed: { best: bestSpeed, worst: worstSpeed },
+      quality: { best: bestQuality, worst: worstQuality },
+      resolution: { best: bestResolution, worst: worstResolution },
+      tone: { best: bestTone, worst: worstTone },
+    },
   };
 }
 
@@ -784,12 +673,33 @@ async function analyzeUser(
 type SyncState = { running: boolean; startedAt: string | null; completedAt: string | null; error: string | null };
 let _syncState: SyncState = { running: false, startedAt: null, completedAt: null, error: null };
 
-// Short-lived in-memory cache for the "current week so far" trend point — this is a real
-// week-scoped Graph fetch (not the rolling 30-day cache), so without this, opening the
+// Short-lived in-memory cache, keyed by week-start date, for any week's trend point that
+// has to be computed live via Graph rather than read from a finalized DB row — this is a
+// real week-scoped Graph fetch (not the rolling 30-day cache), so without this, opening the
 // trend chart repeatedly would re-run a full Graph sync every time. 30 min is short enough
-// that "this week so far" still feels live, long enough to absorb repeat page views.
+// that a live week still feels current, long enough to absorb repeat page views. Normally
+// holds just the in-progress current week; briefly holds two entries (previous + current)
+// in the ~7h window between a week ending and the Monday 7AM finalize cron catching up —
+// see the "gap week" handling in getWeeklyTrend() below.
 const CURRENT_WEEK_TTL_MS = 30 * 60 * 1000;
-let _currentWeekCache: { weekStartDate: string; computedAt: number; metrics: UserEmailHygiene[]; teamHygiene: TeamHygieneRow[] } | null = null;
+const _liveWeekCache = new Map<string, { computedAt: number; metrics: UserEmailHygiene[]; teamHygiene: TeamHygieneRow[] }>();
+
+async function getLiveWeekMetrics(
+  client: AxiosInstance,
+  weekStartDate: string,
+  since: Date,
+  until?: Date
+): Promise<{ metrics: UserEmailHygiene[]; teamHygiene: TeamHygieneRow[] }> {
+  const cached = _liveWeekCache.get(weekStartDate);
+  if (cached && Date.now() - cached.computedAt < CURRENT_WEEK_TTL_MS) return cached;
+  const { metrics, teamHygiene } = await computeMetricsForWindow(client, since.toISOString(), until?.toISOString());
+  _liveWeekCache.set(weekStartDate, { computedAt: Date.now(), metrics, teamHygiene });
+  if (_liveWeekCache.size > 4) {
+    const oldestKey = [..._liveWeekCache.entries()].sort((a, b) => a[1].computedAt - b[1].computedAt)[0][0];
+    _liveWeekCache.delete(oldestKey);
+  }
+  return { metrics, teamHygiene };
+}
 
 // Shared by the rolling 30-day cache path (getHygieneMetrics) and the weekly-window path
 // (getWeeklyMetrics/finalizeWeek below) — discovers users, filters to valid mailboxes,
@@ -819,17 +729,17 @@ async function computeMetricsForWindow(
   }
   logger.info(`Email hygiene: ${validUsers.length}/${allUsers.length} users have accessible mailboxes`);
 
-  const results: UserEmailHygiene[] = [];
-  for (let i = 0; i < validUsers.length; i += 3) {
-    const batch = validUsers.slice(i, i + 3);
-    const settled = await Promise.allSettled(
-      batch.map(u => analyzeUser(client, u.email, u.name, since, until))
-    );
-    for (const r of settled) {
-      if (r.status === 'fulfilled') results.push(r.value);
-      else logger.error('Email hygiene analysis error:', r.reason);
-    }
-  }
+  // One shared fetch + correlation across the whole roster (team-aware redesign,
+  // 2026-08-29) instead of each mailbox being analyzed in isolation -- see the comment
+  // above judgeAllExchanges() for why this matters.
+  const timelines = await buildTeamTimelines(client, validUsers, since, until);
+  const allExchanges: Exchange[] = [];
+  for (const tl of timelines.values()) allExchanges.push(...buildExchanges(tl));
+  logger.info(`Email hygiene: built ${timelines.size} conversation timelines, ${allExchanges.length} exchanges`);
+
+  const judgments = await judgeAllExchanges(allExchanges);
+
+  const results: UserEmailHygiene[] = validUsers.map((u) => deriveUserMetrics(u.email, u.name, judgments));
 
   const sorted = results.sort((a, b) => b.emailHygieneScore - a.emailHygieneScore);
   return { metrics: sorted, teamHygiene: computeTeamHygiene(sorted) };
@@ -1012,52 +922,67 @@ export const emailHygieneService = {
       : [];
     const byWeekStart = new Map(finalizedRows.map((r: any) => [istDateStr(new Date(r.week_start)), r]));
 
+    // A week can be part of this month, not the live current week, and still have no
+    // finalized row -- that's not stale data, it's the ~7h gap every Monday between a week
+    // ending at midnight IST and the 7AM IST finalize cron catching up. Rather than show a
+    // false blank for a week that's fully knowable, fetch those "gap weeks" live too, same
+    // as the current week, cached under the same TTL. Lazily grabs one Graph client shared
+    // across every gap week (and the current week below) so a rollover with several unfinalized
+    // weeks still only authenticates once.
+    let sharedClient: AxiosInstance | null = null;
+    let sharedClientError: unknown = null;
+    const getSharedClient = async (): Promise<AxiosInstance> => {
+      if (sharedClient) return sharedClient;
+      if (sharedClientError) throw sharedClientError;
+      try {
+        sharedClient = graphClient(await getAccessToken());
+        return sharedClient;
+      } catch (err) {
+        sharedClientError = err;
+        throw err;
+      }
+    };
+
     // One slot per week-of-month, in order, even when a week was never finalized (e.g. it
     // passed before this feature existed) — this is what keeps "Wk 1/2/3/4" correctly
     // positioned instead of silently collapsing to just whichever weeks happen to have data.
-    const weeks = finalizedWeekDates.map((weekStartDate) => {
+    const weeks = await Promise.all(finalizedWeekDates.map(async (weekStartDate) => {
       const r: any = byWeekStart.get(weekStartDate);
-      if (!r) {
-        const d = new Date(weekStartDate);
-        const weekEnd = new Date(d.getTime() + 6 * 86400000);
+      if (r) {
+        return {
+          weekStart: istDateStr(new Date(r.week_start)),
+          weekEnd: istDateStr(new Date(r.week_end)),
+          isCurrent: false,
+          hasData: true,
+          metrics: r.metrics as UserEmailHygiene[],
+          teamHygiene: (r.team_hygiene ?? []) as TeamHygieneRow[],
+        };
+      }
+      const weekStart = new Date(`${weekStartDate}T00:00:00.000+05:30`);
+      const weekEnd = new Date(weekStart.getTime() + 7 * 86400000 - 1);
+      try {
+        const client = await getSharedClient();
+        const { metrics, teamHygiene } = await getLiveWeekMetrics(client, weekStartDate, weekStart, weekEnd);
+        return { weekStart: weekStartDate, weekEnd: istDateStr(weekEnd), isCurrent: false, hasData: true, metrics, teamHygiene };
+      } catch (err) {
+        logger.error(`[EmailHygiene] Gap-week live fetch failed for ${weekStartDate}:`, err);
         return { weekStart: weekStartDate, weekEnd: istDateStr(weekEnd), isCurrent: false, hasData: false, metrics: [], teamHygiene: [] };
       }
-      return {
-        weekStart: istDateStr(new Date(r.week_start)),
-        weekEnd: istDateStr(new Date(r.week_end)),
-        isCurrent: false,
-        hasData: true,
-        metrics: r.metrics as UserEmailHygiene[],
-        teamHygiene: (r.team_hygiene ?? []) as TeamHygieneRow[],
-      };
-    });
+    }));
 
     // Current week, live and genuinely week-scoped (Monday through now) — a real Graph
     // fetch, guarded by the short in-memory TTL above so repeat views don't re-sync.
     try {
-      if (_currentWeekCache?.weekStartDate === currentWeekStartDate && Date.now() - _currentWeekCache.computedAt < CURRENT_WEEK_TTL_MS) {
-        weeks.push({
-          weekStart: currentWeekStartDate,
-          weekEnd: istDateStr(getIstWeekBounds(0).weekEnd),
-          isCurrent: true,
-          hasData: true,
-          metrics: _currentWeekCache.metrics,
-          teamHygiene: _currentWeekCache.teamHygiene,
-        });
-      } else {
-        const token = await getAccessToken();
-        const client = graphClient(token);
-        const { metrics, teamHygiene } = await computeMetricsForWindow(client, currentWeekStart.toISOString());
-        _currentWeekCache = { weekStartDate: currentWeekStartDate, computedAt: Date.now(), metrics, teamHygiene };
-        weeks.push({
-          weekStart: currentWeekStartDate,
-          weekEnd: istDateStr(getIstWeekBounds(0).weekEnd),
-          isCurrent: true,
-          hasData: true,
-          metrics,
-          teamHygiene,
-        });
-      }
+      const client = await getSharedClient();
+      const { metrics, teamHygiene } = await getLiveWeekMetrics(client, currentWeekStartDate, currentWeekStart);
+      weeks.push({
+        weekStart: currentWeekStartDate,
+        weekEnd: istDateStr(getIstWeekBounds(0).weekEnd),
+        isCurrent: true,
+        hasData: true,
+        metrics,
+        teamHygiene,
+      });
     } catch (err) {
       logger.error('[EmailHygiene] Current-week trend fetch failed:', err);
       // Current week just won't have a live point this time — finalized weeks still return.
