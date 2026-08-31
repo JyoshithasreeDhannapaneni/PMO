@@ -13,7 +13,7 @@ const ENGINEER_ASSIGNMENTS: Record<string, string[]> = {
 
 const SEGMENT_HIERARCHY: { lead: string; managers: string[] }[] = [
   { lead: 'Abhishek',   managers: ['Lakshmi Prasanna', 'Pranavi'] },
-  { lead: 'Ajay Singh', managers: ['Harika', 'Sravan', 'Raghu', 'Abhishikth', 'Sriram', 'Chandra Mouli'] },
+  { lead: 'Ajay Singh', managers: ['Harika', 'Sravan', 'Raghu', 'Abhishikth', 'Sriram', 'Chandra Mouli', 'Meghana Chowdada'] },
 ];
 
 const TOP_LEVEL_LEADS = ['Abhishek', 'Ajay Singh'];
