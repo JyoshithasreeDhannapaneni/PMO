@@ -329,14 +329,31 @@ interface ExchangeJudgment {
 async function judgeAllExchanges(allExchanges: Exchange[]): Promise<ExchangeJudgment[]> {
   const judgments: ExchangeJudgment[] = allExchanges.map((exchange) => {
     const replies = exchange.teamReplies;
-    const firstResponder = replies[0] ?? null;
-    const substantiveReplier = replies[replies.length - 1] ?? null;
+    const rawFirstResponder = replies[0] ?? null;
+    const rawSubstantiveReplier = replies[replies.length - 1] ?? null;
+    const rawFirstResponseHours = rawFirstResponder ? (rawFirstResponder.time - exchange.customerMessage.time) / 3600000 : null;
+    const rawFullResolutionHours = rawSubstantiveReplier ? (rawSubstantiveReplier.time - exchange.customerMessage.time) / 3600000 : null;
+
+    // The customer message here can come from up to CUSTOMER_CONTEXT_LOOKBACK_MS before
+    // the scoring window (see buildTeamTimelines' customerLookbackMs) so a reply landing
+    // inside the window can still find the question it's actually answering. But we only
+    // fetch the TEAM side within the window itself, so we have no visibility into whether
+    // an old customer message was already answered before the window started -- if the
+    // only reply we can see is implausibly late (same threshold used elsewhere to call a
+    // follow-up "a new topic," not a live reopen), it's far more likely we're pairing a
+    // stray/unrelated later message with a thread that was already closed off-screen than
+    // that someone genuinely took a week+ to respond. Treat it as unanswered for scoring
+    // rather than crediting -- or blaming -- anyone for a fabricated multi-day response time.
+    const isPlausible = (hours: number | null) => hours !== null && !isLikelyNewTopicByGap(0, hours * 3600000);
+    const firstResponder = isPlausible(rawFirstResponseHours) ? rawFirstResponder : null;
+    const substantiveReplier = isPlausible(rawFullResolutionHours) ? rawSubstantiveReplier : null;
+
     return {
       exchange,
       firstResponder,
       substantiveReplier,
-      firstResponseHours: firstResponder ? (firstResponder.time - exchange.customerMessage.time) / 3600000 : null,
-      fullResolutionHours: substantiveReplier ? (substantiveReplier.time - exchange.customerMessage.time) / 3600000 : null,
+      firstResponseHours: firstResponder ? rawFirstResponseHours : null,
+      fullResolutionHours: substantiveReplier ? rawFullResolutionHours : null,
       wasReopened: false,
     };
   });
@@ -701,6 +718,13 @@ async function getLiveWeekMetrics(
   return { metrics, teamHygiene };
 }
 
+// How far before a scoring window's `since` to still look for the customer message a
+// reply is actually answering (see buildTeamTimelines()'s customerLookbackMs param).
+// judgeAllExchanges() below already discards any pairing more than 5 days old as
+// implausible, so this just needs enough margin past that to catch a reply landing a
+// day or two after the 5-day cutoff -- no benefit to reaching back further than that.
+const CUSTOMER_CONTEXT_LOOKBACK_MS = 10 * 24 * 3600 * 1000;
+
 // Shared by the rolling 30-day cache path (getHygieneMetrics) and the weekly-window path
 // (getWeeklyMetrics/finalizeWeek below) — discovers users, filters to valid mailboxes,
 // and analyzes them for an arbitrary [since, until) window. `until` omitted means
@@ -731,8 +755,11 @@ async function computeMetricsForWindow(
 
   // One shared fetch + correlation across the whole roster (team-aware redesign,
   // 2026-08-29) instead of each mailbox being analyzed in isolation -- see the comment
-  // above judgeAllExchanges() for why this matters.
-  const timelines = await buildTeamTimelines(client, validUsers, since, until);
+  // above judgeAllExchanges() for why this matters. The customer-side lookback (2026-08-31
+  // fix) lets a reply sent inside [since, until) still find and pair with the customer
+  // message it's actually answering even when that message arrived before `since` -- see
+  // the comment on buildTeamTimelines() itself for why that pairing would otherwise fail.
+  const timelines = await buildTeamTimelines(client, validUsers, since, until, 3, CUSTOMER_CONTEXT_LOOKBACK_MS);
   const allExchanges: Exchange[] = [];
   for (const tl of timelines.values()) allExchanges.push(...buildExchanges(tl));
   logger.info(`Email hygiene: built ${timelines.size} conversation timelines, ${allExchanges.length} exchanges`);

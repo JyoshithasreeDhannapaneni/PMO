@@ -182,10 +182,28 @@ export async function buildTeamTimelines(
   members: { email: string; name: string }[],
   since: string,
   until?: string,
-  batchSize = 3
+  batchSize = 3,
+  // How much further back than `since` to reach when fetching the CUSTOMER side of the
+  // conversation only. 0 (default, used by the SLA breach checker's narrow recent-only
+  // window) means "same as since" -- unchanged behavior. A hygiene scoring window that
+  // reaches back further here (see computeMetricsForWindow) can still find the true
+  // originating customer message for a reply sent inside [since, until) even when that
+  // customer message itself arrived before `since` -- see the 2026-08-31 fix note below.
+  customerLookbackMs = 0
 ): Promise<Map<string, ConversationTimeline>> {
   const untilSent = until ? ` and sentDateTime le ${until}` : '';
   const untilRecv = until ? ` and receivedDateTime le ${until}` : '';
+  // 2026-08-31 fix: buildExchanges() can only pair a team reply with a customer message
+  // that's ALSO present in this same timeline. Without this lookback, a reply sent today
+  // to a question the customer asked before `since` (true of nearly every live thread on
+  // the first day of a new "current week" scoring window) had no customer entry to pair
+  // with, so buildExchanges() silently produced zero exchanges for it -- the reply was
+  // fetched but simply dropped, and its sender got no credit at all. The team ("sent")
+  // side is intentionally NOT widened: only replies actually sent inside [since, until)
+  // should count toward this window's scoring.
+  const customerSince = customerLookbackMs > 0
+    ? new Date(new Date(since).getTime() - customerLookbackMs).toISOString()
+    : since;
 
   const seenCustomerKeys = new Map<string, TimelineEntry>(); // dedup key -> the entry already kept
   const timelines = new Map<string, ConversationTimeline>();
@@ -202,7 +220,7 @@ export async function buildTeamTimelines(
       const userPath = encodeURIComponent(m.email);
       const [sentRaw, recvRaw] = await Promise.all([
         fetchAll(client, `/users/${userPath}/mailFolders/SentItems/messages?$filter=sentDateTime ge ${since}${untilSent}&$select=${SELECT_FIELDS}&$top=100`),
-        fetchAll(client, `/users/${userPath}/messages?$filter=receivedDateTime ge ${since}${untilRecv}&$select=${SELECT_FIELDS}&$top=100`),
+        fetchAll(client, `/users/${userPath}/messages?$filter=receivedDateTime ge ${customerSince}${untilRecv}&$select=${SELECT_FIELDS}&$top=100`),
       ]);
       return { member: m, sentRaw, recvRaw };
     }));
