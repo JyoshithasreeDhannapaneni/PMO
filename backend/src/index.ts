@@ -791,6 +791,7 @@ async function runMigrations() {
     ['LakshmaReddy@cloudfuze.com',            'LakshmaReddy'],
     ['Lakshmi.Prasanna@cloudfuze.com',        'Lakshmi Prasanna'],
     ['Manoj.Bathula@cloudfuze.com',           'Manoj Bathula'],
+    ['meghana.chowdada@cloudfuze.com',        'Meghana Chowdada'],
     ['Meena.Lakshmi@cloudfuze.com',           'Meena Lakshmi'],
     ['neelima.krotta@cloudfuze.com',          'Neelima Krotta'],
     ['Pallavi.Kosuvaripalli@cloudfuze.com',   'Pallavi Kosuvaripalli'],
