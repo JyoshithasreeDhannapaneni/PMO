@@ -2,7 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect } from 'react';
-import { projectsApi, dashboardApi, statusReportsApi, managerGoalsApi, migrationTypeApi, pocProjectsApi, accountManagerApi, customerSuccessApi, hubspotApi, psEngagementsApi, kbArticlesApi, emailHygieneApi, callHygieneApi, callTranscriptsApi, escalationMailsApi, auditApi, feedbackApi } from '@/services/api';
+import { projectsApi, dashboardApi, statusReportsApi, managerGoalsApi, migrationTypeApi, pocProjectsApi, accountManagerApi, customerSuccessApi, hubspotApi, psEngagementsApi, kbArticlesApi, emailHygieneApi, callHygieneApi, callTranscriptsApi, escalationMailsApi, auditApi, feedbackApi, actionItemsApi } from '@/services/api';
 import type { CreateProjectInput, UpdateProjectInput } from '@/types';
 
 export function useProjects(params?: {
@@ -303,6 +303,39 @@ export function useDeletePsEngagement() {
   return useMutation({
     mutationFn: (id: string) => psEngagementsApi.remove(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['ps-engagements'] }),
+  });
+}
+
+export function useActionItems() {
+  return useQuery({
+    queryKey: ['action-items'],
+    queryFn: () => actionItemsApi.getAll(),
+    staleTime: 30_000,
+    refetchOnWindowFocus: true,
+  });
+}
+
+export function useCreateActionItem() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (item: any) => actionItemsApi.create(item),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['action-items'] }),
+  });
+}
+
+export function useUpdateActionItem() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: any }) => actionItemsApi.update(id, data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['action-items'] }),
+  });
+}
+
+export function useDeleteActionItem() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => actionItemsApi.remove(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['action-items'] }),
   });
 }
 
