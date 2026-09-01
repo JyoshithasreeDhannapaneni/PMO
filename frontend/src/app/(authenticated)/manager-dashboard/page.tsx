@@ -2567,28 +2567,16 @@ function ObservationsView() {
 
 // ─── Action Items View ────────────────────────────────────────────────────────
 
-const ACCOUNTABLE_OPTIONS = Array.from(new Set(SEGMENT_CONFIG.flatMap((s) => s.managers))).sort();
-
-const STATUS_META: Record<string, { label: string; cls: string }> = {
-  OPEN: { label: 'Open', cls: 'bg-gray-100 text-gray-600' },
-  IN_PROGRESS: { label: 'WIP', cls: 'bg-blue-100 text-blue-700' },
-  DONE: { label: 'Done', cls: 'bg-emerald-100 text-emerald-700' },
+// Single Green/Orange/Red status field — replaces the old separate Status
+// (Done/WIP/Open) and Priority (Low/Medium/High) fields. Still stored in the
+// same `status` column (OPEN/IN_PROGRESS/DONE) so no backend/schema change
+// was needed — this is purely how it's presented and edited now.
+const STATUS_DOT: Record<string, { letter: string; label: string; cls: string; dotCls: string }> = {
+  DONE: { letter: 'G', label: 'Green — Done', cls: 'bg-emerald-100 text-emerald-700 border-emerald-300', dotCls: 'bg-emerald-500' },
+  IN_PROGRESS: { letter: 'O', label: 'Orange — In Progress', cls: 'bg-orange-100 text-orange-700 border-orange-300', dotCls: 'bg-orange-500' },
+  OPEN: { letter: 'R', label: 'Red — Not Started', cls: 'bg-red-100 text-red-700 border-red-300', dotCls: 'bg-red-500' },
 };
-const PRIORITY_META: Record<string, { label: string; cls: string }> = {
-  LOW: { label: 'Low', cls: 'bg-gray-100 text-gray-500' },
-  MEDIUM: { label: 'Medium', cls: 'bg-amber-100 text-amber-700' },
-  HIGH: { label: 'High', cls: 'bg-red-100 text-red-700' },
-};
-
-// G/O/R quick-glance dot next to each action item: Green = Done,
-// Orange = In Progress, Red = Not Started (OPEN). Overdue still shows Red
-// (it's an OPEN/IN_PROGRESS item whose month has passed, i.e. still not
-// started/finished), so it's not a fourth letter here.
-const STATUS_DOT: Record<string, { letter: string; cls: string; title: string }> = {
-  DONE: { letter: 'G', cls: 'bg-emerald-100 text-emerald-700 border-emerald-300', title: 'Done' },
-  IN_PROGRESS: { letter: 'O', cls: 'bg-orange-100 text-orange-700 border-orange-300', title: 'In Progress' },
-  OPEN: { letter: 'R', cls: 'bg-red-100 text-red-700 border-red-300', title: 'Not Started' },
-};
+const STATUS_ORDER = ['DONE', 'IN_PROGRESS', 'OPEN'] as const;
 
 // yyyy-MM -> "Jul 2026"
 function monthLabel(month: string): string {
@@ -2606,11 +2594,10 @@ interface ActionItemFormState {
   item: string;
   accountable: string;
   status: string;
-  priority: string;
 }
 
 function emptyActionItemForm(month: string): ActionItemFormState {
-  return { month, item: '', accountable: '', status: 'OPEN', priority: 'MEDIUM' };
+  return { month, item: '', accountable: '', status: 'OPEN' };
 }
 
 function ActionItemsView() {
@@ -2639,16 +2626,21 @@ function ActionItemsView() {
   const [selectedMonth, setSelectedMonth] = useState<string | 'ALL'>(() => availableMonths[availableMonths.length - 1] || currentMonthStr());
   const [accountableFilter, setAccountableFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  const [priorityFilter, setPriorityFilter] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<ActionItemFormState>(() => emptyActionItemForm(currentMonthStr()));
   const [editingId, setEditingId] = useState<string | null>(null);
+
+  // Accountable is free text now (not a fixed manager list), so the filter
+  // options come from whatever names have actually been typed in so far.
+  const accountableOptions = useMemo(
+    () => Array.from(new Set(allItems.map((i) => (i.accountable || '').trim()).filter(Boolean))).sort(),
+    [allItems]
+  );
 
   const monthFiltered = selectedMonth === 'ALL' ? allItems : allItems.filter((i) => i.month === selectedMonth);
   const filtered = monthFiltered.filter((i) => {
     if (accountableFilter && i.accountable !== accountableFilter) return false;
     if (statusFilter && i.status !== statusFilter) return false;
-    if (priorityFilter && i.priority !== priorityFilter) return false;
     return true;
   });
 
@@ -2671,7 +2663,7 @@ function ActionItemsView() {
   };
 
   const startEdit = (i: any) => {
-    setForm({ month: i.month, item: i.item, accountable: i.accountable || '', status: i.status, priority: i.priority });
+    setForm({ month: i.month, item: i.item, accountable: i.accountable || '', status: i.status });
     setEditingId(i.id);
     setShowForm(true);
   };
@@ -2752,17 +2744,12 @@ function ActionItemsView() {
         <select value={accountableFilter} onChange={(e) => setAccountableFilter(e.target.value)}
           className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white text-gray-700">
           <option value="">Accountable: All</option>
-          {ACCOUNTABLE_OPTIONS.map((m) => <option key={m} value={m}>{m}</option>)}
+          {accountableOptions.map((m) => <option key={m} value={m}>{m}</option>)}
         </select>
         <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
           className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white text-gray-700">
           <option value="">Status: All</option>
-          {Object.entries(STATUS_META).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
-        </select>
-        <select value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value)}
-          className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white text-gray-700">
-          <option value="">Priority: All</option>
-          {Object.entries(PRIORITY_META).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
+          {STATUS_ORDER.map((k) => <option key={k} value={k}>{STATUS_DOT[k].label}</option>)}
         </select>
         {canEdit && (
           <button
@@ -2777,7 +2764,7 @@ function ActionItemsView() {
       {/* Add/Edit form */}
       {showForm && (
         <div className="bg-white rounded-xl border border-indigo-200 p-4 space-y-3">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div>
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Month</label>
               <input type="month" value={form.month} onChange={(e) => setForm((f) => ({ ...f, month: e.target.value }))}
@@ -2785,24 +2772,18 @@ function ActionItemsView() {
             </div>
             <div>
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Accountable</label>
-              <select value={form.accountable} onChange={(e) => setForm((f) => ({ ...f, accountable: e.target.value }))}
-                className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white">
-                <option value="">— Select —</option>
-                {ACCOUNTABLE_OPTIONS.map((m) => <option key={m} value={m}>{m}</option>)}
-              </select>
+              <input type="text" value={form.accountable} onChange={(e) => setForm((f) => ({ ...f, accountable: e.target.value }))}
+                placeholder="Who owns this…"
+                className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2" />
             </div>
             <div>
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Status</label>
-              <select value={form.status} onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}
-                className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white">
-                {Object.entries(STATUS_META).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Priority</label>
-              <select value={form.priority} onChange={(e) => setForm((f) => ({ ...f, priority: e.target.value }))}
-                className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white">
-                {Object.entries(PRIORITY_META).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
+              <select
+                value={form.status}
+                onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}
+                className={`w-full text-sm rounded-lg px-3 py-2 border font-medium ${STATUS_DOT[form.status]?.cls || 'bg-white border-gray-200'}`}
+              >
+                {STATUS_ORDER.map((k) => <option key={k} value={k}>{STATUS_DOT[k].label}</option>)}
               </select>
             </div>
           </div>
@@ -2844,7 +2825,6 @@ function ActionItemsView() {
                   <th className="px-4 py-2.5 text-xs font-semibold text-gray-500">Month</th>
                   <th className="px-4 py-2.5 text-xs font-semibold text-gray-500">Action Item</th>
                   <th className="px-4 py-2.5 text-xs font-semibold text-gray-500">Accountable</th>
-                  <th className="px-4 py-2.5 text-xs font-semibold text-gray-500">Priority</th>
                   <th className="px-4 py-2.5 text-xs font-semibold text-gray-500">Status</th>
                   {canEdit && <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 text-center">Actions</th>}
                 </tr>
@@ -2852,31 +2832,28 @@ function ActionItemsView() {
               <tbody>
                 {filtered.map((i) => {
                   const overdue = isOverdue(i);
-                  const statusMeta = overdue
-                    ? { label: 'Overdue', cls: 'bg-red-100 text-red-700' }
-                    : STATUS_META[i.status] || STATUS_META.OPEN;
+                  const dot = STATUS_DOT[i.status] || STATUS_DOT.OPEN;
                   return (
                     <tr key={i.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50/60">
                       <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{monthLabel(i.month)}</td>
                       <td className="px-4 py-3 text-gray-700 max-w-[420px]">
                         <div className="flex items-start gap-2">
                           <span
-                            title={(STATUS_DOT[i.status] || STATUS_DOT.OPEN).title}
-                            className={`flex-shrink-0 w-5 h-5 rounded-full border flex items-center justify-center text-[10px] font-bold mt-0.5 ${(STATUS_DOT[i.status] || STATUS_DOT.OPEN).cls}`}
+                            title={dot.label}
+                            className={`flex-shrink-0 w-5 h-5 rounded-full border flex items-center justify-center text-[10px] font-bold mt-0.5 ${dot.cls}`}
                           >
-                            {(STATUS_DOT[i.status] || STATUS_DOT.OPEN).letter}
+                            {dot.letter}
                           </span>
                           <span>{i.item}</span>
                         </div>
                       </td>
                       <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{i.accountable || '—'}</td>
                       <td className="px-4 py-3">
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${(PRIORITY_META[i.priority] || PRIORITY_META.MEDIUM).cls}`}>
-                          {(PRIORITY_META[i.priority] || PRIORITY_META.MEDIUM).label}
+                        <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${dot.cls}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${dot.dotCls}`} />
+                          {dot.letter === 'G' ? 'Done' : dot.letter === 'O' ? 'In Progress' : 'Not Started'}
                         </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusMeta.cls}`}>{statusMeta.label}</span>
+                        {overdue && <span className="ml-1.5 text-[10px] font-semibold text-red-600">· Overdue</span>}
                       </td>
                       {canEdit && (
                         <td className="px-4 py-3">
