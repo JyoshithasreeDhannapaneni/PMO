@@ -24,9 +24,15 @@ export const MANAGER_QUERY_NAMES: Record<string, string> = {
 export const ENGINEER_ASSIGNMENTS: Record<string, string[]> = {
   'Pranavi':          ['Arun', 'Manoj', 'Pallavi'],
   'Lakshmi Prasanna': ['Chaitanya Gupta', 'Harshith', 'Lakshma Reddy', 'Ganesh Kondameedi', 'Davidraj'],
-  'Meghana Chowdada': ['Amulya', 'Habeebunisa', 'Vijendra', 'Ranadep', 'Nithish'],
+  // Spellings here must match LMS_SCORES/AUDIO_PERCENTAGES etc. exactly (or at
+  // least share a full first word) — the fuzzy matcher those helpers use
+  // can't bridge a mid-word letter difference like "Ranadep" vs "Ranadeep",
+  // only prefix/substring variants. Corrected 2026-09: Habeebunisa ->
+  // Habeebunnisa, Vijendra -> Vijendar, Ranadep -> Ranadeep, Vineeta ->
+  // Vineetha — these 4 were silently missing their LMS score too, not just Audio %.
+  'Meghana Chowdada': ['Amulya', 'Habeebunnisa', 'Vijendar', 'Ranadeep', 'Nithish'],
   'Harika':           ['Ravi Hemanth', 'Meena', 'Siva Kotta', 'Ambika'],
-  'Sriram':           ['Dathu', 'Ramana', 'Vineeta', 'Sanjana'],
+  'Sriram':           ['Dathu', 'Ramana', 'Vineetha', 'Sanjana'],
 };
 
 export const LMS_SCORES: { name: string; score: number }[] = [
@@ -138,6 +144,46 @@ export const CHECKIN_DELAYS: { name: string; delayMin: number }[] = [
 // entry here for each person as their real number comes in; anyone missing
 // from this list just shows "—" in the Team table.
 export const AUDIO_PERCENTAGES: { name: string; pct: number }[] = [
+  { name: 'Dathu Kaluvala',        pct: 71  },
+  { name: 'Amulya Anapuram',      pct: 83  },
+  { name: 'Harika Velidi',        pct: 82  },
+  { name: 'Vijendar Burgula',     pct: 99  },
+  { name: 'Ramana Reddy',         pct: 60  },
+  { name: 'Sanjana Nerella',      pct: 100 },
+  { name: 'Tanmai Arangi',        pct: 63  },
+  { name: 'Lavanya Gopasana',     pct: 100 },
+  { name: 'Davidraj Dumpala',     pct: 97  },
+  { name: 'Ravi Hemanth',         pct: 66  },
+  { name: 'Vineetha Yenti',       pct: 87  },
+  { name: 'Chaitanya Gupta',      pct: 88  },
+  { name: 'Saikumar Kustapuram',  pct: 94  },
+  { name: 'Ganesh Kondameedi',    pct: 98  },
+  { name: 'Nitesh',               pct: 0   },
+  { name: 'Lakshmi Prasanna',     pct: 88  },
+  { name: 'Purushotham Kurva',    pct: 0   },
+  { name: 'Chandra Mouli',        pct: 63  },
+  { name: 'Sriram Ramakrishnan',  pct: 28  },
+  { name: 'Nithish Bunne',        pct: 87  },
+  { name: 'Neelima Krotta',       pct: 67  },
+  { name: 'Abhishikth Yenugula',  pct: 97  },
+  { name: 'Abhishek Sakala',      pct: 85  },
+  { name: 'Habeebunnisa Begum',   pct: 83  },
+  { name: 'Arun',                 pct: 91  },
+  { name: 'Siva Kota',            pct: 99  },
+  { name: 'Manoj Bathula',        pct: 79  },
+  { name: 'Venkatesh Kudukala',   pct: 0   },
+  { name: 'Swaroop',              pct: 100 },
+  { name: 'Pravallika Punumalli', pct: 100 },
+  { name: 'Harshith Kaduluri',    pct: 98  },
+  { name: 'Ajay Singh',           pct: 88  },
+  { name: 'Ambika Patil',         pct: 100 },
+  { name: 'Suditya Nimmala',      pct: 100 },
+  { name: 'Vainateya Rasala',     pct: 65  },
+  { name: 'Meena Lakshmi',        pct: 70  },
+  { name: 'Ranadeep Muddam',      pct: 88  },
+  { name: 'Meghana Chowdada',     pct: 99  },
+  { name: 'Pallavi Kosuvaripalli', pct: 83 },
+  { name: 'Pranavi',              pct: 44  },
 ];
 
 // Some data sources (manual entry, imports) store a manager's full name
