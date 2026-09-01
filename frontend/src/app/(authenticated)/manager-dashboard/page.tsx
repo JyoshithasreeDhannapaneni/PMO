@@ -2571,10 +2571,10 @@ function ObservationsView() {
 // (Done/WIP/Open) and Priority (Low/Medium/High) fields. Still stored in the
 // same `status` column (OPEN/IN_PROGRESS/DONE) so no backend/schema change
 // was needed — this is purely how it's presented and edited now.
-const STATUS_DOT: Record<string, { letter: string; label: string; cls: string; dotCls: string }> = {
-  DONE: { letter: 'G', label: 'Green — Done', cls: 'bg-emerald-100 text-emerald-700 border-emerald-300', dotCls: 'bg-emerald-500' },
-  IN_PROGRESS: { letter: 'O', label: 'Orange — In Progress', cls: 'bg-orange-100 text-orange-700 border-orange-300', dotCls: 'bg-orange-500' },
-  OPEN: { letter: 'R', label: 'Red — Not Started', cls: 'bg-red-100 text-red-700 border-red-300', dotCls: 'bg-red-500' },
+const STATUS_DOT: Record<string, { letter: string; short: string; label: string; cls: string; dotCls: string }> = {
+  DONE: { letter: 'G', short: 'Done', label: 'Green — Done', cls: 'bg-emerald-100 text-emerald-700 border-emerald-300', dotCls: 'bg-emerald-500' },
+  IN_PROGRESS: { letter: 'O', short: 'In Progress', label: 'Orange — In Progress', cls: 'bg-orange-100 text-orange-700 border-orange-300', dotCls: 'bg-orange-500' },
+  OPEN: { letter: 'R', short: 'Not Started', label: 'Red — Not Started', cls: 'bg-red-100 text-red-700 border-red-300', dotCls: 'bg-red-500' },
 };
 const STATUS_ORDER = ['DONE', 'IN_PROGRESS', 'OPEN'] as const;
 
@@ -2720,7 +2720,7 @@ function ActionItemsView() {
             selectedMonth === 'ALL' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'
           }`}
         >
-          Compare Months
+          All Months
         </button>
       </div>
 
@@ -2728,8 +2728,8 @@ function ActionItemsView() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
           { label: 'Total', value: stats.total, cls: 'text-gray-800' },
-          { label: 'Completed', value: stats.done, cls: 'text-emerald-600' },
-          { label: 'In Progress', value: stats.inProgress, cls: 'text-blue-600' },
+          { label: 'Done', value: stats.done, cls: 'text-emerald-600' },
+          { label: 'In Progress', value: stats.inProgress, cls: 'text-orange-600' },
           { label: 'Overdue', value: stats.overdue, cls: 'text-red-600' },
         ].map((s) => (
           <div key={s.label} className="bg-white rounded-xl border border-gray-200 px-4 py-3">
@@ -2836,24 +2836,13 @@ function ActionItemsView() {
                   return (
                     <tr key={i.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50/60">
                       <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{monthLabel(i.month)}</td>
-                      <td className="px-4 py-3 text-gray-700 max-w-[420px]">
-                        <div className="flex items-start gap-2">
-                          <span
-                            title={dot.label}
-                            className={`flex-shrink-0 w-5 h-5 rounded-full border flex items-center justify-center text-[10px] font-bold mt-0.5 ${dot.cls}`}
-                          >
-                            {dot.letter}
-                          </span>
-                          <span>{i.item}</span>
-                        </div>
-                      </td>
+                      <td className="px-4 py-3 text-gray-700 max-w-[420px]">{i.item}</td>
                       <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{i.accountable || '—'}</td>
                       <td className="px-4 py-3">
                         <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${dot.cls}`}>
                           <span className={`w-1.5 h-1.5 rounded-full ${dot.dotCls}`} />
-                          {dot.letter === 'G' ? 'Done' : dot.letter === 'O' ? 'In Progress' : 'Not Started'}
+                          {overdue ? 'Overdue' : dot.short}
                         </span>
-                        {overdue && <span className="ml-1.5 text-[10px] font-semibold text-red-600">· Overdue</span>}
                       </td>
                       {canEdit && (
                         <td className="px-4 py-3">
