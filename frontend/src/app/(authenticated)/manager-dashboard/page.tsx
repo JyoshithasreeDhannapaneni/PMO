@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
-import { useManagerGoalsWithStats, useEscalatedProjects, useNtaStats, useNtaEnabled, useNtaToggle, useNtaSpaces, useNtaIssues, useNtaSearch, useNtaTrends, useNtaAssignees, useNtaReporters, useNtaProjectManagers, useNtaDepartments, useJiraExcelStatus, useNtaExcelStatus, useNtaByManagers, useEngineersByManager, useJiraEngineers, useEmailHygiene, useActionItems, useCreateActionItem, useUpdateActionItem, useDeleteActionItem, useManagerDashboardLeaderboard } from '@/hooks/useProjects';
+import { useManagerGoalsWithStats, useEscalatedProjects, useNtaStats, useNtaEnabled, useNtaToggle, useNtaSpaces, useNtaIssues, useNtaSearch, useNtaTrends, useNtaAssignees, useNtaReporters, useNtaProjectManagers, useNtaDepartments, useJiraExcelStatus, useNtaByManagers, useEngineersByManager, useJiraEngineers, useEmailHygiene, useActionItems, useCreateActionItem, useUpdateActionItem, useDeleteActionItem, useManagerDashboardLeaderboard } from '@/hooks/useProjects';
 import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import {
@@ -210,6 +210,23 @@ function ExcelUploadBanner() {
                   {' · '}{data.ticketCount} tickets
                   {' · '}Uploaded {new Date(data.uploadedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                 </p>
+                {data.fieldDiagnostics && (
+                  <p className="text-[11px] text-green-600 mt-1">
+                    {(['productType', 'slaBreachedBy'] as const).map((key) => {
+                      const label = key === 'productType' ? 'Product Type' : 'SLA Breached By';
+                      const d = data.fieldDiagnostics[key];
+                      const found = d.columnDetected !== 'NOT FOUND';
+                      return (
+                        <span key={key} className="block">
+                          <span className="font-semibold">{label}:</span>{' '}
+                          {found
+                            ? `column "${d.columnDetected}" · ${d.nonBlankCount} ticket${d.nonBlankCount !== 1 ? 's' : ''} with a value${d.distinctSample.length ? ` · e.g. ${d.distinctSample.join(', ')}` : ''}`
+                            : 'column not found in this file'}
+                        </span>
+                      );
+                    })}
+                  </p>
+                )}
               </>
             ) : (
               <>
@@ -233,115 +250,6 @@ function ExcelUploadBanner() {
               ${available ? 'bg-white border border-green-300 text-green-700 hover:bg-green-50' : 'bg-blue-600 text-white hover:bg-blue-700'} disabled:opacity-60`}
           >
             {uploading ? <><Loader2 size={14} className="animate-spin" /> Uploading…</> : <><Upload size={14} /> {available ? 'Replace File' : 'Upload Excel'}</>}
-          </button>
-          <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFileChange} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Same upload pattern as ExcelUploadBanner above, pointed at the ticketing (NTA) data
-// source instead of Jira SLA data -- see ntaExcelService.ts for why an upload replaces
-// what would otherwise be a live Neutara Ticketing API sync.
-function NtaExcelUploadBanner() {
-  const { data, isLoading, refetch } = useNtaExcelStatus();
-  const queryClient = useQueryClient();
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState(false);
-  const [uploadError, setUploadError] = useState<string | null>(null);
-
-  const invalidateAll = () => {
-    queryClient.invalidateQueries({ queryKey: ['nta-excel-status'] });
-    queryClient.invalidateQueries({ queryKey: ['ntaStats'] });
-    queryClient.invalidateQueries({ queryKey: ['ntaConfig'] });
-    queryClient.invalidateQueries({ queryKey: ['ntaSpaces'] });
-    queryClient.invalidateQueries({ queryKey: ['ntaAssignees'] });
-    queryClient.invalidateQueries({ queryKey: ['ntaReporters'] });
-    queryClient.invalidateQueries({ queryKey: ['ntaProjectManagers'] });
-    queryClient.invalidateQueries({ queryKey: ['ntaDepartments'] });
-    queryClient.invalidateQueries({ queryKey: ['ntaIssues'] });
-    queryClient.invalidateQueries({ queryKey: ['ntaSearch'] });
-    queryClient.invalidateQueries({ queryKey: ['ntaTrends'] });
-    queryClient.invalidateQueries({ queryKey: ['ntaByManagers'] });
-  };
-
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploading(true);
-    setUploadError(null);
-    try {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
-      const form = new FormData();
-      form.append('file', file);
-      const res = await fetch(`${API_BASE_URL}/api/ticketing/excel/upload`, {
-        method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: form,
-      });
-      const json = await res.json();
-      if (!json.success) throw new Error(json.error || 'Upload failed');
-      invalidateAll();
-      refetch();
-    } catch (err: any) {
-      setUploadError(err.message);
-    } finally {
-      setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
-  };
-
-  const handleClear = async () => {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
-    await fetch(`${API_BASE_URL}/api/ticketing/excel/clear`, {
-      method: 'DELETE',
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
-    invalidateAll();
-    refetch();
-  };
-
-  if (isLoading) return null;
-  const available = data?.available;
-
-  return (
-    <div className={`rounded-xl border p-4 ${available ? 'border-green-200 bg-green-50' : 'border-blue-200 bg-blue-50'}`}>
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-start gap-3">
-          <FileSpreadsheet size={18} className={`flex-shrink-0 mt-0.5 ${available ? 'text-green-600' : 'text-blue-500'}`} />
-          <div>
-            {available ? (
-              <>
-                <p className="text-sm font-semibold text-green-800">Ticket data loaded from export</p>
-                <p className="text-xs text-green-700 mt-0.5">
-                  <span className="font-medium">{data.filename}</span>
-                  {' · '}{data.ticketCount} tickets
-                  {' · '}Uploaded {new Date(data.uploadedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                </p>
-              </>
-            ) : (
-              <>
-                <p className="text-sm font-semibold text-blue-800">Upload Ticket Export (Jira/Neutara CSV or Excel)</p>
-                <p className="text-xs text-blue-600 mt-0.5">Export tickets (Key, Assignee, Reporter, Status, Priority, Department...), then upload here to populate the Tickets tab.</p>
-              </>
-            )}
-            {uploadError && <p className="text-xs text-red-600 mt-1 font-medium">{uploadError}</p>}
-          </div>
-        </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
-          {available && (
-            <button onClick={handleClear} className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-red-600 hover:text-red-700 border border-red-200 hover:border-red-300 rounded-lg transition">
-              <Trash2 size={13} /> Remove
-            </button>
-          )}
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
-            className={`flex items-center gap-1.5 px-4 py-2 text-sm font-semibold rounded-lg transition whitespace-nowrap
-              ${available ? 'bg-white border border-green-300 text-green-700 hover:bg-green-50' : 'bg-blue-600 text-white hover:bg-blue-700'} disabled:opacity-60`}
-          >
-            {uploading ? <><Loader2 size={14} className="animate-spin" /> Uploading…</> : <><Upload size={14} /> {available ? 'Replace File' : 'Upload Tickets'}</>}
           </button>
           <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFileChange} />
         </div>
@@ -476,7 +384,7 @@ function ProjectsTabView({ managerName, dbManager, isOthers }: { managerName: st
   );
 }
 
-type EngPopupMode = 'all' | 'fr' | 'res' | 'hygiene';
+type EngPopupMode = 'all' | 'fr' | 'res' | 'hygiene' | 'productType';
 
 interface EngPopupState {
   engName: string;
@@ -496,10 +404,11 @@ function EngMetricPopup({
   onClose: () => void;
 }) {
   const titles: Record<EngPopupMode, string> = {
-    all:     'All Tickets',
-    fr:      'FR Breached Tickets',
-    res:     'Resolution Breached Tickets',
-    hygiene: 'Email Hygiene Score',
+    all:         'All Tickets',
+    fr:          'FR Breached Tickets',
+    res:         'Resolution Breached Tickets',
+    hygiene:     'Email Hygiene Score',
+    productType: 'Product Types',
   };
 
   return createPortal(
@@ -534,10 +443,55 @@ function EngMetricPopup({
           {state.mode === 'hygiene' && !hygieneMetric && (
             <p className="text-center text-sm text-gray-400 py-10">No hygiene data available for {state.engName}.</p>
           )}
+          {state.mode === 'productType' && <ProductTypeBreakdown tickets={state.tickets} jiraBaseUrl={jiraBaseUrl} />}
         </div>
       </div>
     </div>,
     document.body
+  );
+}
+
+// Groups an engineer's tickets by their "Product Type" column value -- expand a row to
+// see the actual tickets behind that count, reusing the same ticket table used elsewhere
+// in this popup.
+function ProductTypeBreakdown({ tickets, jiraBaseUrl }: { tickets: any[]; jiraBaseUrl: string }) {
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  const grouped: Record<string, any[]> = {};
+  for (const t of tickets) {
+    const pt = (t.productType || '').trim() || 'Unspecified';
+    if (!grouped[pt]) grouped[pt] = [];
+    grouped[pt].push(t);
+  }
+  const rows = Object.entries(grouped).sort((a, b) => b[1].length - a[1].length);
+
+  if (rows.length === 0) {
+    return <p className="text-center text-sm text-gray-400 py-10">No product type data for this engineer.</p>;
+  }
+
+  return (
+    <div className="divide-y divide-gray-100">
+      {rows.map(([pt, list]) => {
+        const isOpen = expanded === pt;
+        return (
+          <div key={pt}>
+            <button
+              onClick={() => setExpanded(isOpen ? null : pt)}
+              className="w-full flex items-center justify-between px-5 py-3 hover:bg-gray-50 transition-colors text-left"
+            >
+              <span className="text-sm font-medium text-gray-800">{pt}</span>
+              <span className="flex items-center gap-2 flex-shrink-0">
+                <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-semibold">
+                  {list.length} ticket{list.length !== 1 ? 's' : ''}
+                </span>
+                <ChevronRight size={14} className={`text-gray-400 transition-transform duration-150 ${isOpen ? 'rotate-90' : ''}`} />
+              </span>
+            </button>
+            {isOpen && <ExcelTicketTable tickets={list} jiraBaseUrl={jiraBaseUrl} />}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -564,8 +518,7 @@ function EngineersTabView({
   ];
 
   const renderRow = (rowName: string, isManager: boolean) => {
-    const { totalTickets, resBreaches, breachRate, tickets } = getEngineerJiraData(allJiraEngineers, rowName);
-    const resTickets    = tickets.filter((t: any) => t.resBreached);
+    const { totalTickets, resBreaches, breachRate, productTypes, tickets, resTickets } = getEngineerJiraData(allJiraEngineers, rowName);
     const hygieneMetric = getEngineerHygieneData(allHygieneMetrics, rowName);
     const lmsScore      = getEngineerLmsScore(rowName);
     const checkinDelay  = getEngineerCheckinDelay(rowName);
@@ -612,6 +565,17 @@ function EngineersTabView({
               ${breachRate > 20 ? 'bg-red-100 text-red-700' : breachRate > 0 ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}`}>
               {breachRate}%
             </span>
+          ) : <span className="text-gray-300">—</span>}
+        </td>
+        <td className="px-4 py-3 text-center">
+          {jiraAvailable ? (
+            <button
+              onClick={() => productTypes.length > 0 && setPopup({ engName: rowName, mode: 'productType', tickets })}
+              className={`font-semibold text-gray-800 ${productTypes.length > 0 ? 'hover:text-indigo-600 cursor-pointer' : 'cursor-default text-gray-300'}`}
+              title={productTypes.length > 0 ? productTypes.join(', ') : undefined}
+            >
+              {productTypes.length}
+            </button>
           ) : <span className="text-gray-300">—</span>}
         </td>
         <td className="px-4 py-3 text-center">
@@ -667,6 +631,7 @@ function EngineersTabView({
                 <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-500 whitespace-nowrap">Total</th>
                 <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-500 whitespace-nowrap">Res</th>
                 <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-500 whitespace-nowrap">Breach%</th>
+                <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-500 whitespace-nowrap">Product Types</th>
                 <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-500 whitespace-nowrap">Hygiene</th>
                 <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-500 whitespace-nowrap">LMS /10</th>
                 <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-500 whitespace-nowrap">Avg. Delay</th>
@@ -789,7 +754,7 @@ function ExcelTicketTable({ tickets, jiraBaseUrl }: { tickets: any[]; jiraBaseUr
             <th className="px-3 py-2 text-left font-medium">Summary</th>
             <th className="px-3 py-2 text-left font-medium whitespace-nowrap">Status</th>
             <th className="px-3 py-2 text-left font-medium whitespace-nowrap">Reporter</th>
-            <th className="px-3 py-2 text-center font-medium whitespace-nowrap">FR Breach</th>
+            <th className="px-3 py-2 text-left font-medium whitespace-nowrap">Assignee</th>
             <th className="px-3 py-2 text-center font-medium whitespace-nowrap">Res Breach</th>
             <th className="px-3 py-2 text-left font-medium whitespace-nowrap">Created</th>
           </tr>
@@ -813,11 +778,7 @@ function ExcelTicketTable({ tickets, jiraBaseUrl }: { tickets: any[]; jiraBaseUr
               <td className="px-3 py-2 max-w-[320px] truncate text-gray-700" title={t.summary}>{t.summary || '—'}</td>
               <td className="px-3 py-2 whitespace-nowrap text-gray-600">{t.status || '—'}</td>
               <td className="px-3 py-2 whitespace-nowrap text-gray-600">{t.reporter || t.reporterName || '—'}</td>
-              <td className="px-3 py-2 text-center">
-                {t.frBreached
-                  ? <span className="px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 font-medium">Yes</span>
-                  : <span className="text-gray-300">—</span>}
-              </td>
+              <td className="px-3 py-2 whitespace-nowrap text-gray-600">{t.assignee || 'Unassigned'}</td>
               <td className="px-3 py-2 text-center">
                 {t.resBreached
                   ? <span className="px-1.5 py-0.5 rounded bg-red-100 text-red-700 font-medium">Yes</span>
@@ -930,19 +891,49 @@ function engineerMatch(jiraAssignee: string, canonicalName: string): boolean {
   return false;
 }
 
+// engineerMatch()'s `cn.startsWith(jv)` check is true for ANY canonicalName when jv is ''
+// (every string starts with the empty string) -- so it must never be called with a blank
+// "SLA Breached By" value, or every unbreached ticket would look like a match for
+// everyone. This wrapper makes that guard impossible to forget at the call sites below.
+function slaBreachedByMatch(slaBreachedBy: string, canonicalName: string): boolean {
+  return (slaBreachedBy || '').trim() !== '' && engineerMatch(slaBreachedBy, canonicalName);
+}
+
 function getEngineerJiraData(allJiraEngineers: any[], canonicalName: string) {
+  // Every ticket appears under exactly one assignee bucket, so flattening all of them
+  // reconstructs the full uploaded ticket set -- needed because "SLA Breached By" can
+  // name someone other than the ticket's assignee (e.g. assigned to one engineer, but
+  // another engineer's delay is what actually breached it).
+  const allTickets = allJiraEngineers.flatMap((e: any) => e.tickets ?? []);
+  const usesSlaBreachedBy = allTickets.some((t: any) => (t.slaBreachedBy || '').trim() !== '');
+
   const matches     = allJiraEngineers.filter(e => engineerMatch(e.engineerName, canonicalName));
   const tickets     = matches.flatMap(e => e.tickets ?? []);
   const totalTickets = tickets.length;
   const frBreaches  = tickets.filter((t: any) => t.frBreached).length;
-  const resBreaches = tickets.filter((t: any) => t.resBreached).length;
+
+  // Prefer "SLA Breached By" (searched across ALL tickets, not just this engineer's own
+  // assignments) whenever the uploaded file has that column; fall back to the older
+  // assignee-scoped "Resolution SLA Breach" flag for files that don't.
+  const resTickets = usesSlaBreachedBy
+    ? allTickets.filter((t: any) => slaBreachedByMatch(t.slaBreachedBy, canonicalName))
+    : tickets.filter((t: any) => t.resBreached);
+  const resBreaches = resTickets.length;
+
   const openTickets = tickets.filter((t: any) => {
     const s = (t.status || '').toLowerCase();
     return !['done', 'resolved', 'closed', 'completed'].some(x => s.includes(x));
   }).length;
-  const anyBreached   = tickets.filter((t: any) => t.frBreached || t.resBreached).length;
+  const anyBreached = usesSlaBreachedBy
+    ? tickets.filter((t: any) => t.frBreached || slaBreachedByMatch(t.slaBreachedBy, canonicalName)).length
+    : tickets.filter((t: any) => t.frBreached || t.resBreached).length;
   const breachRate  = totalTickets > 0 ? Math.round((anyBreached / totalTickets) * 100) : 0;
-  return { totalTickets, frBreaches, resBreaches, openTickets, breachRate, tickets };
+  // Distinct Product Type values across this engineer's tickets -- how many different
+  // products/migration types they're working across, not just how many tickets.
+  const productTypes = Array.from(new Set(
+    tickets.map((t: any) => (t.productType || '').trim()).filter(Boolean)
+  )).sort();
+  return { totalTickets, frBreaches, resBreaches, openTickets, breachRate, productTypes, tickets, resTickets };
 }
 
 function getEngineerHygieneData(allHygieneMetrics: any[], canonicalName: string) {
@@ -1669,9 +1660,8 @@ export default function ManagerDashboardPage() {
       {/* Banners */}
       <div className="space-y-2">
         <ExcelUploadBanner />
-        <NtaExcelUploadBanner />
         <NtaConnectBanner />
-        {/* Neutara Link / Unlink card — only visible once a ticket export has been uploaded above (ntaApiKeyPresent now reflects "data uploaded", not a live API key — see ticketingController.getConfig) */}
+        {/* Neutara Link / Unlink card — only visible to admin and only when API key is present in .env */}
         {!ntaConfigLoading && ntaApiKeyPresent && (
           <div className={`rounded-xl border p-3 flex items-center justify-between gap-4 ${ntaEnabled ? 'border-indigo-200 bg-indigo-50' : 'border-gray-200 bg-gray-50'}`}>
             <div className="flex items-center gap-2.5">
@@ -2582,10 +2572,63 @@ interface LeaderboardRow {
   compositeScore: number;
 }
 
+// Whichever of the three weighted inputs is highest/lowest FOR THIS PERSON -- "why do
+// they rank here" rather than just "where do they rank". Hygiene missing entirely (null)
+// is excluded from being called out as a strength/weakness since there's no real signal.
+function bestAndWorstMetric(r: LeaderboardRow): { best: [string, number]; worst: [string, number] } {
+  const entries: [string, number][] = [
+    ['customer volume', r.volumeScore],
+    ['on-time delivery', r.pctOnTime],
+    ...(r.hygieneScore !== null ? [['PMO Hygiene', r.hygieneScore] as [string, number]] : []),
+  ];
+  const sorted = [...entries].sort((a, b) => b[1] - a[1]);
+  return { best: sorted[0], worst: sorted[sorted.length - 1] };
+}
+
+function formatMetricValue(name: string, value: number): string {
+  return name === 'on-time delivery' ? `${value}%` : String(value);
+}
+
+// Auto-generated comparison, same spirit as the Reports → Audit leaderboard's insight
+// bullets -- names who's ahead, by how much, and what's actually driving it, rather than
+// leaving the reader to reverse-engineer a comparison from a column of numbers.
+function LeaderboardInsights({ rows }: { rows: LeaderboardRow[] }) {
+  if (rows.length < 2) return null;
+  const leader = rows[0];
+  const runnerUp = rows[1];
+  const laggard = rows[rows.length - 1];
+  const gap = leader.compositeScore - runnerUp.compositeScore;
+  const leaderBest = bestAndWorstMetric(leader).best;
+  const laggardWorst = bestAndWorstMetric(laggard).worst;
+
+  return (
+    <div className="grid sm:grid-cols-2 gap-3">
+      <div className="bg-green-50 border border-green-100 rounded-xl px-4 py-3">
+        <p className="text-xs font-semibold text-green-700 uppercase tracking-wide mb-1">Leading</p>
+        <p className="text-sm text-green-900">
+          <span className="font-semibold">{leader.manager}</span> is on top with a score of{' '}
+          <span className="font-semibold">{leader.compositeScore}</span>
+          {gap > 0 && <> — {gap} point{gap !== 1 ? 's' : ''} ahead of {runnerUp.manager}</>}, driven by{' '}
+          {leaderBest[0]} ({formatMetricValue(leaderBest[0], leaderBest[1])}).
+        </p>
+      </div>
+      <div className="bg-amber-50 border border-amber-100 rounded-xl px-4 py-3">
+        <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-1">Most room to improve</p>
+        <p className="text-sm text-amber-900">
+          <span className="font-semibold">{laggard.manager}</span> is ranked last at{' '}
+          <span className="font-semibold">{laggard.compositeScore}</span>, mainly held back by{' '}
+          {laggardWorst[0]} ({formatMetricValue(laggardWorst[0], laggardWorst[1])}).
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function LeaderboardTable({ rows }: { rows: LeaderboardRow[] }) {
   if (rows.length === 0) {
     return <p className="text-sm text-gray-400 py-10 text-center">No leaderboard data for this segment yet.</p>;
   }
+  const leaderScore = rows[0].compositeScore;
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
       <table className="w-full text-sm">
@@ -2598,7 +2641,8 @@ function LeaderboardTable({ rows }: { rows: LeaderboardRow[] }) {
             <th className="px-4 py-3 text-center">Projects</th>
             <th className="px-4 py-3 text-center">On-Time %</th>
             <th className="px-4 py-3 text-center">PMO Hygiene</th>
-            <th className="px-4 py-3 text-center">Score</th>
+            <th className="px-4 py-3">Score</th>
+            <th className="px-4 py-3 text-center">Vs. Leader</th>
           </tr>
         </thead>
         <tbody>
@@ -2619,7 +2663,22 @@ function LeaderboardTable({ rows }: { rows: LeaderboardRow[] }) {
                 </span>
               </td>
               <td className="px-4 py-3 text-center text-gray-600">{r.hygieneScore ?? '—'}</td>
-              <td className="px-4 py-3 text-center font-bold text-primary-700">{r.compositeScore}</td>
+              <td className="px-4 py-3">
+                <div className="flex items-center gap-2 min-w-[120px]">
+                  <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full ${r.compositeScore >= 70 ? 'bg-green-500' : r.compositeScore >= 50 ? 'bg-amber-500' : 'bg-red-500'}`}
+                      style={{ width: `${Math.min(100, r.compositeScore)}%` }}
+                    />
+                  </div>
+                  <span className="font-bold text-gray-800 w-6 text-right">{r.compositeScore}</span>
+                </div>
+              </td>
+              <td className="px-4 py-3 text-center text-xs">
+                {i === 0
+                  ? <span className="text-green-600 font-semibold">Leader</span>
+                  : <span className="text-gray-500">−{leaderScore - r.compositeScore}</span>}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -2666,6 +2725,7 @@ function LeaderboardView() {
           ))}
         </div>
       </div>
+      <LeaderboardInsights rows={rows} />
       <LeaderboardTable rows={rows} />
     </div>
   );
