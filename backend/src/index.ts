@@ -36,6 +36,7 @@ import smtpRoutes from './routes/smtpRoutes';
 import pmoSettingsRoutes from './routes/pmoSettingsRoutes';
 import archiveRoutes from './routes/archiveRoutes';
 import psEngagementsRoutes from './routes/psEngagementsRoutes';
+import actionItemRoutes from './routes/actionItemRoutes';
 import overageRoutes from './routes/overageRoutes';
 import feedbackRoutes from './routes/feedbackRoutes';
 import externalApiRoutes from './routes/externalApiRoutes';
@@ -123,6 +124,7 @@ app.use('/api/call-hygiene', callHygieneRoutes);
 app.use('/api/escalation-mails', escalationMailsRoutes);
 app.use('/api/call-transcripts', callTranscriptRoutes);
 app.use('/api/ps-engagements', psEngagementsRoutes);
+app.use('/api/action-items', actionItemRoutes);
 app.use('/api/overage', overageRoutes);
 app.use('/api/feedback', feedbackRoutes);
 app.use('/api/external', externalApiRoutes);
@@ -514,6 +516,23 @@ async function runMigrations() {
     updated_at TIMESTAMP DEFAULT NOW()
   )`);
   await execute(`ALTER TABLE ps_engagements ADD COLUMN IF NOT EXISTS line_items JSONB DEFAULT '[]'`);
+
+  // Manager Dashboard's Action Items tab — MBR follow-up items tracked by
+  // month, accountable owner, status and priority. Edit access is
+  // ADMIN + PROJECT_MANAGER at the API layer (see actionItemController) even
+  // though Manager Dashboard itself is currently ADMIN-only end to end, so
+  // PMs can't reach this tab yet — the check is there for when it opens up.
+  await execute(`CREATE TABLE IF NOT EXISTS action_items (
+    id VARCHAR(64) PRIMARY KEY,
+    month VARCHAR(20) NOT NULL,
+    item TEXT NOT NULL,
+    accountable VARCHAR(255),
+    status VARCHAR(20) NOT NULL DEFAULT 'OPEN',
+    priority VARCHAR(20) NOT NULL DEFAULT 'MEDIUM',
+    created_by VARCHAR(255),
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+  )`);
 
   // Feedback items (2026-08-25 — chat-style suggestions/issues widget) — any authenticated
   // user can raise an ISSUE or SUGGESTION; visible to everyone (a shared feed, not private
