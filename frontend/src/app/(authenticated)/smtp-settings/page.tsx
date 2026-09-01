@@ -31,6 +31,9 @@ export default function SmtpSettingsPage() {
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
   useEffect(() => {
+    // The GET itself returns SMTP host/config — don't fire it for a role that
+    // the page is about to show "Access Restricted" to anyway.
+    if (user?.role !== 'ADMIN') { setIsLoading(false); return; }
     api.get('/smtp')
       .then((r) => {
         const d = r.data.data;
@@ -39,7 +42,7 @@ export default function SmtpSettingsPage() {
       })
       .catch(() => {})
       .finally(() => setIsLoading(false));
-  }, []);
+  }, [user?.role]);
 
   const handleChange = (field: keyof SmtpForm, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
