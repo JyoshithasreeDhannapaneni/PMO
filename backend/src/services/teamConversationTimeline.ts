@@ -299,3 +299,15 @@ export function buildExchanges(timeline: ConversationTimeline): Exchange[] {
   }
   return exchanges;
 }
+
+// Team messages NOT covered by any exchange -- either this conversation has no customer
+// message in the timeline at all, or this reply landed before the first one arrived.
+// 2026-09-01 fix: this is real, legitimate customer-facing work the Exchange model has no
+// way to represent -- a PM proactively emailing a customer to book a migration call, send
+// a kickoff deck, or confirm a delta migration is complete isn't "answering" anything, so
+// it never became part of an Exchange and was previously invisible to scoring entirely,
+// even when it was a substantive, well-written piece of real customer communication.
+export function findOrphanTeamMessages(timeline: ConversationTimeline): TimelineEntry[] {
+  const firstCustomerTime = timeline.entries.find((e) => e.kind === 'customer')?.time ?? Infinity;
+  return timeline.entries.filter((e) => e.kind === 'team' && e.time < firstCustomerTime);
+}
