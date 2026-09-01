@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { riskController } from '../controllers/riskController';
+import { requireAuth } from '../middleware/auth';
 
 const router = Router();
 
@@ -16,12 +17,12 @@ router.get('/project/:projectId/summary', riskController.getSummary);
 router.get('/:id', riskController.getById);
 
 // POST /api/risks - Create risk
-router.post('/', riskController.create);
+router.post('/', requireAuth, riskController.create);
 
 // PUT /api/risks/:id - Update risk
-router.put('/:id', riskController.update);
+router.put('/:id', requireAuth, riskController.update);
 
 // DELETE /api/risks/:id - Delete risk
-router.delete('/:id', riskController.delete);
+router.delete('/:id', requireAuth, riskController.delete);
 
 export default router;

@@ -610,23 +610,27 @@ export default function DashboardPage() {
                         </td>
                         {/* Escalate action with inline priority selector */}
                         <td className="text-center py-3 px-3" onClick={e => e.stopPropagation()}>
-                          <EscalateControl
-                            projectId={p.id}
-                            isEscalated={false}
-                            defaultPriority={p.daysOverdue >= 14 ? 'HIGH' : p.daysOverdue >= 7 ? 'MEDIUM' : 'LOW'}
-                            busy={escalatingId === p.id}
-                            onEscalate={async (priority) => {
-                              setEscalatingId(p.id);
-                              const token = localStorage.getItem('token');
-                              await fetch(`${process.env.NEXT_PUBLIC_API_URL||'http://localhost:3001'}/api/dashboard/escalate/${p.id}`, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                                body: JSON.stringify({ priority }),
-                              });
-                              setEscalatingId(null);
-                              await Promise.all([refetchOveraged(), refetchEscalated()]);
-                            }}
-                          />
+                          {isViewer ? (
+                            <span className="text-xs text-gray-300">—</span>
+                          ) : (
+                            <EscalateControl
+                              projectId={p.id}
+                              isEscalated={false}
+                              defaultPriority={p.daysOverdue >= 14 ? 'HIGH' : p.daysOverdue >= 7 ? 'MEDIUM' : 'LOW'}
+                              busy={escalatingId === p.id}
+                              onEscalate={async (priority) => {
+                                setEscalatingId(p.id);
+                                const token = localStorage.getItem('token');
+                                await fetch(`${process.env.NEXT_PUBLIC_API_URL||'http://localhost:3001'}/api/dashboard/escalate/${p.id}`, {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                                  body: JSON.stringify({ priority }),
+                                });
+                                setEscalatingId(null);
+                                await Promise.all([refetchOveraged(), refetchEscalated()]);
+                              }}
+                            />
+                          )}
                         </td>
                         <td className="text-center py-3 px-3">
                           <button
@@ -703,7 +707,7 @@ export default function DashboardPage() {
                         <td className="text-center py-3 px-3" onClick={e => e.stopPropagation()}>
                           <select
                             defaultValue={p.escalationPriority || 'MEDIUM'}
-                            disabled={escalatingId === p.id}
+                            disabled={isViewer || escalatingId === p.id}
                             onChange={async (e) => {
                               const priority = e.target.value as 'LOW' | 'MEDIUM' | 'HIGH';
                               setEscalatingId(p.id);
@@ -733,7 +737,9 @@ export default function DashboardPage() {
                           </span>
                         </td>
                         <td className="text-center py-3 px-3" onClick={e => e.stopPropagation()}>
-                          {p.isEscalated ? (
+                          {isViewer ? (
+                            <span className="text-xs text-gray-300">—</span>
+                          ) : p.isEscalated ? (
                             <button
                               disabled={escalatingId === p.id}
                               onClick={async () => {

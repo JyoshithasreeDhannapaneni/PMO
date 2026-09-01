@@ -240,13 +240,20 @@ export default function ProjectTasksPage() {
     try {
       setUpdatingTask(taskId);
       const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
-      await fetch(`${API_URL}/api/tasks/${taskId}/status`, {
+      const res = await fetch(`${API_URL}/api/tasks/${taskId}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({ status }),
       });
+      if (!res.ok) {
+        const json = await res.json().catch(() => null);
+        showToast('error', 'Status update failed', json?.error?.message || json?.error || 'Could not save the new status. Please try again.');
+        return;
+      }
       await fetchData();
-    } catch { /* silent */ } finally { setUpdatingTask(null); }
+    } catch {
+      showToast('error', 'Status update failed', 'Could not connect to the server.');
+    } finally { setUpdatingTask(null); }
   };
 
   const openAddTask = () => {
@@ -275,12 +282,19 @@ export default function ProjectTasksPage() {
     if (!confirm(`Delete task "${taskName}"? This cannot be undone.`)) return;
     try {
       const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
-      await fetch(`${API_URL}/api/tasks/${taskId}`, {
+      const res = await fetch(`${API_URL}/api/tasks/${taskId}`, {
         method: 'DELETE',
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
+      if (!res.ok) {
+        const json = await res.json().catch(() => null);
+        showToast('error', 'Delete failed', json?.error?.message || json?.error || `Could not delete "${taskName}". Please try again.`);
+        return;
+      }
       await fetchData();
-    } catch { /* silent */ }
+    } catch {
+      showToast('error', 'Delete failed', 'Could not connect to the server.');
+    }
   };
 
   const saveTask = async () => {
@@ -288,8 +302,9 @@ export default function ProjectTasksPage() {
     setSavingTask(true);
     try {
       const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
+      let res: Response;
       if (taskModal?.mode === 'add') {
-        await fetch(`${API_URL}/api/tasks/project/${projectId}`, {
+        res = await fetch(`${API_URL}/api/tasks/project/${projectId}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
           body: JSON.stringify({
@@ -304,7 +319,7 @@ export default function ProjectTasksPage() {
           }),
         });
       } else if (taskModal?.mode === 'edit' && taskModal.task) {
-        await fetch(`${API_URL}/api/tasks/${taskModal.task.id}`, {
+        res = await fetch(`${API_URL}/api/tasks/${taskModal.task.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
           body: JSON.stringify({
@@ -318,12 +333,19 @@ export default function ProjectTasksPage() {
             progress: taskForm.status === 'DONE' ? 100 : taskForm.progress,
           }),
         });
+      } else {
+        return;
+      }
+      if (!res.ok) {
+        const json = await res.json().catch(() => null);
+        showToast('error', 'Failed to save task', json?.error?.message || json?.error || 'Could not save task. Please try again.');
+        return;
       }
       await fetchData();
       setTaskModal(null);
       showToast('success', taskModal?.mode === 'add' ? 'Task added' : 'Task updated');
     } catch (err: any) {
-      showToast('error', 'Failed to save task', err?.message || 'Could not save task');
+      showToast('error', 'Failed to save task', err?.message || 'Could not connect to the server.');
     } finally {
       setSavingTask(false);
     }

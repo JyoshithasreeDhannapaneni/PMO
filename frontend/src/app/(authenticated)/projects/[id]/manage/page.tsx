@@ -25,7 +25,6 @@ export default function ProjectManagePage({ params }: ProjectManagePageProps) {
   const { data, isLoading, error } = useProject(params.id);
   const { showToast } = useToast();
   const { user } = useAuth();
-  const isViewer = user?.role === 'VIEWER';
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
   const authHeaders: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -160,6 +159,14 @@ export default function ProjectManagePage({ params }: ProjectManagePageProps) {
   }
 
   const project = data.data;
+  // Team/risk/document/change-request mutations are restricted to ADMIN and
+  // the project's own PROJECT_MANAGER — everyone else (including PRE_SALES,
+  // ACCOUNT_MANAGER, and VIEWER) sees a read-only view. Every downstream
+  // gate in this file checks `!isViewer`, so redefining what this flag means
+  // here (rather than renaming every call site) keeps the fix contained to
+  // one place. See security review.
+  const canEdit = user?.role === 'ADMIN' || (user?.role === 'PROJECT_MANAGER' && project.projectManager === user?.name);
+  const isViewer = !canEdit;
 
   return (
     <div className="animate-fadeIn space-y-6">
@@ -220,6 +227,7 @@ export default function ProjectManagePage({ params }: ProjectManagePageProps) {
                 onRefresh={() => loadTabData('risks')}
                 onDelete={(id) => handleDelete('risks', id)}
                 isViewer={isViewer}
+                authHeaders={authHeaders}
               />
             )}
             {activeTab === 'team' && (
@@ -229,6 +237,7 @@ export default function ProjectManagePage({ params }: ProjectManagePageProps) {
                 onRefresh={() => loadTabData('team')}
                 onDelete={(id) => handleDelete('team', id)}
                 isViewer={isViewer}
+                authHeaders={authHeaders}
               />
             )}
             {activeTab === 'documents' && (
@@ -238,6 +247,7 @@ export default function ProjectManagePage({ params }: ProjectManagePageProps) {
                 onRefresh={() => loadTabData('documents')}
                 onDelete={(id) => handleDelete('documents', id)}
                 isViewer={isViewer}
+                authHeaders={authHeaders}
               />
             )}
             {activeTab === 'reports' && (
@@ -255,6 +265,7 @@ export default function ProjectManagePage({ params }: ProjectManagePageProps) {
                 onRefresh={() => loadTabData('changes')}
                 onDelete={(id) => handleDelete('changes', id)}
                 isViewer={isViewer}
+                authHeaders={authHeaders}
               />
             )}
           </>
@@ -265,7 +276,7 @@ export default function ProjectManagePage({ params }: ProjectManagePageProps) {
 }
 
 // Risks Tab Component
-function RisksTab({ risks, projectId, onRefresh, onDelete, isViewer }: any) {
+function RisksTab({ risks, projectId, onRefresh, onDelete, isViewer, authHeaders }: any) {
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
     title: '', description: '', category: 'TECHNICAL', probability: 'MEDIUM', 
@@ -277,7 +288,7 @@ function RisksTab({ risks, projectId, onRefresh, onDelete, isViewer }: any) {
     try {
       await fetch(`${API_URL}/api/risks`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders,
         body: JSON.stringify({ ...formData, projectId }),
       });
       setShowForm(false);
@@ -1057,7 +1068,7 @@ function OptionBPreview({ team, isViewer, onEdit, onDelete, onAddClick }: { team
 }
 
 // Team Tab Component
-function TeamTab({ team, projectId, onRefresh, onDelete, isViewer }: any) {
+function TeamTab({ team, projectId, onRefresh, onDelete, isViewer, authHeaders }: any) {
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({ name: '', email: '', role: 'TEAM_MEMBER', department: '', allocation: 100, shift: '', shiftTimezone: '', workingPattern: 'Mon – Fri', migrationTypes: '', capacity: 100, reportingTo: '' });
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -1085,7 +1096,7 @@ function TeamTab({ team, projectId, onRefresh, onDelete, isViewer }: any) {
     try {
       await fetch(`${API_URL}/api/team`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders,
         body: JSON.stringify({ ...formData, projectId }),
       });
       setShowForm(false);
@@ -1106,7 +1117,7 @@ function TeamTab({ team, projectId, onRefresh, onDelete, isViewer }: any) {
     try {
       await fetch(`${API_URL}/api/team/${editingId}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders,
         body: JSON.stringify(editData),
       });
       setEditingId(null);
@@ -1323,7 +1334,7 @@ function TeamTab({ team, projectId, onRefresh, onDelete, isViewer }: any) {
 }
 
 // Documents Tab Component
-function DocumentsTab({ documents, projectId, onRefresh, onDelete, isViewer }: any) {
+function DocumentsTab({ documents, projectId, onRefresh, onDelete, isViewer, authHeaders }: any) {
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
     name: '', description: '', category: 'OTHER', fileUrl: '', version: '1.0'
@@ -1334,7 +1345,7 @@ function DocumentsTab({ documents, projectId, onRefresh, onDelete, isViewer }: a
     try {
       await fetch(`${API_URL}/api/documents`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders,
         body: JSON.stringify({ ...formData, projectId }),
       });
       setShowForm(false);
@@ -1617,7 +1628,7 @@ function ReportsTab({ reports, onGenerate, onDelete, isViewer }: any) {
 }
 
 // Change Requests Tab Component
-function ChangeRequestsTab({ changeRequests, projectId, onRefresh, onDelete, isViewer }: any) {
+function ChangeRequestsTab({ changeRequests, projectId, onRefresh, onDelete, isViewer, authHeaders }: any) {
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
     title: '', description: '', changeType: 'SCOPE', priority: 'MEDIUM',
@@ -1629,7 +1640,7 @@ function ChangeRequestsTab({ changeRequests, projectId, onRefresh, onDelete, isV
     try {
       await fetch(`${API_URL}/api/change-requests`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders,
         body: JSON.stringify({
           ...formData,
           projectId,
@@ -1649,7 +1660,7 @@ function ChangeRequestsTab({ changeRequests, projectId, onRefresh, onDelete, isV
     try {
       await fetch(`${API_URL}/api/change-requests/${id}/approve`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders,
         body: JSON.stringify({ approvedBy: 'Admin' }),
       });
       onRefresh();
@@ -1662,7 +1673,7 @@ function ChangeRequestsTab({ changeRequests, projectId, onRefresh, onDelete, isV
     try {
       await fetch(`${API_URL}/api/change-requests/${id}/reject`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders,
         body: JSON.stringify({ reviewedBy: 'Admin' }),
       });
       onRefresh();

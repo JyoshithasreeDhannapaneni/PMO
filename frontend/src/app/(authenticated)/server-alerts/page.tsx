@@ -294,7 +294,7 @@ export default function ServerNotificationsPage() {
                         ) : '—'}
                       </td>
                       <td className="py-3 px-3 text-center">
-                        {p.hasEmail && !isViewer ? (
+                        {p.hasEmail && isAdmin ? (
                           <button
                             onClick={() => handleSend(p.id)}
                             disabled={sending === p.id}
