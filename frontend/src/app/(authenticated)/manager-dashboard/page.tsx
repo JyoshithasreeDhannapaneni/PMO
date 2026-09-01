@@ -2622,6 +2622,24 @@ function ActionItemsView() {
     return map;
   }, [allItems]);
 
+  // Months collapse by default — with 12 always fully expanded, most of the
+  // page was empty "No action items" cards for months nobody's working on.
+  // Open on load: the current month (so there's always somewhere obvious to
+  // start) plus any month that already has items (so existing work stays
+  // visible without an extra click). Toggling is manual from then on.
+  const [expandedMonths, setExpandedMonths] = useState<Set<string>>(() => {
+    const set = new Set<string>([currentMonthStr()]);
+    for (const i of allItems) set.add(i.month);
+    return set;
+  });
+  const toggleMonth = (monthKey: string) => {
+    setExpandedMonths((prev) => {
+      const next = new Set(prev);
+      if (next.has(monthKey)) next.delete(monthKey); else next.add(monthKey);
+      return next;
+    });
+  };
+
   const startAdd = (monthKey: string) => {
     setAddingMonth(monthKey);
     setAddDraft({ item: '', accountable: '', status: 'OPEN' });
@@ -2718,16 +2736,24 @@ function ActionItemsView() {
           const items = itemsByMonth.get(monthKey) || [];
           const isCurrentMonth = monthKey === currentMonthStr();
           const isPast = monthKey < currentMonthStr();
+          const isExpanded = expandedMonths.has(monthKey);
 
           return (
             <div key={monthKey} className={`bg-white rounded-xl border overflow-hidden flex flex-col ${isCurrentMonth ? 'border-indigo-300 ring-1 ring-indigo-100' : 'border-gray-200'}`}>
-              <div className={`flex items-center justify-between px-4 py-2.5 border-b ${isCurrentMonth ? 'bg-indigo-50 border-indigo-100' : 'bg-gray-50 border-gray-100'}`}>
-                <span className={`text-sm font-semibold ${isCurrentMonth ? 'text-indigo-700' : 'text-gray-700'}`}>{name}</span>
+              <button
+                onClick={() => toggleMonth(monthKey)}
+                className={`flex items-center justify-between px-4 py-2.5 border-b transition-colors ${isCurrentMonth ? 'bg-indigo-50 border-indigo-100 hover:bg-indigo-100' : 'bg-gray-50 border-gray-100 hover:bg-gray-100'}`}
+              >
+                <span className="flex items-center gap-2">
+                  <ChevronRight size={13} className={`text-gray-400 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                  <span className={`text-sm font-semibold ${isCurrentMonth ? 'text-indigo-700' : 'text-gray-700'}`}>{name}</span>
+                </span>
                 {items.length > 0 && (
                   <span className="text-xs text-gray-400">{items.length} item{items.length !== 1 ? 's' : ''}</span>
                 )}
-              </div>
+              </button>
 
+              {isExpanded && (
               <div className="flex-1 divide-y divide-gray-50">
                 {items.length === 0 && addingMonth !== monthKey && (
                   <p className="text-xs text-gray-400 text-center py-6">No action items</p>
@@ -2778,13 +2804,16 @@ function ActionItemsView() {
                     );
                   }
 
+                  const nextStatusKey = i.status === 'OPEN' ? 'IN_PROGRESS' : i.status === 'IN_PROGRESS' ? 'DONE' : 'OPEN';
+                  const nextDot = STATUS_DOT[nextStatusKey];
+
                   return (
-                    <div key={i.id} className="px-3 py-2.5 group">
+                    <div key={i.id} className="px-3 py-2.5">
                       <div className="flex items-start gap-2">
                         <button
                           onClick={() => cycleStatus(i)}
                           disabled={!canEdit}
-                          title={canEdit ? `${dot.label} — click to change` : dot.label}
+                          title={canEdit ? `Now: ${dot.short}. Click to mark as ${nextDot.short}.` : dot.label}
                           className={`flex-shrink-0 w-3.5 h-3.5 rounded-full mt-1 ${dot.dotCls} ${canEdit ? 'cursor-pointer hover:ring-2 hover:ring-offset-1 hover:ring-gray-300' : ''}`}
                         />
                         <div className="flex-1 min-w-0">
@@ -2795,7 +2824,7 @@ function ActionItemsView() {
                           </div>
                         </div>
                         {canEdit && (
-                          <div className="flex-shrink-0 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="flex-shrink-0 flex items-center gap-1">
                             <button onClick={() => startEdit(i)} title="Edit" className="text-gray-300 hover:text-indigo-600">
                               <Pencil size={12} />
                             </button>
@@ -2848,8 +2877,9 @@ function ActionItemsView() {
                   </div>
                 )}
               </div>
+              )}
 
-              {canEdit && addingMonth !== monthKey && (
+              {isExpanded && canEdit && addingMonth !== monthKey && (
                 <button
                   onClick={() => startAdd(monthKey)}
                   className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium text-indigo-600 hover:bg-indigo-50 border-t border-gray-100 transition-colors"
