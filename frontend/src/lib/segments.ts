@@ -133,6 +133,13 @@ export const CHECKIN_DELAYS: { name: string; delayMin: number }[] = [
   { name: 'Harshith',        delayMin: 14.8 },
 ];
 
+// Audio % per engineer — manually entered (no automated source for this yet),
+// same pattern as LMS_SCORES/MEETING_ATTENDANCE/CHECKIN_DELAYS above. Add an
+// entry here for each person as their real number comes in; anyone missing
+// from this list just shows "—" in the Team table.
+export const AUDIO_PERCENTAGES: { name: string; pct: number }[] = [
+];
+
 // Some data sources (manual entry, imports) store a manager's full name
 // ("Raghu Yellani", "Sriram Ramakrishnan", "Abhishek sakala") while segments.ts
 // uses short canonical first names ("Raghu", "Sriram", "Abhishek"). Treat
