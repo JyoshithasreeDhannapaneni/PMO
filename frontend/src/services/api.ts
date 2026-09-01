@@ -847,6 +847,10 @@ export const auditApi = {
     const { data } = await api.get('/audit/manager-leaderboard', { params });
     return data;
   },
+  getManagerDashboardLeaderboard: async () => {
+    const { data } = await api.get('/audit/manager-dashboard-leaderboard');
+    return data;
+  },
   getWeeklyTrend: async (params: { endDate: string; weeks?: number }) => {
     const { data } = await api.get('/audit/weekly-trend', { params });
     return data;
