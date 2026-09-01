@@ -10,7 +10,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import {
   Loader2, AlertCircle, X, PlayCircle, PauseCircle,
-  CheckCircle, Clock, ChevronRight, Search, Link2Off,
+  CheckCircle, Clock, ChevronRight, ChevronLeft, Search, Link2Off,
   ArrowLeft, ExternalLink, Upload, FileSpreadsheet, Trash2,
   Plus, Pencil, Check,
 } from 'lucide-react';
@@ -2578,28 +2578,17 @@ const STATUS_DOT: Record<string, { letter: string; short: string; label: string;
 };
 const STATUS_ORDER = ['DONE', 'IN_PROGRESS', 'OPEN'] as const;
 
-// yyyy-MM -> "Jul 2026"
-function monthLabel(month: string): string {
-  const [y, m] = month.split('-').map(Number);
-  if (!y || !m) return month;
-  return new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-}
 function currentMonthStr(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
-interface ActionItemFormState {
-  month: string;
-  item: string;
-  accountable: string;
-  status: string;
-}
+const MONTH_SHORT_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-function emptyActionItemForm(month: string): ActionItemFormState {
-  return { month, item: '', accountable: '', status: 'OPEN' };
-}
-
+// One card per calendar month (Jan–Dec) for the selected year — no day-level
+// dates, since items are only ever tracked by month + year. Each item is
+// editable inline right where it lives; there's no separate table/filter UI
+// to keep this simple.
 function ActionItemsView() {
   const { user } = useAuth();
   const { showToast } = useToast();
@@ -2612,80 +2601,80 @@ function ActionItemsView() {
 
   const allItems: any[] = itemsResp ?? [];
 
-  const availableMonths = useMemo(() => {
-    const set = new Set<string>(allItems.map((i) => i.month));
-    set.add(currentMonthStr());
-    // Always show July and August tabs even with zero items yet, so there's
-    // somewhere to navigate to and log MBR follow-ups for those months —
-    // otherwise a month with no data yet has no tab to click into at all.
-    set.add('2026-07');
-    set.add('2026-08');
-    return Array.from(set).sort();
-  }, [allItems]);
-
-  const [selectedMonth, setSelectedMonth] = useState<string | 'ALL'>(() => availableMonths[availableMonths.length - 1] || currentMonthStr());
-  const [accountableFilter, setAccountableFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState<ActionItemFormState>(() => emptyActionItemForm(currentMonthStr()));
-  const [editingId, setEditingId] = useState<string | null>(null);
-
-  // Accountable is free text now (not a fixed manager list), so the filter
-  // options come from whatever names have actually been typed in so far.
-  const accountableOptions = useMemo(
-    () => Array.from(new Set(allItems.map((i) => (i.accountable || '').trim()).filter(Boolean))).sort(),
-    [allItems]
-  );
-
-  const monthFiltered = selectedMonth === 'ALL' ? allItems : allItems.filter((i) => i.month === selectedMonth);
-  const filtered = monthFiltered.filter((i) => {
-    if (accountableFilter && i.accountable !== accountableFilter) return false;
-    if (statusFilter && i.status !== statusFilter) return false;
-    return true;
+  const [year, setYear] = useState(() => {
+    const [y] = currentMonthStr().split('-').map(Number);
+    return y;
   });
 
-  // Overdue = still open/in-progress and its month has already passed — not a
-  // status anyone sets directly, computed the same way delay is elsewhere in
-  // this app (live, from dates, not a manually-flagged field).
-  const isOverdue = (i: any) => (i.status === 'OPEN' || i.status === 'IN_PROGRESS') && i.month < currentMonthStr();
+  // Which month card has its add-item row open (only one at a time keeps
+  // the page from turning into 12 open forms).
+  const [addingMonth, setAddingMonth] = useState<string | null>(null);
+  const [addDraft, setAddDraft] = useState({ item: '', accountable: '', status: 'OPEN' });
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState({ item: '', accountable: '', status: 'OPEN' });
 
-  const stats = useMemo(() => ({
-    total: filtered.length,
-    done: filtered.filter((i) => i.status === 'DONE').length,
-    inProgress: filtered.filter((i) => i.status === 'IN_PROGRESS').length,
-    overdue: filtered.filter(isOverdue).length,
-  }), [filtered]);
+  const itemsByMonth = useMemo(() => {
+    const map = new Map<string, any[]>();
+    for (const i of allItems) {
+      if (!map.has(i.month)) map.set(i.month, []);
+      map.get(i.month)!.push(i);
+    }
+    return map;
+  }, [allItems]);
 
-  const startAdd = () => {
-    setForm(emptyActionItemForm(selectedMonth === 'ALL' ? currentMonthStr() : selectedMonth));
-    setEditingId(null);
-    setShowForm(true);
+  const startAdd = (monthKey: string) => {
+    setAddingMonth(monthKey);
+    setAddDraft({ item: '', accountable: '', status: 'OPEN' });
   };
+  const cancelAdd = () => setAddingMonth(null);
 
-  const startEdit = (i: any) => {
-    setForm({ month: i.month, item: i.item, accountable: i.accountable || '', status: i.status });
-    setEditingId(i.id);
-    setShowForm(true);
-  };
-
-  const cancelForm = () => { setShowForm(false); setEditingId(null); };
-
-  const saveForm = async () => {
-    if (!form.item.trim()) {
+  const submitAdd = async (monthKey: string) => {
+    if (!addDraft.item.trim()) {
       showToast('warning', 'Action item required', 'Type what needs to be done.');
       return;
     }
     try {
-      if (editingId) {
-        await updateItem.mutateAsync({ id: editingId, data: form });
-        showToast('success', 'Action item updated');
-      } else {
-        await createItem.mutateAsync({ id: `ai-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, ...form });
-        showToast('success', 'Action item added');
-      }
-      cancelForm();
+      await createItem.mutateAsync({
+        id: `ai-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        month: monthKey, item: addDraft.item, accountable: addDraft.accountable, status: addDraft.status,
+      });
+      showToast('success', 'Action item added');
+      setAddingMonth(null);
     } catch (err: any) {
       showToast('error', 'Save failed', err?.response?.data?.error?.message || err?.message || 'Could not save the action item.');
+    }
+  };
+
+  const startEdit = (i: any) => {
+    setEditingId(i.id);
+    setEditDraft({ item: i.item, accountable: i.accountable || '', status: i.status });
+  };
+  const cancelEdit = () => setEditingId(null);
+
+  const submitEdit = async (id: string) => {
+    if (!editDraft.item.trim()) {
+      showToast('warning', 'Action item required', 'Type what needs to be done.');
+      return;
+    }
+    try {
+      await updateItem.mutateAsync({ id, data: editDraft });
+      showToast('success', 'Action item updated');
+      setEditingId(null);
+    } catch (err: any) {
+      showToast('error', 'Save failed', err?.response?.data?.error?.message || err?.message || 'Could not save the action item.');
+    }
+  };
+
+  // A quick tap on the status dot cycles Not Started → In Progress → Done →
+  // Not Started, without opening the full edit row — the fastest way to
+  // update the one thing that changes most often.
+  const cycleStatus = async (i: any) => {
+    if (!canEdit) return;
+    const next = i.status === 'OPEN' ? 'IN_PROGRESS' : i.status === 'IN_PROGRESS' ? 'DONE' : 'OPEN';
+    try {
+      await updateItem.mutateAsync({ id: i.id, data: { status: next } });
+    } catch {
+      showToast('error', 'Could not update status', 'Please try again.');
     }
   };
 
@@ -2699,172 +2688,178 @@ function ActionItemsView() {
     }
   };
 
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-16 text-gray-400">
+        <Loader2 className="w-6 h-6 animate-spin" />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4 py-2">
-      {/* Month tabs */}
-      <div className="flex items-center gap-1 border-b border-gray-200 overflow-x-auto">
-        {availableMonths.map((m) => (
-          <button
-            key={m}
-            onClick={() => setSelectedMonth(m)}
-            className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px whitespace-nowrap transition-colors ${
-              selectedMonth === m ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            {monthLabel(m)}
-          </button>
-        ))}
-        <button
-          onClick={() => setSelectedMonth('ALL')}
-          className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px whitespace-nowrap transition-colors ${
-            selectedMonth === 'ALL' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          All Months
+      {/* Year switcher */}
+      <div className="flex items-center justify-center gap-4">
+        <button onClick={() => setYear((y) => y - 1)} title="Previous year"
+          className="w-8 h-8 rounded-lg border border-gray-200 flex items-center justify-center text-gray-500 hover:text-indigo-600 hover:border-indigo-300 transition-colors">
+          <ChevronLeft size={15} />
+        </button>
+        <span className="text-lg font-bold text-gray-800 w-16 text-center">{year}</span>
+        <button onClick={() => setYear((y) => y + 1)} title="Next year"
+          className="w-8 h-8 rounded-lg border border-gray-200 flex items-center justify-center text-gray-500 hover:text-indigo-600 hover:border-indigo-300 transition-colors">
+          <ChevronRight size={15} />
         </button>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {[
-          { label: 'Total', value: stats.total, cls: 'text-gray-800' },
-          { label: 'Done', value: stats.done, cls: 'text-emerald-600' },
-          { label: 'In Progress', value: stats.inProgress, cls: 'text-orange-600' },
-          { label: 'Overdue', value: stats.overdue, cls: 'text-red-600' },
-        ].map((s) => (
-          <div key={s.label} className="bg-white rounded-xl border border-gray-200 px-4 py-3">
-            <p className={`text-2xl font-bold ${s.cls}`}>{s.value}</p>
-            <p className="text-xs text-gray-500 mt-0.5">{s.label}</p>
-          </div>
-        ))}
-      </div>
+      {/* One card per calendar month */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {MONTH_SHORT_NAMES.map((name, idx) => {
+          const monthKey = `${year}-${String(idx + 1).padStart(2, '0')}`;
+          const items = itemsByMonth.get(monthKey) || [];
+          const isCurrentMonth = monthKey === currentMonthStr();
+          const isPast = monthKey < currentMonthStr();
 
-      {/* Filters + Add */}
-      <div className="flex flex-wrap items-center gap-2">
-        <select value={accountableFilter} onChange={(e) => setAccountableFilter(e.target.value)}
-          className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white text-gray-700">
-          <option value="">Accountable: All</option>
-          {accountableOptions.map((m) => <option key={m} value={m}>{m}</option>)}
-        </select>
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
-          className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white text-gray-700">
-          <option value="">Status: All</option>
-          {STATUS_ORDER.map((k) => <option key={k} value={k}>{STATUS_DOT[k].label}</option>)}
-        </select>
-        {canEdit && (
-          <button
-            onClick={startAdd}
-            className="ml-auto flex items-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700"
-          >
-            <Plus size={15} /> Add Action Item
-          </button>
-        )}
-      </div>
+          return (
+            <div key={monthKey} className={`bg-white rounded-xl border overflow-hidden flex flex-col ${isCurrentMonth ? 'border-indigo-300 ring-1 ring-indigo-100' : 'border-gray-200'}`}>
+              <div className={`flex items-center justify-between px-4 py-2.5 border-b ${isCurrentMonth ? 'bg-indigo-50 border-indigo-100' : 'bg-gray-50 border-gray-100'}`}>
+                <span className={`text-sm font-semibold ${isCurrentMonth ? 'text-indigo-700' : 'text-gray-700'}`}>{name}</span>
+                {items.length > 0 && (
+                  <span className="text-xs text-gray-400">{items.length} item{items.length !== 1 ? 's' : ''}</span>
+                )}
+              </div>
 
-      {/* Add/Edit form */}
-      {showForm && (
-        <div className="bg-white rounded-xl border border-indigo-200 p-4 space-y-3">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Month</label>
-              <input type="month" value={form.month} onChange={(e) => setForm((f) => ({ ...f, month: e.target.value }))}
-                className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2" />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Accountable</label>
-              <input type="text" value={form.accountable} onChange={(e) => setForm((f) => ({ ...f, accountable: e.target.value }))}
-                placeholder="Who owns this…"
-                className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2" />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Status</label>
-              <select
-                value={form.status}
-                onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}
-                className={`w-full text-sm rounded-lg px-3 py-2 border font-medium ${STATUS_DOT[form.status]?.cls || 'bg-white border-gray-200'}`}
-              >
-                {STATUS_ORDER.map((k) => <option key={k} value={k}>{STATUS_DOT[k].label}</option>)}
-              </select>
-            </div>
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Action Item</label>
-            <textarea value={form.item} onChange={(e) => setForm((f) => ({ ...f, item: e.target.value }))} rows={2}
-              placeholder="What needs to be done…"
-              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2" />
-          </div>
-          <div className="flex justify-end gap-2">
-            <button onClick={cancelForm} className="px-4 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-600 hover:bg-gray-100">Cancel</button>
-            <button
-              onClick={saveForm}
-              disabled={createItem.isPending || updateItem.isPending}
-              className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 disabled:opacity-50"
-            >
-              <Check size={13} /> {editingId ? 'Save Changes' : 'Add Item'}
-            </button>
-          </div>
-        </div>
-      )}
+              <div className="flex-1 divide-y divide-gray-50">
+                {items.length === 0 && addingMonth !== monthKey && (
+                  <p className="text-xs text-gray-400 text-center py-6">No action items</p>
+                )}
 
-      {/* Table */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        {isLoading ? (
-          <div className="flex items-center justify-center py-16 text-gray-400">
-            <Loader2 className="w-6 h-6 animate-spin" />
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-center text-gray-400">
-            <p className="text-sm font-medium">No action items{selectedMonth !== 'ALL' ? ` for ${monthLabel(selectedMonth)}` : ''}</p>
-            {canEdit && <p className="text-xs mt-1">Click "Add Action Item" to log one.</p>}
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-200 bg-gray-50 text-left">
-                  <th className="px-4 py-2.5 text-xs font-semibold text-gray-500">Month</th>
-                  <th className="px-4 py-2.5 text-xs font-semibold text-gray-500">Action Item</th>
-                  <th className="px-4 py-2.5 text-xs font-semibold text-gray-500">Accountable</th>
-                  <th className="px-4 py-2.5 text-xs font-semibold text-gray-500">Status</th>
-                  {canEdit && <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 text-center">Actions</th>}
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((i) => {
-                  const overdue = isOverdue(i);
+                {items.map((i) => {
                   const dot = STATUS_DOT[i.status] || STATUS_DOT.OPEN;
+                  const overdue = isPast && i.status !== 'DONE';
+                  const isEditingThis = editingId === i.id;
+
+                  if (isEditingThis) {
+                    return (
+                      <div key={i.id} className="px-3 py-2.5 space-y-2 bg-indigo-50/40">
+                        <textarea
+                          value={editDraft.item}
+                          onChange={(e) => setEditDraft((d) => ({ ...d, item: e.target.value }))}
+                          rows={2}
+                          className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5"
+                          placeholder="What needs to be done…"
+                        />
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="text"
+                            value={editDraft.accountable}
+                            onChange={(e) => setEditDraft((d) => ({ ...d, accountable: e.target.value }))}
+                            placeholder="Who owns this…"
+                            className="flex-1 text-xs border border-gray-200 rounded-lg px-2.5 py-1.5"
+                          />
+                          <select
+                            value={editDraft.status}
+                            onChange={(e) => setEditDraft((d) => ({ ...d, status: e.target.value }))}
+                            className={`text-xs rounded-lg px-2 py-1.5 border font-medium ${STATUS_DOT[editDraft.status]?.cls || 'bg-white border-gray-200'}`}
+                          >
+                            {STATUS_ORDER.map((k) => <option key={k} value={k}>{STATUS_DOT[k].short}</option>)}
+                          </select>
+                        </div>
+                        <div className="flex justify-end gap-1.5">
+                          <button onClick={cancelEdit} className="px-2.5 py-1 rounded-lg border border-gray-200 text-xs text-gray-600 hover:bg-gray-100">Cancel</button>
+                          <button
+                            onClick={() => submitEdit(i.id)}
+                            disabled={updateItem.isPending}
+                            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 disabled:opacity-50"
+                          >
+                            <Check size={11} /> Save
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  }
+
                   return (
-                    <tr key={i.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50/60">
-                      <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{monthLabel(i.month)}</td>
-                      <td className="px-4 py-3 text-gray-700 max-w-[420px]">{i.item}</td>
-                      <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{i.accountable || '—'}</td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${dot.cls}`}>
-                          <span className={`w-1.5 h-1.5 rounded-full ${dot.dotCls}`} />
-                          {overdue ? 'Overdue' : dot.short}
-                        </span>
-                      </td>
-                      {canEdit && (
-                        <td className="px-4 py-3">
-                          <div className="flex items-center justify-center gap-1.5">
-                            <button onClick={() => startEdit(i)} title="Edit"
-                              className="w-7 h-7 rounded-lg border border-gray-200 flex items-center justify-center text-gray-500 hover:text-indigo-600 hover:border-indigo-300 transition-colors">
-                              <Pencil size={13} />
+                    <div key={i.id} className="px-3 py-2.5 group">
+                      <div className="flex items-start gap-2">
+                        <button
+                          onClick={() => cycleStatus(i)}
+                          disabled={!canEdit}
+                          title={canEdit ? `${dot.label} — click to change` : dot.label}
+                          className={`flex-shrink-0 w-3.5 h-3.5 rounded-full mt-1 ${dot.dotCls} ${canEdit ? 'cursor-pointer hover:ring-2 hover:ring-offset-1 hover:ring-gray-300' : ''}`}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-gray-700 leading-snug">{i.item}</p>
+                          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                            {i.accountable && <span className="text-xs text-gray-400">{i.accountable}</span>}
+                            {overdue && <span className="text-[10px] font-semibold text-red-600">Overdue</span>}
+                          </div>
+                        </div>
+                        {canEdit && (
+                          <div className="flex-shrink-0 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button onClick={() => startEdit(i)} title="Edit" className="text-gray-300 hover:text-indigo-600">
+                              <Pencil size={12} />
                             </button>
-                            <button onClick={() => handleDelete(i.id)} title="Delete"
-                              className="w-7 h-7 rounded-lg border border-gray-200 flex items-center justify-center text-gray-400 hover:text-red-500 hover:border-red-300 transition-colors">
-                              <Trash2 size={13} />
+                            <button onClick={() => handleDelete(i.id)} title="Delete" className="text-gray-300 hover:text-red-500">
+                              <Trash2 size={12} />
                             </button>
                           </div>
-                        </td>
-                      )}
-                    </tr>
+                        )}
+                      </div>
+                    </div>
                   );
                 })}
-              </tbody>
-            </table>
-          </div>
-        )}
+
+                {addingMonth === monthKey && (
+                  <div className="px-3 py-2.5 space-y-2 bg-indigo-50/40">
+                    <textarea
+                      value={addDraft.item}
+                      onChange={(e) => setAddDraft((d) => ({ ...d, item: e.target.value }))}
+                      rows={2}
+                      autoFocus
+                      placeholder="What needs to be done…"
+                      className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5"
+                    />
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="text"
+                        value={addDraft.accountable}
+                        onChange={(e) => setAddDraft((d) => ({ ...d, accountable: e.target.value }))}
+                        placeholder="Who owns this…"
+                        className="flex-1 text-xs border border-gray-200 rounded-lg px-2.5 py-1.5"
+                      />
+                      <select
+                        value={addDraft.status}
+                        onChange={(e) => setAddDraft((d) => ({ ...d, status: e.target.value }))}
+                        className={`text-xs rounded-lg px-2 py-1.5 border font-medium ${STATUS_DOT[addDraft.status]?.cls || 'bg-white border-gray-200'}`}
+                      >
+                        {STATUS_ORDER.map((k) => <option key={k} value={k}>{STATUS_DOT[k].short}</option>)}
+                      </select>
+                    </div>
+                    <div className="flex justify-end gap-1.5">
+                      <button onClick={cancelAdd} className="px-2.5 py-1 rounded-lg border border-gray-200 text-xs text-gray-600 hover:bg-gray-100">Cancel</button>
+                      <button
+                        onClick={() => submitAdd(monthKey)}
+                        disabled={createItem.isPending}
+                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 disabled:opacity-50"
+                      >
+                        <Check size={11} /> Add
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {canEdit && addingMonth !== monthKey && (
+                <button
+                  onClick={() => startAdd(monthKey)}
+                  className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium text-indigo-600 hover:bg-indigo-50 border-t border-gray-100 transition-colors"
+                >
+                  <Plus size={12} /> Add item
+                </button>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
