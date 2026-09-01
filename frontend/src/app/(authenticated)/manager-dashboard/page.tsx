@@ -2580,6 +2580,16 @@ const PRIORITY_META: Record<string, { label: string; cls: string }> = {
   HIGH: { label: 'High', cls: 'bg-red-100 text-red-700' },
 };
 
+// G/O/R quick-glance dot next to each action item: Green = Done,
+// Orange = In Progress, Red = Not Started (OPEN). Overdue still shows Red
+// (it's an OPEN/IN_PROGRESS item whose month has passed, i.e. still not
+// started/finished), so it's not a fourth letter here.
+const STATUS_DOT: Record<string, { letter: string; cls: string; title: string }> = {
+  DONE: { letter: 'G', cls: 'bg-emerald-100 text-emerald-700 border-emerald-300', title: 'Done' },
+  IN_PROGRESS: { letter: 'O', cls: 'bg-orange-100 text-orange-700 border-orange-300', title: 'In Progress' },
+  OPEN: { letter: 'R', cls: 'bg-red-100 text-red-700 border-red-300', title: 'Not Started' },
+};
+
 // yyyy-MM -> "Jul 2026"
 function monthLabel(month: string): string {
   const [y, m] = month.split('-').map(Number);
@@ -2618,6 +2628,11 @@ function ActionItemsView() {
   const availableMonths = useMemo(() => {
     const set = new Set<string>(allItems.map((i) => i.month));
     set.add(currentMonthStr());
+    // Always show July and August tabs even with zero items yet, so there's
+    // somewhere to navigate to and log MBR follow-ups for those months —
+    // otherwise a month with no data yet has no tab to click into at all.
+    set.add('2026-07');
+    set.add('2026-08');
     return Array.from(set).sort();
   }, [allItems]);
 
@@ -2843,7 +2858,17 @@ function ActionItemsView() {
                   return (
                     <tr key={i.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50/60">
                       <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{monthLabel(i.month)}</td>
-                      <td className="px-4 py-3 text-gray-700 max-w-[420px]">{i.item}</td>
+                      <td className="px-4 py-3 text-gray-700 max-w-[420px]">
+                        <div className="flex items-start gap-2">
+                          <span
+                            title={(STATUS_DOT[i.status] || STATUS_DOT.OPEN).title}
+                            className={`flex-shrink-0 w-5 h-5 rounded-full border flex items-center justify-center text-[10px] font-bold mt-0.5 ${(STATUS_DOT[i.status] || STATUS_DOT.OPEN).cls}`}
+                          >
+                            {(STATUS_DOT[i.status] || STATUS_DOT.OPEN).letter}
+                          </span>
+                          <span>{i.item}</span>
+                        </div>
+                      </td>
                       <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{i.accountable || '—'}</td>
                       <td className="px-4 py-3">
                         <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${(PRIORITY_META[i.priority] || PRIORITY_META.MEDIUM).cls}`}>
