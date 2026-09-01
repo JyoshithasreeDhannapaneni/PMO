@@ -19,6 +19,8 @@ export interface ParsedTicket {
   updated: string;
   frBreached: boolean;
   resBreached: boolean;
+  productType: string;
+  slaBreachedBy: string;
 }
 
 export interface ExcelDataStore {
@@ -155,6 +157,8 @@ export function parseJiraExcel(buffer: Buffer, filename: string): ExcelDataStore
   const idxUpdated  = findColIdx(rawHeaders, "Updated");
   const idxFrSla    = findColIdx(rawHeaders, "First Response SLA Breach", "First Response Breach", "FR Breach", "FR SLA Breach");
   const idxResSla   = findColIdx(rawHeaders, "Resolution SLA Breach", "Resolution Breach", "Res Breach", "Res SLA Breach");
+  const idxProduct  = findColIdx(rawHeaders, "Product Type", "ProductType", "Product");
+  const idxBreachBy = findColIdx(rawHeaders, "SLA Breached By", "SLA Breach By", "Breached By");
 
   const columnMap: Record<string, string> = {
     key:      idxKey >= 0      ? rawHeaders[idxKey]      : "NOT FOUND",
@@ -165,6 +169,8 @@ export function parseJiraExcel(buffer: Buffer, filename: string): ExcelDataStore
     customer: idxCust >= 0     ? rawHeaders[idxCust]     : "NOT FOUND",
     frSla:    idxFrSla >= 0    ? rawHeaders[idxFrSla]    : "NOT FOUND",
     resSla:   idxResSla >= 0   ? rawHeaders[idxResSla]   : "NOT FOUND",
+    productType: idxProduct >= 0 ? rawHeaders[idxProduct] : "NOT FOUND",
+    slaBreachedBy: idxBreachBy >= 0 ? rawHeaders[idxBreachBy] : "NOT FOUND",
     allHeaders: rawHeaders.slice(0, 30).join(" | "),
   };
 
@@ -189,6 +195,8 @@ export function parseJiraExcel(buffer: Buffer, filename: string): ExcelDataStore
       updated:        cellStr(row, idxUpdated),
       frBreached:     idxFrSla >= 0  ? isBreached(row[idxFrSla])  : false,
       resBreached:    idxResSla >= 0 ? isBreached(row[idxResSla]) : false,
+      productType:    cellStr(row, idxProduct),
+      slaBreachedBy:  cellStr(row, idxBreachBy),
     };
 
     if (ticket.key || ticket.summary) tickets.push(ticket);
@@ -224,6 +232,28 @@ export function loadExcelData(): ExcelDataStore | null {
 
 export function clearExcelData(): void {
   if (fs.existsSync(EXCEL_DATA_FILE)) fs.unlinkSync(EXCEL_DATA_FILE);
+}
+
+// Surfaces exactly what got parsed for a given field, without needing direct access to
+// whatever server the file is actually uploaded to -- how many tickets have a non-blank
+// value, and a handful of the real distinct values, so a "why is my column showing 0"
+// question can be answered by looking at this instead of guessing blind.
+export interface FieldDiagnostic {
+  columnDetected: string; // the actual header name matched, or "NOT FOUND"
+  nonBlankCount: number;
+  distinctSample: string[];
+}
+
+export function getFieldDiagnostics(store: ExcelDataStore): { productType: FieldDiagnostic; slaBreachedBy: FieldDiagnostic } {
+  function diag(columnKey: 'productType' | 'slaBreachedBy'): FieldDiagnostic {
+    const values = store.tickets.map((t) => (t[columnKey] || '').trim()).filter(Boolean);
+    return {
+      columnDetected: store.columnMap[columnKey] ?? 'NOT FOUND',
+      nonBlankCount: values.length,
+      distinctSample: Array.from(new Set(values)).slice(0, 8),
+    };
+  }
+  return { productType: diag('productType'), slaBreachedBy: diag('slaBreachedBy') };
 }
 
 export function isExcelDataAvailable(): boolean {

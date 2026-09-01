@@ -813,15 +813,6 @@ function ntaFetch(path: string) {
 
 const NTA_QUERY_OPTS = { retry: 0, refetchOnWindowFocus: false, refetchOnMount: false } as const;
 
-export function useNtaExcelStatus() {
-  return useQuery({
-    queryKey: ['nta-excel-status'],
-    queryFn: () => authFetch(`${API_BASE}/api/ticketing/excel/status`),
-    staleTime: 30_000,
-    refetchOnWindowFocus: true,
-  });
-}
-
 export function useNtaSyncStatus() {
   return useQuery({
     queryKey: ['ntaSyncStatus'],

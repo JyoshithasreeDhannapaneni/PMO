@@ -23,13 +23,16 @@ export const MANAGER_QUERY_NAMES: Record<string, string> = {
 // Leads (Abhishek / Ajay Singh) manage sub-managers only — no direct engineer list.
 export const ENGINEER_ASSIGNMENTS: Record<string, string[]> = {
   'Pranavi':          ['Arun', 'Manoj', 'Pallavi'],
-  'Lakshmi Prasanna': ['Chaitanya Gupta', 'Harshith', 'Lakshma Reddy', 'Ganesh Kondameedi', 'Davidraj'],
-  // Spellings here must match LMS_SCORES/AUDIO_PERCENTAGES etc. exactly (or at
-  // least share a full first word) — the fuzzy matcher those helpers use
-  // can't bridge a mid-word letter difference like "Ranadep" vs "Ranadeep",
-  // only prefix/substring variants. Corrected 2026-09: Habeebunisa ->
-  // Habeebunnisa, Vijendra -> Vijendar, Ranadep -> Ranadeep, Vineeta ->
-  // Vineetha — these 4 were silently missing their LMS score too, not just Audio %.
+  // Spellings here must match LMS_SCORES/AUDIO_PERCENTAGES/ticket-export assignee
+  // names exactly (or at least share a full first word) — the fuzzy matcher those
+  // helpers use can't bridge a mid-word letter difference like "Ranadep" vs
+  // "Ranadeep", only prefix/substring variants. "Davidraj" -> "David" is the same
+  // class of bug: it's not a real prefix of "David Dumpala" the way "Harshith" is
+  // a prefix of "Harshith Kaduluri", so it silently matched nobody. Corrected
+  // 2026-09: Habeebunisa -> Habeebunnisa, Vijendra -> Vijendar, Ranadep ->
+  // Ranadeep, Vineeta -> Vineetha, Davidraj -> David — all were silently missing
+  // their LMS/Audio %/ticket-based stats, not just one metric.
+  'Lakshmi Prasanna': ['Chaitanya Gupta', 'Harshith', 'Lakshma Reddy', 'Ganesh Kondameedi', 'David'],
   'Meghana Chowdada': ['Amulya', 'Habeebunnisa', 'Vijendar', 'Ranadeep', 'Nithish'],
   'Harika':           ['Ravi Hemanth', 'Meena', 'Siva Kotta', 'Ambika'],
   'Sriram':           ['Dathu', 'Ramana', 'Vineetha', 'Sanjana'],

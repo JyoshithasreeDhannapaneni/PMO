@@ -27,6 +27,7 @@ import {
   getExcelEngineerStats,
   getExcelEngineersByManager,
   getBoardData,
+  getFieldDiagnostics,
 } from '../services/jiraExcelService';
 import { logger } from '../utils/logger';
 
@@ -169,6 +170,7 @@ export const jiraController = {
       uploadedAt: store.uploadedAt,
       ticketCount: store.ticketCount,
       columnMap:  store.columnMap,
+      fieldDiagnostics: getFieldDiagnostics(store),
     });
   }),
 
