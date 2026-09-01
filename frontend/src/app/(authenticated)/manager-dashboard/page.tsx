@@ -54,8 +54,19 @@ const STATUS_COLORS: Record<string, string> = {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function toInitials(name: string): string {
-  return name.split(' ').map((w) => w[0]?.toUpperCase() ?? '').join('').slice(0, 2);
+  // Skip bare-symbol "words" (e.g. the "&" in a combined card like "Neelima &
+  // Meghna") so the badge shows real initials ("NM") instead of "N&".
+  return name.split(' ').filter((w) => /[a-zA-Z]/.test(w)).map((w) => w[0]?.toUpperCase() ?? '').join('').slice(0, 2);
 }
+
+// One-off handover notices for managers who inherited another manager's
+// projects mid-cycle — shown on the manager's detail-view header so it's
+// clear the project count reflects a transferred book of business, not
+// this person's original workload.
+const MANAGER_HANDOVER_NOTES: Record<string, string> = {
+  'Sriram': "Sravan and Raghu projects transferred to Sriram on Aug 26 — he is handling from Aug 26 onward.",
+  'Meghana Chowdada': "Abhishikth's projects transferred to Meghana on Aug 31 — she started handling from Aug 31 onwards.",
+};
 
 function fmtDate(d: string | null | undefined): string {
   if (!d) return '—';
@@ -237,7 +248,10 @@ function ProjectsTabView({ managerName, dbManager, isOthers }: { managerName: st
   const queryNames = isOthers ? '' : (() => {
     const parts = new Set<string>();
     (MANAGER_QUERY_NAMES[managerName] ?? managerName).split(',').map(s => s.trim()).forEach(n => parts.add(n));
-    if (dbManager) parts.add(dbManager);
+    // dbManager can itself be a comma-joined value for a combined card (e.g.
+    // "Neelima,Meghana Chowdada") — split it too, or it gets added as one
+    // malformed name instead of two real ones.
+    if (dbManager) dbManager.split(',').map(s => s.trim()).forEach(n => parts.add(n));
     return Array.from(parts).join(',');
   })();
 
@@ -631,6 +645,13 @@ function ManagerTabView({
           </Link>
         )}
       </div>
+
+      {!isOthers && MANAGER_HANDOVER_NOTES[stat.manager] && (
+        <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 text-sm text-amber-800">
+          <AlertCircle size={14} className="flex-shrink-0 mt-0.5 text-amber-500" />
+          <span>{MANAGER_HANDOVER_NOTES[stat.manager]}</span>
+        </div>
+      )}
 
       <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit">
         {(['projects', 'engineers'] as const).map(t => (
@@ -1410,21 +1431,53 @@ export default function ManagerDashboardPage() {
   const currentSegment = SEGMENT_CONFIG.find((s) => s.label === activeSegment);
 
   // Build per-manager stat lookup
+  const EMPTY_MANAGER_STAT_FIELDS = { total: 0, active: 0, inactive: 0, completed: 0, delayed: 0, atRisk: 0, onTime: 0, pctOnTime: 0, avgDelayDays: 0, achievedPct: 0, goalPct: 80, variance: -80 };
+
+  const findOneStat = (cn: string) => allStats.find((s) => {
+    const dn = s.manager.toLowerCase();
+    return dn === cn || dn.startsWith(cn + ' ') || cn.startsWith(dn + ' ');
+  });
+
   const getStatForManager = (name: string): ManagerStat | null => {
     if (statsLoading) return null;
-    const cn = name.toLowerCase();
-    // Find by exact match OR by DB name starting with the canonical name
-    // ("Raghu Yellani" in DB → canonical "Raghu"; "Lakshmi prasanna" → "Lakshmi Prasanna")
-    const found = allStats.find((s) => {
-      const dn = s.manager.toLowerCase();
-      return dn === cn || dn.startsWith(cn + ' ') || cn.startsWith(dn + ' ');
-    });
+
+    // A card can represent more than one real person ("Neelima & Meghna" is
+    // one node for Neelima + Meghana Chowdada) — MANAGER_QUERY_NAMES already
+    // holds the comma-separated real names for these combined cards. Look up
+    // each one and sum the numeric fields instead of a single find().
+    const aliasNames = (MANAGER_QUERY_NAMES[name] ?? name).split(',').map((s) => s.trim());
+    if (aliasNames.length > 1) {
+      const foundStats = aliasNames.map((n) => findOneStat(n.toLowerCase())).filter(Boolean) as ManagerStat[];
+      if (foundStats.length === 0) {
+        return { manager: name, dbManager: aliasNames.join(','), ...EMPTY_MANAGER_STAT_FIELDS };
+      }
+      const totalGoal = foundStats.reduce((sum, s) => sum + (s.goalPct || 0), 0) / foundStats.length;
+      const summed = foundStats.reduce((acc, s) => ({
+        total: acc.total + s.total, active: acc.active + s.active, inactive: acc.inactive + s.inactive,
+        completed: acc.completed + s.completed, delayed: acc.delayed + s.delayed, atRisk: acc.atRisk + s.atRisk,
+        onTime: acc.onTime + s.onTime,
+      }), { total: 0, active: 0, inactive: 0, completed: 0, delayed: 0, atRisk: 0, onTime: 0 });
+      const pctOnTime = summed.total > 0 ? Math.round((summed.onTime / summed.total) * 100) : 0;
+      return {
+        manager: name,
+        dbManager: foundStats.map((s) => s.dbManager || s.manager).join(','),
+        ...summed,
+        pctOnTime,
+        avgDelayDays: foundStats.reduce((sum, s) => sum + s.avgDelayDays, 0) / foundStats.length,
+        achievedPct: pctOnTime,
+        goalPct: totalGoal,
+        variance: pctOnTime - totalGoal,
+      };
+    }
+
+    // Single-name card: find by exact match OR by DB name starting with the
+    // canonical name ("Raghu Yellani" in DB → canonical "Raghu"; "Lakshmi
+    // prasanna" → "Lakshmi Prasanna")
+    const found = findOneStat(name.toLowerCase());
     // Override manager with the canonical config name (for ENGINEER_ASSIGNMENTS lookup)
     // but preserve the original DB value in dbManager (for the Projects API query)
     return found ? { ...found, manager: name, dbManager: found.manager } : {
-      manager: name, dbManager: name, total: 0, active: 0, inactive: 0, completed: 0,
-      delayed: 0, atRisk: 0, onTime: 0, pctOnTime: 0, avgDelayDays: 0,
-      achievedPct: 0, goalPct: 80, variance: -80,
+      manager: name, dbManager: name, ...EMPTY_MANAGER_STAT_FIELDS,
     };
   };
 

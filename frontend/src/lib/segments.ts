@@ -2,22 +2,19 @@ export type Segment = 'ENT' | 'SMB';
 
 export const SEGMENT_CONFIG: { label: Segment; managers: string[] }[] = [
   { label: 'ENT', managers: ['Abhishek', 'Lakshmi Prasanna', 'Pranavi'] },
-  { label: 'SMB', managers: ['Ajay Singh', 'Abhishikth', 'Harika', 'Sravan', 'Raghu', 'Sriram', 'Chandra Mouli', 'Meghana Chowdada'] },
+  { label: 'SMB', managers: ['Ajay Singh', 'Harika', 'Neelima', 'Meghana Chowdada', 'Sriram'] },
 ];
 
 // Reporting hierarchy per segment. The lead row shows the rolled-up totals of
 // its own projects plus every manager beneath it.
 export const SEGMENT_HIERARCHY: { label: Segment; lead: string; managers: string[] }[] = [
   { label: 'ENT', lead: 'Abhishek',   managers: ['Lakshmi Prasanna', 'Pranavi'] },
-  { label: 'SMB', lead: 'Ajay Singh', managers: ['Harika', 'Sravan', 'Raghu', 'Abhishikth', 'Sriram', 'Chandra Mouli', 'Meghana Chowdada'] },
+  { label: 'SMB', lead: 'Ajay Singh', managers: ['Harika', 'Neelima', 'Meghana Chowdada', 'Sriram'] },
 ];
 
-// When a manager's tickets are split across multiple PM names in NTA, list all
-// names here (comma-separated). The API uses exact matching for comma lists.
-// Sriram / Chandra Mouli were promoted from engineer/alias entries (folded into
-// Raghu and Abhishek respectively) to managers in their own right -- their old
-// aliases are removed from Raghu/Abhishek below so tickets aren't double-counted
-// under both the old and new manager rows.
+// When a manager's tickets/projects are split across multiple PM names, list
+// all names here (comma-separated) — the API uses exact matching for comma
+// lists.
 export const MANAGER_QUERY_NAMES: Record<string, string> = {
   'Sriram': 'Sriram,Sri Ram',
 };
@@ -27,10 +24,9 @@ export const MANAGER_QUERY_NAMES: Record<string, string> = {
 export const ENGINEER_ASSIGNMENTS: Record<string, string[]> = {
   'Pranavi':          ['Arun', 'Manoj', 'Pallavi'],
   'Lakshmi Prasanna': ['Chaitanya Gupta', 'Harshith', 'Lakshma Reddy', 'Ganesh Kondameedi', 'Davidraj'],
-  'Abhishikth':       ['Amulya', 'Ranadeep', 'Habeebunnisa', 'Neelima', 'Vijendar'],
-  'Harika':           ['Meena Lakshmi Triveni', 'Ravi Hemanth', 'Siva Kota'],
-  'Raghu':            ['Vineetha', 'Ramana Reddy'],
-  'Sravan':           ['Swaroop', 'Dathu', 'Saikumar'],
+  'Meghana Chowdada': ['Amulya', 'Habeebunisa', 'Vijendra', 'Ranadep', 'Nithish'],
+  'Harika':           ['Ravi Hemanth', 'Meena', 'Siva Kotta', 'Ambika'],
+  'Sriram':           ['Dathu', 'Ramana', 'Vineeta', 'Sanjana'],
 };
 
 export const LMS_SCORES: { name: string; score: number }[] = [
