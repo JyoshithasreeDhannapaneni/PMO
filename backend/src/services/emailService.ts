@@ -3,6 +3,7 @@ import { logger } from '../utils/logger';
 
 export interface EmailOptions {
   to: string | string[];
+  cc?: string | string[];
   subject: string;
   html: string;
   text?: string;
@@ -89,7 +90,7 @@ async function resolveTenantId(): Promise<string> {
   );
 }
 
-async function sendViaGraph(to: string, subject: string, html: string): Promise<void> {
+async function sendViaGraph(to: string, subject: string, html: string, cc?: string[]): Promise<void> {
   const clientId = process.env.AZURE_CLIENT_ID || process.env.MICROSOFT_CLIENT_ID;
   const clientSecret = process.env.AZURE_CLIENT_SECRET || process.env.MICROSOFT_CLIENT_SECRET;
   const fromEmail = process.env.ALERT_FROM_EMAIL || 'Bharath.Tummaganti@cloudfuze.com';
@@ -127,6 +128,7 @@ async function sendViaGraph(to: string, subject: string, html: string): Promise<
         subject,
         body: { contentType: 'HTML', content: html },
         toRecipients: [{ emailAddress: { address: to } }],
+        ...(cc && cc.length > 0 ? { ccRecipients: cc.map((addr) => ({ emailAddress: { address: addr } })) } : {}),
       },
       saveToSentItems: false,
     }),
@@ -142,11 +144,12 @@ async function sendViaGraph(to: string, subject: string, html: string): Promise<
 class EmailService {
   async sendEmail(options: EmailOptions): Promise<void> {
     const recipients = Array.isArray(options.to) ? options.to : [options.to];
+    const cc = options.cc ? (Array.isArray(options.cc) ? options.cc : [options.cc]) : undefined;
 
     for (const to of recipients) {
       try {
-        await sendViaGraph(to, options.subject, options.html);
-        logger.info(`Email sent → ${to} | Subject: ${options.subject}`);
+        await sendViaGraph(to, options.subject, options.html, cc);
+        logger.info(`Email sent → ${to}${cc?.length ? ` (cc: ${cc.join(', ')})` : ''} | Subject: ${options.subject}`);
       } catch (err: any) {
         logger.error(`Email failed → ${to} | ${err.message}`);
         throw err;

@@ -2,14 +2,14 @@ export type Segment = 'ENT' | 'SMB';
 
 export const SEGMENT_CONFIG: { label: Segment; managers: string[] }[] = [
   { label: 'ENT', managers: ['Abhishek', 'Lakshmi Prasanna', 'Pranavi'] },
-  { label: 'SMB', managers: ['Ajay Singh', 'Abhishikth', 'Harika', 'Sravan', 'Raghu', 'Sriram', 'Chandra Mouli'] },
+  { label: 'SMB', managers: ['Ajay Singh', 'Abhishikth', 'Harika', 'Sravan', 'Raghu', 'Sriram', 'Chandra Mouli', 'Meghana Chowdada'] },
 ];
 
 // Reporting hierarchy per segment. The lead row shows the rolled-up totals of
 // its own projects plus every manager beneath it.
 export const SEGMENT_HIERARCHY: { label: Segment; lead: string; managers: string[] }[] = [
   { label: 'ENT', lead: 'Abhishek',   managers: ['Lakshmi Prasanna', 'Pranavi'] },
-  { label: 'SMB', lead: 'Ajay Singh', managers: ['Harika', 'Sravan', 'Raghu', 'Abhishikth', 'Sriram', 'Chandra Mouli'] },
+  { label: 'SMB', lead: 'Ajay Singh', managers: ['Harika', 'Sravan', 'Raghu', 'Abhishikth', 'Sriram', 'Chandra Mouli', 'Meghana Chowdada'] },
 ];
 
 // When a manager's tickets are split across multiple PM names in NTA, list all
