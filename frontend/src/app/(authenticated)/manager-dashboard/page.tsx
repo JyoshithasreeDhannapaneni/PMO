@@ -15,7 +15,7 @@ import {
   Plus, Pencil, Check,
 } from 'lucide-react';
 import api from '@/services/api';
-import { SEGMENT_CONFIG, SEGMENT_HIERARCHY, MANAGER_QUERY_NAMES, ENGINEER_ASSIGNMENTS, LMS_SCORES, LMS_MAX, MEETING_ATTENDANCE, CHECKIN_DELAYS, segmentOfManager, isNamedManager, type Segment } from '@/lib/segments';
+import { SEGMENT_CONFIG, SEGMENT_HIERARCHY, MANAGER_QUERY_NAMES, ENGINEER_ASSIGNMENTS, LMS_SCORES, LMS_MAX, MEETING_ATTENDANCE, CHECKIN_DELAYS, AUDIO_PERCENTAGES, segmentOfManager, isNamedManager, type Segment } from '@/lib/segments';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -460,6 +460,7 @@ function EngineersTabView({
     const hygieneMetric = getEngineerHygieneData(allHygieneMetrics, rowName);
     const lmsScore      = getEngineerLmsScore(rowName);
     const checkinDelay  = getEngineerCheckinDelay(rowName);
+    const audioPct      = getEngineerAudioPct(rowName);
 
     return (
       <tr key={rowName} className={`hover:bg-gray-50 transition-colors ${isManager ? 'bg-indigo-50/40' : ''}`}>
@@ -528,6 +529,13 @@ function EngineersTabView({
             </span>
           ) : <span className="text-gray-300">—</span>}
         </td>
+        <td className="px-4 py-3 text-center">
+          {audioPct !== null ? (
+            <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${audioPct >= 80 ? 'bg-green-100 text-green-700' : audioPct >= 60 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>
+              {audioPct}%
+            </span>
+          ) : <span className="text-gray-300">—</span>}
+        </td>
       </tr>
     );
   };
@@ -553,6 +561,7 @@ function EngineersTabView({
                 <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-500 whitespace-nowrap">Hygiene</th>
                 <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-500 whitespace-nowrap">LMS /10</th>
                 <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-500 whitespace-nowrap">Avg. Delay</th>
+                <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-500 whitespace-nowrap">Audio %</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -913,6 +922,26 @@ function getEngineerCheckinDelay(canonicalName: string): number | null {
     return false;
   });
   return match ? match.delayMin : null;
+}
+
+function getEngineerAudioPct(canonicalName: string): number | null {
+  const cn = canonicalName.toLowerCase();
+  const cnNorm = cn.replace(/[\s._-]/g, '');
+  const cnWords = cn.split(/\s+/).filter(w => w.length > 2);
+  const match = AUDIO_PERCENTAGES.find(entry => {
+    const ln = entry.name.toLowerCase();
+    const lnNorm = ln.replace(/[\s._-]/g, '');
+    const lnWords = ln.split(/\s+/).filter(w => w.length > 2);
+    if (cn === ln) return true;
+    const cnFirst = cn.split(/\s/)[0];
+    const lnFirst = ln.split(/\s/)[0];
+    if (cnFirst.length > 3 && lnFirst.length > 3 && (cnFirst === lnFirst || cnFirst.startsWith(lnFirst) || lnFirst.startsWith(cnFirst))) return true;
+    if (cnWords.length > 0 && cnWords.every(w => ln.includes(w))) return true;
+    if (lnWords.length > 0 && lnWords.every(w => cn.includes(w))) return true;
+    if (cnNorm.length >= 4 && (lnNorm.includes(cnNorm) || cnNorm.includes(lnNorm))) return true;
+    return false;
+  });
+  return match ? match.pct : null;
 }
 
 function hygieneScoreBadgeClass(score: number): string {
