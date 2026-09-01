@@ -5,7 +5,7 @@ import { getIstWeekBounds, istDateStr, weeksInCurrentIstMonth } from '../utils/w
 import { emailThreadClassifierService, type AmbiguousThread } from './emailThreadClassifierService';
 import {
   isGraphConfigured, getAccessToken, graphClient, buildTeamTimelines, buildExchanges,
-  isLikelyNewTopicByGap, type Exchange, type TimelineEntry,
+  findOrphanTeamMessages, isLikelyNewTopicByGap, type Exchange, type TimelineEntry,
 } from './teamConversationTimeline';
 
 export interface ImprovementInsight {
@@ -392,7 +392,7 @@ async function judgeAllExchanges(allExchanges: Exchange[]): Promise<ExchangeJudg
 // Pure aggregation + the scoring formula -- unchanged from the original design, just fed
 // by team-aware, correctly-paired inputs instead of one person's isolated, first-message-
 // anchored view of their own mailbox.
-function deriveUserMetrics(userEmail: string, userName: string, judgments: ExchangeJudgment[]): UserEmailHygiene {
+function deriveUserMetrics(userEmail: string, userName: string, judgments: ExchangeJudgment[], orphanMessages: TimelineEntry[] = []): UserEmailHygiene {
   // "Threads" for volume purposes: any conversation where I received a copy of the
   // customer's message, or personally sent a reply into it.
   const myConvIds = new Set<string>();
@@ -401,6 +401,11 @@ function deriveUserMetrics(userEmail: string, userName: string, judgments: Excha
     if (ex.customerMessage.recipients?.some((r) => r.email === userEmail)) myConvIds.add(ex.conversationId);
     if (ex.teamReplies.some((r) => r.teamMemberEmail === userEmail)) myConvIds.add(ex.conversationId);
   }
+  // My own proactive/outbound messages (see findOrphanTeamMessages) -- a conversation I
+  // personally reached out on counts as a real customer thread even with no inbound
+  // customer message in view.
+  const myOrphanMessages = orphanMessages.filter((m) => m.teamMemberEmail === userEmail);
+  for (const m of myOrphanMessages) myConvIds.add(m.conversationId);
   const uniqueCustomerThreads = myConvIds.size;
 
   // ── Speed: exchanges where I was specifically the FIRST team responder ──────────
@@ -449,15 +454,24 @@ function deriveUserMetrics(userEmail: string, userName: string, judgments: Excha
   }
 
   // ── Quality: accuracy rate, checked on my own first-response reply in each exchange
-  // I first-responded to (exhaustive, not sampled -- it's a cheap length/auto-reply check) ──
+  // I first-responded to, PLUS my own proactive/outbound messages -- "not auto-generated
+  // or too short" is a generic substantiveness check that applies to either (exhaustive,
+  // not sampled -- it's a cheap length/auto-reply check) ──
   let accurateReplies = 0;
+  let accuracyDenominator = 0;
   for (const j of myFirstResponses) {
     const reply = j.firstResponder!;
     const isAuto = /^(automatic reply|out of office|auto.?reply)/i.test(reply.subject ?? '');
     if (!isAuto && reply.text.length > 100) accurateReplies++;
+    accuracyDenominator++;
   }
-  const accuracyRate = threadsWithReply > 0
-    ? Math.round((accurateReplies / threadsWithReply) * 100)
+  for (const m of myOrphanMessages) {
+    const isAuto = /^(automatic reply|out of office|auto.?reply)/i.test(m.subject ?? '');
+    if (!isAuto && m.text.length > 100) accurateReplies++;
+    accuracyDenominator++;
+  }
+  const accuracyRate = accuracyDenominator > 0
+    ? Math.round((accurateReplies / accuracyDenominator) * 100)
     : 100;
 
   const oneReplyResolutionRate = substantiveCount > 0
@@ -467,17 +481,23 @@ function deriveUserMetrics(userEmail: string, userName: string, judgments: Excha
     ? Math.round((reopenedThreads / substantiveCount) * 100)
     : 0;
 
-  // ── Sample MY OWN replies (up to 5) for relevancy + completeness + tone -- each paired
-  // against the specific customer message it's actually answering, not always message #1 ──
-  const myReplySamples: { customerText: string; replyText: string }[] = [];
+  // ── Sample MY OWN replies (up to 8) for completeness + tone (+ relevancy for the
+  // exchange-based ones) -- each paired against the specific customer message it's
+  // actually answering, not always message #1. Proactive/outbound messages are mixed in
+  // (isOutbound: true) so a person who mostly reaches out to customers rather than
+  // answering them still gets a fair sample, not crowded out by exchange-based replies.
+  const myReplySamples: { customerText: string; replyText: string; isOutbound: boolean }[] = [];
   for (const j of judgments) {
     for (const reply of j.exchange.teamReplies) {
       if (reply.teamMemberEmail === userEmail) {
-        myReplySamples.push({ customerText: j.exchange.customerMessage.text, replyText: reply.text });
+        myReplySamples.push({ customerText: j.exchange.customerMessage.text, replyText: reply.text, isOutbound: false });
       }
     }
   }
-  const sample = myReplySamples.slice(0, 5);
+  for (const m of myOrphanMessages) {
+    myReplySamples.push({ customerText: '', replyText: m.text, isOutbound: true });
+  }
+  const sample = myReplySamples.slice(0, 8);
 
   const relevancyScores: number[] = [];
   const completenessScores: number[] = [];
@@ -494,10 +514,18 @@ function deriveUserMetrics(userEmail: string, userName: string, judgments: Excha
   let worstTone: HygieneExample | null = null;
   let worstToneScore = 101;
 
-  for (const { customerText, replyText } of sample) {
-    const rel = scoreRelevancy(customerText, replyText);
-    relevancyScores.push(rel.score);
-    lastReason = rel.reason;
+  for (const { customerText, replyText, isOutbound } of sample) {
+    // Relevancy measures "did this answer what the customer actually asked" -- meaningless
+    // (and unfairly punishing, since there's no question to match keywords against) for a
+    // proactive/outbound message with no customer question behind it. Completeness and
+    // tone both degrade gracefully with an empty customerText, so those still apply.
+    if (!isOutbound) {
+      const rel = scoreRelevancy(customerText, replyText);
+      relevancyScores.push(rel.score);
+      lastReason = rel.reason;
+      if (rel.score > bestQualityScore) { bestQualityScore = rel.score; bestQuality = { customerText, replyText, label: `${rel.score}/100 relevancy` }; }
+      if (rel.score < worstQualityScore) { worstQualityScore = rel.score; worstQuality = { customerText, replyText, label: `${rel.score}/100 relevancy` }; }
+    }
     const cs = scoreCompleteness(customerText, replyText);
     completenessScores.push(cs);
     const ts = scoreTone(replyText);
@@ -505,8 +533,6 @@ function deriveUserMetrics(userEmail: string, userName: string, judgments: Excha
     if (worstToneEntry === null || ts < worstToneEntry.raw) worstToneEntry = { cfText: replyText, raw: ts };
     if (worstComplEntry === null || cs < worstComplEntry.score) worstComplEntry = { custText: customerText, cfText: replyText, score: cs };
 
-    if (rel.score > bestQualityScore) { bestQualityScore = rel.score; bestQuality = { customerText, replyText, label: `${rel.score}/100 relevancy` }; }
-    if (rel.score < worstQualityScore) { worstQualityScore = rel.score; worstQuality = { customerText, replyText, label: `${rel.score}/100 relevancy` }; }
     if (ts > bestToneScore) { bestToneScore = ts; bestTone = { customerText, replyText, label: `${ts}/100 tone` }; }
     if (ts < worstToneScore) { worstToneScore = ts; worstTone = { customerText, replyText, label: `${ts}/100 tone` }; }
   }
@@ -700,22 +726,44 @@ let _syncState: SyncState = { running: false, startedAt: null, completedAt: null
 // see the "gap week" handling in getWeeklyTrend() below.
 const CURRENT_WEEK_TTL_MS = 30 * 60 * 1000;
 const _liveWeekCache = new Map<string, { computedAt: number; metrics: UserEmailHygiene[]; teamHygiene: TeamHygieneRow[] }>();
+// Weeks with a background fetch already in flight -- prevents two overlapping requests
+// for the same cold week from both kicking off their own redundant multi-minute sync.
+const _liveWeekFetchInFlight = new Set<string>();
 
-async function getLiveWeekMetrics(
-  client: AxiosInstance,
-  weekStartDate: string,
-  since: Date,
-  until?: Date
-): Promise<{ metrics: UserEmailHygiene[]; teamHygiene: TeamHygieneRow[] }> {
+function getCachedLiveWeek(weekStartDate: string): { metrics: UserEmailHygiene[]; teamHygiene: TeamHygieneRow[] } | null {
   const cached = _liveWeekCache.get(weekStartDate);
   if (cached && Date.now() - cached.computedAt < CURRENT_WEEK_TTL_MS) return cached;
-  const { metrics, teamHygiene } = await computeMetricsForWindow(client, since.toISOString(), until?.toISOString());
-  _liveWeekCache.set(weekStartDate, { computedAt: Date.now(), metrics, teamHygiene });
-  if (_liveWeekCache.size > 4) {
-    const oldestKey = [..._liveWeekCache.entries()].sort((a, b) => a[1].computedAt - b[1].computedAt)[0][0];
-    _liveWeekCache.delete(oldestKey);
-  }
-  return { metrics, teamHygiene };
+  return null;
+}
+
+// 2026-09-01 fix: getWeeklyTrend() used to `await` this computation directly inside the
+// GET request -- a full team Graph sync + AI classification pass, easily 2-5 minutes.
+// With the gap-week fix above, a single request could trigger this TWICE in sequence
+// (once for a stale gap week, once for the current week), comfortably exceeding nginx's
+// 300s proxy_read_timeout and surfacing as a 504 in the browser -- exactly the failure
+// mode triggerBackgroundSync() above was already built to avoid for the manual sync
+// button. This does the same thing here: never block the request on a cold cache entry.
+// Fire the real computation in the background and let the CALLER's current response
+// show "no data yet" for that one week -- the next poll/reload picks it up once the
+// background fetch lands in _liveWeekCache.
+function triggerBackgroundLiveWeekFetch(weekStartDate: string, since: Date, until?: Date): void {
+  if (_liveWeekFetchInFlight.has(weekStartDate)) return;
+  _liveWeekFetchInFlight.add(weekStartDate);
+  (async () => {
+    try {
+      const client = graphClient(await getAccessToken());
+      const { metrics, teamHygiene } = await computeMetricsForWindow(client, since.toISOString(), until?.toISOString());
+      _liveWeekCache.set(weekStartDate, { computedAt: Date.now(), metrics, teamHygiene });
+      if (_liveWeekCache.size > 4) {
+        const oldestKey = [..._liveWeekCache.entries()].sort((a, b) => a[1].computedAt - b[1].computedAt)[0][0];
+        _liveWeekCache.delete(oldestKey);
+      }
+    } catch (err) {
+      logger.error(`[EmailHygiene] Background live-week fetch failed for ${weekStartDate}:`, err);
+    } finally {
+      _liveWeekFetchInFlight.delete(weekStartDate);
+    }
+  })();
 }
 
 // How far before a scoring window's `since` to still look for the customer message a
@@ -761,12 +809,21 @@ async function computeMetricsForWindow(
   // the comment on buildTeamTimelines() itself for why that pairing would otherwise fail.
   const timelines = await buildTeamTimelines(client, validUsers, since, until, 3, CUSTOMER_CONTEXT_LOOKBACK_MS);
   const allExchanges: Exchange[] = [];
-  for (const tl of timelines.values()) allExchanges.push(...buildExchanges(tl));
-  logger.info(`Email hygiene: built ${timelines.size} conversation timelines, ${allExchanges.length} exchanges`);
+  // Proactive/outbound customer messages (status updates, meeting bookings, kickoff decks)
+  // that don't answer any customer message in this timeline -- see findOrphanTeamMessages()
+  // for why the Exchange model alone misses these entirely. Real, common in an active
+  // migration business; credited toward Quality/Tone below, never Speed/Resolution (there's
+  // nothing to measure a response time against).
+  const orphanTeamMessages: TimelineEntry[] = [];
+  for (const tl of timelines.values()) {
+    allExchanges.push(...buildExchanges(tl));
+    orphanTeamMessages.push(...findOrphanTeamMessages(tl));
+  }
+  logger.info(`Email hygiene: built ${timelines.size} conversation timelines, ${allExchanges.length} exchanges, ${orphanTeamMessages.length} proactive/outbound messages`);
 
   const judgments = await judgeAllExchanges(allExchanges);
 
-  const results: UserEmailHygiene[] = validUsers.map((u) => deriveUserMetrics(u.email, u.name, judgments));
+  const results: UserEmailHygiene[] = validUsers.map((u) => deriveUserMetrics(u.email, u.name, judgments, orphanTeamMessages));
 
   const sorted = results.sort((a, b) => b.emailHygieneScore - a.emailHygieneScore);
   return { metrics: sorted, teamHygiene: computeTeamHygiene(sorted) };
@@ -952,28 +1009,16 @@ export const emailHygieneService = {
     // A week can be part of this month, not the live current week, and still have no
     // finalized row -- that's not stale data, it's the ~7h gap every Monday between a week
     // ending at midnight IST and the 7AM IST finalize cron catching up. Rather than show a
-    // false blank for a week that's fully knowable, fetch those "gap weeks" live too, same
-    // as the current week, cached under the same TTL. Lazily grabs one Graph client shared
-    // across every gap week (and the current week below) so a rollover with several unfinalized
-    // weeks still only authenticates once.
-    let sharedClient: AxiosInstance | null = null;
-    let sharedClientError: unknown = null;
-    const getSharedClient = async (): Promise<AxiosInstance> => {
-      if (sharedClient) return sharedClient;
-      if (sharedClientError) throw sharedClientError;
-      try {
-        sharedClient = graphClient(await getAccessToken());
-        return sharedClient;
-      } catch (err) {
-        sharedClientError = err;
-        throw err;
-      }
-    };
+    // false blank for a week that's fully knowable, this endpoint checks the same in-memory
+    // cache the current week uses. Critically, it never AWAITS a cold cache miss (see
+    // triggerBackgroundLiveWeekFetch above) -- this whole function only ever does DB reads
+    // and in-memory lookups, so it can't itself time out at the nginx/proxy layer the way a
+    // multi-minute live Graph sync can.
 
     // One slot per week-of-month, in order, even when a week was never finalized (e.g. it
     // passed before this feature existed) — this is what keeps "Wk 1/2/3/4" correctly
     // positioned instead of silently collapsing to just whichever weeks happen to have data.
-    const weeks = await Promise.all(finalizedWeekDates.map(async (weekStartDate) => {
+    const weeks = finalizedWeekDates.map((weekStartDate) => {
       const r: any = byWeekStart.get(weekStartDate);
       if (r) {
         return {
@@ -987,33 +1032,29 @@ export const emailHygieneService = {
       }
       const weekStart = new Date(`${weekStartDate}T00:00:00.000+05:30`);
       const weekEnd = new Date(weekStart.getTime() + 7 * 86400000 - 1);
-      try {
-        const client = await getSharedClient();
-        const { metrics, teamHygiene } = await getLiveWeekMetrics(client, weekStartDate, weekStart, weekEnd);
-        return { weekStart: weekStartDate, weekEnd: istDateStr(weekEnd), isCurrent: false, hasData: true, metrics, teamHygiene };
-      } catch (err) {
-        logger.error(`[EmailHygiene] Gap-week live fetch failed for ${weekStartDate}:`, err);
-        return { weekStart: weekStartDate, weekEnd: istDateStr(weekEnd), isCurrent: false, hasData: false, metrics: [], teamHygiene: [] };
+      const cached = getCachedLiveWeek(weekStartDate);
+      if (cached) {
+        return { weekStart: weekStartDate, weekEnd: istDateStr(weekEnd), isCurrent: false, hasData: true, metrics: cached.metrics, teamHygiene: cached.teamHygiene };
       }
-    }));
+      triggerBackgroundLiveWeekFetch(weekStartDate, weekStart, weekEnd);
+      return { weekStart: weekStartDate, weekEnd: istDateStr(weekEnd), isCurrent: false, hasData: false, metrics: [], teamHygiene: [] };
+    });
 
-    // Current week, live and genuinely week-scoped (Monday through now) — a real Graph
-    // fetch, guarded by the short in-memory TTL above so repeat views don't re-sync.
-    try {
-      const client = await getSharedClient();
-      const { metrics, teamHygiene } = await getLiveWeekMetrics(client, currentWeekStartDate, currentWeekStart);
+    // Current week -- same non-blocking cache-or-trigger-and-return pattern.
+    const cachedCurrent = getCachedLiveWeek(currentWeekStartDate);
+    const currentWeekEnd = istDateStr(getIstWeekBounds(0).weekEnd);
+    if (cachedCurrent) {
       weeks.push({
         weekStart: currentWeekStartDate,
-        weekEnd: istDateStr(getIstWeekBounds(0).weekEnd),
+        weekEnd: currentWeekEnd,
         isCurrent: true,
         hasData: true,
-        metrics,
-        teamHygiene,
+        metrics: cachedCurrent.metrics,
+        teamHygiene: cachedCurrent.teamHygiene,
       });
-    } catch (err) {
-      logger.error('[EmailHygiene] Current-week trend fetch failed:', err);
-      // Current week just won't have a live point this time — finalized weeks still return.
-      weeks.push({ weekStart: currentWeekStartDate, weekEnd: istDateStr(getIstWeekBounds(0).weekEnd), isCurrent: true, hasData: false, metrics: [], teamHygiene: [] });
+    } else {
+      triggerBackgroundLiveWeekFetch(currentWeekStartDate, currentWeekStart);
+      weeks.push({ weekStart: currentWeekStartDate, weekEnd: currentWeekEnd, isCurrent: true, hasData: false, metrics: [], teamHygiene: [] });
     }
 
     return { weeks, isConfigured: true };
