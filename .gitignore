@@ -55,3 +55,4 @@ backend/.jira-oauth-tokens.json
 backend/.nta-state.json
 
 backend/.jira-excel-data.json
+.scratchpad/
