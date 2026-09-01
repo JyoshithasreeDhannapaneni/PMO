@@ -526,6 +526,35 @@ CREATE TABLE IF NOT EXISTS smtp_settings (
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS zenop_doc_id VARCHAR(255);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_projects_zenop_doc_id ON projects(zenop_doc_id) WHERE zenop_doc_id IS NOT NULL;
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS phase_completion_pct SMALLINT DEFAULT 0;
+-- 2026-08-28: tracks when phase last actually changed value (not just any edit),
+-- so the external Delta-phase webhook/API can tell "recently moved to DELTA" apart
+-- from "has been sitting in DELTA for months".
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS phase_changed_at TIMESTAMP;
+CREATE INDEX IF NOT EXISTS idx_projects_phase_changed_at ON projects(phase_changed_at);
+
+-- 2026-08-28: 1-hour reply-SLA breach alerts (email hygiene). One row per Graph message
+-- id that triggered an alert, so the polling cron never sends a duplicate alert for the
+-- same still-unreplied customer email on its next run.
+CREATE TABLE IF NOT EXISTS sla_breach_alerts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  message_id VARCHAR(500) NOT NULL UNIQUE,
+  conversation_id VARCHAR(500),
+  user_email VARCHAR(255) NOT NULL,
+  user_name VARCHAR(255),
+  customer_email VARCHAR(255),
+  subject VARCHAR(1000),
+  received_at TIMESTAMP NOT NULL,
+  overdue_minutes INTEGER NOT NULL,
+  manager_email VARCHAR(255),
+  alerted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_sla_breach_alerts_user_email ON sla_breach_alerts(user_email);
+-- 2026-08-29 team-aware redesign: one alert now covers ALL tracked recipients of a shared
+-- customer email (not one alert per recipient), and a previously-alerted message that
+-- later gets a real reply from anyone gets a quiet "resolved" follow-up instead of being
+-- left as a permanent, unresolved-looking flag forever.
+ALTER TABLE sla_breach_alerts ADD COLUMN IF NOT EXISTS recipients JSONB DEFAULT '[]';
+ALTER TABLE sla_breach_alerts ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMP;
 
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
