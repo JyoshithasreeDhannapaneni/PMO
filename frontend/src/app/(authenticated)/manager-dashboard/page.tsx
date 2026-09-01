@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
-import { useManagerGoalsWithStats, useEscalatedProjects, useNtaStats, useNtaEnabled, useNtaToggle, useNtaSpaces, useNtaIssues, useNtaSearch, useNtaTrends, useNtaAssignees, useNtaReporters, useNtaProjectManagers, useNtaDepartments, useJiraExcelStatus, useNtaByManagers, useEngineersByManager, useJiraEngineers, useEmailHygiene, useActionItems, useCreateActionItem, useUpdateActionItem, useDeleteActionItem, useManagerDashboardLeaderboard } from '@/hooks/useProjects';
+import { useManagerGoalsWithStats, useEscalatedProjects, useNtaStats, useNtaEnabled, useNtaToggle, useNtaSpaces, useNtaIssues, useNtaSearch, useNtaTrends, useNtaAssignees, useNtaReporters, useNtaProjectManagers, useNtaDepartments, useJiraExcelStatus, useNtaExcelStatus, useNtaByManagers, useEngineersByManager, useJiraEngineers, useEmailHygiene, useActionItems, useCreateActionItem, useUpdateActionItem, useDeleteActionItem, useManagerDashboardLeaderboard } from '@/hooks/useProjects';
 import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import {
@@ -233,6 +233,115 @@ function ExcelUploadBanner() {
               ${available ? 'bg-white border border-green-300 text-green-700 hover:bg-green-50' : 'bg-blue-600 text-white hover:bg-blue-700'} disabled:opacity-60`}
           >
             {uploading ? <><Loader2 size={14} className="animate-spin" /> Uploading…</> : <><Upload size={14} /> {available ? 'Replace File' : 'Upload Excel'}</>}
+          </button>
+          <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFileChange} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Same upload pattern as ExcelUploadBanner above, pointed at the ticketing (NTA) data
+// source instead of Jira SLA data -- see ntaExcelService.ts for why an upload replaces
+// what would otherwise be a live Neutara Ticketing API sync.
+function NtaExcelUploadBanner() {
+  const { data, isLoading, refetch } = useNtaExcelStatus();
+  const queryClient = useQueryClient();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
+  const invalidateAll = () => {
+    queryClient.invalidateQueries({ queryKey: ['nta-excel-status'] });
+    queryClient.invalidateQueries({ queryKey: ['ntaStats'] });
+    queryClient.invalidateQueries({ queryKey: ['ntaConfig'] });
+    queryClient.invalidateQueries({ queryKey: ['ntaSpaces'] });
+    queryClient.invalidateQueries({ queryKey: ['ntaAssignees'] });
+    queryClient.invalidateQueries({ queryKey: ['ntaReporters'] });
+    queryClient.invalidateQueries({ queryKey: ['ntaProjectManagers'] });
+    queryClient.invalidateQueries({ queryKey: ['ntaDepartments'] });
+    queryClient.invalidateQueries({ queryKey: ['ntaIssues'] });
+    queryClient.invalidateQueries({ queryKey: ['ntaSearch'] });
+    queryClient.invalidateQueries({ queryKey: ['ntaTrends'] });
+    queryClient.invalidateQueries({ queryKey: ['ntaByManagers'] });
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
+      const form = new FormData();
+      form.append('file', file);
+      const res = await fetch(`${API_BASE_URL}/api/ticketing/excel/upload`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: form,
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error || 'Upload failed');
+      invalidateAll();
+      refetch();
+    } catch (err: any) {
+      setUploadError(err.message);
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleClear = async () => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
+    await fetch(`${API_BASE_URL}/api/ticketing/excel/clear`, {
+      method: 'DELETE',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    invalidateAll();
+    refetch();
+  };
+
+  if (isLoading) return null;
+  const available = data?.available;
+
+  return (
+    <div className={`rounded-xl border p-4 ${available ? 'border-green-200 bg-green-50' : 'border-blue-200 bg-blue-50'}`}>
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-start gap-3">
+          <FileSpreadsheet size={18} className={`flex-shrink-0 mt-0.5 ${available ? 'text-green-600' : 'text-blue-500'}`} />
+          <div>
+            {available ? (
+              <>
+                <p className="text-sm font-semibold text-green-800">Ticket data loaded from export</p>
+                <p className="text-xs text-green-700 mt-0.5">
+                  <span className="font-medium">{data.filename}</span>
+                  {' · '}{data.ticketCount} tickets
+                  {' · '}Uploaded {new Date(data.uploadedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm font-semibold text-blue-800">Upload Ticket Export (Jira/Neutara CSV or Excel)</p>
+                <p className="text-xs text-blue-600 mt-0.5">Export tickets (Key, Assignee, Reporter, Status, Priority, Department...), then upload here to populate the Tickets tab.</p>
+              </>
+            )}
+            {uploadError && <p className="text-xs text-red-600 mt-1 font-medium">{uploadError}</p>}
+          </div>
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {available && (
+            <button onClick={handleClear} className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-red-600 hover:text-red-700 border border-red-200 hover:border-red-300 rounded-lg transition">
+              <Trash2 size={13} /> Remove
+            </button>
+          )}
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className={`flex items-center gap-1.5 px-4 py-2 text-sm font-semibold rounded-lg transition whitespace-nowrap
+              ${available ? 'bg-white border border-green-300 text-green-700 hover:bg-green-50' : 'bg-blue-600 text-white hover:bg-blue-700'} disabled:opacity-60`}
+          >
+            {uploading ? <><Loader2 size={14} className="animate-spin" /> Uploading…</> : <><Upload size={14} /> {available ? 'Replace File' : 'Upload Tickets'}</>}
           </button>
           <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFileChange} />
         </div>
@@ -1560,8 +1669,9 @@ export default function ManagerDashboardPage() {
       {/* Banners */}
       <div className="space-y-2">
         <ExcelUploadBanner />
+        <NtaExcelUploadBanner />
         <NtaConnectBanner />
-        {/* Neutara Link / Unlink card — only visible to admin and only when API key is present in .env */}
+        {/* Neutara Link / Unlink card — only visible once a ticket export has been uploaded above (ntaApiKeyPresent now reflects "data uploaded", not a live API key — see ticketingController.getConfig) */}
         {!ntaConfigLoading && ntaApiKeyPresent && (
           <div className={`rounded-xl border p-3 flex items-center justify-between gap-4 ${ntaEnabled ? 'border-indigo-200 bg-indigo-50' : 'border-gray-200 bg-gray-50'}`}>
             <div className="flex items-center gap-2.5">
