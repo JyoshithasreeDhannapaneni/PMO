@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { teamController } from '../controllers/teamController';
+import { requireAuth } from '../middleware/auth';
 
 const router = Router();
 
@@ -13,12 +14,12 @@ router.get('/project/:projectId/summary', teamController.getSummary);
 router.get('/:id', teamController.getById);
 
 // POST /api/team - Add team member
-router.post('/', teamController.create);
+router.post('/', requireAuth, teamController.create);
 
 // PUT /api/team/:id - Update team member
-router.put('/:id', teamController.update);
+router.put('/:id', requireAuth, teamController.update);
 
 // DELETE /api/team/:id - Remove team member
-router.delete('/:id', teamController.delete);
+router.delete('/:id', requireAuth, teamController.delete);
 
 export default router;

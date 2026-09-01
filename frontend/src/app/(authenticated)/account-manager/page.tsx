@@ -127,7 +127,7 @@ type ProjectRow = {
 };
 
 export default function AccountManagerPage() {
-  const { user } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
 
   const [activeTab, setActiveTab]           = useState<'accounts' | 'poc'>('accounts');
   const [search, setSearch]                 = useState('');
@@ -453,11 +453,22 @@ export default function AccountManagerPage() {
     XLSX.writeFile(wb, `account-manager-view-${new Date().toISOString().slice(0, 10)}.xlsx`);
   }
 
-  if (isLoading) return (
+  if (authLoading || isLoading) return (
     <div className="flex items-center justify-center h-64">
       <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
     </div>
   );
+
+  if (user?.role !== 'ADMIN' && user?.role !== 'ACCOUNT_MANAGER') {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 gap-3">
+        <AlertTriangle size={40} className="text-red-400" />
+        <p className="text-lg font-semibold text-gray-700">Access Denied</p>
+        <p className="text-sm text-gray-400">This page is only accessible to account managers and administrators.</p>
+      </div>
+    );
+  }
+
   if (error) return <div className="p-6 text-red-500">Failed to load account manager view</div>;
 
   return (
