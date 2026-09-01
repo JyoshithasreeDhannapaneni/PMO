@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { changeRequestController } from '../controllers/changeRequestController';
+import { requireAuth } from '../middleware/auth';
 
 const router = Router();
 
@@ -16,24 +17,24 @@ router.get('/project/:projectId/summary', changeRequestController.getSummary);
 router.get('/:id', changeRequestController.getById);
 
 // POST /api/change-requests - Create change request
-router.post('/', changeRequestController.create);
+router.post('/', requireAuth, changeRequestController.create);
 
 // PUT /api/change-requests/:id - Update change request
-router.put('/:id', changeRequestController.update);
+router.put('/:id', requireAuth, changeRequestController.update);
 
 // POST /api/change-requests/:id/review - Start review
-router.post('/:id/review', changeRequestController.review);
+router.post('/:id/review', requireAuth, changeRequestController.review);
 
 // POST /api/change-requests/:id/approve - Approve change request
-router.post('/:id/approve', changeRequestController.approve);
+router.post('/:id/approve', requireAuth, changeRequestController.approve);
 
 // POST /api/change-requests/:id/reject - Reject change request
-router.post('/:id/reject', changeRequestController.reject);
+router.post('/:id/reject', requireAuth, changeRequestController.reject);
 
 // POST /api/change-requests/:id/implement - Mark as implemented
-router.post('/:id/implement', changeRequestController.implement);
+router.post('/:id/implement', requireAuth, changeRequestController.implement);
 
 // DELETE /api/change-requests/:id - Delete change request
-router.delete('/:id', changeRequestController.delete);
+router.delete('/:id', requireAuth, changeRequestController.delete);
 
 export default router;

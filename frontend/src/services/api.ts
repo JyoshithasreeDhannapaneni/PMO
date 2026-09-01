@@ -750,6 +750,25 @@ export const psEngagementsApi = {
   },
 };
 
+export const actionItemsApi = {
+  getAll: async () => {
+    const { data } = await api.get('/action-items');
+    return data.data as any[];
+  },
+  create: async (item: any) => {
+    const { data } = await api.post('/action-items', item);
+    return data;
+  },
+  update: async (id: string, item: any) => {
+    const { data } = await api.put(`/action-items/${id}`, item);
+    return data;
+  },
+  remove: async (id: string) => {
+    const { data } = await api.delete(`/action-items/${id}`);
+    return data;
+  },
+};
+
 export const emailHygieneApi = {
   getMetrics: async (forceRefresh = false) => {
     const { data } = await api.get('/email-hygiene', { params: forceRefresh ? { refresh: 'true' } : {} });

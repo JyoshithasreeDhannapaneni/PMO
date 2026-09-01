@@ -34,7 +34,7 @@ const allNavigation = [
     ],
   },
   { name: 'Pre-sales',            href: '/poc-projects',           icon: Target,          color: '#db2777', adminOnly: false },
-  { name: 'Account Manager View', href: '/account-manager',        icon: CircleUserRound, color: '#4f46e5', adminOnly: false },
+  { name: 'Account Manager View', href: '/account-manager',        icon: CircleUserRound, color: '#4f46e5', roles: ['ADMIN', 'ACCOUNT_MANAGER'] },
   { name: 'Customer Success',     href: '/customer-success',       icon: Handshake,       color: '#16a34a', adminOnly: false },
   { name: 'History Archive',      href: '/archive',                icon: Archive,         color: '#78716c', adminOnly: false },
   { name: 'Server Notifications', href: '/server-alerts',          icon: Megaphone,       color: '#f59e0b', adminOnly: false },
@@ -47,7 +47,7 @@ const allNavigation = [
     children: [
       { name: 'Weekly Reports',   href: '/reports/weekly' },
       { name: 'Monthly Reports',  href: '/reports/monthly' },
-      { name: 'Audit Report',     href: '/reports/audit' },
+      { name: 'Audit Report',     href: '/reports/audit', adminOnly: true },
       { name: 'Audit Dashboard',  href: '/reports/audit-dashboard' },
     ],
   },
@@ -62,7 +62,13 @@ export function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const isAdmin = user?.role === 'ADMIN';
-  const navigation = allNavigation.filter((item) => !item.adminOnly || isAdmin);
+  // `roles` (an explicit allow-list) takes precedence over `adminOnly` when
+  // present — used for items scoped to a specific non-admin role too (e.g.
+  // Account Manager View), where adminOnly:true would wrongly hide it from
+  // that role as well.
+  const canSee = (item: { adminOnly?: boolean; roles?: string[] }) =>
+    item.roles ? (!!user?.role && item.roles.includes(user.role)) : (!item.adminOnly || isAdmin);
+  const navigation = allNavigation.filter(canSee);
 
   const toggleGroup = (name: string) => {
     setOpenGroups((prev) => prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name]);
@@ -129,7 +135,7 @@ export function Sidebar() {
                 </button>
                 {!collapsed && isOpen && (
                   <div className="ml-8 mt-0.5 space-y-0.5 animate-fadeInUp">
-                    {item.children.filter((child: any) => !child.adminOnly || isAdmin).map((child) => (
+                    {item.children.filter(canSee).map((child) => (
                       <Link
                         key={child.name}
                         href={child.href}

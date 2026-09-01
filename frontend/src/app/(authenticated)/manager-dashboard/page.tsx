@@ -4,13 +4,15 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
-import { useManagerGoalsWithStats, useEscalatedProjects, useNtaStats, useNtaEnabled, useNtaToggle, useNtaSpaces, useNtaIssues, useNtaSearch, useNtaTrends, useNtaAssignees, useNtaReporters, useNtaProjectManagers, useNtaDepartments, useJiraExcelStatus, useNtaByManagers, useEngineersByManager, useJiraEngineers, useEmailHygiene } from '@/hooks/useProjects';
+import { useToast } from '@/context/ToastContext';
+import { useManagerGoalsWithStats, useEscalatedProjects, useNtaStats, useNtaEnabled, useNtaToggle, useNtaSpaces, useNtaIssues, useNtaSearch, useNtaTrends, useNtaAssignees, useNtaReporters, useNtaProjectManagers, useNtaDepartments, useJiraExcelStatus, useNtaByManagers, useEngineersByManager, useJiraEngineers, useEmailHygiene, useActionItems, useCreateActionItem, useUpdateActionItem, useDeleteActionItem } from '@/hooks/useProjects';
 import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import {
   Loader2, AlertCircle, X, PlayCircle, PauseCircle,
   CheckCircle, Clock, ChevronRight, Search, Link2Off,
   ArrowLeft, ExternalLink, Upload, FileSpreadsheet, Trash2,
+  Plus, Pencil, Check,
 } from 'lucide-react';
 import api from '@/services/api';
 import { SEGMENT_CONFIG, SEGMENT_HIERARCHY, MANAGER_QUERY_NAMES, ENGINEER_ASSIGNMENTS, LMS_SCORES, LMS_MAX, MEETING_ATTENDANCE, CHECKIN_DELAYS, segmentOfManager, isNamedManager, type Segment } from '@/lib/segments';
@@ -2565,52 +2567,314 @@ function ObservationsView() {
 
 // ─── Action Items View ────────────────────────────────────────────────────────
 
-const ACTION_ITEMS_DATA: { source: string; period: string; items: string[] }[] = [
-  {
-    source: 'Last Month MBR',
-    period: 'July 2026',
-    items: [
-      'Update the PMO Tracker daily before the shift starts.',
-      'Acknowledge every customer email promptly before taking action.',
-      'Do not share project credentials in Jira tickets or emails.',
-      'Resolve tickets within the defined SLA based on their priority.',
-      'Conduct weekly knowledge transfer (KT) sessions.',
-      'Publish one benchmark project for each migration type.',
-      'Perform a pre-check at every project phase.',
-      'Review customer Jira tickets and email conversations thoroughly before sending any response to ensure accuracy and context.',
-    ],
-  },
-];
+const ACCOUNTABLE_OPTIONS = Array.from(new Set(SEGMENT_CONFIG.flatMap((s) => s.managers))).sort();
+
+const STATUS_META: Record<string, { label: string; cls: string }> = {
+  OPEN: { label: 'Open', cls: 'bg-gray-100 text-gray-600' },
+  IN_PROGRESS: { label: 'WIP', cls: 'bg-blue-100 text-blue-700' },
+  DONE: { label: 'Done', cls: 'bg-emerald-100 text-emerald-700' },
+};
+const PRIORITY_META: Record<string, { label: string; cls: string }> = {
+  LOW: { label: 'Low', cls: 'bg-gray-100 text-gray-500' },
+  MEDIUM: { label: 'Medium', cls: 'bg-amber-100 text-amber-700' },
+  HIGH: { label: 'High', cls: 'bg-red-100 text-red-700' },
+};
+
+// yyyy-MM -> "Jul 2026"
+function monthLabel(month: string): string {
+  const [y, m] = month.split('-').map(Number);
+  if (!y || !m) return month;
+  return new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+}
+function currentMonthStr(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+interface ActionItemFormState {
+  month: string;
+  item: string;
+  accountable: string;
+  status: string;
+  priority: string;
+}
+
+function emptyActionItemForm(month: string): ActionItemFormState {
+  return { month, item: '', accountable: '', status: 'OPEN', priority: 'MEDIUM' };
+}
 
 function ActionItemsView() {
-  return (
-    <div className="space-y-6 py-2">
-      {ACTION_ITEMS_DATA.map((group) => (
-        <div key={group.source} className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-          {/* Header */}
-          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-indigo-50">
-            <div>
-              <h3 className="text-base font-semibold text-indigo-800">{group.source}</h3>
-              <p className="text-xs text-indigo-500 mt-0.5">Time range: {group.period}</p>
-            </div>
-            <span className="px-3 py-1 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-700 border border-indigo-200">
-              {group.items.length} items
-            </span>
-          </div>
+  const { user } = useAuth();
+  const { showToast } = useToast();
+  const canEdit = user?.role === 'ADMIN' || user?.role === 'PROJECT_MANAGER';
 
-          {/* Items list */}
-          <ul className="divide-y divide-gray-50">
-            {group.items.map((item, idx) => (
-              <li key={idx} className="flex items-start gap-4 px-6 py-4 hover:bg-gray-50 transition-colors">
-                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 text-xs font-bold flex items-center justify-center mt-0.5">
-                  {idx + 1}
-                </span>
-                <p className="text-sm text-gray-700 leading-relaxed">{item}</p>
-              </li>
-            ))}
-          </ul>
+  const { data: itemsResp, isLoading } = useActionItems();
+  const createItem = useCreateActionItem();
+  const updateItem = useUpdateActionItem();
+  const deleteItem = useDeleteActionItem();
+
+  const allItems: any[] = itemsResp ?? [];
+
+  const availableMonths = useMemo(() => {
+    const set = new Set<string>(allItems.map((i) => i.month));
+    set.add(currentMonthStr());
+    return Array.from(set).sort();
+  }, [allItems]);
+
+  const [selectedMonth, setSelectedMonth] = useState<string | 'ALL'>(() => availableMonths[availableMonths.length - 1] || currentMonthStr());
+  const [accountableFilter, setAccountableFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [priorityFilter, setPriorityFilter] = useState('');
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState<ActionItemFormState>(() => emptyActionItemForm(currentMonthStr()));
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  const monthFiltered = selectedMonth === 'ALL' ? allItems : allItems.filter((i) => i.month === selectedMonth);
+  const filtered = monthFiltered.filter((i) => {
+    if (accountableFilter && i.accountable !== accountableFilter) return false;
+    if (statusFilter && i.status !== statusFilter) return false;
+    if (priorityFilter && i.priority !== priorityFilter) return false;
+    return true;
+  });
+
+  // Overdue = still open/in-progress and its month has already passed — not a
+  // status anyone sets directly, computed the same way delay is elsewhere in
+  // this app (live, from dates, not a manually-flagged field).
+  const isOverdue = (i: any) => (i.status === 'OPEN' || i.status === 'IN_PROGRESS') && i.month < currentMonthStr();
+
+  const stats = useMemo(() => ({
+    total: filtered.length,
+    done: filtered.filter((i) => i.status === 'DONE').length,
+    inProgress: filtered.filter((i) => i.status === 'IN_PROGRESS').length,
+    overdue: filtered.filter(isOverdue).length,
+  }), [filtered]);
+
+  const startAdd = () => {
+    setForm(emptyActionItemForm(selectedMonth === 'ALL' ? currentMonthStr() : selectedMonth));
+    setEditingId(null);
+    setShowForm(true);
+  };
+
+  const startEdit = (i: any) => {
+    setForm({ month: i.month, item: i.item, accountable: i.accountable || '', status: i.status, priority: i.priority });
+    setEditingId(i.id);
+    setShowForm(true);
+  };
+
+  const cancelForm = () => { setShowForm(false); setEditingId(null); };
+
+  const saveForm = async () => {
+    if (!form.item.trim()) {
+      showToast('warning', 'Action item required', 'Type what needs to be done.');
+      return;
+    }
+    try {
+      if (editingId) {
+        await updateItem.mutateAsync({ id: editingId, data: form });
+        showToast('success', 'Action item updated');
+      } else {
+        await createItem.mutateAsync({ id: `ai-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, ...form });
+        showToast('success', 'Action item added');
+      }
+      cancelForm();
+    } catch (err: any) {
+      showToast('error', 'Save failed', err?.response?.data?.error?.message || err?.message || 'Could not save the action item.');
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Delete this action item? This cannot be undone.')) return;
+    try {
+      await deleteItem.mutateAsync(id);
+      showToast('success', 'Action item deleted');
+    } catch {
+      showToast('error', 'Delete failed', 'Please try again.');
+    }
+  };
+
+  return (
+    <div className="space-y-4 py-2">
+      {/* Month tabs */}
+      <div className="flex items-center gap-1 border-b border-gray-200 overflow-x-auto">
+        {availableMonths.map((m) => (
+          <button
+            key={m}
+            onClick={() => setSelectedMonth(m)}
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px whitespace-nowrap transition-colors ${
+              selectedMonth === m ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            {monthLabel(m)}
+          </button>
+        ))}
+        <button
+          onClick={() => setSelectedMonth('ALL')}
+          className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px whitespace-nowrap transition-colors ${
+            selectedMonth === 'ALL' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          Compare Months
+        </button>
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {[
+          { label: 'Total', value: stats.total, cls: 'text-gray-800' },
+          { label: 'Completed', value: stats.done, cls: 'text-emerald-600' },
+          { label: 'In Progress', value: stats.inProgress, cls: 'text-blue-600' },
+          { label: 'Overdue', value: stats.overdue, cls: 'text-red-600' },
+        ].map((s) => (
+          <div key={s.label} className="bg-white rounded-xl border border-gray-200 px-4 py-3">
+            <p className={`text-2xl font-bold ${s.cls}`}>{s.value}</p>
+            <p className="text-xs text-gray-500 mt-0.5">{s.label}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Filters + Add */}
+      <div className="flex flex-wrap items-center gap-2">
+        <select value={accountableFilter} onChange={(e) => setAccountableFilter(e.target.value)}
+          className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white text-gray-700">
+          <option value="">Accountable: All</option>
+          {ACCOUNTABLE_OPTIONS.map((m) => <option key={m} value={m}>{m}</option>)}
+        </select>
+        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
+          className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white text-gray-700">
+          <option value="">Status: All</option>
+          {Object.entries(STATUS_META).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
+        </select>
+        <select value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value)}
+          className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white text-gray-700">
+          <option value="">Priority: All</option>
+          {Object.entries(PRIORITY_META).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
+        </select>
+        {canEdit && (
+          <button
+            onClick={startAdd}
+            className="ml-auto flex items-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700"
+          >
+            <Plus size={15} /> Add Action Item
+          </button>
+        )}
+      </div>
+
+      {/* Add/Edit form */}
+      {showForm && (
+        <div className="bg-white rounded-xl border border-indigo-200 p-4 space-y-3">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Month</label>
+              <input type="month" value={form.month} onChange={(e) => setForm((f) => ({ ...f, month: e.target.value }))}
+                className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Accountable</label>
+              <select value={form.accountable} onChange={(e) => setForm((f) => ({ ...f, accountable: e.target.value }))}
+                className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white">
+                <option value="">— Select —</option>
+                {ACCOUNTABLE_OPTIONS.map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Status</label>
+              <select value={form.status} onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}
+                className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white">
+                {Object.entries(STATUS_META).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Priority</label>
+              <select value={form.priority} onChange={(e) => setForm((f) => ({ ...f, priority: e.target.value }))}
+                className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white">
+                {Object.entries(PRIORITY_META).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Action Item</label>
+            <textarea value={form.item} onChange={(e) => setForm((f) => ({ ...f, item: e.target.value }))} rows={2}
+              placeholder="What needs to be done…"
+              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2" />
+          </div>
+          <div className="flex justify-end gap-2">
+            <button onClick={cancelForm} className="px-4 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-600 hover:bg-gray-100">Cancel</button>
+            <button
+              onClick={saveForm}
+              disabled={createItem.isPending || updateItem.isPending}
+              className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 disabled:opacity-50"
+            >
+              <Check size={13} /> {editingId ? 'Save Changes' : 'Add Item'}
+            </button>
+          </div>
         </div>
-      ))}
+      )}
+
+      {/* Table */}
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        {isLoading ? (
+          <div className="flex items-center justify-center py-16 text-gray-400">
+            <Loader2 className="w-6 h-6 animate-spin" />
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-center text-gray-400">
+            <p className="text-sm font-medium">No action items{selectedMonth !== 'ALL' ? ` for ${monthLabel(selectedMonth)}` : ''}</p>
+            {canEdit && <p className="text-xs mt-1">Click "Add Action Item" to log one.</p>}
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-200 bg-gray-50 text-left">
+                  <th className="px-4 py-2.5 text-xs font-semibold text-gray-500">Month</th>
+                  <th className="px-4 py-2.5 text-xs font-semibold text-gray-500">Action Item</th>
+                  <th className="px-4 py-2.5 text-xs font-semibold text-gray-500">Accountable</th>
+                  <th className="px-4 py-2.5 text-xs font-semibold text-gray-500">Priority</th>
+                  <th className="px-4 py-2.5 text-xs font-semibold text-gray-500">Status</th>
+                  {canEdit && <th className="px-4 py-2.5 text-xs font-semibold text-gray-500 text-center">Actions</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((i) => {
+                  const overdue = isOverdue(i);
+                  const statusMeta = overdue
+                    ? { label: 'Overdue', cls: 'bg-red-100 text-red-700' }
+                    : STATUS_META[i.status] || STATUS_META.OPEN;
+                  return (
+                    <tr key={i.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50/60">
+                      <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{monthLabel(i.month)}</td>
+                      <td className="px-4 py-3 text-gray-700 max-w-[420px]">{i.item}</td>
+                      <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{i.accountable || '—'}</td>
+                      <td className="px-4 py-3">
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${(PRIORITY_META[i.priority] || PRIORITY_META.MEDIUM).cls}`}>
+                          {(PRIORITY_META[i.priority] || PRIORITY_META.MEDIUM).label}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusMeta.cls}`}>{statusMeta.label}</span>
+                      </td>
+                      {canEdit && (
+                        <td className="px-4 py-3">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button onClick={() => startEdit(i)} title="Edit"
+                              className="w-7 h-7 rounded-lg border border-gray-200 flex items-center justify-center text-gray-500 hover:text-indigo-600 hover:border-indigo-300 transition-colors">
+                              <Pencil size={13} />
+                            </button>
+                            <button onClick={() => handleDelete(i.id)} title="Delete"
+                              className="w-7 h-7 rounded-lg border border-gray-200 flex items-center justify-center text-gray-400 hover:text-red-500 hover:border-red-300 transition-colors">
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { documentController } from '../controllers/documentController';
+import { requireAuth } from '../middleware/auth';
 
 const router = Router();
 
@@ -16,12 +17,12 @@ router.get('/project/:projectId/category/:category', documentController.getByCat
 router.get('/:id', documentController.getById);
 
 // POST /api/documents - Create document
-router.post('/', documentController.create);
+router.post('/', requireAuth, documentController.create);
 
 // PUT /api/documents/:id - Update document
-router.put('/:id', documentController.update);
+router.put('/:id', requireAuth, documentController.update);
 
 // DELETE /api/documents/:id - Delete document
-router.delete('/:id', documentController.delete);
+router.delete('/:id', requireAuth, documentController.delete);
 
 export default router;

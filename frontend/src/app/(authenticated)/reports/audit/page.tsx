@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
+import { useAuth } from '@/context/AuthContext';
 import { auditApi } from '@/services/api';
 import { Card } from '@/components/ui/Card';
 import { Select } from '@/components/ui/Select';
@@ -364,6 +365,7 @@ function downloadBlob(blob: Blob, filename: string) {
 }
 
 export default function AuditReportPage() {
+  const { user, isLoading: authLoading } = useAuth();
   const [activeTab, setActiveTab] = useState<'log' | 'leaderboard'>('log');
 
   const today = new Date();
@@ -448,6 +450,24 @@ export default function AuditReportPage() {
     } finally {
       setIsExporting(false);
     }
+  }
+
+  if (authLoading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="w-7 h-7 animate-spin text-primary-600" />
+      </div>
+    );
+  }
+
+  if (user?.role !== 'ADMIN') {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 gap-3">
+        <AlertCircle size={40} className="text-red-400" />
+        <p className="text-lg font-semibold text-gray-700">Access Denied</p>
+        <p className="text-sm text-gray-400">This page is only accessible to administrators.</p>
+      </div>
+    );
   }
 
   return (
