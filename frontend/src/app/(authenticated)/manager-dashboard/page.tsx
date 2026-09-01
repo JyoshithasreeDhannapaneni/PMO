@@ -455,12 +455,10 @@ function EngineersTabView({
   ];
 
   const renderRow = (rowName: string, isManager: boolean) => {
-    const { totalTickets, frBreaches, resBreaches, breachRate, tickets } = getEngineerJiraData(allJiraEngineers, rowName);
-    const frTickets     = tickets.filter((t: any) => t.frBreached);
+    const { totalTickets, resBreaches, breachRate, tickets } = getEngineerJiraData(allJiraEngineers, rowName);
     const resTickets    = tickets.filter((t: any) => t.resBreached);
     const hygieneMetric = getEngineerHygieneData(allHygieneMetrics, rowName);
     const lmsScore      = getEngineerLmsScore(rowName);
-    const meetingData   = getEngineerMeetingData(rowName);
     const checkinDelay  = getEngineerCheckinDelay(rowName);
 
     return (
@@ -484,17 +482,6 @@ function EngineersTabView({
               className={`font-semibold text-gray-800 ${totalTickets > 0 ? 'hover:text-indigo-600 cursor-pointer' : 'cursor-default'}`}
             >
               {totalTickets}
-            </button>
-          ) : <span className="text-gray-300">—</span>}
-        </td>
-        <td className="px-4 py-3 text-center">
-          {jiraAvailable ? (
-            <button
-              onClick={() => frBreaches > 0 && setPopup({ engName: rowName, mode: 'fr', tickets: frTickets })}
-              className={`px-2 py-0.5 rounded-full text-xs font-semibold
-                ${frBreaches > 0 ? 'bg-orange-100 text-orange-700 hover:bg-orange-200 cursor-pointer' : 'bg-gray-100 text-gray-400 cursor-default'}`}
-            >
-              {frBreaches}
             </button>
           ) : <span className="text-gray-300">—</span>}
         </td>
@@ -526,16 +513,6 @@ function EngineersTabView({
               {hygieneMetric.emailHygieneScore}
             </button>
           ) : <span className="text-gray-300">—</span>}
-        </td>
-        <td className="px-4 py-3 text-center">
-          {meetingData ? (() => {
-            const pct = Math.round((meetingData.attended / meetingData.total) * 100);
-            return (
-              <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${pct === 100 ? 'bg-green-100 text-green-700' : pct >= 80 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>
-                {meetingData.attended}/{meetingData.total}
-              </span>
-            );
-          })() : <span className="text-gray-300">—</span>}
         </td>
         <td className="px-4 py-3 text-center">
           {lmsScore !== null ? (
@@ -571,11 +548,9 @@ function EngineersTabView({
               <tr>
                 <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500">Name</th>
                 <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-500 whitespace-nowrap">Total</th>
-                <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-500 whitespace-nowrap">FR</th>
                 <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-500 whitespace-nowrap">Res</th>
                 <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-500 whitespace-nowrap">Breach%</th>
                 <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-500 whitespace-nowrap">Hygiene</th>
-                <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-500 whitespace-nowrap">Mtg /5</th>
                 <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-500 whitespace-nowrap">LMS /10</th>
                 <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-500 whitespace-nowrap">Avg. Delay</th>
               </tr>
