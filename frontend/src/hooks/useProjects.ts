@@ -166,6 +166,18 @@ export function useManagerGoalsWithStats(manager?: string) {
   });
 }
 
+// Manager Dashboard leaderboard -- composite of customer/project volume, on-time
+// delivery, and PMO Hygiene, split by ENT/SMB. Not date-ranged (unlike the Reports →
+// Audit leaderboard) since this reflects current standing, not a period snapshot.
+export function useManagerDashboardLeaderboard(enabled = true) {
+  return useQuery({
+    queryKey: ['managerDashboardLeaderboard'],
+    queryFn: () => auditApi.getManagerDashboardLeaderboard(),
+    enabled,
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
 export function useUpsertManagerGoal() {
   const queryClient = useQueryClient();
   return useMutation({

@@ -12,6 +12,7 @@ const router = Router();
 router.get('/user-project-summary', requireRole('ADMIN'), auditController.getUserProjectSummary);
 router.get('/activity-summary', requireRole('ADMIN'), auditController.getActivitySummary);
 router.get('/manager-leaderboard', requireRole('ADMIN'), auditController.getManagerLeaderboard);
+router.get('/manager-dashboard-leaderboard', requireRole('ADMIN'), auditController.getManagerDashboardLeaderboard);
 router.get('/weekly-trend', requireRole('ADMIN'), auditController.getWeeklyTrend);
 router.get('/hygiene-board', requireRole('ADMIN'), auditController.getHygieneBoard);
 router.get('/hygiene-board/weekly-trend', requireRole('ADMIN'), auditController.getHygieneWeeklyTrend);

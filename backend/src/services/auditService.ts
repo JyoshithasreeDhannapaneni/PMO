@@ -2,6 +2,7 @@ import { query, execute } from '../config/database';
 import { logger } from '../utils/logger';
 import { v4 as uuidv4 } from 'uuid';
 import { getIstWeekBounds, istDateStr, weeksInCurrentIstMonth } from '../utils/weekBounds';
+import { segmentOfManager } from '../config/teamRoster';
 
 type AuditAction = 'CREATE' | 'UPDATE' | 'DELETE' | 'LOGIN' | 'LOGOUT' | 'PASSWORD_CHANGE' | 'STATUS_CHANGE' | 'EXPORT';
 
@@ -293,6 +294,86 @@ class AuditService {
         entProjects,
         smbProjects,
       },
+    };
+  }
+
+  // Manager Dashboard leaderboard — ranks managers on a composite of three things:
+  // how many distinct customers they're actively working with, how on-time their
+  // projects are, and their PMO Hygiene score (data quality/activity/case-study/delay
+  // accountability/date integrity). Weighted 30/35/35 so a big book of business run
+  // poorly can't outrank a smaller one run well -- delay + hygiene together outweigh
+  // raw volume. Split by segment the same way getManagerLeaderboard() already does,
+  // since ENT and SMB books of business aren't comparable in size.
+  async getManagerDashboardLeaderboard() {
+    const [projectRows, hygieneBoard] = await Promise.all([
+      query(`
+        SELECT
+          project_manager                                           AS manager,
+          MODE() WITHIN GROUP (ORDER BY segment)                    AS segment,
+          COUNT(*)::int                                              AS total_projects,
+          COUNT(DISTINCT customer_name)::int                         AS distinct_customers,
+          COUNT(*) FILTER (WHERE delay_status = 'DELAYED')::int      AS delayed,
+          COUNT(*) FILTER (WHERE delay_status = 'AT_RISK')::int      AS at_risk,
+          COUNT(*) FILTER (WHERE delay_status = 'NOT_DELAYED')::int  AS on_time
+        FROM projects
+        WHERE archived_at IS NULL
+          AND project_manager IS NOT NULL AND TRIM(project_manager) <> ''
+        GROUP BY project_manager
+      `),
+      this.getHygieneBoard(),
+    ]);
+
+    const hygieneByManager = new Map<string, number>(
+      hygieneBoard.map((h: any) => [String(h.projectManager).trim().toLowerCase(), h.hygieneScore])
+    );
+
+    // Most projects predate the `segment` column and were never tagged, so MODE() over an
+    // all-NULL group comes back NULL -- fall back to resolving the manager's name against
+    // the same ENT/SMB roster the Manager Dashboard itself uses (segmentOfManager), same
+    // fallback order as the frontend's projectSegment() helper. A manager who resolves to
+    // neither (e.g. "Administrator", a blank name) can't be placed on either leaderboard.
+    const withSegment = projectRows.rows
+      .map((r: any) => ({ ...r, resolvedSegment: (r.segment === 'ENT' || r.segment === 'SMB') ? r.segment : segmentOfManager(r.manager) }))
+      .filter((r: any) => r.resolvedSegment === 'ENT' || r.resolvedSegment === 'SMB');
+
+    // Volume is normalized against the busiest manager WITHIN THE SAME SEGMENT, not
+    // globally -- ENT accounts are structurally fewer and larger than SMB ones, so a
+    // global max would make every ENT manager look artificially "low volume" next to
+    // SMB peers regardless of how their own segment actually compares.
+    const maxCustomersBySegment: Record<'ENT' | 'SMB', number> = {
+      ENT: Math.max(1, ...withSegment.filter((r: any) => r.resolvedSegment === 'ENT').map((r: any) => r.distinct_customers)),
+      SMB: Math.max(1, ...withSegment.filter((r: any) => r.resolvedSegment === 'SMB').map((r: any) => r.distinct_customers)),
+    };
+
+    const rows = withSegment.map((r: any) => {
+      const pctOnTime = r.total_projects > 0 ? Math.round((r.on_time / r.total_projects) * 100) : 0;
+      const hygieneScore = hygieneByManager.get(String(r.manager).trim().toLowerCase()) ?? null;
+      const volumeScore = Math.round((r.distinct_customers / maxCustomersBySegment[r.resolvedSegment as 'ENT' | 'SMB']) * 100);
+      // No hygiene data yet for this manager (e.g. brand new) -- rather than silently
+      // zeroing out 35% of their composite, fall back to their delay performance for
+      // that share too, so a newcomer isn't unfairly sunk by a metric with no data.
+      const compositeScore = Math.round(
+        volumeScore * 0.30 + pctOnTime * 0.35 + (hygieneScore ?? pctOnTime) * 0.35
+      );
+      return {
+        manager: r.manager,
+        segment: r.resolvedSegment as 'ENT' | 'SMB',
+        totalProjects: r.total_projects,
+        distinctCustomers: r.distinct_customers,
+        delayed: r.delayed,
+        atRisk: r.at_risk,
+        onTime: r.on_time,
+        pctOnTime,
+        hygieneScore,
+        volumeScore,
+        compositeScore,
+      };
+    }).sort((a, b) => b.compositeScore - a.compositeScore);
+
+    return {
+      overall: rows,
+      ENT: rows.filter((r) => r.segment === 'ENT'),
+      SMB: rows.filter((r) => r.segment === 'SMB'),
     };
   }
 

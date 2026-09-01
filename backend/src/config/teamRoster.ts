@@ -18,6 +18,20 @@ const SEGMENT_HIERARCHY: { lead: string; managers: string[] }[] = [
 
 const TOP_LEVEL_LEADS = ['Abhishek', 'Ajay Singh'];
 
+// Mirrors SEGMENT_CONFIG from frontend/src/lib/segments.ts -- used to classify a
+// project_manager string as ENT/SMB when the project's own `segment` column is unset
+// (true for any project created before that field existed).
+const SEGMENT_CONFIG: { label: 'ENT' | 'SMB'; managers: string[] }[] = [
+  { label: 'ENT', managers: ['Abhishek', 'Lakshmi Prasanna', 'Pranavi'] },
+  { label: 'SMB', managers: ['Ajay Singh', 'Harika', 'Neelima', 'Meghana Chowdada', 'Sriram'] },
+];
+
+export function segmentOfManager(rawName: string | null | undefined): 'ENT' | 'SMB' | null {
+  if (!rawName) return null;
+  const found = SEGMENT_CONFIG.find((s) => s.managers.some((m) => nameMatches(rawName, m)));
+  return found ? found.label : null;
+}
+
 // Same "canonical name + anything" tolerance as frontend/src/lib/segments.ts's
 // managerNameMatches — real records store full names ("Raghu Yellani", "Abhishek sakala").
 export function nameMatches(rawName: string | null | undefined, canonicalName: string): boolean {

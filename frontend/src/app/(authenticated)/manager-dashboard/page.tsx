@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
-import { useManagerGoalsWithStats, useEscalatedProjects, useNtaStats, useNtaEnabled, useNtaToggle, useNtaSpaces, useNtaIssues, useNtaSearch, useNtaTrends, useNtaAssignees, useNtaReporters, useNtaProjectManagers, useNtaDepartments, useJiraExcelStatus, useNtaByManagers, useEngineersByManager, useJiraEngineers, useEmailHygiene, useActionItems, useCreateActionItem, useUpdateActionItem, useDeleteActionItem } from '@/hooks/useProjects';
+import { useManagerGoalsWithStats, useEscalatedProjects, useNtaStats, useNtaEnabled, useNtaToggle, useNtaSpaces, useNtaIssues, useNtaSearch, useNtaTrends, useNtaAssignees, useNtaReporters, useNtaProjectManagers, useNtaDepartments, useJiraExcelStatus, useNtaByManagers, useEngineersByManager, useJiraEngineers, useEmailHygiene, useActionItems, useCreateActionItem, useUpdateActionItem, useDeleteActionItem, useManagerDashboardLeaderboard } from '@/hooks/useProjects';
 import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import {
@@ -19,7 +19,7 @@ import { SEGMENT_CONFIG, SEGMENT_HIERARCHY, MANAGER_QUERY_NAMES, ENGINEER_ASSIGN
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type ActiveTab = 'ENT' | 'SMB' | 'ENGINEERS' | 'OBSERVATIONS' | 'TICKETS' | 'ACTION_ITEMS';
+type ActiveTab = 'ENT' | 'SMB' | 'ENGINEERS' | 'OBSERVATIONS' | 'TICKETS' | 'ACTION_ITEMS' | 'LEADERBOARD';
 
 interface ManagerStat {
   manager: string;
@@ -1536,9 +1536,9 @@ export default function ManagerDashboardPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-gray-200 overflow-x-auto">
-        {(['ENT', 'SMB', ...(ntaEnabled ? ['ENGINEERS', 'TICKETS'] as ActiveTab[] : []), 'OBSERVATIONS', 'ACTION_ITEMS'] as ActiveTab[]).map((tab) => {
+        {(['ENT', 'SMB', 'LEADERBOARD', ...(ntaEnabled ? ['ENGINEERS', 'TICKETS'] as ActiveTab[] : []), 'OBSERVATIONS', 'ACTION_ITEMS'] as ActiveTab[]).map((tab) => {
           const labels: Record<ActiveTab, string> = {
-            ENT: 'ENT', SMB: 'SMB', ENGINEERS: 'Engineers',
+            ENT: 'ENT', SMB: 'SMB', ENGINEERS: 'Engineers', LEADERBOARD: 'Leaderboard',
             OBSERVATIONS: 'Observations', TICKETS: 'Tickets', ACTION_ITEMS: 'Action Items',
           };
           return (
@@ -1592,6 +1592,9 @@ export default function ManagerDashboardPage() {
       {/* Action Items tab */}
       {activeTab === 'ACTION_ITEMS' && <ActionItemsView />}
 
+      {/* Leaderboard tab */}
+      {activeTab === 'LEADERBOARD' && <LeaderboardView />}
+
       {/* Tickets tab — only when NTA is linked */}
       {ntaEnabled && activeTab === 'TICKETS' && <TicketsView />}
 
@@ -1599,7 +1602,7 @@ export default function ManagerDashboardPage() {
       {ntaEnabled && activeTab === 'ENGINEERS' && <EngineersView />}
 
       {/* Segment tree view (ENT / SMB) */}
-      {activeTab !== 'OBSERVATIONS' && activeTab !== 'TICKETS' && activeTab !== 'ENGINEERS' && activeTab !== 'ACTION_ITEMS' && (
+      {activeTab !== 'OBSERVATIONS' && activeTab !== 'TICKETS' && activeTab !== 'ENGINEERS' && activeTab !== 'ACTION_ITEMS' && activeTab !== 'LEADERBOARD' && (
         statsLoading ? (
           <div className="flex justify-center py-16">
             <Loader2 className="w-7 h-7 animate-spin text-primary-600" />
@@ -2451,6 +2454,109 @@ function TicketsView() {
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+interface LeaderboardRow {
+  manager: string;
+  segment: 'ENT' | 'SMB';
+  totalProjects: number;
+  distinctCustomers: number;
+  delayed: number;
+  atRisk: number;
+  onTime: number;
+  pctOnTime: number;
+  hygieneScore: number | null;
+  volumeScore: number;
+  compositeScore: number;
+}
+
+function LeaderboardTable({ rows }: { rows: LeaderboardRow[] }) {
+  if (rows.length === 0) {
+    return <p className="text-sm text-gray-400 py-10 text-center">No leaderboard data for this segment yet.</p>;
+  }
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="bg-gray-50 border-b border-gray-200 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
+            <th className="px-4 py-3 w-12">Rank</th>
+            <th className="px-4 py-3">Manager</th>
+            <th className="px-4 py-3">Segment</th>
+            <th className="px-4 py-3 text-center">Customers</th>
+            <th className="px-4 py-3 text-center">Projects</th>
+            <th className="px-4 py-3 text-center">On-Time %</th>
+            <th className="px-4 py-3 text-center">PMO Hygiene</th>
+            <th className="px-4 py-3 text-center">Score</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={`${r.segment}-${r.manager}`} className={`border-b border-gray-100 last:border-0 ${i < 3 ? 'bg-amber-50/40' : ''}`}>
+              <td className="px-4 py-3 font-bold text-gray-400">{i + 1}</td>
+              <td className="px-4 py-3 font-medium text-gray-800 whitespace-nowrap">{r.manager}</td>
+              <td className="px-4 py-3">
+                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${r.segment === 'ENT' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+                  {r.segment}
+                </span>
+              </td>
+              <td className="px-4 py-3 text-center text-gray-600">{r.distinctCustomers}</td>
+              <td className="px-4 py-3 text-center text-gray-600">{r.totalProjects}</td>
+              <td className="px-4 py-3 text-center">
+                <span className={r.pctOnTime >= 80 ? 'text-green-600' : r.pctOnTime >= 60 ? 'text-amber-600' : 'text-red-600'}>
+                  {r.pctOnTime}%
+                </span>
+              </td>
+              <td className="px-4 py-3 text-center text-gray-600">{r.hygieneScore ?? '—'}</td>
+              <td className="px-4 py-3 text-center font-bold text-primary-700">{r.compositeScore}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function LeaderboardView() {
+  const { data, isLoading } = useManagerDashboardLeaderboard();
+  const [segmentFilter, setSegmentFilter] = useState<'ALL' | 'ENT' | 'SMB'>('ALL');
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center py-16">
+        <Loader2 className="w-7 h-7 animate-spin text-primary-600" />
+      </div>
+    );
+  }
+
+  const payload = data?.data as { overall: LeaderboardRow[]; ENT: LeaderboardRow[]; SMB: LeaderboardRow[] } | undefined;
+  const rows: LeaderboardRow[] = (segmentFilter === 'ALL' ? payload?.overall : payload?.[segmentFilter]) ?? [];
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-800">Manager Leaderboard</h2>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Ranked by customer volume (30%, relative to peers in the same segment), on-time delivery (35%), and PMO Hygiene (35%)
+          </p>
+        </div>
+        <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+          {(['ALL', 'ENT', 'SMB'] as const).map((s) => (
+            <button
+              key={s}
+              onClick={() => setSegmentFilter(s)}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition ${
+                segmentFilter === s ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              {s === 'ALL' ? 'All Managers' : s}
+            </button>
+          ))}
+        </div>
+      </div>
+      <LeaderboardTable rows={rows} />
     </div>
   );
 }

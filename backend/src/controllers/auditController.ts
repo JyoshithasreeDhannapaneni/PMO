@@ -95,6 +95,11 @@ export const auditController = {
     res.json({ success: true, data: result });
   }),
 
+  getManagerDashboardLeaderboard: asyncHandler(async (_req: Request, res: Response): Promise<void> => {
+    const result = await auditService.getManagerDashboardLeaderboard();
+    res.json({ success: true, data: result });
+  }),
+
   exportLogExcel: asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const { userId, entityType, entityId, action, startDate, endDate } = req.query;
 
