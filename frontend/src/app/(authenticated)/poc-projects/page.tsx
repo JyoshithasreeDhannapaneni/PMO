@@ -10,6 +10,7 @@ import {
   usePocProjects, useCreatePocProject, useUpdatePocProject, useDeletePocProject, useAllUsers,
 } from '@/hooks/useProjects';
 import type { Project, PocPhaseStatus } from '@/types';
+import { ACCOUNT_MANAGERS } from '@/lib/accountManagers';
 import {
   FlaskConical, Plus, ChevronDown, Loader2, Clock, CheckCircle2, XCircle, Circle,
   CalendarDays, User, X, Save, Search, AlertTriangle, Flag, Trash2, Archive,
@@ -897,11 +898,7 @@ function PhaseStepperView({ project: p, canEdit }: { project: Project; canEdit: 
                 <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Account Manager</p>
                 <select value={overviewForm.accountManager} onChange={e => setOF('accountManager', e.target.value)} className={inp}>
                   <option value="">Select...</option>
-                  <option value="Joy Prakash">Joy Prakash</option>
-                  <option value="Arundhati Sen">Arundhati Sen</option>
-                  <option value="Anthony Raymond">Anthony Raymond</option>
-                  <option value="Lennis Brown">Lennis Brown</option>
-                  <option value="Deepak R J">Deepak R J</option>
+                  {ACCOUNT_MANAGERS.map(n => <option key={n} value={n}>{n}</option>)}
                 </select>
               </div>
               <div className="space-y-1">
@@ -1221,7 +1218,7 @@ function PocRow({ project: p, canEdit, expandedId, setExpandedId, isDeleteConfir
 }
 
 // ── Create modal helpers ──────────────────────────────────────────────────────
-const VALID_AMS = ['Joy Prakash', 'Arundhati Sen', 'Anthony Raymond', 'Lennis Brown', 'Deepak R J'];
+const VALID_AMS = ACCOUNT_MANAGERS;
 
 const EMPTY = {
   name: '', customerName: '', accountManager: '', projectManager: '',

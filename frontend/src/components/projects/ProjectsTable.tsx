@@ -7,6 +7,7 @@ import { useUpdateProject, useEscalationDailyNotes, useAddEscalationDailyNote, u
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { DelayIndicator } from '@/components/ui/DelayIndicator';
 import { formatDate, formatCurrency } from '@/lib/utils';
+import { ACCOUNT_MANAGERS } from '@/lib/accountManagers';
 import type { Project } from '@/types';
 import { useSettings } from '@/context/SettingsContext';
 import { useToast } from '@/context/ToastContext';
@@ -419,11 +420,7 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
 
   const accountManagerOptions = [
     { value: '', label: '— None —' },
-    { value: 'Anthony Raymond',  label: 'Anthony Raymond' },
-    { value: 'Lennis Brown',     label: 'Lennis Brown' },
-    { value: 'Joy Prakash',      label: 'Joy Prakash' },
-    { value: 'Arundhati Sen',    label: 'Arundhati Sen' },
-    { value: 'Deepak R J',       label: 'Deepak R J' },
+    ...ACCOUNT_MANAGERS.map((am) => ({ value: am, label: am })),
   ];
 
   const customerSuccessOptions = [

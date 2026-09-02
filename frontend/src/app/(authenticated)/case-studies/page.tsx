@@ -8,6 +8,7 @@ import { StatusBadge } from '@/components/ui/StatusBadge';
 import { MultiSelectDropdown } from '@/components/ui/MultiSelectDropdown';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
+import { ACCOUNT_MANAGERS } from '@/lib/accountManagers';
 import {
   FileText,
   Plus,
@@ -233,9 +234,7 @@ function CaseStudiesContent() {
   const pmOptions = Array.from(new Set(
     caseStudies.map((cs) => cs.project?.projectManager).filter(Boolean)
   )).sort() as string[];
-  const amOptions = Array.from(new Set(
-    caseStudies.map((cs) => cs.project?.accountManager).filter(Boolean)
-  )).sort() as string[];
+  const amOptions = ACCOUNT_MANAGERS;
 
   const filteredCaseStudies = caseStudies.filter((cs) => {
     if (isManager && cs.project?.projectManager !== user?.name) return false;
