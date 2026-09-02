@@ -316,7 +316,9 @@
       "Bash(git -C \"c:\\\\Users\\\\BharathTummaganti\\\\OneDrive - CloudFuze, Inc\\\\Documents\\\\PMO\\\\PMO\" status --short)",
       "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\\\\n\" http://localhost:3001/api/projects?limit=1 --max-time 5)",
       "Bash(curl -s http://localhost:3001/api/projects?limit=1 --max-time 5)",
-      "Bash(tasklist //FI \"IMAGENAME eq node.exe\")"
+      "Bash(tasklist //FI \"IMAGENAME eq node.exe\")",
+      "Bash(xargs grep -l \"manager-options\")",
+      "Bash(xargs -I{} grep -l \"reviews\" {})"
     ],
     "additionalDirectories": [
       "c:\\Users\\BharathTummaganti\\OneDrive - CloudFuze, Inc\\Documents\\PMO\\PMO",

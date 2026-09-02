@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/Card';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { useCustomerSuccess, useUpdateCustomerSuccess, useHubspotSignals, useHubspotInsights } from '@/hooks/useProjects';
+import { ACCOUNT_MANAGERS } from '@/lib/accountManagers';
 import type {
   CustomerSuccessEntry, CfProductSignal, CfSignalLevel,
   SignalItem, RenewalDueItem, CustomerSuccessPageData,
@@ -884,7 +885,7 @@ export default function CustomerSuccessPage() {
   const renewalDue: RenewalDueItem[]     = pageData?.renewalDue ?? [];
   const upsellSignals: SignalItem[]      = pageData?.upsellSignals ?? [];
 
-  const allAMs = Array.from(new Set(accounts.map(a => a.accountManager).filter(Boolean)));
+  const allAMs = ACCOUNT_MANAGERS;
   const activeFilterCount = [search, amFilter, signalFilter].filter(Boolean).length;
 
   function clearAllFilters() {

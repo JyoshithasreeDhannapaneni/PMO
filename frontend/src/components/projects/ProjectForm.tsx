@@ -12,6 +12,7 @@ import { ChevronDown, ChevronUp, X, CheckCircle } from 'lucide-react';
 import { useSettings } from '@/context/SettingsContext';
 import { useToast } from '@/context/ToastContext';
 import { templatesApi, authApi } from '@/services/api';
+import { ACCOUNT_MANAGERS } from '@/lib/accountManagers';
 import type { Project, CreateProjectInput } from '@/types';
 
 const baseSchema = z.object({
@@ -568,11 +569,7 @@ export function ProjectForm({ project, onSubmit, isLoading, defaultManagerName }
                 <label className="block text-sm font-medium text-slate-700 mb-1">Account Manager <span className="text-red-500">*</span></label>
                 <select {...register('accountManager')} className={INPUT_CLS}>
                   <option value="">Select account manager</option>
-                  <option value="Joy Prakash">Joy Prakash</option>
-                  <option value="Arundhati Sen">Arundhati Sen</option>
-                  <option value="Anthony Raymond">Anthony Raymond</option>
-                  <option value="Lennis Brown">Lennis Brown</option>
-                  <option value="Deepak R J">Deepak R J</option>
+                  {ACCOUNT_MANAGERS.map((am) => <option key={am} value={am}>{am}</option>)}
                 </select>
                 {errors.accountManager && <p className="mt-1 text-xs text-red-600">{errors.accountManager.message}</p>}
               </div>
