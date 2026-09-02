@@ -15,7 +15,7 @@ import {
   Plus, Pencil, Check,
 } from 'lucide-react';
 import api from '@/services/api';
-import { SEGMENT_CONFIG, SEGMENT_HIERARCHY, MANAGER_QUERY_NAMES, ENGINEER_ASSIGNMENTS, LMS_SCORES, LMS_MAX, MEETING_ATTENDANCE, CHECKIN_DELAYS, AUDIO_PERCENTAGES, segmentOfManager, isNamedManager, type Segment } from '@/lib/segments';
+import { SEGMENT_CONFIG, SEGMENT_HIERARCHY, MANAGER_QUERY_NAMES, ENGINEER_ASSIGNMENTS, LMS_SCORES, MEETING_ATTENDANCE, CHECKIN_DELAYS, AUDIO_PERCENTAGES, segmentOfManager, isNamedManager, type Segment } from '@/lib/segments';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -590,8 +590,8 @@ function EngineersTabView({
         </td>
         <td className="px-4 py-3 text-center">
           {lmsScore !== null ? (
-            <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${lmsScore >= LMS_MAX ? 'bg-green-100 text-green-700' : lmsScore >= LMS_MAX * 0.8 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>
-              {lmsScore}/{LMS_MAX}
+            <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${lmsScore.score >= lmsScore.max ? 'bg-green-100 text-green-700' : lmsScore.score >= lmsScore.max * 0.8 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>
+              {lmsScore.score}/{lmsScore.max}
             </span>
           ) : <span className="text-gray-300">—</span>}
         </td>
@@ -960,7 +960,7 @@ function getEngineerHygieneData(allHygieneMetrics: any[], canonicalName: string)
   return match ?? null;
 }
 
-function getEngineerLmsScore(canonicalName: string): number | null {
+function getEngineerLmsScore(canonicalName: string): { score: number; max: number } | null {
   const cn = canonicalName.toLowerCase();
   const cnNorm = cn.replace(/[\s._-]/g, '');
   const cnWords = cn.split(/\s+/).filter(w => w.length > 2);
@@ -977,7 +977,7 @@ function getEngineerLmsScore(canonicalName: string): number | null {
     if (cnNorm.length >= 4 && (lnNorm.includes(cnNorm) || cnNorm.includes(lnNorm))) return true;
     return false;
   });
-  return match ? match.score : null;
+  return match ? { score: match.score, max: match.max } : null;
 }
 
 function getEngineerMeetingData(canonicalName: string): { attended: number; total: number } | null {
@@ -2881,63 +2881,46 @@ function ActionItemsView() {
 
   const allItems: any[] = itemsResp ?? [];
 
-  const [year, setYear] = useState(() => {
-    const [y] = currentMonthStr().split('-').map(Number);
-    return y;
-  });
-
-  // Which month card has its add-item row open (only one at a time keeps
-  // the page from turning into 12 open forms).
-  const [addingMonth, setAddingMonth] = useState<string | null>(null);
-  const [addDraft, setAddDraft] = useState({ item: '', accountable: '', status: 'OPEN' });
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editDraft, setEditDraft] = useState({ item: '', accountable: '', status: 'OPEN' });
-
-  const itemsByMonth = useMemo(() => {
-    const map = new Map<string, any[]>();
-    for (const i of allItems) {
-      if (!map.has(i.month)) map.set(i.month, []);
-      map.get(i.month)!.push(i);
-    }
-    return map;
-  }, [allItems]);
-
-  // Months collapse by default — with 12 always fully expanded, most of the
-  // page was empty "No action items" cards for months nobody's working on.
-  // Open on load: the current month (so there's always somewhere obvious to
-  // start) plus any month that already has items (so existing work stays
-  // visible without an extra click). Toggling is manual from then on.
-  const [expandedMonths, setExpandedMonths] = useState<Set<string>>(() => {
-    const set = new Set<string>([currentMonthStr()]);
-    for (const i of allItems) set.add(i.month);
-    return set;
-  });
-  const toggleMonth = (monthKey: string) => {
-    setExpandedMonths((prev) => {
-      const next = new Set(prev);
-      if (next.has(monthKey)) next.delete(monthKey); else next.add(monthKey);
-      return next;
+  // One month in view at a time (like a phone calendar) instead of 12 cards
+  // on screen at once — far less to scan, and Prev/Next/Today is a familiar
+  // pattern people already know.
+  const [monthKey, setMonthKey] = useState(currentMonthStr());
+  const shiftMonth = (delta: number) => {
+    setMonthKey((mk) => {
+      const [y, m] = mk.split('-').map(Number);
+      const d = new Date(y, m - 1 + delta, 1);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
     });
   };
+  const [y, m] = monthKey.split('-').map(Number);
+  const monthLabel = `${MONTH_SHORT_NAMES[m - 1]} ${y}`;
+  const isCurrentMonth = monthKey === currentMonthStr();
+  const isPastMonth = monthKey < currentMonthStr();
 
-  const startAdd = (monthKey: string) => {
-    setAddingMonth(monthKey);
-    setAddDraft({ item: '', accountable: '', status: 'OPEN' });
-  };
-  const cancelAdd = () => setAddingMonth(null);
+  const items = useMemo(
+    () => allItems.filter((i) => i.month === monthKey),
+    [allItems, monthKey]
+  );
 
-  const submitAdd = async (monthKey: string) => {
-    if (!addDraft.item.trim()) {
+  const [showAdd, setShowAdd] = useState(false);
+  const [addText, setAddText] = useState('');
+  const [addAccountable, setAddAccountable] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editText, setEditText] = useState('');
+  const [editAccountable, setEditAccountable] = useState('');
+
+  const submitAdd = async () => {
+    if (!addText.trim()) {
       showToast('warning', 'Action item required', 'Type what needs to be done.');
       return;
     }
     try {
       await createItem.mutateAsync({
         id: `ai-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        month: monthKey, item: addDraft.item, accountable: addDraft.accountable, status: addDraft.status,
+        month: monthKey, item: addText, accountable: addAccountable, status: 'OPEN',
       });
       showToast('success', 'Action item added');
-      setAddingMonth(null);
+      setAddText(''); setAddAccountable(''); setShowAdd(false);
     } catch (err: any) {
       showToast('error', 'Save failed', err?.response?.data?.error?.message || err?.message || 'Could not save the action item.');
     }
@@ -2945,17 +2928,18 @@ function ActionItemsView() {
 
   const startEdit = (i: any) => {
     setEditingId(i.id);
-    setEditDraft({ item: i.item, accountable: i.accountable || '', status: i.status });
+    setEditText(i.item);
+    setEditAccountable(i.accountable || '');
   };
   const cancelEdit = () => setEditingId(null);
 
   const submitEdit = async (id: string) => {
-    if (!editDraft.item.trim()) {
+    if (!editText.trim()) {
       showToast('warning', 'Action item required', 'Type what needs to be done.');
       return;
     }
     try {
-      await updateItem.mutateAsync({ id, data: editDraft });
+      await updateItem.mutateAsync({ id, data: { item: editText, accountable: editAccountable } });
       showToast('success', 'Action item updated');
       setEditingId(null);
     } catch (err: any) {
@@ -2963,14 +2947,10 @@ function ActionItemsView() {
     }
   };
 
-  // A quick tap on the status dot cycles Not Started → In Progress → Done →
-  // Not Started, without opening the full edit row — the fastest way to
-  // update the one thing that changes most often.
-  const cycleStatus = async (i: any) => {
-    if (!canEdit) return;
-    const next = i.status === 'OPEN' ? 'IN_PROGRESS' : i.status === 'IN_PROGRESS' ? 'DONE' : 'OPEN';
+  const setStatus = async (i: any, status: string) => {
+    if (!canEdit || i.status === status) return;
     try {
-      await updateItem.mutateAsync({ id: i.id, data: { status: next } });
+      await updateItem.mutateAsync({ id: i.id, data: { status } });
     } catch {
       showToast('error', 'Could not update status', 'Please try again.');
     }
@@ -2995,181 +2975,152 @@ function ActionItemsView() {
   }
 
   return (
-    <div className="space-y-4 py-2">
-      {/* Year switcher */}
+    <div className="max-w-2xl mx-auto space-y-4 py-2">
+      {/* Month switcher */}
       <div className="flex items-center justify-center gap-4">
-        <button onClick={() => setYear((y) => y - 1)} title="Previous year"
+        <button onClick={() => shiftMonth(-1)} title="Previous month"
           className="w-8 h-8 rounded-lg border border-gray-200 flex items-center justify-center text-gray-500 hover:text-indigo-600 hover:border-indigo-300 transition-colors">
           <ChevronLeft size={15} />
         </button>
-        <span className="text-lg font-bold text-gray-800 w-16 text-center">{year}</span>
-        <button onClick={() => setYear((y) => y + 1)} title="Next year"
+        <span className="text-lg font-bold text-gray-800 w-32 text-center">{monthLabel}</span>
+        <button onClick={() => shiftMonth(1)} title="Next month"
           className="w-8 h-8 rounded-lg border border-gray-200 flex items-center justify-center text-gray-500 hover:text-indigo-600 hover:border-indigo-300 transition-colors">
           <ChevronRight size={15} />
         </button>
+        {!isCurrentMonth && (
+          <button onClick={() => setMonthKey(currentMonthStr())}
+            className="text-xs font-medium text-indigo-600 hover:underline">
+            Today
+          </button>
+        )}
       </div>
 
-      {/* One card per calendar month */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {MONTH_SHORT_NAMES.map((name, idx) => {
-          const monthKey = `${year}-${String(idx + 1).padStart(2, '0')}`;
-          const items = itemsByMonth.get(monthKey) || [];
-          const isCurrentMonth = monthKey === currentMonthStr();
-          const isPast = monthKey < currentMonthStr();
-          const isExpanded = expandedMonths.has(monthKey);
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="divide-y divide-gray-50">
+          {items.length === 0 && (
+            <p className="text-sm text-gray-400 text-center py-10">No action items for {monthLabel} yet.</p>
+          )}
 
-          return (
-            <div key={monthKey} className={`bg-white rounded-xl border overflow-hidden flex flex-col ${isCurrentMonth ? 'border-indigo-300 ring-1 ring-indigo-100' : 'border-gray-200'}`}>
-              <button
-                onClick={() => toggleMonth(monthKey)}
-                className={`flex items-center justify-between px-4 py-2.5 border-b transition-colors ${isCurrentMonth ? 'bg-indigo-50 border-indigo-100 hover:bg-indigo-100' : 'bg-gray-50 border-gray-100 hover:bg-gray-100'}`}
-              >
-                <span className="flex items-center gap-2">
-                  <ChevronRight size={13} className={`text-gray-400 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
-                  <span className={`text-sm font-semibold ${isCurrentMonth ? 'text-indigo-700' : 'text-gray-700'}`}>{name}</span>
-                </span>
-                {items.length > 0 && (
-                  <span className="text-xs text-gray-400">{items.length} item{items.length !== 1 ? 's' : ''}</span>
-                )}
-              </button>
+          {items.map((i) => {
+            const overdue = isPastMonth && i.status !== 'DONE';
+            const isEditingThis = editingId === i.id;
 
-              {isExpanded && (
-              <div className="flex-1 divide-y divide-gray-50">
-                {items.length === 0 && addingMonth !== monthKey && (
-                  <p className="text-xs text-gray-400 text-center py-6">No action items</p>
-                )}
+            if (isEditingThis) {
+              return (
+                <div key={i.id} className="px-4 py-3 space-y-2 bg-indigo-50/40">
+                  <textarea
+                    value={editText}
+                    onChange={(e) => setEditText(e.target.value)}
+                    rows={2}
+                    autoFocus
+                    className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5"
+                    placeholder="What needs to be done…"
+                  />
+                  <input
+                    type="text"
+                    value={editAccountable}
+                    onChange={(e) => setEditAccountable(e.target.value)}
+                    placeholder="Who owns this… (optional)"
+                    className="w-full text-xs border border-gray-200 rounded-lg px-2.5 py-1.5"
+                  />
+                  <div className="flex justify-end gap-1.5">
+                    <button onClick={cancelEdit} className="px-2.5 py-1 rounded-lg border border-gray-200 text-xs text-gray-600 hover:bg-gray-100">Cancel</button>
+                    <button
+                      onClick={() => submitEdit(i.id)}
+                      disabled={updateItem.isPending}
+                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 disabled:opacity-50"
+                    >
+                      <Check size={11} /> Save
+                    </button>
+                  </div>
+                </div>
+              );
+            }
 
-                {items.map((i) => {
-                  const dot = STATUS_DOT[i.status] || STATUS_DOT.OPEN;
-                  const overdue = isPast && i.status !== 'DONE';
-                  const isEditingThis = editingId === i.id;
-
-                  if (isEditingThis) {
-                    return (
-                      <div key={i.id} className="px-3 py-2.5 space-y-2 bg-indigo-50/40">
-                        <textarea
-                          value={editDraft.item}
-                          onChange={(e) => setEditDraft((d) => ({ ...d, item: e.target.value }))}
-                          rows={2}
-                          className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5"
-                          placeholder="What needs to be done…"
-                        />
-                        <div className="flex items-center gap-1.5">
-                          <input
-                            type="text"
-                            value={editDraft.accountable}
-                            onChange={(e) => setEditDraft((d) => ({ ...d, accountable: e.target.value }))}
-                            placeholder="Who owns this…"
-                            className="flex-1 text-xs border border-gray-200 rounded-lg px-2.5 py-1.5"
-                          />
-                          <select
-                            value={editDraft.status}
-                            onChange={(e) => setEditDraft((d) => ({ ...d, status: e.target.value }))}
-                            className={`text-xs rounded-lg px-2 py-1.5 border font-medium ${STATUS_DOT[editDraft.status]?.cls || 'bg-white border-gray-200'}`}
-                          >
-                            {STATUS_ORDER.map((k) => <option key={k} value={k}>{STATUS_DOT[k].short}</option>)}
-                          </select>
-                        </div>
-                        <div className="flex justify-end gap-1.5">
-                          <button onClick={cancelEdit} className="px-2.5 py-1 rounded-lg border border-gray-200 text-xs text-gray-600 hover:bg-gray-100">Cancel</button>
-                          <button
-                            onClick={() => submitEdit(i.id)}
-                            disabled={updateItem.isPending}
-                            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 disabled:opacity-50"
-                          >
-                            <Check size={11} /> Save
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  }
-
-                  const nextStatusKey = i.status === 'OPEN' ? 'IN_PROGRESS' : i.status === 'IN_PROGRESS' ? 'DONE' : 'OPEN';
-                  const nextDot = STATUS_DOT[nextStatusKey];
-
-                  return (
-                    <div key={i.id} className="px-3 py-2.5">
-                      <div className="flex items-start gap-2">
-                        <button
-                          onClick={() => cycleStatus(i)}
-                          disabled={!canEdit}
-                          title={canEdit ? `Now: ${dot.short}. Click to mark as ${nextDot.short}.` : dot.label}
-                          className={`flex-shrink-0 w-3.5 h-3.5 rounded-full mt-1 ${dot.dotCls} ${canEdit ? 'cursor-pointer hover:ring-2 hover:ring-offset-1 hover:ring-gray-300' : ''}`}
-                        />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm text-gray-700 leading-snug">{i.item}</p>
-                          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                            {i.accountable && <span className="text-xs text-gray-400">{i.accountable}</span>}
-                            {overdue && <span className="text-[10px] font-semibold text-red-600">Overdue</span>}
-                          </div>
-                        </div>
-                        {canEdit && (
-                          <div className="flex-shrink-0 flex items-center gap-1">
-                            <button onClick={() => startEdit(i)} title="Edit" className="text-gray-300 hover:text-indigo-600">
-                              <Pencil size={12} />
-                            </button>
-                            <button onClick={() => handleDelete(i.id)} title="Delete" className="text-gray-300 hover:text-red-500">
-                              <Trash2 size={12} />
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-
-                {addingMonth === monthKey && (
-                  <div className="px-3 py-2.5 space-y-2 bg-indigo-50/40">
-                    <textarea
-                      value={addDraft.item}
-                      onChange={(e) => setAddDraft((d) => ({ ...d, item: e.target.value }))}
-                      rows={2}
-                      autoFocus
-                      placeholder="What needs to be done…"
-                      className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5"
-                    />
-                    <div className="flex items-center gap-1.5">
-                      <input
-                        type="text"
-                        value={addDraft.accountable}
-                        onChange={(e) => setAddDraft((d) => ({ ...d, accountable: e.target.value }))}
-                        placeholder="Who owns this…"
-                        className="flex-1 text-xs border border-gray-200 rounded-lg px-2.5 py-1.5"
-                      />
-                      <select
-                        value={addDraft.status}
-                        onChange={(e) => setAddDraft((d) => ({ ...d, status: e.target.value }))}
-                        className={`text-xs rounded-lg px-2 py-1.5 border font-medium ${STATUS_DOT[addDraft.status]?.cls || 'bg-white border-gray-200'}`}
-                      >
-                        {STATUS_ORDER.map((k) => <option key={k} value={k}>{STATUS_DOT[k].short}</option>)}
-                      </select>
-                    </div>
-                    <div className="flex justify-end gap-1.5">
-                      <button onClick={cancelAdd} className="px-2.5 py-1 rounded-lg border border-gray-200 text-xs text-gray-600 hover:bg-gray-100">Cancel</button>
-                      <button
-                        onClick={() => submitAdd(monthKey)}
-                        disabled={createItem.isPending}
-                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 disabled:opacity-50"
-                      >
-                        <Check size={11} /> Add
+            return (
+              <div key={i.id} className="px-4 py-3">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-sm text-gray-700 leading-snug flex-1 min-w-0">{i.item}</p>
+                  {canEdit && (
+                    <div className="flex-shrink-0 flex items-center gap-1">
+                      <button onClick={() => startEdit(i)} title="Edit" className="text-gray-300 hover:text-indigo-600">
+                        <Pencil size={13} />
+                      </button>
+                      <button onClick={() => handleDelete(i.id)} title="Delete" className="text-gray-300 hover:text-red-500">
+                        <Trash2 size={13} />
                       </button>
                     </div>
-                  </div>
-                )}
-              </div>
-              )}
+                  )}
+                </div>
 
-              {isExpanded && canEdit && addingMonth !== monthKey && (
+                <div className="flex items-center gap-2 mt-2 flex-wrap">
+                  {/* Explicit status buttons, not a click-to-cycle dot — what
+                      each color means and how to change it is visible at a glance. */}
+                  <div className="flex items-center gap-1">
+                    {STATUS_ORDER.map((k) => {
+                      const s = STATUS_DOT[k];
+                      const active = i.status === k;
+                      return (
+                        <button
+                          key={k}
+                          onClick={() => setStatus(i, k)}
+                          disabled={!canEdit}
+                          title={s.label}
+                          className={`text-[11px] font-medium px-2 py-0.5 rounded-full border transition-colors ${
+                            active ? s.cls : 'bg-white border-gray-200 text-gray-400 hover:bg-gray-50'
+                          } ${canEdit ? 'cursor-pointer' : 'cursor-default'}`}
+                        >
+                          {s.short}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {i.accountable && <span className="text-xs text-gray-400">· {i.accountable}</span>}
+                  {overdue && <span className="text-[10px] font-semibold text-red-600">Overdue</span>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {canEdit && (
+          showAdd ? (
+            <div className="px-4 py-3 space-y-2 bg-indigo-50/40 border-t border-gray-100">
+              <textarea
+                value={addText}
+                onChange={(e) => setAddText(e.target.value)}
+                rows={2}
+                autoFocus
+                placeholder="What needs to be done…"
+                className="w-full text-sm border border-gray-200 rounded-lg px-2.5 py-1.5"
+              />
+              <input
+                type="text"
+                value={addAccountable}
+                onChange={(e) => setAddAccountable(e.target.value)}
+                placeholder="Who owns this… (optional)"
+                className="w-full text-xs border border-gray-200 rounded-lg px-2.5 py-1.5"
+              />
+              <div className="flex justify-end gap-1.5">
+                <button onClick={() => { setShowAdd(false); setAddText(''); setAddAccountable(''); }} className="px-2.5 py-1 rounded-lg border border-gray-200 text-xs text-gray-600 hover:bg-gray-100">Cancel</button>
                 <button
-                  onClick={() => startAdd(monthKey)}
-                  className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium text-indigo-600 hover:bg-indigo-50 border-t border-gray-100 transition-colors"
+                  onClick={submitAdd}
+                  disabled={createItem.isPending}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 disabled:opacity-50"
                 >
-                  <Plus size={12} /> Add item
+                  <Check size={11} /> Add
                 </button>
-              )}
+              </div>
             </div>
-          );
-        })}
+          ) : (
+            <button
+              onClick={() => setShowAdd(true)}
+              className="w-full flex items-center justify-center gap-1.5 px-3 py-2.5 text-sm font-medium text-indigo-600 hover:bg-indigo-50 border-t border-gray-100 transition-colors"
+            >
+              <Plus size={13} /> Add item for {monthLabel}
+            </button>
+          )
+        )}
       </div>
     </div>
   );
