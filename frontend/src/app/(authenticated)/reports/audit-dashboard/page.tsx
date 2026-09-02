@@ -196,6 +196,57 @@ function EmailBestWorstPanel({ bestWorst }: { bestWorst: any }) {
   );
 }
 
+// "Why is my score X" -- every sub-metric behind a category, with the actual measured
+// value and a concrete fix when it's not already strong. `category` scopes to just the
+// one that was clicked (e.g. the Speed number); null (the plain "View" link) shows all 4.
+function ScoreBreakdownPanel({
+  breakdown,
+  category,
+}: {
+  breakdown: any;
+  category: 'speed' | 'quality' | 'resolution' | 'tone' | null;
+}) {
+  if (!breakdown) return null;
+  const categories = category ? EMAIL_BEST_WORST_CATEGORIES.filter((c) => c.key === category) : EMAIL_BEST_WORST_CATEGORIES;
+  const withData = categories.filter(({ key }) => (breakdown[key]?.length ?? 0) > 0);
+  if (withData.length === 0) return null;
+
+  return (
+    <div className="space-y-3 mb-3">
+      {withData.map(({ key, label }) => (
+        <div key={key}>
+          <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5">{label} breakdown</div>
+          <div className="space-y-1.5">
+            {breakdown[key].map((item: any, idx: number) => {
+              const pct = item.maxSubScore > 0 ? Math.round((item.subScore / item.maxSubScore) * 100) : 100;
+              const barColor = pct >= 90 ? 'bg-green-500' : pct >= 50 ? 'bg-amber-500' : 'bg-red-500';
+              return (
+                <div key={idx} className="bg-white border border-gray-200 rounded-lg px-3 py-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-xs font-medium text-gray-700">{item.label}</span>
+                    <span className="text-xs font-semibold text-gray-800 whitespace-nowrap">{item.subScore}/{item.maxSubScore}</span>
+                  </div>
+                  <div className="text-[11px] text-gray-500 mt-0.5">{item.value}</div>
+                  {item.maxSubScore > 0 && (
+                    <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden mt-1.5">
+                      <div className={`h-full rounded-full ${barColor}`} style={{ width: `${pct}%` }} />
+                    </div>
+                  )}
+                  {item.tip && (
+                    <div className="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-md px-2 py-1 mt-1.5">
+                      {item.tip}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
 
@@ -791,6 +842,10 @@ export default function AuditDashboardPage() {
 
   const [expandedCallUser, setExpandedCallUser] = useState<string | null>(null);
   const [expandedEmailBestWorstUser, setExpandedEmailBestWorstUser] = useState<string | null>(null);
+  // Which single category's score breakdown to focus on when the panel opens -- null
+  // means "show all 4" (the plain "View" link), set when a specific score badge (e.g.
+  // the Speed number) was clicked instead, so that click jumps straight to the answer.
+  const [expandedEmailCategory, setExpandedEmailCategory] = useState<'speed' | 'quality' | 'resolution' | 'tone' | null>(null);
   const [expandedHygienePM, setExpandedHygienePM] = useState<string | null>(null);
   const [ratingModalCall, setRatingModalCall] = useState<{
     eventId: string;
@@ -2485,6 +2540,16 @@ export default function AuditDashboardPage() {
                     {emailMetrics.map((m: any, i: number) => {
                       const sc = emailScoreColor(m.emailHygieneScore);
                       const isBwExpanded = expandedEmailBestWorstUser === m.userEmail;
+                      // Clicking a score badge opens the panel scoped to that one category;
+                      // clicking it again (same user + same category already showing) closes it.
+                      const openCategory = (key: 'speed' | 'quality' | 'resolution' | 'tone') => {
+                        if (isBwExpanded && expandedEmailCategory === key) {
+                          setExpandedEmailBestWorstUser(null);
+                        } else {
+                          setExpandedEmailBestWorstUser(m.userEmail);
+                          setExpandedEmailCategory(key);
+                        }
+                      };
                       return (
                         <Fragment key={m.userEmail}>
                         <tr className={`border-b border-gray-50 ${i % 2 === 0 ? '' : 'bg-gray-50/30'} hover:bg-indigo-50/20 transition-colors`}>
@@ -2494,32 +2559,44 @@ export default function AuditDashboardPage() {
                           </td>
                           <td className="py-3 px-3 text-center text-gray-600">{m.uniqueCustomerThreads}</td>
                           <td className="py-3 px-3 text-center">
-                            <span className={`inline-block text-xs font-semibold px-2.5 py-0.5 rounded-full ${
-                              (m.speedScore ?? 0) >= 21 ? 'bg-blue-100 text-blue-700' :
-                              (m.speedScore ?? 0) >= 12 ? 'bg-yellow-100 text-yellow-700' :
-                              'bg-red-100 text-red-700'
-                            }`}>{m.speedScore ?? 0}</span>
+                            <button
+                              onClick={() => openCategory('speed')}
+                              title="Click to see what's behind this score"
+                              className={`inline-block text-xs font-semibold px-2.5 py-0.5 rounded-full cursor-pointer hover:ring-2 hover:ring-blue-300 transition ${
+                                (m.speedScore ?? 0) >= 21 ? 'bg-blue-100 text-blue-700' :
+                                (m.speedScore ?? 0) >= 12 ? 'bg-yellow-100 text-yellow-700' :
+                                'bg-red-100 text-red-700'
+                              }`}>{m.speedScore ?? 0}</button>
                           </td>
                           <td className="py-3 px-3 text-center">
-                            <span className={`inline-block text-xs font-semibold px-2.5 py-0.5 rounded-full ${
-                              (m.qualityScore ?? 0) >= 21 ? 'bg-purple-100 text-purple-700' :
-                              (m.qualityScore ?? 0) >= 12 ? 'bg-yellow-100 text-yellow-700' :
-                              'bg-red-100 text-red-700'
-                            }`}>{m.qualityScore ?? 0}</span>
+                            <button
+                              onClick={() => openCategory('quality')}
+                              title="Click to see what's behind this score"
+                              className={`inline-block text-xs font-semibold px-2.5 py-0.5 rounded-full cursor-pointer hover:ring-2 hover:ring-purple-300 transition ${
+                                (m.qualityScore ?? 0) >= 21 ? 'bg-purple-100 text-purple-700' :
+                                (m.qualityScore ?? 0) >= 12 ? 'bg-yellow-100 text-yellow-700' :
+                                'bg-red-100 text-red-700'
+                              }`}>{m.qualityScore ?? 0}</button>
                           </td>
                           <td className="py-3 px-3 text-center">
-                            <span className={`inline-block text-xs font-semibold px-2.5 py-0.5 rounded-full ${
-                              (m.resolutionScore ?? 0) >= 14 ? 'bg-teal-100 text-teal-700' :
-                              (m.resolutionScore ?? 0) >= 8  ? 'bg-yellow-100 text-yellow-700' :
-                              'bg-red-100 text-red-700'
-                            }`}>{m.resolutionScore ?? 0}</span>
+                            <button
+                              onClick={() => openCategory('resolution')}
+                              title="Click to see what's behind this score"
+                              className={`inline-block text-xs font-semibold px-2.5 py-0.5 rounded-full cursor-pointer hover:ring-2 hover:ring-teal-300 transition ${
+                                (m.resolutionScore ?? 0) >= 14 ? 'bg-teal-100 text-teal-700' :
+                                (m.resolutionScore ?? 0) >= 8  ? 'bg-yellow-100 text-yellow-700' :
+                                'bg-red-100 text-red-700'
+                              }`}>{m.resolutionScore ?? 0}</button>
                           </td>
                           <td className="py-3 px-3 text-center">
-                            <span className={`inline-block text-xs font-semibold px-2.5 py-0.5 rounded-full ${
-                              (m.toneScore ?? 0) >= 14 ? 'bg-orange-100 text-orange-700' :
-                              (m.toneScore ?? 0) >= 8  ? 'bg-yellow-100 text-yellow-700' :
-                              'bg-red-100 text-red-700'
-                            }`}>{m.toneScore ?? 0}</span>
+                            <button
+                              onClick={() => openCategory('tone')}
+                              title="Click to see what's behind this score"
+                              className={`inline-block text-xs font-semibold px-2.5 py-0.5 rounded-full cursor-pointer hover:ring-2 hover:ring-orange-300 transition ${
+                                (m.toneScore ?? 0) >= 14 ? 'bg-orange-100 text-orange-700' :
+                                (m.toneScore ?? 0) >= 8  ? 'bg-yellow-100 text-yellow-700' :
+                                'bg-red-100 text-red-700'
+                              }`}>{m.toneScore ?? 0}</button>
                           </td>
                           <td className="py-3 px-3 text-center">
                             <span className={`inline-block text-sm font-bold px-3 py-1 rounded-full ring-1 ${sc.bg} ${sc.text} ${sc.ring}`}>
@@ -2528,7 +2605,10 @@ export default function AuditDashboardPage() {
                           </td>
                           <td className="py-3 px-3 text-center">
                             <button
-                              onClick={() => setExpandedEmailBestWorstUser(isBwExpanded ? null : m.userEmail)}
+                              onClick={() => {
+                                if (isBwExpanded) { setExpandedEmailBestWorstUser(null); }
+                                else { setExpandedEmailBestWorstUser(m.userEmail); setExpandedEmailCategory(null); }
+                              }}
                               className="inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 font-medium"
                             >
                               View {isBwExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
@@ -2538,10 +2618,15 @@ export default function AuditDashboardPage() {
                         {isBwExpanded && (
                           <tr className="bg-indigo-50/30 border-b border-gray-100">
                             <td colSpan={8} className="px-3 py-3">
-                              <div className="text-[11px] font-semibold text-gray-500 mb-2">
-                                Best &amp; worst real example per metric — {m.userName}, this week
-                              </div>
-                              <EmailBestWorstPanel bestWorst={m.bestWorst} />
+                              <ScoreBreakdownPanel breakdown={m.scoreBreakdown} category={expandedEmailCategory} />
+                              {expandedEmailCategory === null && (
+                                <>
+                                  <div className="text-[11px] font-semibold text-gray-500 mb-2">
+                                    Best &amp; worst real example per metric — {m.userName}, this week
+                                  </div>
+                                  <EmailBestWorstPanel bestWorst={m.bestWorst} />
+                                </>
+                              )}
                             </td>
                           </tr>
                         )}
