@@ -392,13 +392,16 @@ async function runMigrations() {
   // Ensure account_manager allows NULL (needed before clearing invalid values)
   try { await execute(`ALTER TABLE projects ALTER COLUMN account_manager DROP NOT NULL`); } catch {}
 
-  // Clear account manager values that are not in the approved list
+  // Clear account manager values that are neither on the baseline allow-list nor a real
+  // user account with ACCOUNT_MANAGER access -- keeps stray/typo'd values out without
+  // wiping an assignment to someone added later through user management.
   try {
     await execute(`
       UPDATE projects
       SET account_manager = NULL
       WHERE account_manager IS NOT NULL
         AND account_manager NOT IN ('Joy Prakash','Arundhati Sen','Anthony Raymond','Lennis Brown','Deepak R J')
+        AND account_manager NOT IN (SELECT name FROM users WHERE role = 'ACCOUNT_MANAGER')
     `);
   } catch {}
 

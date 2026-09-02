@@ -318,7 +318,8 @@
       "Bash(curl -s http://localhost:3001/api/projects?limit=1 --max-time 5)",
       "Bash(tasklist //FI \"IMAGENAME eq node.exe\")",
       "Bash(xargs grep -l \"manager-options\")",
-      "Bash(xargs -I{} grep -l \"reviews\" {})"
+      "Bash(xargs -I{} grep -l \"reviews\" {})",
+      "Bash(PGPASSWORD='Bharath1708' psql -h localhost -p 5432 -U postgres -d pmo_tracker -c \"SELECT name, email, role, is_active FROM users ORDER BY role, name;\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\BharathTummaganti\\OneDrive - CloudFuze, Inc\\Documents\\PMO\\PMO",

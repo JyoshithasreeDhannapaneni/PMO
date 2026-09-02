@@ -3,11 +3,11 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { useUpdateProject, useEscalationDailyNotes, useAddEscalationDailyNote, useDeleteEscalationDailyNote } from '@/hooks/useProjects';
+import { useUpdateProject, useEscalationDailyNotes, useAddEscalationDailyNote, useDeleteEscalationDailyNote, useAllUsers } from '@/hooks/useProjects';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { DelayIndicator } from '@/components/ui/DelayIndicator';
 import { formatDate, formatCurrency } from '@/lib/utils';
-import { ACCOUNT_MANAGERS } from '@/lib/accountManagers';
+import { mergeAccountManagers } from '@/lib/accountManagers';
 import type { Project } from '@/types';
 import { useSettings } from '@/context/SettingsContext';
 import { useToast } from '@/context/ToastContext';
@@ -418,9 +418,10 @@ export function ProjectsTable({ projects, onDelete }: ProjectsTableProps) {
     isPending: updateProject.isPending,
   };
 
+  const { data: allUsersData } = useAllUsers();
   const accountManagerOptions = [
     { value: '', label: '— None —' },
-    ...ACCOUNT_MANAGERS.map((am) => ({ value: am, label: am })),
+    ...mergeAccountManagers(allUsersData?.data).map((am) => ({ value: am, label: am })),
   ];
 
   const customerSuccessOptions = [

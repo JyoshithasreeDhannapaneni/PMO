@@ -10,7 +10,7 @@ import {
   usePocProjects, useCreatePocProject, useUpdatePocProject, useDeletePocProject, useAllUsers,
 } from '@/hooks/useProjects';
 import type { Project, PocPhaseStatus } from '@/types';
-import { ACCOUNT_MANAGERS } from '@/lib/accountManagers';
+import { mergeAccountManagers } from '@/lib/accountManagers';
 import {
   FlaskConical, Plus, ChevronDown, Loader2, Clock, CheckCircle2, XCircle, Circle,
   CalendarDays, User, X, Save, Search, AlertTriangle, Flag, Trash2, Archive,
@@ -898,7 +898,7 @@ function PhaseStepperView({ project: p, canEdit }: { project: Project; canEdit: 
                 <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Account Manager</p>
                 <select value={overviewForm.accountManager} onChange={e => setOF('accountManager', e.target.value)} className={inp}>
                   <option value="">Select...</option>
-                  {ACCOUNT_MANAGERS.map(n => <option key={n} value={n}>{n}</option>)}
+                  {mergeAccountManagers(usersData?.data).map(n => <option key={n} value={n}>{n}</option>)}
                 </select>
               </div>
               <div className="space-y-1">
@@ -1218,8 +1218,6 @@ function PocRow({ project: p, canEdit, expandedId, setExpandedId, isDeleteConfir
 }
 
 // ── Create modal helpers ──────────────────────────────────────────────────────
-const VALID_AMS = ACCOUNT_MANAGERS;
-
 const EMPTY = {
   name: '', customerName: '', accountManager: '', projectManager: '',
   pocPreSalesOwner: '',
@@ -1251,6 +1249,7 @@ export default function PocProjectsPage() {
   const preSalesUsers: string[] = Array.isArray(allUsersData?.data)
     ? allUsersData.data.filter((u: any) => u.role === 'PRE_SALES' || u.role === 'ADMIN').map((u: any) => u.name).filter(Boolean).sort()
     : [];
+  const VALID_AMS = mergeAccountManagers(allUsersData?.data);
 
   const [outcomeFilter, setOutcomeFilter] = useState('');
   const [workloadFilter, setWorkloadFilter] = useState('');

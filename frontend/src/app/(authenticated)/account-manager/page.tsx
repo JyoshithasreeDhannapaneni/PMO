@@ -5,9 +5,9 @@ import * as XLSX from 'xlsx';
 import { Card } from '@/components/ui/Card';
 import { MultiSelectDropdown } from '@/components/ui/MultiSelectDropdown';
 import { useAuth } from '@/context/AuthContext';
-import { useAccountManagerView, useHubspotSignals } from '@/hooks/useProjects';
+import { useAccountManagerView, useHubspotSignals, useAllUsers } from '@/hooks/useProjects';
 import type { AccountView, HubspotSignalsData, HubspotCustomerDeals, HubspotDealCategory } from '@/types';
-import { ACCOUNT_MANAGERS } from '@/lib/accountManagers';
+import { mergeAccountManagers } from '@/lib/accountManagers';
 import {
   Building2, Loader2, AlertTriangle,
   FlaskConical, FolderKanban, RefreshCw, Calendar,
@@ -171,6 +171,7 @@ export default function AccountManagerPage() {
   const totalProjects: number = data?.meta?.totalProjects ?? 0;
   const today = new Date();
 
+  const { data: allUsersData } = useAllUsers();
   const { data: hubspotResponse } = useHubspotSignals();
   const hubspotData = (hubspotResponse?.data ?? null) as HubspotSignalsData | null;
 
@@ -305,7 +306,7 @@ export default function AccountManagerPage() {
   }).filter(Boolean) as ProjectRow[];
 
   const allPMs = Array.from(new Set(allRows.map(r => r.projectManager).filter(Boolean))).sort() as string[];
-  const allAMs = ACCOUNT_MANAGERS;
+  const allAMs = mergeAccountManagers(allUsersData?.data);
 
   // Filter — each *Filter value is a comma-separated list (MultiSelectDropdown's shape); empty means "no filter"
   const filteredRows = allRows.filter(row => {

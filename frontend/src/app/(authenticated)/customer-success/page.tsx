@@ -6,8 +6,8 @@ import type { ReactNode } from 'react';
 import { Card } from '@/components/ui/Card';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
-import { useCustomerSuccess, useUpdateCustomerSuccess, useHubspotSignals, useHubspotInsights } from '@/hooks/useProjects';
-import { ACCOUNT_MANAGERS } from '@/lib/accountManagers';
+import { useCustomerSuccess, useUpdateCustomerSuccess, useHubspotSignals, useHubspotInsights, useAllUsers } from '@/hooks/useProjects';
+import { mergeAccountManagers } from '@/lib/accountManagers';
 import type {
   CustomerSuccessEntry, CfProductSignal, CfSignalLevel,
   SignalItem, RenewalDueItem, CustomerSuccessPageData,
@@ -810,6 +810,7 @@ export default function CustomerSuccessPage() {
 
   const { data: hubspotResponse } = useHubspotSignals();
   const hubspotData = (hubspotResponse?.data ?? null) as HubspotSignalsData | null;
+  const { data: allUsersData } = useAllUsers();
 
   const { data: insightsResponse } = useHubspotInsights();
   const insightsMap = (insightsResponse?.data?.insights ?? {}) as Record<string, HubspotInsight[]>;
@@ -885,7 +886,7 @@ export default function CustomerSuccessPage() {
   const renewalDue: RenewalDueItem[]     = pageData?.renewalDue ?? [];
   const upsellSignals: SignalItem[]      = pageData?.upsellSignals ?? [];
 
-  const allAMs = ACCOUNT_MANAGERS;
+  const allAMs = mergeAccountManagers(allUsersData?.data);
   const activeFilterCount = [search, amFilter, signalFilter].filter(Boolean).length;
 
   function clearAllFilters() {

@@ -36,12 +36,22 @@ export interface CategoryBestWorst {
 // the resulting 0-10 (or 0-20 for Tone) sub-score, and a concrete fix when it's not
 // already strong. Powers clicking a category score to see the breakdown behind it,
 // rather than only the best/worst real-example evidence.
+// A small number of real, named instances backing a weak sub-score -- e.g. which specific
+// customer got a slow reply, and how slow. Capped at 2 per sub-metric (not exhaustive) so
+// this reads as "proof," not a dump of every offending thread.
+export interface ScoreBreakdownExample {
+  customer: string; // customer email address -- "who"
+  when: string;     // yyyy-mm-dd the customer's message came in
+  detail: string;   // subject + the specific measured failure, e.g. `"Migration ETA?" — replied after 18.3h`
+}
+
 export interface ScoreBreakdownItem {
   label: string;
   value: string;
   subScore: number;
   maxSubScore: number;
   tip: string | null; // null when this sub-metric is already strong -- nothing to fix
+  examples: ScoreBreakdownExample[]; // up to 2 real instances behind a weak tip; [] when strong
 }
 
 export interface ScoreBreakdown {
@@ -480,6 +490,24 @@ async function judgeAllExchanges(allExchanges: Exchange[]): Promise<ExchangeJudg
   return judgments;
 }
 
+function fmtWhen(ms: number): string {
+  return ms ? new Date(ms).toISOString().slice(0, 10) : '';
+}
+
+// Keeps only the worst 2 candidates -- "some examples," not every offending thread.
+// `worseness` should be a number where HIGHER = worse (e.g. hours late, or 100 - score
+// for a 0-100 scale where lower is worse).
+function worstExamples<T extends { customer: string; when: number }>(
+  candidates: T[],
+  worseness: (c: T) => number,
+  detail: (c: T) => string,
+): ScoreBreakdownExample[] {
+  return [...candidates]
+    .sort((a, b) => worseness(b) - worseness(a))
+    .slice(0, 2)
+    .map((c) => ({ customer: c.customer, when: fmtWhen(c.when), detail: detail(c) }));
+}
+
 // Pure aggregation + the scoring formula -- unchanged from the original design, just fed
 // by team-aware, correctly-paired inputs instead of one person's isolated, first-message-
 // anchored view of their own mailbox.
@@ -510,6 +538,7 @@ function deriveUserMetrics(userEmail: string, userName: string, judgments: Excha
   let bestSpeedHours = Infinity;
   let worstSpeed: HygieneExample | null = null;
   let worstSpeedHours = -Infinity;
+  const firstReplyCandidates: { hours: number; customer: string; when: number; subject: string }[] = [];
   for (const j of myFirstResponses) {
     if (j.firstResponseHours === null) continue;
     const hours = j.firstResponseHours;
@@ -520,7 +549,17 @@ function deriveUserMetrics(userEmail: string, userName: string, judgments: Excha
     };
     if (hours < bestSpeedHours) { bestSpeedHours = hours; bestSpeed = ex; }
     if (hours > worstSpeedHours) { worstSpeedHours = hours; worstSpeed = ex; }
+    firstReplyCandidates.push({
+      hours,
+      customer: j.exchange.customerMessage.customerEmail || 'Unknown customer',
+      when: j.exchange.customerMessage.time,
+      subject: j.exchange.customerMessage.subject || '(no subject)',
+    });
   }
+  const worstFirstReplyExamples = worstExamples(firstReplyCandidates, (c) => c.hours,
+    (c) => `"${c.subject}" — replied after ${c.hours < 1 ? Math.round(c.hours * 60) + ' min' : c.hours.toFixed(1) + 'h'}`);
+  const slaMissExamples = worstExamples(firstReplyCandidates.filter((c) => c.hours > 4), (c) => c.hours,
+    (c) => `"${c.subject}" — replied after ${c.hours.toFixed(1)}h, missing the 4h SLA`);
 
   // ── Resolution: exchanges where I sent the SUBSTANTIVE (last, most representative) reply ──
   const mySubstantiveReplies = judgments.filter((j) => j.substantiveReplier?.teamMemberEmail === userEmail);
@@ -533,16 +572,34 @@ function deriveUserMetrics(userEmail: string, userName: string, judgments: Excha
   // had to come back on (most recent example of each, so it stays relevant week to week).
   let bestResolution: HygieneExample | null = null;
   let worstResolution: HygieneExample | null = null;
+  const resolutionTimeCandidates: { hours: number; customer: string; when: number; subject: string }[] = [];
+  const multiReplyCandidates: { customer: string; when: number; subject: string; count: number }[] = [];
+  const reopenedCandidates: { customer: string; when: number; subject: string }[] = [];
   for (const j of mySubstantiveReplies) {
     const replyText = j.substantiveReplier!.text;
     const customerText = j.exchange.customerMessage.text;
+    const customer = j.exchange.customerMessage.customerEmail || 'Unknown customer';
+    const when = j.exchange.customerMessage.time;
+    const subject = j.exchange.customerMessage.subject || '(no subject)';
     if (j.exchange.teamReplies.length === 1 && !j.wasReopened) {
       bestResolution = { customerText, replyText, label: 'Resolved in 1 reply' };
+    } else {
+      multiReplyCandidates.push({ customer, when, subject, count: j.exchange.teamReplies.length });
     }
     if (j.wasReopened) {
       worstResolution = { customerText, replyText, label: 'Reopened by the customer' };
+      reopenedCandidates.push({ customer, when, subject });
+    }
+    if (j.fullResolutionHours !== null) {
+      resolutionTimeCandidates.push({ hours: j.fullResolutionHours, customer, when, subject });
     }
   }
+  const worstResolutionTimeExamples = worstExamples(resolutionTimeCandidates, (c) => c.hours,
+    (c) => `"${c.subject}" — took ${c.hours.toFixed(1)}h to fully resolve`);
+  const multiReplyExamples = worstExamples(multiReplyCandidates, (c) => c.count,
+    (c) => `"${c.subject}" — took ${c.count} replies to resolve`);
+  const reopenedExamples = worstExamples(reopenedCandidates, () => 1,
+    (c) => `"${c.subject}" — customer came back after it was marked resolved`);
 
   // ── Quality: accuracy rate, checked on my own first-response reply in each exchange
   // I first-responded to, PLUS my own proactive/outbound messages -- "not auto-generated
@@ -550,20 +607,37 @@ function deriveUserMetrics(userEmail: string, userName: string, judgments: Excha
   // not sampled -- it's a cheap length/auto-reply check) ──
   let accurateReplies = 0;
   let accuracyDenominator = 0;
+  const accuracyFailCandidates: { customer: string; when: number; subject: string; reason: string }[] = [];
   for (const j of myFirstResponses) {
     const reply = j.firstResponder!;
     const isAuto = /^(automatic reply|out of office|auto.?reply)/i.test(reply.subject ?? '');
-    if (!isAuto && reply.text.length > 100) accurateReplies++;
+    const ok = !isAuto && reply.text.length > 100;
+    if (ok) accurateReplies++;
+    else accuracyFailCandidates.push({
+      customer: j.exchange.customerMessage.customerEmail || 'Unknown customer',
+      when: j.exchange.customerMessage.time,
+      subject: j.exchange.customerMessage.subject || '(no subject)',
+      reason: isAuto ? 'auto-reply, not a real answer' : `only ${reply.text.length} characters`,
+    });
     accuracyDenominator++;
   }
   for (const m of myOrphanMessages) {
     const isAuto = /^(automatic reply|out of office|auto.?reply)/i.test(m.subject ?? '');
-    if (!isAuto && m.text.length > 100) accurateReplies++;
+    const ok = !isAuto && m.text.length > 100;
+    if (ok) accurateReplies++;
+    else accuracyFailCandidates.push({
+      customer: 'Outbound message',
+      when: m.time,
+      subject: m.subject || '(no subject)',
+      reason: isAuto ? 'auto-reply, not a real answer' : `only ${m.text.length} characters`,
+    });
     accuracyDenominator++;
   }
   const accuracyRate = accuracyDenominator > 0
     ? Math.round((accurateReplies / accuracyDenominator) * 100)
     : 100;
+  const accuracyFailExamples = worstExamples(accuracyFailCandidates, () => 1,
+    (c) => `"${c.subject}" — ${c.reason}`);
 
   const oneReplyResolutionRate = substantiveCount > 0
     ? Math.round((oneReplySolved / substantiveCount) * 100)
@@ -577,16 +651,23 @@ function deriveUserMetrics(userEmail: string, userName: string, judgments: Excha
   // actually answering, not always message #1. Proactive/outbound messages are mixed in
   // (isOutbound: true) so a person who mostly reaches out to customers rather than
   // answering them still gets a fair sample, not crowded out by exchange-based replies.
-  const myReplySamples: { customerText: string; replyText: string; isOutbound: boolean }[] = [];
+  const myReplySamples: { customerText: string; replyText: string; isOutbound: boolean; customer: string; when: number; subject: string }[] = [];
   for (const j of judgments) {
     for (const reply of j.exchange.teamReplies) {
       if (reply.teamMemberEmail === userEmail) {
-        myReplySamples.push({ customerText: j.exchange.customerMessage.text, replyText: reply.text, isOutbound: false });
+        myReplySamples.push({
+          customerText: j.exchange.customerMessage.text,
+          replyText: reply.text,
+          isOutbound: false,
+          customer: j.exchange.customerMessage.customerEmail || 'Unknown customer',
+          when: j.exchange.customerMessage.time,
+          subject: j.exchange.customerMessage.subject || '(no subject)',
+        });
       }
     }
   }
   for (const m of myOrphanMessages) {
-    myReplySamples.push({ customerText: '', replyText: m.text, isOutbound: true });
+    myReplySamples.push({ customerText: '', replyText: m.text, isOutbound: true, customer: 'Outbound message', when: m.time, subject: m.subject || '(no subject)' });
   }
   const sample = myReplySamples.slice(0, 8);
 
@@ -605,8 +686,11 @@ function deriveUserMetrics(userEmail: string, userName: string, judgments: Excha
   let worstTone: HygieneExample | null = null;
   let worstToneScore = 101;
   let worstLocalizationEntry: { cfText: string; issues: LocalizationIssue[] } | null = null;
+  const relevancyCandidates: { score: number; customer: string; when: number; subject: string }[] = [];
+  const completenessCandidates: { score: number; customer: string; when: number; subject: string }[] = [];
+  const toneCandidates: { score: number; customer: string; when: number; subject: string }[] = [];
 
-  for (const { customerText, replyText, isOutbound } of sample) {
+  for (const { customerText, replyText, isOutbound, customer, when, subject } of sample) {
     // Relevancy measures "did this answer what the customer actually asked" -- meaningless
     // (and unfairly punishing, since there's no question to match keywords against) for a
     // proactive/outbound message with no customer question behind it. Completeness and
@@ -617,12 +701,15 @@ function deriveUserMetrics(userEmail: string, userName: string, judgments: Excha
       lastReason = rel.reason;
       if (rel.score > bestQualityScore) { bestQualityScore = rel.score; bestQuality = { customerText, replyText, label: `${rel.score}/100 relevancy` }; }
       if (rel.score < worstQualityScore) { worstQualityScore = rel.score; worstQuality = { customerText, replyText, label: `${rel.score}/100 relevancy` }; }
+      relevancyCandidates.push({ score: rel.score, customer, when, subject });
     }
     const cs = scoreCompleteness(customerText, replyText);
     completenessScores.push(cs);
+    completenessCandidates.push({ score: cs, customer, when, subject });
     const localizationIssues = detectLocalizationIssues(replyText);
     const ts = applyLocalizationPenalty(scoreTone(replyText), localizationIssues);
     rawToneScores.push(ts);
+    toneCandidates.push({ score: ts, customer, when, subject });
     if (worstToneEntry === null || ts < worstToneEntry.raw) worstToneEntry = { cfText: replyText, raw: ts };
     if (worstComplEntry === null || cs < worstComplEntry.score) worstComplEntry = { custText: customerText, cfText: replyText, score: cs };
     if (localizationIssues.length > 0 && worstLocalizationEntry === null) {
@@ -632,6 +719,12 @@ function deriveUserMetrics(userEmail: string, userName: string, judgments: Excha
     if (ts > bestToneScore) { bestToneScore = ts; bestTone = { customerText, replyText, label: `${ts}/100 tone` }; }
     if (ts < worstToneScore) { worstToneScore = ts; worstTone = { customerText, replyText, label: `${ts}/100 tone` }; }
   }
+  const worstRelevancyExamples = worstExamples(relevancyCandidates, (c) => 100 - c.score,
+    (c) => `"${c.subject}" — scored ${c.score}/100 relevancy`);
+  const worstCompletenessExamples = worstExamples(completenessCandidates, (c) => 100 - c.score,
+    (c) => `"${c.subject}" — scored ${c.score}/100 completeness`);
+  const worstToneExamples = worstExamples(toneCandidates, (c) => 100 - c.score,
+    (c) => `"${c.subject}" — scored ${c.score}/100 tone`);
 
   const relevancyScore = relevancyScores.length > 0
     ? Math.round(relevancyScores.reduce((a, b) => a + b, 0) / relevancyScores.length)
@@ -696,6 +789,7 @@ function deriveUserMetrics(userEmail: string, userName: string, judgments: Excha
   // just the weak ones like `insights` below), so "why is my score X" has a real answer
   // for every category, not only the ones that happen to be under-performing. ──
   const tip = (ok: boolean, text: string): string | null => (ok ? null : text);
+  const ex = (ok: boolean, examples: ScoreBreakdownExample[]): ScoreBreakdownExample[] => (ok ? [] : examples);
   const scoreBreakdown: ScoreBreakdown = {
     speed: [
       {
@@ -705,12 +799,14 @@ function deriveUserMetrics(userEmail: string, userName: string, judgments: Excha
         tip: tip(avgFirstReplySub >= 9, avgFirstReplyTimeHours === null
           ? `No customer thread this period has you as the first responder — this defaults to a neutral 5/10. Jump in first on live threads to earn a real score here.`
           : `You're averaging ${avgFirstReplyTimeHours}h before your first reply, which scores ${avgFirstReplySub}/10. Reply within 2 hours for full marks (10/10) — anything past 72h scores 0.`),
+        examples: ex(avgFirstReplySub >= 9, worstFirstReplyExamples),
       },
       {
         label: 'SLA Hit Rate (≤4h)',
         value: `${slaHitRate}% of your first replies landed within 4 hours`,
         subScore: slaSub, maxSubScore: 10,
         tip: tip(slaSub >= 9, `Only ${slaHitRate}% of your replies beat the 4-hour mark, scoring ${slaSub}/10. Aim to reply within 4 hours every time for full marks.`),
+        examples: ex(slaSub >= 9, slaMissExamples),
       },
       {
         label: 'Avg Full Resolution Time',
@@ -719,6 +815,7 @@ function deriveUserMetrics(userEmail: string, userName: string, judgments: Excha
         tip: tip(resTimeSub >= 9, avgFullResolutionTimeHours === null
           ? `No thread this period has you as the one who resolved it — this defaults to a neutral 5/10.`
           : `Full resolution averaged ${avgFullResolutionTimeHours}h, scoring ${resTimeSub}/10. Resolving within 24 hours earns full marks (10/10).`),
+        examples: ex(resTimeSub >= 9, worstResolutionTimeExamples),
       },
     ],
     quality: [
@@ -729,18 +826,21 @@ function deriveUserMetrics(userEmail: string, userName: string, judgments: Excha
         tip: tip(relevancySub >= 9, relevancyScore === null
           ? `No reply was sampled for relevancy this period — this defaults to a neutral 5/10.`
           : `Your replies scored ${relevancyScore}/100 on relevancy, i.e. ${relevancySub}/10 here. Reference the customer's specific wording/keywords and answer everything they actually asked, not just part of it.`),
+        examples: ex(relevancySub >= 9, worstRelevancyExamples),
       },
       {
         label: 'Accuracy',
         value: `${accuracyRate}% of your replies were substantive (not auto-generated or under 100 characters)`,
         subScore: accuracySub, maxSubScore: 10,
         tip: tip(accuracySub >= 9, `${100 - accuracyRate}% of your replies were auto-generated or too short to count as a real answer, scoring ${accuracySub}/10. Send a personalized, substantive reply every time.`),
+        examples: ex(accuracySub >= 9, accuracyFailExamples),
       },
       {
         label: 'Completeness',
         value: `${completenessRate}/100 — how fully your replies covered what was asked`,
         subScore: completeSub, maxSubScore: 10,
         tip: tip(completeSub >= 9, `Completeness scored ${completenessRate}/100 (${completeSub}/10). Address every question the customer raised and explain next steps/timeline, not just a partial answer.`),
+        examples: ex(completeSub >= 9, worstCompletenessExamples),
       },
     ],
     resolution: [
@@ -749,12 +849,14 @@ function deriveUserMetrics(userEmail: string, userName: string, judgments: Excha
         value: `${oneReplyResolutionRate}% of your resolved threads were closed in a single reply`,
         subScore: oneReplySub, maxSubScore: 10,
         tip: tip(oneReplySub >= 9, `Only ${oneReplyResolutionRate}% of your resolutions took just one reply, scoring ${oneReplySub}/10. Include all necessary details (next steps, ETA, owner) in your first response to avoid back-and-forth.`),
+        examples: ex(oneReplySub >= 9, multiReplyExamples),
       },
       {
         label: 'Reopened Threads',
         value: `${reopenedThreadRate}% of your resolved threads were reopened by the customer afterward`,
         subScore: reopenedSub, maxSubScore: 10,
         tip: tip(reopenedSub >= 9, `${reopenedThreadRate}% of your "resolved" threads came back, scoring ${reopenedSub}/10. Double-check your reply is genuinely final — anticipate the obvious follow-up question — before treating a thread as resolved.`),
+        examples: ex(reopenedSub >= 9, reopenedExamples),
       },
     ],
     tone: [
@@ -765,6 +867,7 @@ function deriveUserMetrics(userEmail: string, userName: string, judgments: Excha
         tip: worstLocalizationEntry
           ? `${worstLocalizationEntry.issues.map((i) => i.detail).join(' Also: ')}. CloudFuze's customers are predominantly US/international — this is already reflected in the ${rawToneAvg}/100 (${toneScore}/20) above.`
           : tip(toneScore >= 18, `Tone scored ${rawToneAvg}/100 (${toneScore}/20). Open with a greeting, close with a professional sign-off, and use empathy phrases like "I understand your concern" or "I appreciate your patience."`),
+        examples: ex(toneScore >= 18 && !worstLocalizationEntry, worstToneExamples),
       },
     ],
   };
