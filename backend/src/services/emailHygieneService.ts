@@ -32,6 +32,25 @@ export interface CategoryBestWorst {
   worst: HygieneExample | null;
 }
 
+// One line of "why did this category score what it scored" -- the actual measured value,
+// the resulting 0-10 (or 0-20 for Tone) sub-score, and a concrete fix when it's not
+// already strong. Powers clicking a category score to see the breakdown behind it,
+// rather than only the best/worst real-example evidence.
+export interface ScoreBreakdownItem {
+  label: string;
+  value: string;
+  subScore: number;
+  maxSubScore: number;
+  tip: string | null; // null when this sub-metric is already strong -- nothing to fix
+}
+
+export interface ScoreBreakdown {
+  speed: ScoreBreakdownItem[];
+  quality: ScoreBreakdownItem[];
+  resolution: ScoreBreakdownItem[];
+  tone: ScoreBreakdownItem[];
+}
+
 export interface UserEmailHygiene {
   userEmail: string;
   userName: string;
@@ -66,6 +85,9 @@ export interface UserEmailHygiene {
     resolution: CategoryBestWorst;
     tone: CategoryBestWorst;
   };
+  // Every sub-metric behind each category score, always populated (not just when weak),
+  // so clicking a score can explain exactly how it was built up, not just show an example.
+  scoreBreakdown: ScoreBreakdown;
 }
 
 export interface TeamHygieneMember {
@@ -302,6 +324,75 @@ function scoreCompleteness(customerText: string, cfReplyText: string): number {
   return Math.min(100, Math.round(replyWords / (numQuestions * 30) * 100));
 }
 
+// ── Localization red flags for a non-Indian (US/international) audience ─────────
+// CloudFuze's customers are predominantly US/international, so a reply that reads fine
+// internally can still land badly with them: Indian-English idioms unfamiliar outside
+// India, "lakh"/"crore" (units nobody outside India uses), Indian-style digit grouping
+// ("1,00,000" instead of "100,000"), and DD/MM dates (which a US reader defaults to
+// reading as MM/DD, i.e. the wrong date). Flagged as a Tone penalty -- this is about how
+// professional and clear the reply reads to the actual recipient, not what it says.
+const INDIAN_IDIOM_PATTERNS: { label: string; regex: RegExp }[] = [
+  { label: '"revert back" / "kindly revert"', regex: /\b(revert\s*back|kindly\s+revert|please\s+revert)\b/i },
+  { label: '"do the needful"', regex: /\b(the\s+needful|do\s+the\s+needful)\b/i },
+  { label: '"prepone"', regex: /\bprepone(d)?\b/i },
+  { label: '"out of station"', regex: /\bout\s+of\s+station\b/i },
+  { label: '"good name"', regex: /\b(your\s+)?good\s+name\b/i },
+  { label: '"herewith attached" / "attached herewith"', regex: /\b(herewith\s+attached|attached\s+herewith)\b/i },
+  { label: '"telephonically"', regex: /\btelephonically\b/i },
+  { label: '"please do one thing"', regex: /\bplease\s+do\s+one\s+thing\b/i },
+  { label: '"intimate" (as in "please intimate")', regex: /\b(please\s+)?intimate\s+(us|you|me|him|her|them)\b/i },
+  { label: '"itself" for emphasis (e.g. "today itself")', regex: /\b(today|now|immediately)\s+itself\b/i },
+  { label: '"the same" as a stand-in noun (e.g. "confirm the same")', regex: /\b(confirm|check|revert on|update on|regarding)\s+the\s+same\b/i },
+  { label: '"avail" as a verb (e.g. "kindly avail")', regex: /\bkindly\s+avail\b/i },
+];
+
+export interface LocalizationIssue {
+  type: 'idiom' | 'unit' | 'numberFormat' | 'dateFormat';
+  example: string;
+  detail: string;
+}
+
+function detectLocalizationIssues(text: string): LocalizationIssue[] {
+  const issues: LocalizationIssue[] = [];
+
+  for (const { label, regex } of INDIAN_IDIOM_PATTERNS) {
+    const m = text.match(regex);
+    if (m) { issues.push({ type: 'idiom', example: m[0], detail: `Indian-English phrasing (${label}) that international customers often find unclear` }); break; }
+  }
+
+  // "Lakh"/"crore" -- 1 lakh = 100,000, 1 crore = 10,000,000 -- units international
+  // readers won't recognize at all.
+  const unitMatch = text.match(/\b(\d+(\.\d+)?\s*)?(lakh|lakhs|crore|crores)\b/i);
+  if (unitMatch) issues.push({ type: 'unit', example: unitMatch[0], detail: `"${unitMatch[0]}" is an Indian numbering unit — international customers think in thousands/millions, spell out the actual number` });
+
+  // Indian digit grouping (2s after the first 3 digits, e.g. "1,00,000") vs the
+  // international 3-digit grouping ("100,000").
+  const numFmtMatch = text.match(/\b\d{1,2}(,\d{2})+,\d{3}\b/);
+  if (numFmtMatch) issues.push({ type: 'numberFormat', example: numFmtMatch[0], detail: `"${numFmtMatch[0]}" uses Indian-style digit grouping — use standard grouping instead (e.g. "100,000", not "1,00,000")` });
+
+  // DD/MM/YYYY dates are ambiguous at best (US readers default to MM/DD) -- only
+  // flagged when the first number is >12, the one case that's unambiguously day-first.
+  for (const m of text.matchAll(/\b(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})\b/g)) {
+    const day = parseInt(m[1], 10);
+    const month = parseInt(m[2], 10);
+    if (day > 12 && month <= 12) { issues.push({ type: 'dateFormat', example: m[0], detail: `"${m[0]}" is a DD/MM date — ambiguous or read as the wrong date by US customers; spell out the month (e.g. "March 25, 2026")` }); break; }
+  }
+
+  return issues;
+}
+
+// "Big red flag" per the product decision behind this feature -- a single occurrence
+// should meaningfully move the score, not get lost in rounding, and stacking several
+// still can't push a reply below 0 (the outer Math.max below handles that).
+const LOCALIZATION_PENALTY_PER_ISSUE = 25;
+const MAX_LOCALIZATION_PENALTY = 75;
+
+function applyLocalizationPenalty(rawToneScore: number, issues: LocalizationIssue[]): number {
+  if (issues.length === 0) return rawToneScore;
+  const penalty = Math.min(MAX_LOCALIZATION_PENALTY, issues.length * LOCALIZATION_PENALTY_PER_ISSUE);
+  return Math.max(0, rawToneScore - penalty);
+}
+
 // ── 2026-08-29 team-aware redesign ──────────────────────────────────────────────
 // analyzeUser() used to fetch + judge each mailbox in complete isolation: "did I
 // personally reply" instead of "did the team reply," "how long since the very first
@@ -513,6 +604,7 @@ function deriveUserMetrics(userEmail: string, userName: string, judgments: Excha
   let bestToneScore = -1;
   let worstTone: HygieneExample | null = null;
   let worstToneScore = 101;
+  let worstLocalizationEntry: { cfText: string; issues: LocalizationIssue[] } | null = null;
 
   for (const { customerText, replyText, isOutbound } of sample) {
     // Relevancy measures "did this answer what the customer actually asked" -- meaningless
@@ -528,10 +620,14 @@ function deriveUserMetrics(userEmail: string, userName: string, judgments: Excha
     }
     const cs = scoreCompleteness(customerText, replyText);
     completenessScores.push(cs);
-    const ts = scoreTone(replyText);
+    const localizationIssues = detectLocalizationIssues(replyText);
+    const ts = applyLocalizationPenalty(scoreTone(replyText), localizationIssues);
     rawToneScores.push(ts);
     if (worstToneEntry === null || ts < worstToneEntry.raw) worstToneEntry = { cfText: replyText, raw: ts };
     if (worstComplEntry === null || cs < worstComplEntry.score) worstComplEntry = { custText: customerText, cfText: replyText, score: cs };
+    if (localizationIssues.length > 0 && worstLocalizationEntry === null) {
+      worstLocalizationEntry = { cfText: replyText, issues: localizationIssues };
+    }
 
     if (ts > bestToneScore) { bestToneScore = ts; bestTone = { customerText, replyText, label: `${ts}/100 tone` }; }
     if (ts < worstToneScore) { worstToneScore = ts; worstTone = { customerText, replyText, label: `${ts}/100 tone` }; }
@@ -596,6 +692,83 @@ function deriveUserMetrics(userEmail: string, userName: string, judgments: Excha
   const resolutionScore = oneReplySub + reopenedSub;                 // 0–20
   const emailHygieneScore = speedScore + qualityScore + resolutionScore + toneScore; // 0–100
 
+  // ── Score breakdown — every sub-metric behind every category, always populated (not
+  // just the weak ones like `insights` below), so "why is my score X" has a real answer
+  // for every category, not only the ones that happen to be under-performing. ──
+  const tip = (ok: boolean, text: string): string | null => (ok ? null : text);
+  const scoreBreakdown: ScoreBreakdown = {
+    speed: [
+      {
+        label: 'Avg First Reply Time',
+        value: avgFirstReplyTimeHours === null ? 'No first reply credited to you this period' : `${avgFirstReplyTimeHours}h average before your first reply`,
+        subScore: avgFirstReplySub, maxSubScore: 10,
+        tip: tip(avgFirstReplySub >= 9, avgFirstReplyTimeHours === null
+          ? `No customer thread this period has you as the first responder — this defaults to a neutral 5/10. Jump in first on live threads to earn a real score here.`
+          : `You're averaging ${avgFirstReplyTimeHours}h before your first reply, which scores ${avgFirstReplySub}/10. Reply within 2 hours for full marks (10/10) — anything past 72h scores 0.`),
+      },
+      {
+        label: 'SLA Hit Rate (≤4h)',
+        value: `${slaHitRate}% of your first replies landed within 4 hours`,
+        subScore: slaSub, maxSubScore: 10,
+        tip: tip(slaSub >= 9, `Only ${slaHitRate}% of your replies beat the 4-hour mark, scoring ${slaSub}/10. Aim to reply within 4 hours every time for full marks.`),
+      },
+      {
+        label: 'Avg Full Resolution Time',
+        value: avgFullResolutionTimeHours === null ? 'No thread you fully resolved this period' : `${avgFullResolutionTimeHours}h average to fully resolve a thread`,
+        subScore: resTimeSub, maxSubScore: 10,
+        tip: tip(resTimeSub >= 9, avgFullResolutionTimeHours === null
+          ? `No thread this period has you as the one who resolved it — this defaults to a neutral 5/10.`
+          : `Full resolution averaged ${avgFullResolutionTimeHours}h, scoring ${resTimeSub}/10. Resolving within 24 hours earns full marks (10/10).`),
+      },
+    ],
+    quality: [
+      {
+        label: 'Relevancy',
+        value: relevancyScore === null ? 'No sampled reply to score' : `${relevancyScore}/100 — how directly your reply addressed the customer's actual question`,
+        subScore: relevancySub, maxSubScore: 10,
+        tip: tip(relevancySub >= 9, relevancyScore === null
+          ? `No reply was sampled for relevancy this period — this defaults to a neutral 5/10.`
+          : `Your replies scored ${relevancyScore}/100 on relevancy, i.e. ${relevancySub}/10 here. Reference the customer's specific wording/keywords and answer everything they actually asked, not just part of it.`),
+      },
+      {
+        label: 'Accuracy',
+        value: `${accuracyRate}% of your replies were substantive (not auto-generated or under 100 characters)`,
+        subScore: accuracySub, maxSubScore: 10,
+        tip: tip(accuracySub >= 9, `${100 - accuracyRate}% of your replies were auto-generated or too short to count as a real answer, scoring ${accuracySub}/10. Send a personalized, substantive reply every time.`),
+      },
+      {
+        label: 'Completeness',
+        value: `${completenessRate}/100 — how fully your replies covered what was asked`,
+        subScore: completeSub, maxSubScore: 10,
+        tip: tip(completeSub >= 9, `Completeness scored ${completenessRate}/100 (${completeSub}/10). Address every question the customer raised and explain next steps/timeline, not just a partial answer.`),
+      },
+    ],
+    resolution: [
+      {
+        label: '1-Reply Resolution',
+        value: `${oneReplyResolutionRate}% of your resolved threads were closed in a single reply`,
+        subScore: oneReplySub, maxSubScore: 10,
+        tip: tip(oneReplySub >= 9, `Only ${oneReplyResolutionRate}% of your resolutions took just one reply, scoring ${oneReplySub}/10. Include all necessary details (next steps, ETA, owner) in your first response to avoid back-and-forth.`),
+      },
+      {
+        label: 'Reopened Threads',
+        value: `${reopenedThreadRate}% of your resolved threads were reopened by the customer afterward`,
+        subScore: reopenedSub, maxSubScore: 10,
+        tip: tip(reopenedSub >= 9, `${reopenedThreadRate}% of your "resolved" threads came back, scoring ${reopenedSub}/10. Double-check your reply is genuinely final — anticipate the obvious follow-up question — before treating a thread as resolved.`),
+      },
+    ],
+    tone: [
+      {
+        label: 'Tone & Professionalism',
+        value: `${rawToneAvg}/100 — greeting, sign-off, empathy, and professionalism across your replies`,
+        subScore: toneScore, maxSubScore: 20,
+        tip: worstLocalizationEntry
+          ? `${worstLocalizationEntry.issues.map((i) => i.detail).join(' Also: ')}. CloudFuze's customers are predominantly US/international — this is already reflected in the ${rawToneAvg}/100 (${toneScore}/20) above.`
+          : tip(toneScore >= 18, `Tone scored ${rawToneAvg}/100 (${toneScore}/20). Open with a greeting, close with a professional sign-off, and use empathy phrases like "I understand your concern" or "I appreciate your patience."`),
+      },
+    ],
+  };
+
   // ── Improvement insights (only for weak sub-scores) ──────────────
   const insights: ImprovementInsight[] = [];
 
@@ -635,6 +808,21 @@ function deriveUserMetrics(userEmail: string, userName: string, judgments: Excha
       improvedLine: missing.length > 0
         ? `Missing ${missing.join(' and ')}. Suggested version:\n"Hi [Customer Name],\n\n${snippet.slice(0, 180)}${snippet.length > 180 ? '…' : ''}\n\nBest regards,\n[Your Name]"`
         : `Add empathy phrases: "I understand your concern" / "I appreciate your patience" and close with "Please feel free to reach out if you need further assistance."`,
+    });
+  }
+
+  // Separate from the generic Tone insight above so the fix is precise: "add a greeting"
+  // doesn't help someone whose actual problem is an Indian-English idiom or a DD/MM date.
+  if (worstLocalizationEntry) {
+    const snippet = worstLocalizationEntry.cfText.replace(/\s+/g, ' ').slice(0, 250).trim();
+    const details = worstLocalizationEntry.issues.map((i) => i.detail).join(' Also: ');
+    insights.push({
+      category: 'tone',
+      metric: 'International Clarity',
+      score: toneScore,
+      maxScore: 20,
+      originalLine: snippet + (worstLocalizationEntry.cfText.length > 250 ? '…' : ''),
+      improvedLine: `${details}. CloudFuze's customers are predominantly US/international — use plain international English, spell out numbers in thousands/millions instead of lakh/crore, standard digit grouping (100,000 not 1,00,000), and unambiguous dates (e.g. "March 25, 2026").`,
     });
   }
 
@@ -708,6 +896,7 @@ function deriveUserMetrics(userEmail: string, userName: string, judgments: Excha
       resolution: { best: bestResolution, worst: worstResolution },
       tone: { best: bestTone, worst: worstTone },
     },
+    scoreBreakdown,
   };
 }
 
