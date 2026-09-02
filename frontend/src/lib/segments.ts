@@ -22,7 +22,7 @@ export const MANAGER_QUERY_NAMES: Record<string, string> = {
 // Hardcoded engineer assignments. Shared engineers appear under both managers.
 // Leads (Abhishek / Ajay Singh) manage sub-managers only — no direct engineer list.
 export const ENGINEER_ASSIGNMENTS: Record<string, string[]> = {
-  'Pranavi':          ['Arun', 'Manoj', 'Pallavi'],
+  'Pranavi':          ['Arun', 'Manoj', 'Pallavi', 'Vainateya Rasala', 'Tanmai Arangi'],
   // Spellings here must match LMS_SCORES/AUDIO_PERCENTAGES/ticket-export assignee
   // names exactly (or at least share a full first word) — the fuzzy matcher those
   // helpers use can't bridge a mid-word letter difference like "Ranadep" vs
@@ -38,39 +38,42 @@ export const ENGINEER_ASSIGNMENTS: Record<string, string[]> = {
   'Sriram':           ['Dathu', 'Ramana', 'Vineetha', 'Sanjana'],
 };
 
-export const LMS_SCORES: { name: string; score: number }[] = [
-  { name: 'Siva Kota',                       score: 8  },
-  { name: 'Pallavi Kosuvaripalli',            score: 9  },
-  { name: 'Abhishek Sakala',                  score: 10 },
-  { name: 'Abhishikth Yenugula',              score: 10 },
-  { name: 'Ajay Singh',                       score: 10 },
-  { name: 'Amulya Anapuram',                  score: 10 },
-  { name: 'Arun Kandula',                     score: 10 },
-  { name: 'Chaitanya Gupta',                  score: 10 },
-  { name: 'Davidraj Dumpala',                 score: 10 },
-  { name: 'Ganesh Kondameedi',                score: 10 },
-  { name: 'Habeebunnisa Begum',               score: 10 },
-  { name: 'Harika Velidi',                    score: 10 },
-  { name: 'Harshith Kaduluri',                score: 10 },
-  { name: 'Krotta Neelima',                   score: 10 },
-  { name: 'Lakshma Reddy Naredla',            score: 10 },
-  { name: 'Lakshmi Triveni',                  score: 10 },
-  { name: 'Manoj Bathula',                    score: 10 },
-  { name: 'Raghu Yellani',                    score: 10 },
-  { name: 'Ramana Alamuru',                   score: 10 },
-  { name: 'Ranadeep Muddam',                  score: 10 },
-  { name: 'Ravi Hemanth Chinthala',           score: 10 },
-  { name: 'Sai Dathu Kaluvala',               score: 10 },
-  { name: 'Sai kumar Kustapuram',             score: 9  },
-  { name: 'Sravan Kesaram',                   score: 10 },
-  { name: 'Sriram Ramakrishnan',              score: 10 },
-  { name: 'Swaroop B',                        score: 10 },
-  { name: 'V S Chandra Mouli Bhamidipati',    score: 10 },
-  { name: 'Vijendar Burgula',                 score: 10 },
-  { name: 'Vineetha Yenti',                   score: 10 },
+export const LMS_SCORES: { name: string; score: number; max: number }[] = [
+  { name: 'Ambika Patil',                     score: 9,  max: 9  },
+  { name: 'Meghana Chowdada',                 score: 6,  max: 6  },
+  { name: 'Nerella Sanjana',                  score: 9,  max: 9  },
+  { name: 'Nithish Bunne',                    score: 9,  max: 9  },
+  { name: 'Tanmai Arangi',                    score: 9,  max: 9  },
+  { name: 'Vainateya Rasala',                 score: 9,  max: 9  },
+  { name: 'Pallavi Kosuvaripalli',            score: 9,  max: 10 },
+  { name: 'Abhishek Sakala',                  score: 10, max: 10 },
+  { name: 'Abhishikth Yenugula',              score: 10, max: 10 },
+  { name: 'Ajay Singh',                       score: 10, max: 10 },
+  { name: 'Amulya Anapuram',                  score: 10, max: 10 },
+  { name: 'Arun Kandula',                     score: 10, max: 10 },
+  { name: 'Chaitanya Gupta',                  score: 10, max: 10 },
+  { name: 'Davidraj Dumpala',                 score: 10, max: 10 },
+  { name: 'Ganesh Kondameedi',                score: 10, max: 10 },
+  { name: 'Habeebunnisa Begum',               score: 10, max: 10 },
+  { name: 'Harika Velidi',                    score: 10, max: 10 },
+  { name: 'Harshith Kaduluri',                score: 10, max: 10 },
+  { name: 'Krotta Neelima',                   score: 10, max: 10 },
+  { name: 'Lakshma Reddy Naredla',            score: 10, max: 10 },
+  { name: 'Lakshmi Triveni',                  score: 10, max: 10 },
+  { name: 'Manoj Bathula',                    score: 10, max: 10 },
+  { name: 'Meena Lakshmi',                    score: 10, max: 10 },
+  { name: 'Ramana Alamuru',                   score: 10, max: 10 },
+  { name: 'Ranadeep Muddam',                  score: 10, max: 10 },
+  { name: 'Ravi Hemanth Chinthala',           score: 10, max: 10 },
+  { name: 'Sai Dathu Kaluvala',               score: 10, max: 10 },
+  { name: 'Sai kumar Kustapuram',             score: 10, max: 10 },
+  { name: 'Siva Kota',                        score: 10, max: 10 },
+  { name: 'Sriram Ramakrishnan',              score: 10, max: 10 },
+  { name: 'Swaroop B',                        score: 10, max: 10 },
+  { name: 'V S Chandra Mouli Bhamidipati',    score: 10, max: 10 },
+  { name: 'Vijendar Burgula',                 score: 10, max: 10 },
+  { name: 'Vineetha Yenti',                   score: 10, max: 10 },
 ];
-
-export const LMS_MAX = 10;
 
 // 5 meetings held so far (7/13, 7/21, 7/24, 7/27, 7/31).
 // "Harishtha" in source is a typo for "Harshith" — corrected here.
@@ -187,6 +190,7 @@ export const AUDIO_PERCENTAGES: { name: string; pct: number }[] = [
   { name: 'Meghana Chowdada',     pct: 99  },
   { name: 'Pallavi Kosuvaripalli', pct: 83 },
   { name: 'Pranavi',              pct: 44  },
+  { name: 'Lakshma Reddy',        pct: 90  },
 ];
 
 // Some data sources (manual entry, imports) store a manager's full name
