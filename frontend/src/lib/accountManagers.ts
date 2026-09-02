@@ -5,7 +5,6 @@ export const ACCOUNT_MANAGERS = [
   'Joy Prakash',
   'Arundhati Sen',
   'Anthony Raymond',
-  'Lennis Brown',
   'Deepak R J',
 ];
 
