@@ -8,7 +8,8 @@ import { StatusBadge } from '@/components/ui/StatusBadge';
 import { MultiSelectDropdown } from '@/components/ui/MultiSelectDropdown';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
-import { ACCOUNT_MANAGERS } from '@/lib/accountManagers';
+import { useAllUsers } from '@/hooks/useProjects';
+import { mergeAccountManagers } from '@/lib/accountManagers';
 import {
   FileText,
   Plus,
@@ -97,6 +98,7 @@ function CaseStudiesContent() {
   const [searchTerm, setSearchTerm] = useState('');
   const [pmFilter, setPmFilter] = useState('');
   const [amFilter, setAmFilter] = useState('');
+  const { data: allUsersData } = useAllUsers();
 
   useEffect(() => {
     fetchData();
@@ -234,7 +236,7 @@ function CaseStudiesContent() {
   const pmOptions = Array.from(new Set(
     caseStudies.map((cs) => cs.project?.projectManager).filter(Boolean)
   )).sort() as string[];
-  const amOptions = ACCOUNT_MANAGERS;
+  const amOptions = mergeAccountManagers(allUsersData?.data);
 
   const filteredCaseStudies = caseStudies.filter((cs) => {
     if (isManager && cs.project?.projectManager !== user?.name) return false;

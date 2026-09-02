@@ -27,7 +27,7 @@ import {
 import Link from 'next/link';
 import { projectSegment, type Segment } from '@/lib/segments';
 import { formatCurrency } from '@/lib/utils';
-import { ACCOUNT_MANAGERS } from '@/lib/accountManagers';
+import { mergeAccountManagers } from '@/lib/accountManagers';
 
 interface FilterState {
   status: string;
@@ -354,9 +354,9 @@ export default function ProjectsPage() {
   const accountManagerOptions = useMemo(() => {
     return [
       { value: '', label: 'All Account Managers', color: 'gray' },
-      ...ACCOUNT_MANAGERS.map(n => ({ value: n, label: n, color: 'teal' })),
+      ...mergeAccountManagers(usersData?.data).map(n => ({ value: n, label: n, color: 'teal' })),
     ];
-  }, []);
+  }, [usersData?.data]);
 
   return (
     // h-full fills the <main> content area; flex-col stacks sections vertically.

@@ -237,6 +237,17 @@ function ScoreBreakdownPanel({
                       {item.tip}
                     </div>
                   )}
+                  {item.examples?.length > 0 && (
+                    <div className="mt-1.5 space-y-1">
+                      {item.examples.map((exm: any, exIdx: number) => (
+                        <div key={exIdx} className="text-[11px] text-gray-600 bg-gray-50 border border-gray-100 rounded-md px-2 py-1">
+                          <span className="font-medium text-gray-700">{exm.customer}</span>
+                          {exm.when && <span className="text-gray-400"> · {exm.when}</span>}
+                          <span className="text-gray-500"> — {exm.detail}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               );
             })}
