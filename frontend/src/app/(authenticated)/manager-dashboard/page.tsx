@@ -925,10 +925,11 @@ function getEngineerJiraData(allJiraEngineers: any[], canonicalName: string) {
     const s = (t.status || '').toLowerCase();
     return !['done', 'resolved', 'closed', 'completed'].some(x => s.includes(x));
   }).length;
-  const anyBreached = usesSlaBreachedBy
-    ? tickets.filter((t: any) => t.frBreached || slaBreachedByMatch(t.slaBreachedBy, canonicalName)).length
-    : tickets.filter((t: any) => t.frBreached || t.resBreached).length;
-  const breachRate  = totalTickets > 0 ? Math.round((anyBreached / totalTickets) * 100) : 0;
+  // Breach% is literally Res/Total -- must use the same resBreaches count shown in the
+  // Res column (searched across ALL tickets via SLA Breached By), not a separate
+  // own-tickets-only check, which undercounted whenever this engineer's SLA breach was
+  // attributed on a ticket assigned to someone else.
+  const breachRate  = totalTickets > 0 ? Math.round((resBreaches / totalTickets) * 100) : 0;
   // Distinct Product Type values across this engineer's tickets -- how many different
   // products/migration types they're working across, not just how many tickets.
   const productTypes = Array.from(new Set(
