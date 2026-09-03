@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import api from '@/services/api';
 import { SEGMENT_CONFIG, SEGMENT_HIERARCHY, MANAGER_QUERY_NAMES, ENGINEER_ASSIGNMENTS, LMS_SCORES, MEETING_ATTENDANCE, CHECKIN_DELAYS, AUDIO_PERCENTAGES, segmentOfManager, isNamedManager, type Segment } from '@/lib/segments';
+import { ScoreBreakdownPanel } from '@/components/EmailHygieneBreakdown';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1051,57 +1052,6 @@ function hygieneScoreBadgeClass(score: number): string {
 }
 
 function HygienePanel({ metric }: { metric: any }) {
-  const categories = [
-    {
-      label: 'Speed',
-      score: metric.speedScore,
-      max: 30,
-      color: 'indigo',
-      items: [
-        { label: 'Avg First Reply', value: metric.avgFirstReplyTimeHours != null ? `${Math.round(metric.avgFirstReplyTimeHours)}h` : '—' },
-        { label: 'SLA Hit Rate', value: `${Math.round(metric.slaHitRate ?? 0)}%` },
-        { label: 'Avg Resolution', value: metric.avgFullResolutionTimeHours != null ? `${Math.round(metric.avgFullResolutionTimeHours)}h` : '—' },
-      ],
-    },
-    {
-      label: 'Quality',
-      score: metric.qualityScore,
-      max: 30,
-      color: 'blue',
-      items: [
-        { label: 'Relevancy', value: metric.relevancyScore != null ? `${Math.round(metric.relevancyScore)}%` : '—' },
-        { label: 'Accuracy', value: `${Math.round(metric.accuracyRate ?? 0)}%` },
-        { label: 'Completeness', value: `${Math.round(metric.completenessRate ?? 0)}%` },
-      ],
-    },
-    {
-      label: 'Resolution',
-      score: metric.resolutionScore,
-      max: 20,
-      color: 'violet',
-      items: [
-        { label: 'One-Reply Rate', value: `${Math.round(metric.oneReplyResolutionRate ?? 0)}%` },
-        { label: 'Reopened Rate', value: `${Math.round(metric.reopenedThreadRate ?? 0)}%` },
-      ],
-    },
-    {
-      label: 'Tone',
-      score: metric.toneScore,
-      max: 20,
-      color: 'teal',
-      items: [
-        { label: 'Professionalism', value: `${metric.toneScore ?? 0}/20` },
-      ],
-    },
-  ];
-
-  const colorMap: Record<string, { bg: string; text: string; ring: string; bar: string }> = {
-    indigo: { bg: 'bg-indigo-50', text: 'text-indigo-700', ring: 'ring-indigo-200', bar: 'bg-indigo-500' },
-    blue:   { bg: 'bg-blue-50',   text: 'text-blue-700',   ring: 'ring-blue-200',   bar: 'bg-blue-500'   },
-    violet: { bg: 'bg-violet-50', text: 'text-violet-700', ring: 'ring-violet-200', bar: 'bg-violet-500' },
-    teal:   { bg: 'bg-teal-50',   text: 'text-teal-700',   ring: 'ring-teal-200',   bar: 'bg-teal-500'   },
-  };
-
   return (
     <div className="border-t border-gray-100 p-4 bg-gray-50/50">
       {/* Overall score header */}
@@ -1116,32 +1066,9 @@ function HygienePanel({ metric }: { metric: any }) {
         </div>
       </div>
 
-      {/* Category cards grid */}
-      <div className="grid grid-cols-2 gap-2">
-        {categories.map(cat => {
-          const c = colorMap[cat.color];
-          const pct = Math.round((cat.score / cat.max) * 100);
-          return (
-            <div key={cat.label} className={`${c.bg} rounded-xl p-3 ring-1 ${c.ring}`}>
-              <div className="flex items-center justify-between mb-1.5">
-                <span className={`text-xs font-bold ${c.text}`}>{cat.label}</span>
-                <span className={`text-xs font-bold ${c.text}`}>{cat.score}/{cat.max}</span>
-              </div>
-              <div className="h-1.5 bg-white/60 rounded-full mb-2">
-                <div className={`h-1.5 rounded-full ${c.bar}`} style={{ width: `${pct}%` }} />
-              </div>
-              <div className="space-y-0.5">
-                {cat.items.map(item => (
-                  <div key={item.label} className="flex justify-between text-[10px]">
-                    <span className="text-gray-500">{item.label}</span>
-                    <span className={`font-semibold ${c.text}`}>{item.value}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          );
-        })}
-      </div>
+      {/* Same per-sub-metric breakdown (value, tip, real proof examples) as the Email
+          Hygiene page -- kept in one shared component so the two surfaces can't drift. */}
+      <ScoreBreakdownPanel breakdown={metric.scoreBreakdown} category={null} />
     </div>
   );
 }

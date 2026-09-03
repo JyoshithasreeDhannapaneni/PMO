@@ -54,8 +54,21 @@ export function isExternal(email: string): boolean {
   return true;
 }
 
+// Outlook/Exchange HTML bodies commonly carry these entities (quoted headers like
+// "From: X &lt;a@b.com&gt;" are the most frequent offender) -- decode them after
+// stripping tags so scoring and displayed proof text read as plain English, not markup.
+const HTML_ENTITIES: Record<string, string> = {
+  '&lt;': '<', '&gt;': '>', '&amp;': '&', '&quot;': '"', '&#39;': "'", '&apos;': "'",
+  '&nbsp;': ' ',
+};
+function decodeHtmlEntities(text: string): string {
+  return text
+    .replace(/&lt;|&gt;|&amp;|&quot;|&#39;|&apos;|&nbsp;/g, (m) => HTML_ENTITIES[m])
+    .replace(/&#(\d+);/g, (_m, code) => String.fromCharCode(parseInt(code, 10)));
+}
+
 export function stripHtml(html: string): string {
-  return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  return decodeHtmlEntities(html.replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim();
 }
 
 // Free, zero-cost pre-filters -- a follow-up only needs the paid AI classification if it

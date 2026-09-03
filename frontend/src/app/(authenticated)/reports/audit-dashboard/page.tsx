@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { auditApi, emailHygieneApi, callHygieneApi, authApi } from '@/services/api';
 import { SEGMENT_CONFIG } from '@/lib/segments';
+import { ScoreBreakdownPanel, EmailBestWorstPanel } from '@/components/EmailHygieneBreakdown';
 import { format, subDays, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { toPng } from 'html-to-image';
 import type { Project } from '@/types';
@@ -143,117 +144,6 @@ function WeeklyTrendChart({
         <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm inline-block" style={{ background: color }} /> Finalized week</span>
         <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm inline-block bg-indigo-200" /> This week (live, so far)</span>
       </div>
-    </div>
-  );
-}
-
-// Best/worst real example per category (Speed/Quality/Resolution/Tone), mirroring
-// CallBestWorstPanel's green/best-red/worst card style above -- but for 4 categories
-// instead of Call Hygiene's single metric. Unlike Call Hygiene, this data already comes
-// bundled in the email hygiene sync response (m.bestWorst), so no separate query/hook.
-const EMAIL_BEST_WORST_CATEGORIES: { key: 'speed' | 'quality' | 'resolution' | 'tone'; label: string }[] = [
-  { key: 'speed', label: 'Speed' },
-  { key: 'quality', label: 'Quality' },
-  { key: 'resolution', label: 'Resolution' },
-  { key: 'tone', label: 'Tone' },
-];
-
-function EmailBestWorstPanel({ bestWorst }: { bestWorst: any }) {
-  if (!bestWorst) return null;
-  const categoriesWithData = EMAIL_BEST_WORST_CATEGORIES.filter(({ key }) => bestWorst[key]?.best || bestWorst[key]?.worst);
-  if (categoriesWithData.length === 0) {
-    return <p className="text-xs text-gray-400 py-2">No graded examples yet this week for this person.</p>;
-  }
-
-  return (
-    <div className="space-y-3">
-      {categoriesWithData.map(({ key, label }) => {
-        const { best, worst } = bestWorst[key] ?? {};
-        // Only one exchange this week -- best and worst trivially collapse to the same
-        // example. Show it once as "Best" rather than a confusing identical pair.
-        const sameExample = best && worst && best.replyText === worst.replyText && best.label === worst.label;
-        return (
-          <div key={key}>
-            <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5">{label}</div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {best && (
-                <div className="border border-green-200 bg-green-50 rounded-lg p-2.5">
-                  <div className="text-[10px] font-semibold text-green-700 uppercase tracking-wide mb-1">Best · {best.label}</div>
-                  <div className="text-xs text-gray-700 italic line-clamp-2">&ldquo;{best.replyText}&rdquo;</div>
-                </div>
-              )}
-              {worst && !sameExample && (
-                <div className="border border-red-200 bg-red-50 rounded-lg p-2.5">
-                  <div className="text-[10px] font-semibold text-red-700 uppercase tracking-wide mb-1">Needs work · {worst.label}</div>
-                  <div className="text-xs text-gray-700 italic line-clamp-2">&ldquo;{worst.replyText}&rdquo;</div>
-                </div>
-              )}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-// "Why is my score X" -- every sub-metric behind a category, with the actual measured
-// value and a concrete fix when it's not already strong. `category` scopes to just the
-// one that was clicked (e.g. the Speed number); null (the plain "View" link) shows all 4.
-function ScoreBreakdownPanel({
-  breakdown,
-  category,
-}: {
-  breakdown: any;
-  category: 'speed' | 'quality' | 'resolution' | 'tone' | null;
-}) {
-  if (!breakdown) return null;
-  const categories = category ? EMAIL_BEST_WORST_CATEGORIES.filter((c) => c.key === category) : EMAIL_BEST_WORST_CATEGORIES;
-  const withData = categories.filter(({ key }) => (breakdown[key]?.length ?? 0) > 0);
-  if (withData.length === 0) return null;
-
-  return (
-    <div className="space-y-3 mb-3">
-      {withData.map(({ key, label }) => (
-        <div key={key}>
-          <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5">{label} breakdown</div>
-          <div className="space-y-1.5">
-            {breakdown[key].map((item: any, idx: number) => {
-              const pct = item.maxSubScore > 0 ? Math.round((item.subScore / item.maxSubScore) * 100) : 100;
-              const barColor = pct >= 90 ? 'bg-green-500' : pct >= 50 ? 'bg-amber-500' : 'bg-red-500';
-              return (
-                <div key={idx} className="bg-white border border-gray-200 rounded-lg px-3 py-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-xs font-medium text-gray-700">{item.label}</span>
-                    <span className="text-xs font-semibold text-gray-800 whitespace-nowrap">{item.subScore}/{item.maxSubScore}</span>
-                  </div>
-                  <div className="text-[11px] text-gray-500 mt-0.5">{item.value}</div>
-                  {item.maxSubScore > 0 && (
-                    <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden mt-1.5">
-                      <div className={`h-full rounded-full ${barColor}`} style={{ width: `${pct}%` }} />
-                    </div>
-                  )}
-                  {item.tip && (
-                    <div className="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-md px-2 py-1 mt-1.5">
-                      {item.tip}
-                    </div>
-                  )}
-                  {item.examples?.length > 0 && (
-                    <div className="mt-1.5 space-y-1">
-                      {item.examples.map((exm: any, exIdx: number) => (
-                        <div key={exIdx} className="text-[11px] text-gray-600 bg-gray-50 border border-gray-100 rounded-md px-2 py-1">
-                          <span className="font-medium text-gray-700">{exm.customer}</span>
-                          {exm.when && <span className="text-gray-400"> · {exm.when}</span>}
-                          <span className="text-gray-500"> — {exm.detail}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      ))}
     </div>
   );
 }
