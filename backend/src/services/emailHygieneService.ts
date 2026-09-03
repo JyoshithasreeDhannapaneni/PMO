@@ -43,6 +43,7 @@ export interface ScoreBreakdownExample {
   customer: string; // customer email address -- "who"
   when: string;     // yyyy-mm-dd the customer's message came in
   detail: string;   // subject + the specific measured failure, e.g. `"Migration ETA?" — replied after 18.3h`
+  body: string;     // the actual reply text (truncated) -- the email itself, not just its subject
 }
 
 export interface ScoreBreakdownItem {
@@ -494,11 +495,18 @@ function fmtWhen(ms: number): string {
   return ms ? new Date(ms).toISOString().slice(0, 10) : '';
 }
 
+// Truncated, whitespace-collapsed snippet of an actual email body -- the proof itself,
+// not just a fact derived from it.
+function bodySnippet(text: string): string {
+  const clean = (text || '').replace(/\s+/g, ' ').trim();
+  return clean.length > 300 ? clean.slice(0, 300) + '…' : clean;
+}
+
 // Keeps only the worst 2 candidates -- "some examples," not every offending thread. Used
 // for continuous-score metrics (hours, 0-100 scores) where even a near-perfect person's
 // "worst of the sample" is still a real, informative instance. `worseness` should be a
 // number where HIGHER = worse (e.g. hours late, or 100 - score where lower is worse).
-function worstExamples<T extends { customer: string; when: number }>(
+function worstExamples<T extends { customer: string; when: number; body: string }>(
   candidates: T[],
   worseness: (c: T) => number,
   detail: (c: T) => string,
@@ -506,7 +514,7 @@ function worstExamples<T extends { customer: string; when: number }>(
   return [...candidates]
     .sort((a, b) => worseness(b) - worseness(a))
     .slice(0, 2)
-    .map((c) => ({ customer: c.customer, when: fmtWhen(c.when), detail: detail(c) }));
+    .map((c) => ({ customer: c.customer, when: fmtWhen(c.when), detail: detail(c), body: bodySnippet(c.body) }));
 }
 
 // For pass/fail metrics (accuracy, 1-reply resolution, reopened) a perfect score means
@@ -514,14 +522,14 @@ function worstExamples<T extends { customer: string; when: number }>(
 // a flawless sub-score with no proof at all. Show the bad instances when they exist;
 // otherwise fall back to real GOOD instances, so a perfect score is still backed by an
 // actual example instead of nothing.
-function proofExamples<T extends { customer: string; when: number }>(
+function proofExamples<T extends { customer: string; when: number; body: string }>(
   candidates: T[],
   isBad: (c: T) => boolean,
   detail: (c: T) => string,
 ): ScoreBreakdownExample[] {
   const bad = candidates.filter(isBad);
   const pool = bad.length > 0 ? bad : candidates;
-  return pool.slice(0, 2).map((c) => ({ customer: c.customer, when: fmtWhen(c.when), detail: detail(c) }));
+  return pool.slice(0, 2).map((c) => ({ customer: c.customer, when: fmtWhen(c.when), detail: detail(c), body: bodySnippet(c.body) }));
 }
 
 // Pure aggregation + the scoring formula -- unchanged from the original design, just fed
@@ -554,7 +562,7 @@ function deriveUserMetrics(userEmail: string, userName: string, judgments: Excha
   let bestSpeedHours = Infinity;
   let worstSpeed: HygieneExample | null = null;
   let worstSpeedHours = -Infinity;
-  const firstReplyCandidates: { hours: number; customer: string; when: number; subject: string }[] = [];
+  const firstReplyCandidates: { hours: number; customer: string; when: number; subject: string; body: string }[] = [];
   for (const j of myFirstResponses) {
     if (j.firstResponseHours === null) continue;
     const hours = j.firstResponseHours;
@@ -570,6 +578,7 @@ function deriveUserMetrics(userEmail: string, userName: string, judgments: Excha
       customer: j.exchange.customerMessage.customerEmail || 'Unknown customer',
       when: j.exchange.customerMessage.time,
       subject: j.exchange.customerMessage.subject || '(no subject)',
+      body: j.firstResponder!.text,
     });
   }
   const worstFirstReplyExamples = worstExamples(firstReplyCandidates, (c) => c.hours,
@@ -588,11 +597,11 @@ function deriveUserMetrics(userEmail: string, userName: string, judgments: Excha
   // had to come back on (most recent example of each, so it stays relevant week to week).
   let bestResolution: HygieneExample | null = null;
   let worstResolution: HygieneExample | null = null;
-  const resolutionTimeCandidates: { hours: number; customer: string; when: number; subject: string }[] = [];
+  const resolutionTimeCandidates: { hours: number; customer: string; when: number; subject: string; body: string }[] = [];
   // Every substantive reply, good or bad -- feeds proofExamples() for both resolution
   // sub-metrics below, so a perfect score still shows a real "resolved in 1 reply" /
   // "stayed resolved" instance instead of nothing (there's no "bad" instance to point to).
-  const resolutionCandidates: { customer: string; when: number; subject: string; replyCount: number; wasReopened: boolean }[] = [];
+  const resolutionCandidates: { customer: string; when: number; subject: string; replyCount: number; wasReopened: boolean; body: string }[] = [];
   for (const j of mySubstantiveReplies) {
     const replyText = j.substantiveReplier!.text;
     const customerText = j.exchange.customerMessage.text;
@@ -605,9 +614,9 @@ function deriveUserMetrics(userEmail: string, userName: string, judgments: Excha
     if (j.wasReopened) {
       worstResolution = { customerText, replyText, label: 'Reopened by the customer' };
     }
-    resolutionCandidates.push({ customer, when, subject, replyCount: j.exchange.teamReplies.length, wasReopened: j.wasReopened });
+    resolutionCandidates.push({ customer, when, subject, replyCount: j.exchange.teamReplies.length, wasReopened: j.wasReopened, body: replyText });
     if (j.fullResolutionHours !== null) {
-      resolutionTimeCandidates.push({ hours: j.fullResolutionHours, customer, when, subject });
+      resolutionTimeCandidates.push({ hours: j.fullResolutionHours, customer, when, subject, body: replyText });
     }
   }
   const worstResolutionTimeExamples = worstExamples(resolutionTimeCandidates, (c) => c.hours,
@@ -625,7 +634,7 @@ function deriveUserMetrics(userEmail: string, userName: string, judgments: Excha
   let accuracyDenominator = 0;
   // Every message checked, good or bad -- feeds proofExamples() so a perfect accuracy
   // score still shows a real substantive reply instead of nothing.
-  const accuracyCandidates: { customer: string; when: number; subject: string; ok: boolean; reason: string }[] = [];
+  const accuracyCandidates: { customer: string; when: number; subject: string; ok: boolean; reason: string; body: string }[] = [];
   for (const j of myFirstResponses) {
     const reply = j.firstResponder!;
     const isAuto = /^(automatic reply|out of office|auto.?reply)/i.test(reply.subject ?? '');
@@ -637,6 +646,7 @@ function deriveUserMetrics(userEmail: string, userName: string, judgments: Excha
       subject: j.exchange.customerMessage.subject || '(no subject)',
       ok,
       reason: isAuto ? 'auto-reply, not a real answer' : ok ? 'a real, substantive reply' : `only ${reply.text.length} characters`,
+      body: reply.text,
     });
     accuracyDenominator++;
   }
@@ -650,6 +660,7 @@ function deriveUserMetrics(userEmail: string, userName: string, judgments: Excha
       subject: m.subject || '(no subject)',
       ok,
       reason: isAuto ? 'auto-reply, not a real answer' : ok ? 'a real, substantive reply' : `only ${m.text.length} characters`,
+      body: m.text,
     });
     accuracyDenominator++;
   }
@@ -706,9 +717,9 @@ function deriveUserMetrics(userEmail: string, userName: string, judgments: Excha
   let worstTone: HygieneExample | null = null;
   let worstToneScore = 101;
   let worstLocalizationEntry: { cfText: string; issues: LocalizationIssue[] } | null = null;
-  const relevancyCandidates: { score: number; customer: string; when: number; subject: string }[] = [];
-  const completenessCandidates: { score: number; customer: string; when: number; subject: string }[] = [];
-  const toneCandidates: { score: number; customer: string; when: number; subject: string }[] = [];
+  const relevancyCandidates: { score: number; customer: string; when: number; subject: string; body: string }[] = [];
+  const completenessCandidates: { score: number; customer: string; when: number; subject: string; body: string }[] = [];
+  const toneCandidates: { score: number; customer: string; when: number; subject: string; body: string }[] = [];
 
   for (const { customerText, replyText, isOutbound, customer, when, subject } of sample) {
     // Relevancy measures "did this answer what the customer actually asked" -- meaningless
@@ -721,15 +732,15 @@ function deriveUserMetrics(userEmail: string, userName: string, judgments: Excha
       lastReason = rel.reason;
       if (rel.score > bestQualityScore) { bestQualityScore = rel.score; bestQuality = { customerText, replyText, label: `${rel.score}/100 relevancy` }; }
       if (rel.score < worstQualityScore) { worstQualityScore = rel.score; worstQuality = { customerText, replyText, label: `${rel.score}/100 relevancy` }; }
-      relevancyCandidates.push({ score: rel.score, customer, when, subject });
+      relevancyCandidates.push({ score: rel.score, customer, when, subject, body: replyText });
     }
     const cs = scoreCompleteness(customerText, replyText);
     completenessScores.push(cs);
-    completenessCandidates.push({ score: cs, customer, when, subject });
+    completenessCandidates.push({ score: cs, customer, when, subject, body: replyText });
     const localizationIssues = detectLocalizationIssues(replyText);
     const ts = applyLocalizationPenalty(scoreTone(replyText), localizationIssues);
     rawToneScores.push(ts);
-    toneCandidates.push({ score: ts, customer, when, subject });
+    toneCandidates.push({ score: ts, customer, when, subject, body: replyText });
     if (worstToneEntry === null || ts < worstToneEntry.raw) worstToneEntry = { cfText: replyText, raw: ts };
     if (worstComplEntry === null || cs < worstComplEntry.score) worstComplEntry = { custText: customerText, cfText: replyText, score: cs };
     if (localizationIssues.length > 0 && worstLocalizationEntry === null) {
