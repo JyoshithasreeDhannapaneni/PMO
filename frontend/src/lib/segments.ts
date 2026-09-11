@@ -2,14 +2,14 @@ export type Segment = 'ENT' | 'SMB';
 
 export const SEGMENT_CONFIG: { label: Segment; managers: string[] }[] = [
   { label: 'ENT', managers: ['Abhishek', 'Lakshmi Prasanna', 'Pranavi'] },
-  { label: 'SMB', managers: ['Ajay Singh', 'Harika', 'Neelima', 'Meghana Chowdada', 'Sriram'] },
+  { label: 'SMB', managers: ['Ajay Singh', 'Harika', 'Meghana Chowdada', 'Sriram'] },
 ];
 
 // Reporting hierarchy per segment. The lead row shows the rolled-up totals of
 // its own projects plus every manager beneath it.
 export const SEGMENT_HIERARCHY: { label: Segment; lead: string; managers: string[] }[] = [
   { label: 'ENT', lead: 'Abhishek',   managers: ['Lakshmi Prasanna', 'Pranavi'] },
-  { label: 'SMB', lead: 'Ajay Singh', managers: ['Harika', 'Neelima', 'Meghana Chowdada', 'Sriram'] },
+  { label: 'SMB', lead: 'Ajay Singh', managers: ['Harika', 'Meghana Chowdada', 'Sriram'] },
 ];
 
 // When a manager's tickets/projects are split across multiple PM names, list
@@ -22,7 +22,8 @@ export const MANAGER_QUERY_NAMES: Record<string, string> = {
 // Hardcoded engineer assignments. Shared engineers appear under both managers.
 // Leads (Abhishek / Ajay Singh) manage sub-managers only — no direct engineer list.
 export const ENGINEER_ASSIGNMENTS: Record<string, string[]> = {
-  'Pranavi':          ['Arun', 'Manoj', 'Pallavi', 'Vainateya Rasala', 'Tanmai Arangi'],
+  'Ajay Singh':       ['Amulya', 'Habeebunnisa', 'Vijendar', 'Ranadeep', 'Nithish', 'Neelima'],
+  'Pranavi':          ['Arun', 'Manoj', 'Pallavi', 'Vainateya Rasala', 'Tanmai Arangi', 'Chandra Mouli', 'Swaroop'],
   // Spellings here must match LMS_SCORES/AUDIO_PERCENTAGES/ticket-export assignee
   // names exactly (or at least share a full first word) — the fuzzy matcher those
   // helpers use can't bridge a mid-word letter difference like "Ranadep" vs
@@ -33,7 +34,7 @@ export const ENGINEER_ASSIGNMENTS: Record<string, string[]> = {
   // Ranadeep, Vineeta -> Vineetha, Davidraj -> David — all were silently missing
   // their LMS/Audio %/ticket-based stats, not just one metric.
   'Lakshmi Prasanna': ['Chaitanya Gupta', 'Harshith', 'Lakshma Reddy', 'Ganesh Kondameedi', 'David'],
-  'Meghana Chowdada': ['Amulya', 'Habeebunnisa', 'Vijendar', 'Ranadeep', 'Nithish'],
+  'Meghana Chowdada': [],
   'Harika':           ['Ravi Hemanth', 'Meena', 'Siva Kotta', 'Ambika'],
   'Sriram':           ['Dathu', 'Ramana', 'Vineetha', 'Sanjana'],
 };
