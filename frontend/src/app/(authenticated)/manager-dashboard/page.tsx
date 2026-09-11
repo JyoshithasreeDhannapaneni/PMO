@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
-import { useManagerGoalsWithStats, useEscalatedProjects, useNtaStats, useNtaEnabled, useNtaToggle, useNtaSpaces, useNtaIssues, useNtaSearch, useNtaTrends, useNtaAssignees, useNtaReporters, useNtaProjectManagers, useNtaDepartments, useJiraExcelStatus, useNtaByManagers, useEngineersByManager, useJiraEngineers, useEmailHygiene, useActionItems, useCreateActionItem, useUpdateActionItem, useDeleteActionItem, useManagerDashboardLeaderboard } from '@/hooks/useProjects';
+import { useManagerGoalsWithStats, useEscalatedProjects, useNtaStats, useNtaEnabled, useNtaToggle, useNtaSpaces, useNtaIssues, useNtaSearch, useNtaTrends, useNtaAssignees, useNtaReporters, useNtaProjectManagers, useNtaDepartments, useJiraExcelStatus, useNtaByManagers, useEngineersByManager, useJiraEngineers, useEmailHygiene, useEmailHygieneLastMonth, useTriggerEmailHygieneMonthFinalize, useActionItems, useCreateActionItem, useUpdateActionItem, useDeleteActionItem, useManagerDashboardLeaderboard } from '@/hooks/useProjects';
 import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import {
@@ -1074,6 +1074,225 @@ function HygienePanel({ metric }: { metric: any }) {
   );
 }
 
+// One clickable name+score row, shared by the lead/manager/engineer rows in the Email
+// Hygiene "Last Month" card below — click to expand the same full sub-metric breakdown
+// panel the Engineers tab uses for the current week.
+function EmailHygieneRow({
+  name, metric, bold = false, expandedEmail, setExpandedEmail,
+}: {
+  name: string;
+  metric: any | null;
+  bold?: boolean;
+  expandedEmail: string | null;
+  setExpandedEmail: (email: string | null) => void;
+}) {
+  const key = metric?.userEmail?.toLowerCase() ?? name;
+  const expanded = expandedEmail === key;
+  return (
+    <div>
+      <button
+        onClick={() => metric && setExpandedEmail(expanded ? null : key)}
+        disabled={!metric}
+        className="w-full flex items-center justify-between gap-3 px-3 py-2 text-left hover:bg-gray-50 disabled:cursor-default disabled:hover:bg-transparent"
+      >
+        <span className={`text-xs truncate ${bold ? 'font-semibold text-gray-800' : 'text-gray-700'}`}>{name}</span>
+        <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold ring-1 ${metric ? hygieneScoreBadgeClass(metric.emailHygieneScore) : 'bg-gray-100 text-gray-400 ring-gray-200'}`}>
+          {metric?.emailHygieneScore ?? 'N/A'}
+        </span>
+      </button>
+      {expanded && metric && <HygienePanel metric={metric} />}
+    </div>
+  );
+}
+
+// Rolling "last full calendar month" Email Hygiene summary — always the month before the
+// current one (e.g. shows August while we're in September, September once October starts),
+// never a hardcoded month. Backed by email_hygiene_monthly, finalized once per month by a
+// daily cron (backend/src/jobs/index.ts) or on demand via the "Compute now" trigger below.
+function EmailHygieneLastMonthCard() {
+  const [open, setOpen] = useState(false);
+  const [polling, setPolling] = useState(false);
+  const [expandedEmail, setExpandedEmail] = useState<string | null>(null);
+  const { data, isLoading } = useEmailHygieneLastMonth(true, polling);
+  const finalizeMutation = useTriggerEmailHygieneMonthFinalize();
+  const { user } = useAuth();
+
+  const result = data?.data;
+  const finalized: boolean = result?.finalized ?? false;
+  const monthLabel: string = result?.monthLabel ?? '';
+  const isConfigured: boolean = result?.isConfigured ?? true;
+  const metrics: any[] = result?.metrics ?? [];
+
+  // Same manager/engineer roster as the ENT/SMB tabs (SEGMENT_HIERARCHY +
+  // ENGINEER_ASSIGNMENTS from lib/segments) instead of the backend's separate
+  // 6-team roster -- so "who's listed here" always matches what managers already
+  // see in those tabs. Hygiene scores are matched onto that roster by name via the
+  // same fuzzy getEngineerHygieneData() the Engineers tab popup already uses.
+  const segmentRollups = useMemo(() => {
+    // Same lookup EngineersTabView uses for any manager's own tab (line ~512) — applied
+    // uniformly to the lead too, since a lead can have direct reports of their own
+    // (Ajay Singh does: Amulya, Habeebunnisa, Vijendar, Ranadeep, Nithish, Neelima) even
+    // though they also have sub-managers underneath them.
+    const buildBlock = (person: string) => {
+      const personMetric = getEngineerHygieneData(metrics, person);
+      const engineers = (ENGINEER_ASSIGNMENTS[person] ?? []).map((name) => ({
+        name,
+        metric: getEngineerHygieneData(metrics, name),
+      }));
+      const scored = [personMetric, ...engineers.map((e) => e.metric)].filter(Boolean) as any[];
+      const teamScore = scored.length > 0
+        ? Math.round(scored.reduce((sum, m) => sum + m.emailHygieneScore, 0) / scored.length)
+        : null;
+      return { person, personMetric, engineers, teamScore, scoredCount: scored.length, totalCount: engineers.length + 1 };
+    };
+    return SEGMENT_HIERARCHY.map((seg) => {
+      const leadBlock = buildBlock(seg.lead);
+      const managerBlocks = seg.managers.map((mgr) => buildBlock(mgr));
+      const teamScores = [leadBlock, ...managerBlocks].map((b) => b.teamScore).filter((s): s is number => s != null);
+      const segScore = teamScores.length > 0
+        ? Math.round(teamScores.reduce((a, b) => a + b, 0) / teamScores.length)
+        : null;
+      return { ...seg, leadBlock, managerBlocks, segScore };
+    });
+  }, [metrics]);
+
+  // Once triggered, keep polling until the backend reports it's no longer running —
+  // finalizing a whole month re-runs Graph + grading and can take a few minutes.
+  useEffect(() => {
+    if (!polling) return;
+    if (finalized) { setPolling(false); return; }
+  }, [polling, finalized]);
+
+  if (!isConfigured) return null;
+
+  const handleComputeNow = () => {
+    setPolling(true);
+    finalizeMutation.mutate();
+  };
+
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between gap-3 px-4 py-3 hover:bg-gray-50 transition"
+      >
+        <div className="flex items-center gap-2">
+          <ChevronRight size={16} className={`text-gray-400 transition-transform ${open ? 'rotate-90' : ''}`} />
+          <span className="text-sm font-semibold text-gray-800">Email Hygiene — {monthLabel || 'Last Month'}</span>
+          {isLoading && <Loader2 size={14} className="animate-spin text-gray-400" />}
+        </div>
+        {finalized && (
+          <div className="flex items-center gap-4">
+            {segmentRollups.map((seg) => (
+              seg.segScore != null && (
+                <span key={seg.label} className={`px-2.5 py-1 rounded-full text-xs font-bold ring-1 ${hygieneScoreBadgeClass(seg.segScore)}`}>
+                  {seg.label} {seg.segScore}
+                </span>
+              )
+            ))}
+          </div>
+        )}
+      </button>
+
+      {open && (
+        <div className="border-t border-gray-100 p-4 bg-gray-50/50 space-y-3">
+          {!finalized ? (
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs text-gray-500">
+                {polling || finalizeMutation.isPending
+                  ? 'Computing last month’s hygiene scores… this can take a few minutes.'
+                  : `${monthLabel || 'Last month'}’s hygiene scores haven’t been computed yet.`}
+              </p>
+              {user?.role === 'ADMIN' && !polling && !finalizeMutation.isPending && (
+                <button
+                  onClick={handleComputeNow}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-primary-300 text-primary-700 bg-white hover:bg-primary-50 whitespace-nowrap"
+                >
+                  <PlayCircle size={14} />
+                  Compute now
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {segmentRollups.map((seg) => (
+                <div key={seg.label}>
+                  <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wide mb-1.5">{seg.label}</p>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                    {/* Segment lead — own card, full width. Shows their own direct
+                        engineers too (e.g. Ajay Singh has 6), not just sub-managers. */}
+                    <div className="bg-white rounded-xl border border-gray-100 overflow-hidden lg:col-span-2">
+                      <div className="flex items-center gap-3 p-3">
+                        <span className={`text-lg font-bold px-2.5 py-1 rounded-lg ring-1 ${hygieneScoreBadgeClass(seg.leadBlock.teamScore ?? 0)}`}>
+                          {seg.leadBlock.teamScore ?? 'N/A'}
+                        </span>
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold text-gray-700 truncate">{seg.lead} (Lead)</p>
+                          <p className="text-[11px] text-gray-400">{seg.leadBlock.scoredCount}/{seg.leadBlock.totalCount} scored</p>
+                        </div>
+                      </div>
+                      <div className="border-t border-gray-100 divide-y divide-gray-50">
+                        <EmailHygieneRow
+                          name={seg.lead}
+                          metric={seg.leadBlock.personMetric}
+                          bold
+                          expandedEmail={expandedEmail}
+                          setExpandedEmail={setExpandedEmail}
+                        />
+                        {seg.leadBlock.engineers.map((e) => (
+                          <EmailHygieneRow
+                            key={e.name}
+                            name={e.name}
+                            metric={e.metric}
+                            expandedEmail={expandedEmail}
+                            setExpandedEmail={setExpandedEmail}
+                          />
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Same manager -> engineer roster as the ENT/SMB tabs */}
+                    {seg.managerBlocks.map((b) => (
+                      <div key={b.person} className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+                        <div className="flex items-center gap-3 p-3">
+                          <span className={`text-lg font-bold px-2.5 py-1 rounded-lg ring-1 ${hygieneScoreBadgeClass(b.teamScore ?? 0)}`}>
+                            {b.teamScore ?? 'N/A'}
+                          </span>
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold text-gray-700 truncate">{b.person}</p>
+                            <p className="text-[11px] text-gray-400">{b.scoredCount}/{b.totalCount} scored</p>
+                          </div>
+                        </div>
+                        <div className="border-t border-gray-100 divide-y divide-gray-50">
+                          <EmailHygieneRow
+                            name={`${b.person} (Manager)`}
+                            metric={b.personMetric}
+                            expandedEmail={expandedEmail}
+                            setExpandedEmail={setExpandedEmail}
+                          />
+                          {b.engineers.map((e) => (
+                            <EmailHygieneRow
+                              key={e.name}
+                              name={e.name}
+                              metric={e.metric}
+                              expandedEmail={expandedEmail}
+                              setExpandedEmail={setExpandedEmail}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function OrgNode({
   name,
   isLead,
@@ -1613,6 +1832,9 @@ export default function ManagerDashboardPage() {
           </div>
         )}
       </div>
+
+      {/* Email Hygiene — rolling last full calendar month, visible on every tab */}
+      <EmailHygieneLastMonthCard />
 
       {/* Observations tab */}
       {activeTab === 'OBSERVATIONS' && <ObservationsView />}

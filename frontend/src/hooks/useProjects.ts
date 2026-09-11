@@ -1154,6 +1154,27 @@ export function useEmailHygieneWeeklyTrend(enabled = true) {
   });
 }
 
+export function useEmailHygieneLastMonth(enabled = true, poll = false) {
+  return useQuery({
+    queryKey: ['email-hygiene-last-month'],
+    queryFn: () => emailHygieneApi.getLastMonth(),
+    enabled,
+    staleTime: 30 * 60 * 1000,
+    retry: 0,
+    // While a manual "compute now" finalize is in flight, poll for it to land instead of
+    // making the admin manually refresh the page.
+    refetchInterval: poll ? 15_000 : false,
+  });
+}
+
+export function useTriggerEmailHygieneMonthFinalize() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => emailHygieneApi.triggerMonthFinalize(),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['email-hygiene-last-month'] }),
+  });
+}
+
 export function usePmoHygieneWeeklyTrend(enabled = true) {
   return useQuery({
     queryKey: ['pmo-hygiene-weekly-trend'],

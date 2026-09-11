@@ -40,6 +40,27 @@ export const emailHygieneController = {
     res.json({ success: true, data });
   }),
 
+  getLastMonth: asyncHandler(async (_req: Request, res: Response): Promise<void> => {
+    const data = await emailHygieneService.getLastMonthMetrics();
+    res.json({ success: true, data });
+  }),
+
+  // POST /api/email-hygiene/finalize-month — admin-triggered backfill/refresh of last
+  // month's snapshot. Fires in the background and returns 202 immediately (same reasoning
+  // as triggerSync above: this re-runs a full Graph fetch + grading pass over a month of
+  // mail, which can take several minutes).
+  triggerMonthFinalize: asyncHandler(async (_req: Request, res: Response): Promise<void> => {
+    const result = emailHygieneService.triggerMonthFinalize(1);
+    res.status(result.alreadyRunning ? 200 : 202).json({
+      success: true,
+      data: { alreadyRunning: result.alreadyRunning, ...emailHygieneService.getMonthFinalizeState() },
+    });
+  }),
+
+  getMonthFinalizeStatus: asyncHandler(async (_req: Request, res: Response): Promise<void> => {
+    res.json({ success: true, data: emailHygieneService.getMonthFinalizeState() });
+  }),
+
   exportExcel: asyncHandler(async (_req: Request, res: Response): Promise<void> => {
     const { metrics, teamHygiene, segmentHeads } = await emailHygieneService.getHygieneMetrics(false);
     const rows = metrics.map(m => ({

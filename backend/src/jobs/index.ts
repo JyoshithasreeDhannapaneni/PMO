@@ -170,6 +170,24 @@ export function initializeCronJobs(): void {
     });
   }, { timezone: 'Asia/Kolkata' });
 
+  // Email hygiene monthly finalize-check — daily at 7:15 AM IST (after the weekly finalize
+  // above). finalizeMonth() is idempotent (UNIQUE month_start), so calling it daily costs
+  // one cheap SELECT on every day the month is already finalized, and only runs the real
+  // Graph fetch + grading pass once, the first morning after a calendar month ends — that
+  // keeps "last month" on the Manager Dashboard current automatically (e.g. once October
+  // starts, September becomes "last month" here without anyone triggering it by hand).
+  cron.schedule('15 7 * * *', async () => {
+    try {
+      if (!emailHygieneService.isConfigured()) return;
+      const result = await emailHygieneService.finalizeMonth(1);
+      if (result.finalized) {
+        logger.info(`[EmailHygiene] Monthly finalize-check: finalized month of ${result.monthStart}`);
+      }
+    } catch (error) {
+      logger.error('[EmailHygiene] Monthly finalize-check failed:', error);
+    }
+  }, { timezone: 'Asia/Kolkata' });
+
   logger.info('Cron jobs scheduled:');
   logger.info('  - Delay check: Daily at 6:00 AM');
   logger.info('  - Server alerts: Daily at 8:00 AM');
