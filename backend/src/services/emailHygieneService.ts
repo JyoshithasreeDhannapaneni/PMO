@@ -1,7 +1,7 @@
 import { type AxiosInstance } from 'axios';
 import { query, execute } from '../config/database';
 import { logger } from '../utils/logger';
-import { getIstWeekBounds, istDateStr, weeksInCurrentIstMonth } from '../utils/weekBounds';
+import { getIstWeekBounds, istDateStr, weeksInCurrentIstMonth, getIstMonthBounds, istMonthLabel } from '../utils/weekBounds';
 import { emailThreadClassifierService, type AmbiguousThread } from './emailThreadClassifierService';
 import {
   isGraphConfigured, getAccessToken, graphClient, buildTeamTimelines, buildExchanges,
@@ -1050,6 +1050,12 @@ function deriveUserMetrics(userEmail: string, userName: string, judgments: Excha
 type SyncState = { running: boolean; startedAt: string | null; completedAt: string | null; error: string | null };
 let _syncState: SyncState = { running: false, startedAt: null, completedAt: null, error: null };
 
+// Same pattern as _syncState, for the (much rarer, much heavier) "finalize a past
+// calendar month" operation — lets the manual admin trigger return immediately and the
+// frontend poll getMonthFinalizeState() instead of holding a multi-minute request open.
+type MonthFinalizeState = { running: boolean; startedAt: string | null; completedAt: string | null; error: string | null; monthStart: string | null };
+let _monthFinalizeState: MonthFinalizeState = { running: false, startedAt: null, completedAt: null, error: null, monthStart: null };
+
 // Short-lived in-memory cache, keyed by week-start date, for any week's trend point that
 // has to be computed live via Graph rather than read from a finalized DB row — this is a
 // real week-scoped Graph fetch (not the rolling 30-day cache), so without this, opening the
@@ -1392,5 +1398,113 @@ export const emailHygieneService = {
     }
 
     return { weeks, isConfigured: true };
+  },
+
+  // Locks in a permanent snapshot for a completed IST calendar month — monthsAgo=1 means
+  // "last month" (e.g. computed in September, this covers August). Idempotent via
+  // UNIQUE(month_start): a repeat call (daily finalize-check cron, manual admin retry,
+  // one-off backfill for a month before this feature existed) is a no-op once that month
+  // already has a row. Unlike the weekly finalize above, this re-runs
+  // computeMetricsForWindow directly over the whole month in one pass rather than
+  // stitching finalized weeks together — stitching would average already-averaged
+  // per-week scores (an average of averages), whereas one pass re-derives every score
+  // straight from the raw exchanges, exactly like any other window this service scores.
+  async finalizeMonth(monthsAgo = 1): Promise<{ finalized: boolean; monthStart: string }> {
+    const { monthStart, monthEnd } = getIstMonthBounds(monthsAgo);
+    const monthStartDate = istDateStr(monthStart);
+    if (!isGraphConfigured()) return { finalized: false, monthStart: monthStartDate };
+
+    const existing = await query(`SELECT id FROM email_hygiene_monthly WHERE month_start = $1`, [monthStartDate]);
+    if (existing.rows.length > 0) return { finalized: false, monthStart: monthStartDate };
+
+    const token = await getAccessToken();
+    const client = graphClient(token);
+    const { metrics, teamHygiene } = await computeMetricsForWindow(client, monthStart.toISOString(), monthEnd.toISOString());
+
+    await execute(
+      `INSERT INTO email_hygiene_monthly (month_start, month_end, metrics, team_hygiene) VALUES ($1, $2, $3, $4)
+       ON CONFLICT (month_start) DO NOTHING`,
+      [monthStartDate, istDateStr(monthEnd), JSON.stringify(metrics), JSON.stringify(teamHygiene)]
+    );
+    logger.info(`[EmailHygiene] Finalized month of ${monthStartDate} — ${metrics.length} users`);
+    return { finalized: true, monthStart: monthStartDate };
+  },
+
+  getMonthFinalizeState(): MonthFinalizeState {
+    return { ..._monthFinalizeState };
+  },
+
+  // Fires finalizeMonth() in the background and returns immediately — the underlying Graph
+  // fetch + grading pass over a whole month's mail can take several minutes, too long to
+  // hold an HTTP connection open (mirrors triggerBackgroundSync's 202 pattern above).
+  triggerMonthFinalize(monthsAgo = 1): { alreadyRunning: boolean } {
+    if (_monthFinalizeState.running) return { alreadyRunning: true };
+    const { monthStart } = getIstMonthBounds(monthsAgo);
+    _monthFinalizeState = { running: true, startedAt: new Date().toISOString(), completedAt: null, error: null, monthStart: istDateStr(monthStart) };
+    emailHygieneService.finalizeMonth(monthsAgo)
+      .then(() => {
+        _monthFinalizeState = { ..._monthFinalizeState, running: false, completedAt: new Date().toISOString(), error: null };
+      })
+      .catch((err: any) => {
+        const msg = err?.message ?? 'Unknown error';
+        _monthFinalizeState = { ..._monthFinalizeState, running: false, completedAt: new Date().toISOString(), error: msg };
+        logger.error('[EmailHygiene] Month finalize failed:', msg);
+      });
+    return { alreadyRunning: false };
+  },
+
+  // Reads the last completed IST calendar month's finalized snapshot, if present. Purely a
+  // DB read — never triggers a live Graph computation itself (that's the daily
+  // finalize-check cron's job, or the manual admin trigger above); a missing row just means
+  // the month hasn't been finalized yet, which the caller surfaces honestly instead of
+  // blocking on a multi-minute Graph sync from a plain dashboard page load.
+  async getLastMonthMetrics(): Promise<{
+    metrics: UserEmailHygiene[];
+    teamHygiene: TeamHygieneRow[];
+    segmentHeads: Record<'ENT' | 'SMB', SegmentHead>;
+    monthStart: string;
+    monthEnd: string;
+    monthLabel: string;
+    computedAt: string | null;
+    isConfigured: boolean;
+    finalized: boolean;
+  }> {
+    const { monthStart, monthEnd } = getIstMonthBounds(1);
+    const monthStartDate = istDateStr(monthStart);
+    const monthLabel = istMonthLabel(1);
+
+    if (!isGraphConfigured()) {
+      return {
+        metrics: [], teamHygiene: [], segmentHeads: computeSegmentHeads([]),
+        monthStart: monthStartDate, monthEnd: istDateStr(monthEnd), monthLabel,
+        computedAt: null, isConfigured: false, finalized: false,
+      };
+    }
+
+    const row = (await query(
+      `SELECT month_start, month_end, metrics, team_hygiene, computed_at FROM email_hygiene_monthly WHERE month_start = $1`,
+      [monthStartDate]
+    )).rows[0];
+
+    if (!row) {
+      return {
+        metrics: [], teamHygiene: [], segmentHeads: computeSegmentHeads([]),
+        monthStart: monthStartDate, monthEnd: istDateStr(monthEnd), monthLabel,
+        computedAt: null, isConfigured: true, finalized: false,
+      };
+    }
+
+    const teamHygiene = (row.team_hygiene ?? []) as TeamHygieneRow[];
+    return {
+      metrics: row.metrics as UserEmailHygiene[],
+      teamHygiene,
+      segmentHeads: computeSegmentHeads(teamHygiene),
+      monthStart: istDateStr(new Date(row.month_start)),
+      monthEnd: istDateStr(new Date(row.month_end)),
+      monthLabel,
+      computedAt: row.computed_at as string,
+      isConfigured: true,
+      finalized: true,
+    };
   },
 };

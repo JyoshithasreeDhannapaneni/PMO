@@ -790,6 +790,18 @@ export const emailHygieneApi = {
     const { data } = await api.get('/email-hygiene/weekly-trend');
     return data;
   },
+  getLastMonth: async () => {
+    const { data } = await api.get('/email-hygiene/last-month');
+    return data;
+  },
+  triggerMonthFinalize: async () => {
+    const { data } = await api.post('/email-hygiene/finalize-month');
+    return data as { success: boolean; data: { alreadyRunning: boolean; running: boolean; startedAt: string | null; completedAt: string | null; error: string | null; monthStart: string | null } };
+  },
+  getMonthFinalizeStatus: async () => {
+    const { data } = await api.get('/email-hygiene/finalize-month-status');
+    return data as { success: boolean; data: { running: boolean; startedAt: string | null; completedAt: string | null; error: string | null; monthStart: string | null } };
+  },
 };
 
 export const callHygieneApi = {

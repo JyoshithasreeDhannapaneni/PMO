@@ -27,6 +27,26 @@ export function istDateStr(d: Date): string {
   return new Date(d.getTime() + IST_OFFSET_MS).toISOString().slice(0, 10);
 }
 
+// IST calendar-month boundaries. monthsAgo=0 -> the current month (in progress), 1 -> the
+// most recently completed calendar month, etc. monthEnd is EXCLUSIVE (start of the
+// following month) so callers can use it directly as an "until" bound.
+export function getIstMonthBounds(monthsAgo = 0): { monthStart: Date; monthEnd: Date } {
+  const nowIst = new Date(Date.now() + IST_OFFSET_MS);
+  const firstOfMonthIst = Date.UTC(nowIst.getUTCFullYear(), nowIst.getUTCMonth() - monthsAgo, 1);
+  const firstOfNextMonthIst = Date.UTC(nowIst.getUTCFullYear(), nowIst.getUTCMonth() - monthsAgo + 1, 1);
+  return {
+    monthStart: new Date(firstOfMonthIst - IST_OFFSET_MS),
+    monthEnd: new Date(firstOfNextMonthIst - IST_OFFSET_MS),
+  };
+}
+
+// "August 2026" style label for a monthsAgo offset — for display, not storage.
+export function istMonthLabel(monthsAgo = 0): string {
+  const nowIst = new Date(Date.now() + IST_OFFSET_MS);
+  const d = new Date(Date.UTC(nowIst.getUTCFullYear(), nowIst.getUTCMonth() - monthsAgo, 1));
+  return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+}
+
 // All Mondays (as IST date strings) from the 1st of the current IST month through today's
 // week, inclusive — this is what makes the trend chart "week 1, 2, 3... of this month" and
 // grow automatically as the month progresses, per the 2026-08-24 design decision.
