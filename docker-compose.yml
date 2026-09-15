@@ -60,6 +60,14 @@ services:
       MICROSOFT_CLIENT_SECRET: ${MICROSOFT_CLIENT_SECRET:-}
       MICROSOFT_TENANT_ID:     ${MICROSOFT_TENANT_ID:-common}
       MICROSOFT_REDIRECT_URI:  https://${SERVER_IP:-localhost}/api/auth/microsoft/callback
+    volumes:
+      # Without this, every uploaded file (RCA docs, escalation screenshots/recordings)
+      # lives only in the container's writable layer and is destroyed on the next
+      # `docker compose up -d --build`/recreate -- while Postgres (which does have its
+      # own volume) keeps the URLs forever, so the app ends up pointing at files that no
+      # longer exist. WORKDIR is /app (see backend/Dockerfile), so uploads land in
+      # /app/uploads at runtime (backend/src/routes/*Routes.ts create the subfolders).
+      - backend_uploads:/app/uploads
     depends_on:
       postgres:
         condition: service_healthy
@@ -109,3 +117,4 @@ networks:
 
 volumes:
   postgres_data:
+  backend_uploads:
