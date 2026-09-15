@@ -50,6 +50,7 @@ import serverAlertRoutes from './routes/serverAlertRoutes';
 import templateCombinationRoutes from './routes/templateCombinationRoutes';
 import jiraRoutes from './routes/jiraRoutes';
 import emailHygieneRoutes from './routes/emailHygieneRoutes';
+import slaBreachAlertRoutes from './routes/slaBreachAlertRoutes';
 import callHygieneRoutes from './routes/callHygieneRoutes';
 import escalationMailsRoutes from './routes/escalationMailsRoutes';
 import { ntaSyncService, isNtaConfigured } from './services/ntaSyncService';
@@ -128,6 +129,7 @@ app.use('/api/action-items', actionItemRoutes);
 app.use('/api/overage', overageRoutes);
 app.use('/api/feedback', feedbackRoutes);
 app.use('/api/external', externalApiRoutes);
+app.use('/api/sla-breach-alerts', slaBreachAlertRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

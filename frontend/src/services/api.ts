@@ -980,4 +980,33 @@ export const escalationMailsApi = {
   },
 };
 
+export const slaBreachAlertsApi = {
+  list: async (params: {
+    page?: number; limit?: number; search?: string; responsibleEmail?: string;
+    startDate?: string; endDate?: string;
+  } = {}) => {
+    const { data } = await api.get('/sla-breach-alerts', { params });
+    return data;
+  },
+  listPeople: async (params: { startDate?: string; endDate?: string } = {}) => {
+    const { data } = await api.get('/sla-breach-alerts/people', { params });
+    return data as { success: boolean; data: { name: string; email: string; total: number; open: number }[] };
+  },
+  getMessage: async (id: string) => {
+    const { data } = await api.get(`/sla-breach-alerts/${id}/message`);
+    return data as {
+      success: boolean;
+      data: {
+        found: boolean;
+        text?: string;
+        subject?: string;
+        customerEmail?: string;
+        receivedAt?: string;
+        mailboxUsed?: string;
+        error?: string;
+      };
+    };
+  },
+};
+
 export default api;
