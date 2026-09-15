@@ -432,12 +432,12 @@ function EngMetricPopup({
         <div className="overflow-auto flex-1">
           {state.mode === 'all' && (
             state.tickets.length > 0
-              ? <ExcelTicketTable tickets={state.tickets} jiraBaseUrl={jiraBaseUrl} />
+              ? <TicketRetrySections tickets={state.tickets} jiraBaseUrl={jiraBaseUrl} />
               : <p className="text-center text-sm text-gray-400 py-10">No tickets found for {state.engName}.</p>
           )}
           {(state.mode === 'fr' || state.mode === 'res') && (
             state.tickets.length > 0
-              ? <BreachedTicketSections tickets={state.tickets} jiraBaseUrl={jiraBaseUrl} />
+              ? <TicketRetrySections tickets={state.tickets} jiraBaseUrl={jiraBaseUrl} scopeLabel="Breached" />
               : <p className="text-center text-sm text-gray-400 py-10">No breached tickets.</p>
           )}
           {state.mode === 'hygiene' && hygieneMetric && <HygienePanel metric={hygieneMetric} />}
@@ -792,16 +792,23 @@ function isTicketRetried(t: any): boolean {
   return RETRY_KEYWORDS.some(kw => text.includes(kw));
 }
 
-function BreachedTicketSections({
+// Splits any ticket set into Retry / Non-retry tabs (isTicketRetried above). `scopeLabel`
+// prefixes each tab's title -- e.g. "Breached" when this is scoped to breached tickets
+// only, omitted entirely when it's an engineer's whole ticket load (mode 'all').
+function TicketRetrySections({
   tickets,
   jiraBaseUrl,
+  scopeLabel,
 }: {
   tickets: any[];
   jiraBaseUrl: string;
+  scopeLabel?: string;
 }) {
   const retry    = tickets.filter(isTicketRetried);
   const nonRetry = tickets.filter(t => !isTicketRetried(t));
   const [tab, setTab] = useState<'retry' | 'nonretry'>(retry.length > 0 ? 'retry' : 'nonretry');
+  const prefix = scopeLabel ? `${scopeLabel} — ` : '';
+  const emptyNoun = scopeLabel ? `${scopeLabel.toLowerCase()} tickets` : 'tickets';
 
   return (
     <div className="border-t border-gray-100">
@@ -814,7 +821,7 @@ function BreachedTicketSections({
               ? 'border-amber-500 text-amber-700'
               : 'border-transparent text-gray-400 hover:text-gray-600'}`}
         >
-          Breached — Retry
+          {prefix}Retry
           <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold leading-none
             ${tab === 'retry' ? 'bg-amber-500 text-white' : 'bg-gray-200 text-gray-500'}`}>
             {retry.length}
@@ -827,7 +834,7 @@ function BreachedTicketSections({
               ? 'border-red-500 text-red-700'
               : 'border-transparent text-gray-400 hover:text-gray-600'}`}
         >
-          Breached — Non-retry
+          {prefix}Non-retry
           <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold leading-none
             ${tab === 'nonretry' ? 'bg-red-500 text-white' : 'bg-gray-200 text-gray-500'}`}>
             {nonRetry.length}
@@ -840,12 +847,12 @@ function BreachedTicketSections({
         {tab === 'retry' && (
           retry.length > 0
             ? <ExcelTicketTable tickets={retry} jiraBaseUrl={jiraBaseUrl} />
-            : <p className="px-5 py-6 text-center text-xs text-gray-400">No retry tickets — none match retry / conflict / not moving / not picking.</p>
+            : <p className="px-5 py-6 text-center text-xs text-gray-400">No retry {emptyNoun} — none match retry / conflict / not moving / not picking.</p>
         )}
         {tab === 'nonretry' && (
           nonRetry.length > 0
             ? <ExcelTicketTable tickets={nonRetry} jiraBaseUrl={jiraBaseUrl} />
-            : <p className="px-5 py-6 text-center text-xs text-gray-400">No non-retry breached tickets.</p>
+            : <p className="px-5 py-6 text-center text-xs text-gray-400">No non-retry {emptyNoun}.</p>
         )}
       </div>
     </div>
