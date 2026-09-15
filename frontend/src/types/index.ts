@@ -19,6 +19,13 @@ export type ProjectPhase =
 export type ProjectStatus = 'ACTIVE' | 'INACTIVE' | 'ON_HOLD' | 'COMPLETED' | 'CANCELLED';
 export type DelayStatus = 'NOT_DELAYED' | 'AT_RISK' | 'DELAYED' | 'EXTENDED';
 
+export interface RcaDoc {
+  url: string;
+  name: string;
+  uploadedBy: string;
+  uploadedAt: string;
+}
+
 export interface AtRiskHistoryItem {
   id: string;
   notes: string | null;
@@ -131,7 +138,7 @@ export interface Project {
   csatScore?: number | null;
   archiveCsatStatus?: 'SATISFIED' | 'NEUTRAL' | 'NOT_HAPPY' | null;
   delayHappened?: 'CUSTOMER_DELAY' | 'INTERNAL_DELAY' | 'BOTH' | null;
-  rcaDocUrl?: string | null;
+  rcaDocs?: RcaDoc[];
   createdAt: string;
   updatedAt: string;
   phases?: ProjectPhaseRecord[];

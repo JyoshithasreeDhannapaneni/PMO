@@ -435,6 +435,28 @@ async function runMigrations() {
   if (!await columnExists('projects', 'rca_doc_url')) {
     try { await execute(`ALTER TABLE projects ADD COLUMN rca_doc_url VARCHAR(1000) DEFAULT NULL`); } catch {}
   }
+  // 2026-09-15: rca_doc_url was a single column that a new upload silently overwrote --
+  // whoever uploaded an RCA doc after the first person made every earlier uploader's
+  // document permanently unreachable (still on disk, just no longer referenced anywhere).
+  // rca_docs replaces it with an array so every upload is kept; the app no longer reads or
+  // writes rca_doc_url after this. Backfill carries forward whatever single doc was already
+  // there (pre-migration uploads never recorded who uploaded them, hence 'Unknown' below)
+  // so it isn't silently dropped by the schema change itself.
+  if (!await columnExists('projects', 'rca_docs')) {
+    try { await execute(`ALTER TABLE projects ADD COLUMN rca_docs JSONB NOT NULL DEFAULT '[]'`); } catch {}
+    try {
+      await execute(`
+        UPDATE projects
+        SET rca_docs = jsonb_build_array(jsonb_build_object(
+          'url', rca_doc_url,
+          'name', regexp_replace(rca_doc_url, '^.*/', ''),
+          'uploadedBy', 'Unknown (uploaded before per-uploader tracking)',
+          'uploadedAt', updated_at
+        ))
+        WHERE rca_doc_url IS NOT NULL AND rca_doc_url != ''
+      `);
+    } catch {}
+  }
 
   // Server alert logs
   await execute(`CREATE TABLE IF NOT EXISTS server_alert_logs (

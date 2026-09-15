@@ -92,6 +92,13 @@ export interface CreateProjectDTO {
 
 export interface UpdateProjectDTO extends Partial<CreateProjectDTO> {}
 
+export interface RcaDoc {
+  url: string;
+  name: string;
+  uploadedBy: string;
+  uploadedAt: string;
+}
+
 export interface ProjectFilters {
   status?: string;
   excludeStatus?: string; // comma-separated statuses to exclude, e.g. 'COMPLETED,CANCELLED'
@@ -263,7 +270,7 @@ function mapProjectRow(row: any) {
     csatScore: row.csat_score != null ? parseFloat(row.csat_score) : null,
     archiveCsatStatus: row.archive_csat_status ?? null,
     delayHappened: row.delay_happened ?? null,
-    rcaDocUrl: row.rca_doc_url ?? null,
+    rcaDocs: Array.isArray(row.rca_docs) ? row.rca_docs : [],
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -812,7 +819,6 @@ class ProjectService {
       params.push(av ?? null);
     }
     if ((data as any).delayHappened !== undefined) { updates.push(`delay_happened = $${params.length + 1}`); params.push((data as any).delayHappened ?? null); }
-    if ((data as any).rcaDocUrl !== undefined) { updates.push(`rca_doc_url = $${params.length + 1}`); params.push((data as any).rcaDocUrl ?? null); }
 
     await execute(
       `UPDATE projects SET ${updates.join(', ')}, updated_at = NOW() WHERE id = $${params.length + 1}`,
@@ -865,6 +871,19 @@ class ProjectService {
 
     logger.info(`Project updated: ${project.id} - ${project.name}`);
     return project;
+  }
+
+  // Appends one RCA document to the project's rca_docs array via an atomic JSONB
+  // concatenation (no read-modify-write race between two people uploading at once).
+  // Deliberately not folded into update() -- that overwrites whatever field it's given,
+  // which is exactly the bug this replaces (a new upload used to overwrite rca_doc_url,
+  // silently making every earlier uploader's document unreachable).
+  async addRcaDoc(id: string, doc: RcaDoc): Promise<void> {
+    const result = await execute(
+      `UPDATE projects SET rca_docs = COALESCE(rca_docs, '[]'::jsonb) || $1::jsonb, updated_at = NOW() WHERE id = $2`,
+      [JSON.stringify([doc]), id]
+    );
+    if (result.rowCount === 0) throw new AppError('Project not found', 404);
   }
 
   async delete(id: string): Promise<void> {

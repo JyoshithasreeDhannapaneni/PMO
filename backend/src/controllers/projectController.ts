@@ -249,7 +249,13 @@ getAll: asyncHandler(async (req: Request, res: Response): Promise<void> => {
       return;
     }
     const fileUrl = `/uploads/rca-docs/${file.filename}`;
-    await projectService.update(id, { rcaDocUrl: fileUrl } as any);
+    const uploader = (req as any).user;
+    await projectService.addRcaDoc(id, {
+      url: fileUrl,
+      name: file.originalname,
+      uploadedBy: uploader?.name || uploader?.email || 'Unknown',
+      uploadedAt: new Date().toISOString(),
+    });
     res.json({ success: true, fileUrl, originalName: file.originalname });
   }),
 };
