@@ -76,15 +76,6 @@ function fmtDate(d: string | null | undefined): string {
   return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-// Ensures a stored URL has a proper protocol so the browser doesn't treat it
-// as a relative path (common when users paste URLs without https://).
-function toAbsoluteUrl(url: string | null | undefined): string {
-  if (!url) return '';
-  if (/^https?:\/\//i.test(url)) return url;
-  if (url.startsWith('//')) return `https:${url}`;
-  return `https://${url}`;
-}
-
 function sumStats(stats: ManagerStat[]) {
   const total      = stats.reduce((s, m) => s + m.total, 0);
   const onTime     = stats.reduce((s, m) => s + m.onTime, 0);
@@ -363,11 +354,11 @@ function ProjectsTabView({ managerName, dbManager, isOthers }: { managerName: st
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    {p.rcaDocUrl ? (
-                      <a href={toAbsoluteUrl(p.rcaDocUrl)} target="_blank" rel="noopener noreferrer"
-                        title={p.rcaDocUrl}
+                    {(p.rcaDocs?.length ?? 0) > 0 ? (
+                      <a href={`${API_BASE_URL}${p.rcaDocs[p.rcaDocs.length - 1].url}`} target="_blank" rel="noopener noreferrer"
+                        title={p.rcaDocs.map((d: any) => d.name).join(', ')}
                         className="inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 hover:underline font-medium">
-                        <ExternalLink size={12} /> View
+                        <ExternalLink size={12} /> View{p.rcaDocs.length > 1 ? ` (${p.rcaDocs.length})` : ''}
                       </a>
                     ) : (
                       <span className="text-gray-300 text-xs">—</span>
