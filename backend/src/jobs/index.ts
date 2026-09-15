@@ -199,4 +199,5 @@ export function initializeCronJobs(): void {
   logger.info('  - 1-hour reply-SLA breach alerts: Every 15 minutes');
   logger.info('  - Global logout (clear all sessions): Daily at 6:00 AM IST');
   logger.info('  - Weekly hygiene finalize (PMO/Email/Call): Every Monday at 7:00 AM IST');
+  logger.info('  - Email hygiene monthly finalize-check: Daily at 7:15 AM IST');
 }

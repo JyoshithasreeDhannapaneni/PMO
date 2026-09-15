@@ -49,6 +49,7 @@ const allNavigation = [
       { name: 'Monthly Reports',  href: '/reports/monthly' },
       { name: 'Audit Report',     href: '/reports/audit', adminOnly: true },
       { name: 'Audit Dashboard',  href: '/reports/audit-dashboard' },
+      { name: 'SLA Breach Alerts', href: '/reports/sla-breach-alerts', adminOnly: true },
     ],
   },
 ];

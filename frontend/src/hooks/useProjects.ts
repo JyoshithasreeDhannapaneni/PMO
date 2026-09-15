@@ -2,7 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect } from 'react';
-import { projectsApi, dashboardApi, statusReportsApi, managerGoalsApi, migrationTypeApi, pocProjectsApi, accountManagerApi, customerSuccessApi, hubspotApi, psEngagementsApi, kbArticlesApi, emailHygieneApi, callHygieneApi, callTranscriptsApi, escalationMailsApi, auditApi, feedbackApi, actionItemsApi } from '@/services/api';
+import { projectsApi, dashboardApi, statusReportsApi, managerGoalsApi, migrationTypeApi, pocProjectsApi, accountManagerApi, customerSuccessApi, hubspotApi, psEngagementsApi, kbArticlesApi, emailHygieneApi, callHygieneApi, callTranscriptsApi, escalationMailsApi, auditApi, feedbackApi, actionItemsApi, slaBreachAlertsApi } from '@/services/api';
 import type { CreateProjectInput, UpdateProjectInput } from '@/types';
 
 export function useProjects(params?: {
@@ -1151,6 +1151,36 @@ export function useEmailHygieneWeeklyTrend(enabled = true) {
     enabled,
     staleTime: 30 * 60 * 1000,
     retry: 0,
+  });
+}
+
+export function useSlaBreachAlerts(
+  page: number, limit: number, search: string, responsibleEmail?: string,
+  enabled = true, startDate?: string, endDate?: string
+) {
+  return useQuery({
+    queryKey: ['sla-breach-alerts', page, limit, search, responsibleEmail, startDate, endDate],
+    queryFn: () => slaBreachAlertsApi.list({ page, limit, search: search || undefined, responsibleEmail, startDate, endDate }),
+    enabled,
+    staleTime: 30_000,
+    retry: 0,
+  });
+}
+
+export function useSlaBreachAlertPeople(startDate?: string, endDate?: string) {
+  return useQuery({
+    queryKey: ['sla-breach-alerts-people', startDate, endDate],
+    queryFn: () => slaBreachAlertsApi.listPeople({ startDate, endDate }),
+    staleTime: 30_000,
+    retry: 0,
+  });
+}
+
+// Fetched one row at a time, on click -- not a plain query, since we never want this to
+// run automatically for every row on the list (each call is a live Graph re-fetch).
+export function useSlaBreachAlertMessage() {
+  return useMutation({
+    mutationFn: (alertId: string) => slaBreachAlertsApi.getMessage(alertId),
   });
 }
 

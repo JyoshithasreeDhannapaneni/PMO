@@ -3,6 +3,7 @@ import { query, execute } from '../config/database';
 import { logger } from '../utils/logger';
 import { bucketQAScore } from '../utils/qaBucketing';
 import { getIstWeekBounds, istDateStr, weeksInCurrentIstMonth } from '../utils/weekBounds';
+import { isExternal } from './teamConversationTimeline';
 
 interface GraphEvent {
   id: string;
@@ -63,20 +64,8 @@ export interface UserCallHygiene {
   calls: HeldCustomerCall[];
 }
 
-const CF_DOMAIN = 'cloudfuze.com';
 const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
 const CACHE_TTL_MS = 25 * 3600 * 1000; // 25h, same cadence as email hygiene cron
-
-const SYSTEM_SENDER_DOMAINS = new Set([
-  'microsoft.com',
-  'microsoftonline.com',
-  'teams.microsoft.com',
-  'sharepointonline.com',
-  'outlook.com',
-  'onmicrosoft.com',
-  'azurecomm.net',
-  'mimecast.com',
-]);
 
 function isGraphConfigured(): boolean {
   const { MS_GRAPH_TENANT_ID, MS_GRAPH_CLIENT_ID, MS_GRAPH_CLIENT_SECRET } = process.env;
@@ -116,16 +105,6 @@ function graphClient(token: string): AxiosInstance {
     },
     timeout: 30000,
   });
-}
-
-function isExternal(email: string): boolean {
-  const lower = email.toLowerCase();
-  if (lower.endsWith(`@${CF_DOMAIN}`)) return false;
-  const domain = lower.split('@')[1] ?? '';
-  if (SYSTEM_SENDER_DOMAINS.has(domain)) return false;
-  if (domain.endsWith('.microsoft.com') || domain.endsWith('.microsoftonline.com')) return false;
-  if (lower.startsWith('noreply@') || lower.startsWith('no-reply@') || lower.startsWith('donotreply@')) return false;
-  return true;
 }
 
 async function getCFUsers(): Promise<Array<{ email: string; name: string }>> {

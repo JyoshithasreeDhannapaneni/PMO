@@ -37,20 +37,34 @@ const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
 const CF_DOMAIN = 'cloudfuze.com';
 
 // Domains that send real mail but are never "a customer" -- Microsoft/Teams/SharePoint
-// system notifications, and neutara.com (CloudFuze's own internal check-in/attendance
-// tool, added 2026-08-28 after it was caught polluting real customer thread counts).
+// system notifications, neutara.com (CloudFuze's own internal check-in/attendance tool,
+// added 2026-08-28 after it was caught polluting real customer thread counts), and the
+// internal tools/vendors CloudFuze staff have accounts with, whose automated notification
+// and suggestion emails (Jira ticket updates, LastPass security alerts, Claude/Anthropic
+// usage notices) land in the same tracked mailboxes and would otherwise be scored as if a
+// customer had emailed in.
 const SYSTEM_SENDER_DOMAINS = new Set([
   'microsoft.com', 'microsoftonline.com', 'teams.microsoft.com', 'sharepointonline.com',
   'outlook.com', 'onmicrosoft.com', 'azurecomm.net', 'mimecast.com', 'neutara.com',
+  'atlassian.com', 'atlassian.net', 'lastpass.com', 'anthropic.com', 'claude.ai',
 ]);
+
+// Generic automated/notification sender local-parts -- catches "applications like these"
+// beyond the specific vendors above (any tool's auto-reply, digest, or suggestion mail)
+// without needing to hardcode every SaaS domain CloudFuze staff happen to have accounts with.
+const SYSTEM_SENDER_PREFIXES = [
+  'noreply@', 'no-reply@', 'donotreply@', 'do-not-reply@',
+  'notification@', 'notifications@', 'alert@', 'alerts@',
+  'mailer-daemon@', 'postmaster@',
+];
 
 export function isExternal(email: string): boolean {
   const lower = email.toLowerCase();
   if (lower.endsWith(`@${CF_DOMAIN}`)) return false;
   const domain = lower.split('@')[1] ?? '';
   if (SYSTEM_SENDER_DOMAINS.has(domain)) return false;
-  if (domain.endsWith('.microsoft.com') || domain.endsWith('.microsoftonline.com')) return false;
-  if (lower.startsWith('noreply@') || lower.startsWith('no-reply@') || lower.startsWith('donotreply@')) return false;
+  if (domain.endsWith('.microsoft.com') || domain.endsWith('.microsoftonline.com') || domain.endsWith('.atlassian.net')) return false;
+  if (SYSTEM_SENDER_PREFIXES.some((p) => lower.startsWith(p))) return false;
   return true;
 }
 
@@ -61,7 +75,7 @@ const HTML_ENTITIES: Record<string, string> = {
   '&lt;': '<', '&gt;': '>', '&amp;': '&', '&quot;': '"', '&#39;': "'", '&apos;': "'",
   '&nbsp;': ' ',
 };
-function decodeHtmlEntities(text: string): string {
+export function decodeHtmlEntities(text: string): string {
   return text
     .replace(/&lt;|&gt;|&amp;|&quot;|&#39;|&apos;|&nbsp;/g, (m) => HTML_ENTITIES[m])
     .replace(/&#(\d+);/g, (_m, code) => String.fromCharCode(parseInt(code, 10)));
@@ -116,7 +130,7 @@ export function graphClient(token: string): AxiosInstance {
   return axios.create({ baseURL: GRAPH_BASE, headers: { Authorization: `Bearer ${token}` }, timeout: 30000 });
 }
 
-interface RawGraphMessage {
+export interface RawGraphMessage {
   id: string;
   internetMessageId?: string;
   conversationId: string;
@@ -127,6 +141,18 @@ interface RawGraphMessage {
   toRecipients?: { emailAddress: { name?: string; address: string } }[];
   receivedDateTime?: string;
   sentDateTime?: string;
+  // Populated only on the eventMessage subtype Graph uses for meeting invites/updates/
+  // cancellations/responses -- 'none' (or absent) on a normal mail message.
+  meetingMessageType?: string;
+}
+
+// Meeting/calendar invites (requests, updates, cancellations, and accept/decline/tentative
+// responses) aren't a customer question or a support reply -- counting them as either
+// inflates thread volume and can fabricate a fast "reply time" out of someone clicking
+// "Accept" on an invite. Filtered out at ingestion so neither Email Hygiene nor the SLA
+// breach alert (both built on this shared timeline) ever sees them.
+export function isMeetingMessage(m: RawGraphMessage): boolean {
+  return !!m.meetingMessageType && m.meetingMessageType !== 'none';
 }
 
 async function fetchAll(client: AxiosInstance, url: string, cap = 200): Promise<RawGraphMessage[]> {
@@ -140,7 +166,7 @@ async function fetchAll(client: AxiosInstance, url: string, cap = 200): Promise<
   return msgs;
 }
 
-const SELECT_FIELDS = 'id,internetMessageId,conversationId,subject,bodyPreview,body,from,toRecipients,receivedDateTime,sentDateTime';
+const SELECT_FIELDS = 'id,internetMessageId,conversationId,subject,bodyPreview,body,from,toRecipients,receivedDateTime,sentDateTime,meetingMessageType';
 
 export interface TimelineEntry {
   messageId: string;
@@ -178,7 +204,7 @@ export interface Exchange {
   nextCustomerMessage: TimelineEntry | null; // null if this is the last customer message so far
 }
 
-function messageText(m: RawGraphMessage): string {
+export function messageText(m: RawGraphMessage): string {
   return m.body?.content ? stripHtml(m.body.content) : (m.bodyPreview ?? '');
 }
 
@@ -243,6 +269,7 @@ export async function buildTeamTimelines(
       const { member, sentRaw, recvRaw } = r.value;
 
       for (const m of sentRaw) {
+        if (isMeetingMessage(m)) continue;
         if (!m.toRecipients?.some((rec) => isExternal(rec.emailAddress.address)) || !m.sentDateTime) continue;
         addEntry({
           messageId: m.id,
@@ -257,6 +284,7 @@ export async function buildTeamTimelines(
       }
 
       for (const m of recvRaw) {
+        if (isMeetingMessage(m)) continue;
         const fromAddr = m.from?.emailAddress?.address;
         if (!fromAddr || !isExternal(fromAddr) || !m.receivedDateTime) continue;
         const time = new Date(m.receivedDateTime).getTime();
