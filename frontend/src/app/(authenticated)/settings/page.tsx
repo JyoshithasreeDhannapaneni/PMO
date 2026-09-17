@@ -241,6 +241,7 @@ const defaultMigrationTypes: MigrationType[] = [
   { id: '57', code: 'AMAZONWORKDOCS_NFS', name: 'Amazon WorkDocs - NFS', description: '', icon: '📁', color: '#3B82F6', enabled: true, category: 'Content Migration' },
   { id: '58', code: 'AMAZONWORKDOCS_ONEDRIVE_SHAREPOINT', name: 'Amazon WorkDocs - OneDrive/SharePoint', description: '', icon: '📁', color: '#3B82F6', enabled: true, category: 'Content Migration' },
   { id: '59', code: 'DRIVE_CHANGE', name: 'Drive Change', description: '', icon: '📁', color: '#3B82F6', enabled: true, category: 'Content Migration' },
+  { id: '78', code: 'CONFLUENCE_SHAREPOINT', name: 'Confluence - SharePoint', description: '', icon: '📁', color: '#3B82F6', enabled: true, category: 'Content Migration' },
   { id: '60', code: 'SLACK_SLACK', name: 'Slack - Slack', description: '', icon: '💬', color: '#8B5CF6', enabled: true, category: 'Messaging' },
   { id: '61', code: 'CHAT_CHAT', name: 'Chat - Chat', description: '', icon: '💬', color: '#8B5CF6', enabled: true, category: 'Messaging' },
   { id: '62', code: 'TEAMS_TEAMS', name: 'Teams - Teams', description: '', icon: '💬', color: '#8B5CF6', enabled: true, category: 'Messaging' },

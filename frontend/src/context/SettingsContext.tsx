@@ -140,6 +140,7 @@ const defaultSettings: PMOSettings = {
     { id: '57', code: 'AMAZONWORKDOCS_NFS', name: 'Amazon WorkDocs - NFS', icon: '📁', color: '#3B82F6', enabled: true, category: 'Content Migration' },
     { id: '58', code: 'AMAZONWORKDOCS_ONEDRIVE_SHAREPOINT', name: 'Amazon WorkDocs - OneDrive/SharePoint', icon: '📁', color: '#3B82F6', enabled: true, category: 'Content Migration' },
     { id: '59', code: 'DRIVE_CHANGE', name: 'Drive Change', icon: '📁', color: '#3B82F6', enabled: true, category: 'Content Migration' },
+    { id: '78', code: 'CONFLUENCE_SHAREPOINT', name: 'Confluence - SharePoint', icon: '📁', color: '#3B82F6', enabled: true, category: 'Content Migration' },
     { id: '60', code: 'SLACK_SLACK', name: 'Slack - Slack', icon: '💬', color: '#8B5CF6', enabled: true, category: 'Messaging' },
     { id: '61', code: 'CHAT_CHAT', name: 'Chat - Chat', icon: '💬', color: '#8B5CF6', enabled: true, category: 'Messaging' },
     { id: '62', code: 'TEAMS_TEAMS', name: 'Teams - Teams', icon: '💬', color: '#8B5CF6', enabled: true, category: 'Messaging' },
