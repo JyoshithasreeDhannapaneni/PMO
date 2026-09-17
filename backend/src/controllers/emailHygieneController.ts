@@ -66,7 +66,93 @@ function buildHygieneSheets(
       Basis: `avg of ${head.teamIds.join(', ')}`,
     };
   });
-  return { 'Email Hygiene': rows, 'Team Hygiene': [...segmentRows, ...teamRows] };
+  return {
+    'Email Hygiene': rows,
+    'Team Hygiene': [...segmentRows, ...teamRows],
+    'Evidence (Best-Worst)': buildEvidenceRows(metrics),
+    'Score Breakdown': buildScoreBreakdownRows(metrics),
+    'Improvement Insights': buildInsightRows(metrics),
+  };
+}
+
+const CATEGORY_LABEL: Record<'speed' | 'quality' | 'resolution' | 'tone', string> = {
+  speed: 'Speed', quality: 'Quality', resolution: 'Resolution', tone: 'Tone',
+};
+
+// Real customer-message / team-reply pairs behind each category's best and worst scored
+// exchange — the actual proof an emailHygieneScore isn't just a number, one row per
+// person per category per best/worst example that actually exists.
+function buildEvidenceRows(metrics: import('../services/emailHygieneService').UserEmailHygiene[]) {
+  const out: Record<string, any>[] = [];
+  for (const m of metrics) {
+    for (const cat of ['speed', 'quality', 'resolution', 'tone'] as const) {
+      for (const type of ['best', 'worst'] as const) {
+        const ex = m.bestWorst?.[cat]?.[type];
+        if (!ex) continue;
+        out.push({
+          'Team Member': m.userName,
+          Email: m.userEmail,
+          Category: CATEGORY_LABEL[cat],
+          Type: type === 'best' ? 'Best' : 'Worst',
+          Label: ex.label,
+          'Customer Message': ex.customerText,
+          'Team Reply': ex.replyText,
+        });
+      }
+    }
+  }
+  return out;
+}
+
+// Every sub-metric behind every category score, with up to 2 real named examples
+// (who, when, what happened) for whichever sub-metrics are weak enough to have one.
+function buildScoreBreakdownRows(metrics: import('../services/emailHygieneService').UserEmailHygiene[]) {
+  const out: Record<string, any>[] = [];
+  for (const m of metrics) {
+    for (const cat of ['speed', 'quality', 'resolution', 'tone'] as const) {
+      for (const item of m.scoreBreakdown?.[cat] ?? []) {
+        const [ex1, ex2] = item.examples ?? [];
+        out.push({
+          'Team Member': m.userName,
+          Email: m.userEmail,
+          Category: CATEGORY_LABEL[cat],
+          'Sub-Metric': item.label,
+          Value: item.value,
+          'Sub-Score': `${item.subScore}/${item.maxSubScore}`,
+          Tip: item.tip ?? '',
+          'Example 1 Customer': ex1?.customer ?? '',
+          'Example 1 Date': ex1?.when ?? '',
+          'Example 1 Detail': ex1?.detail ?? '',
+          'Example 1 Body': ex1?.body ?? '',
+          'Example 2 Customer': ex2?.customer ?? '',
+          'Example 2 Date': ex2?.when ?? '',
+          'Example 2 Detail': ex2?.detail ?? '',
+          'Example 2 Body': ex2?.body ?? '',
+        });
+      }
+    }
+  }
+  return out;
+}
+
+// Coaching lines — the specific weak behavior observed and the concrete improvement,
+// only generated for categories that scored low enough to need one.
+function buildInsightRows(metrics: import('../services/emailHygieneService').UserEmailHygiene[]) {
+  const out: Record<string, any>[] = [];
+  for (const m of metrics) {
+    for (const insight of m.insights ?? []) {
+      out.push({
+        'Team Member': m.userName,
+        Email: m.userEmail,
+        Category: CATEGORY_LABEL[insight.category],
+        Metric: insight.metric,
+        Score: `${insight.score}/${insight.maxScore}`,
+        'Current Behavior': insight.originalLine,
+        'Suggested Improvement': insight.improvedLine,
+      });
+    }
+  }
+  return out;
 }
 
 export const emailHygieneController = {
