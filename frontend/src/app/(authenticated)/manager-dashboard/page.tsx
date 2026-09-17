@@ -14,7 +14,7 @@ import {
   ArrowLeft, ExternalLink, Upload, FileSpreadsheet, Trash2,
   Plus, Pencil, Check,
 } from 'lucide-react';
-import api from '@/services/api';
+import api, { emailHygieneApi } from '@/services/api';
 import { SEGMENT_CONFIG, SEGMENT_HIERARCHY, MANAGER_QUERY_NAMES, ENGINEER_ASSIGNMENTS, LMS_SCORES, MEETING_ATTENDANCE, AUDIO_PERCENTAGES, segmentOfManager, isNamedManager, type Segment } from '@/lib/segments';
 import { ScoreBreakdownPanel } from '@/components/EmailHygieneBreakdown';
 
@@ -1139,6 +1139,17 @@ function EmailHygieneLastMonthCard() {
     finalizeMutation.mutate();
   };
 
+  const handleDownloadReport = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      const blob = await emailHygieneApi.exportLastMonthExcel();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `email-hygiene-${(monthLabel || 'last-month').replace(/\s+/g, '-').toLowerCase()}.xlsx`;
+      a.click();
+    } catch {}
+  };
+
   return (
     <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
       <button
@@ -1159,6 +1170,15 @@ function EmailHygieneLastMonthCard() {
                 </span>
               )
             ))}
+            <span
+              role="button"
+              onClick={handleDownloadReport}
+              title={`Download ${monthLabel || 'last month'}'s full email hygiene report`}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-gray-200 text-gray-600 bg-white hover:bg-gray-50"
+            >
+              <FileSpreadsheet size={14} />
+              Download
+            </span>
           </div>
         )}
       </button>

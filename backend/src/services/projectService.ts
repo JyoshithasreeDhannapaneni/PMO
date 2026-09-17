@@ -148,12 +148,17 @@ function mapProjectRow(row: any) {
       liveDelayDays   = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
       liveDelayStatus = 'EXTENDED';
     } else if (isFinished) {
-      expectedEnd = extEnd || kickoffEnd;
+      // extEnd only means something while isOveraged — a leftover value from a since-reverted
+      // overage must not silently resurface here (see the not-overaged branch below).
+      expectedEnd = (isOveraged ? extEnd : null) || kickoffEnd;
       liveDelayStatus = row.delay_status;
       liveDelayDays   = Number(row.delay_days) || 0;
     } else {
-      expectedEnd = extEnd || kickoffEnd;
-      const result = calculateDelay(ps, pe, as, null, new Date(), extEnd);
+      // Not overaged: extended_end_date is stale/irrelevant here even if still set on the row
+      // (e.g. is_overaged was toggled back off without clearing it) — ignore it, or a past
+      // extension deadline keeps this project showing DELAYED against a date nobody agreed to.
+      expectedEnd = kickoffEnd;
+      const result = calculateDelay(ps, pe, as, null, new Date(), null);
       liveDelayStatus = result.delayStatus;
       liveDelayDays   = result.delayDays;
     }
@@ -669,7 +674,11 @@ class ProjectService {
     const actualEnd = data.actualEnd !== undefined
       ? (data.actualEnd ? new Date(data.actualEnd) : null)
       : (data.actualStart !== undefined && actualStart ? autoActualEnd : (existing.actual_end ? new Date(existing.actual_end) : null));
-    const extendedEndDate = existing.extended_end_date ? new Date(existing.extended_end_date) : null;
+    // Only honor extended_end_date while the project is actually overaged — otherwise a
+    // leftover value from a since-reverted overage would silently keep overriding the real
+    // (kickoff-adjusted) deadline every time the project is saved.
+    const isOveraged = data.isOveraged !== undefined ? !!data.isOveraged : !!existing.is_overaged;
+    const extendedEndDate = isOveraged && existing.extended_end_date ? new Date(existing.extended_end_date) : null;
 
     const newStatus = (data.status || existing.status || 'ACTIVE').toUpperCase();
     const isFinished = newStatus === 'COMPLETED' || newStatus === 'CANCELLED' || newStatus === 'INACTIVE';
@@ -915,7 +924,8 @@ class ProjectService {
       const ps = new Date(row.planned_start);
       const pe = new Date(row.planned_end);
       const as = row.actual_start ? new Date(row.actual_start) : null;
-      const extEnd = row.extended_end_date ? new Date(row.extended_end_date) : null;
+      // Only honor extended_end_date while actually overaged (see update() above for why).
+      const extEnd = row.is_overaged && row.extended_end_date ? new Date(row.extended_end_date) : null;
       const { delayDays, delayStatus } = calculateDelay(ps, pe, as, null, new Date(), extEnd);
 
       if (delayDays !== row.delay_days || delayStatus !== row.delay_status) {
