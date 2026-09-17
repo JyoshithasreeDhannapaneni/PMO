@@ -3,6 +3,15 @@ import * as XLSX from 'xlsx';
 import { emailHygieneService } from '../services/emailHygieneService';
 import { asyncHandler } from '../middleware/errorHandler';
 
+// Excel's hard per-cell text limit is 32,767 characters — a raw email/Teams thread
+// (quoted history, signatures) can exceed that easily. Cap well under it; a cell this
+// long is unreadable anyway, so this is a readability trim, not just a safety margin.
+const CELL_TEXT_LIMIT = 4000;
+function cell(text: string | null | undefined): string {
+  if (!text) return '';
+  return text.length > CELL_TEXT_LIMIT ? `${text.slice(0, CELL_TEXT_LIMIT)}… (truncated)` : text;
+}
+
 function sendWorkbook(res: Response, sheets: Record<string, any[]>, filename: string) {
   const wb = XLSX.utils.book_new();
   for (const [name, rows] of Object.entries(sheets)) {
@@ -95,8 +104,8 @@ function buildEvidenceRows(metrics: import('../services/emailHygieneService').Us
           Category: CATEGORY_LABEL[cat],
           Type: type === 'best' ? 'Best' : 'Worst',
           Label: ex.label,
-          'Customer Message': ex.customerText,
-          'Team Reply': ex.replyText,
+          'Customer Message': cell(ex.customerText),
+          'Team Reply': cell(ex.replyText),
         });
       }
     }
@@ -119,15 +128,15 @@ function buildScoreBreakdownRows(metrics: import('../services/emailHygieneServic
           'Sub-Metric': item.label,
           Value: item.value,
           'Sub-Score': `${item.subScore}/${item.maxSubScore}`,
-          Tip: item.tip ?? '',
+          Tip: cell(item.tip),
           'Example 1 Customer': ex1?.customer ?? '',
           'Example 1 Date': ex1?.when ?? '',
-          'Example 1 Detail': ex1?.detail ?? '',
-          'Example 1 Body': ex1?.body ?? '',
+          'Example 1 Detail': cell(ex1?.detail),
+          'Example 1 Body': cell(ex1?.body),
           'Example 2 Customer': ex2?.customer ?? '',
           'Example 2 Date': ex2?.when ?? '',
-          'Example 2 Detail': ex2?.detail ?? '',
-          'Example 2 Body': ex2?.body ?? '',
+          'Example 2 Detail': cell(ex2?.detail),
+          'Example 2 Body': cell(ex2?.body),
         });
       }
     }
@@ -147,8 +156,8 @@ function buildInsightRows(metrics: import('../services/emailHygieneService').Use
         Category: CATEGORY_LABEL[insight.category],
         Metric: insight.metric,
         Score: `${insight.score}/${insight.maxScore}`,
-        'Current Behavior': insight.originalLine,
-        'Suggested Improvement': insight.improvedLine,
+        'Current Behavior': cell(insight.originalLine),
+        'Suggested Improvement': cell(insight.improvedLine),
       });
     }
   }
