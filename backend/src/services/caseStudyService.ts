@@ -72,7 +72,9 @@ class CaseStudyService {
         const ps = new Date(row.planned_start);
         const pe = new Date(row.planned_end);
         const as = row.actual_start ? new Date(row.actual_start) : null;
-        const extEnd = row.extended_end_date ? new Date(row.extended_end_date) : null;
+        // extended_end_date only means something while is_overaged — a leftover value from a
+        // since-reverted overage must not silently override the real deadline here.
+        const extEnd = row.is_overaged && row.extended_end_date ? new Date(row.extended_end_date) : null;
         expectedEnd = (extEnd || pe).toISOString().split('T')[0];
 
         const isFinished = row.p_status === 'COMPLETED' || row.p_status === 'CANCELLED' || row.p_status === 'INACTIVE';

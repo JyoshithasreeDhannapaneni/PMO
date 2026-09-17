@@ -778,6 +778,10 @@ export const emailHygieneApi = {
     const { data } = await api.get('/email-hygiene/export', { responseType: 'blob' });
     return data as Blob;
   },
+  exportLastMonthExcel: async () => {
+    const { data } = await api.get('/email-hygiene/export/last-month', { responseType: 'blob' });
+    return data as Blob;
+  },
   triggerSync: async () => {
     const { data } = await api.post('/email-hygiene/sync');
     return data as { success: boolean; data: { alreadyRunning: boolean; running: boolean; completedAt: string | null; error: string | null } };

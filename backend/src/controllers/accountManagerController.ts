@@ -158,10 +158,15 @@ function mapProjectRow(row: any) {
       // stop accruing delay days rather than keep counting against today's date.
       liveDelayStatus = row.delay_status;
       liveDelayDays   = Number(row.delay_days) || 0;
-      expectedEnd = (extEnd || kickoffEnd).toISOString().split('T')[0];
+      // extEnd only means something while isOveraged (see the not-overaged branch below).
+      expectedEnd = ((isOveraged ? extEnd : null) || kickoffEnd).toISOString().split('T')[0];
     } else {
-      expectedEnd = (extEnd || kickoffEnd).toISOString().split('T')[0];
-      const result = calculateDelay(ps, pe, as, null, new Date(), extEnd);
+      // Not overaged: extended_end_date is stale/irrelevant here even if still set on the
+      // row (e.g. is_overaged was toggled back off without clearing it) — ignore it, or a
+      // past extension deadline keeps this project showing DELAYED against a date nobody
+      // agreed to.
+      expectedEnd = kickoffEnd.toISOString().split('T')[0];
+      const result = calculateDelay(ps, pe, as, null, new Date(), null);
       liveDelayStatus = result.delayStatus;
       liveDelayDays   = result.delayDays;
     }
