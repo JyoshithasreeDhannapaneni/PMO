@@ -166,7 +166,16 @@ async function fetchAll(client: AxiosInstance, url: string, cap = 200): Promise<
   return msgs;
 }
 
-const SELECT_FIELDS = 'id,internetMessageId,conversationId,subject,bodyPreview,body,from,toRecipients,receivedDateTime,sentDateTime,meetingMessageType';
+// meetingMessageType only exists on the eventMessage subtype, not the base Message type --
+// selecting it as a plain field 400s the ENTIRE request ("RequestBroker--ParseUri: Could
+// not find a property named 'meetingMessageType' on type 'Microsoft.OutlookServices.Message'"),
+// silently dropping every message for every user (verified live against the real tenant:
+// this exact 400 is what was producing all-default scores for everyone). The cast-qualified
+// form below is Graph's documented way to select a derived-type property on a base-type
+// collection -- it comes back populated on actual eventMessage items and simply absent
+// (undefined) on everything else, which isMeetingMessage() above already treats as "not a
+// meeting message". Verified live: this form returns 200 where the plain field 400s.
+const SELECT_FIELDS = 'id,internetMessageId,conversationId,subject,bodyPreview,body,from,toRecipients,receivedDateTime,sentDateTime,microsoft.graph.eventMessage/meetingMessageType';
 
 export interface TimelineEntry {
   messageId: string;
