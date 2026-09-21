@@ -775,9 +775,13 @@ function deriveUserMetrics(userEmail: string, userName: string, judgments: Excha
   const avgFullResolutionTimeHours = fullResolutionTimes.length
     ? Math.round(fullResolutionTimes.reduce((a, b) => a + b, 0) / fullResolutionTimes.length * 10) / 10
     : null;
+  // No threads with a reply this period means no SLA data to judge, not a real 0% —
+  // default to the same neutral midpoint as completenessRate/rawToneAvg above, so the
+  // derived sub-score (slaSub below) lands on a neutral 5/10 like its sibling speed
+  // sub-metrics, instead of unfairly punishing an absence of data as if it were a miss.
   const slaHitRate = Math.min(100, threadsWithReply > 0
     ? Math.round((within4h / threadsWithReply) * 100)
-    : 0);
+    : 50);
 
   // ── Sub-scores (each 0–10) → category totals ────────────────────
   // Speed /30: Avg 1st Reply (10) + % ≤4h SLA (10) + Avg Resolution (10)
@@ -837,9 +841,11 @@ function deriveUserMetrics(userEmail: string, userName: string, judgments: Excha
       },
       {
         label: 'SLA Hit Rate (≤4h)',
-        value: `${slaHitRate}% of your first replies landed within 4 hours`,
+        value: threadsWithReply === 0 ? 'No first reply credited to you this period' : `${slaHitRate}% of your first replies landed within 4 hours`,
         subScore: slaSub, maxSubScore: 10,
-        tip: tip(slaSub >= 9, `Only ${slaHitRate}% of your replies beat the 4-hour mark, scoring ${slaSub}/10. Aim to reply within 4 hours every time for full marks.`),
+        tip: tip(slaSub >= 9, threadsWithReply === 0
+          ? `No customer thread this period has you as the first responder — this defaults to a neutral 5/10. Jump in first on live threads to earn a real score here.`
+          : `Only ${slaHitRate}% of your replies beat the 4-hour mark, scoring ${slaSub}/10. Aim to reply within 4 hours every time for full marks.`),
         examples: slaMissExamples.length > 0 ? slaMissExamples : worstFirstReplyExamples,
       },
       {
@@ -928,7 +934,7 @@ function deriveUserMetrics(userEmail: string, userName: string, judgments: Excha
     });
   }
 
-  if (slaSub < 5) {
+  if (slaSub < 5 && threadsWithReply > 0) {
     insights.push({
       category: 'speed',
       metric: '% ≤4h SLA',
