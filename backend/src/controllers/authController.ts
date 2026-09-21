@@ -212,18 +212,13 @@ export const authController = {
 
     const requestingUser = await authService.getUserFromToken(token);
     if (!requestingUser) throw new AppError('Invalid token', 401);
-    // VIEWER needs this list to populate the read-only Project Manager filter
-    // dropdown (frontend/src/app/(authenticated)/projects/page.tsx) — the
-    // response carries no sensitive data beyond name/email/role/department,
-    // already visible elsewhere in read-only views.
-    if (
-      requestingUser.role !== 'ADMIN' &&
-      requestingUser.role !== 'PROJECT_MANAGER' &&
-      requestingUser.role !== 'VIEWER'
-    ) {
-      throw new AppError('Insufficient permissions', 403);
-    }
-
+    // Every role needs this list somewhere — VIEWER/PROJECT_MANAGER for the read-only PM
+    // filter dropdown (frontend/src/app/(authenticated)/projects/page.tsx), ACCOUNT_MANAGER
+    // for the Account Manager filter on the Account Manager View page, PRE_SALES for the
+    // PM/AM pickers on the Pre-sales/POC page. The response carries no sensitive data beyond
+    // name/email/role/department (see authService.getAllUsers — no password hash, no
+    // session tokens), already visible elsewhere in read-only views, so any authenticated
+    // role can read it rather than re-enumerating roles here every time one is added.
     const users = await authService.getAllUsers();
     res.json({ success: true, data: users });
   }),

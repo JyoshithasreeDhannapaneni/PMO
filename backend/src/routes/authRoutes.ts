@@ -24,8 +24,8 @@ router.post('/reset-password', authController.resetPassword);
 // POST /api/auth/change-password - Change password (authenticated)
 router.post('/change-password', authController.changePassword);
 
-// ── User Management (Admin) ─────────────────────────────────────────
-// GET /api/auth/users - List all users
+// ── User Management ─────────────────────────────────────────────────
+// GET /api/auth/users - List all users (any authenticated role — see authController.getAllUsers)
 router.get('/users', authController.getAllUsers);
 
 // POST /api/auth/users - Create/invite a new user by email
