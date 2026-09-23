@@ -38,15 +38,17 @@ const CF_DOMAIN = 'cloudfuze.com';
 
 // Domains that send real mail but are never "a customer" -- Microsoft/Teams/SharePoint
 // system notifications, neutara.com (CloudFuze's own internal check-in/attendance tool,
-// added 2026-08-28 after it was caught polluting real customer thread counts), and the
-// internal tools/vendors CloudFuze staff have accounts with, whose automated notification
-// and suggestion emails (Jira ticket updates, LastPass security alerts, Claude/Anthropic
-// usage notices) land in the same tracked mailboxes and would otherwise be scored as if a
-// customer had emailed in.
+// added 2026-08-28 after it was caught polluting real customer thread counts), fuzebot.io
+// (CloudFuze's own bot account, added 2026-09-23 for the same reason -- leo@fuzebot.io was
+// showing up as a "customer" thread), and the internal tools/vendors CloudFuze staff have
+// accounts with, whose automated notification and suggestion emails (Jira ticket updates,
+// LastPass security alerts, Claude/Anthropic usage notices) land in the same tracked
+// mailboxes and would otherwise be scored as if a customer had emailed in.
 const SYSTEM_SENDER_DOMAINS = new Set([
   'microsoft.com', 'microsoftonline.com', 'teams.microsoft.com', 'sharepointonline.com',
   'outlook.com', 'onmicrosoft.com', 'azurecomm.net', 'mimecast.com', 'neutara.com',
   'atlassian.com', 'atlassian.net', 'lastpass.com', 'anthropic.com', 'claude.ai',
+  'fuzebot.io',
 ]);
 
 // Generic automated/notification sender local-parts -- catches "applications like these"
