@@ -884,6 +884,12 @@ export default function CustomerSuccessPage() {
   const totalProjects: number = (data as any)?.meta?.totalProjects ?? 0;
   const accounts: CustomerSuccessEntry[] = pageData?.accounts ?? [];
   const renewalDue: RenewalDueItem[]     = pageData?.renewalDue ?? [];
+  // KPI/tab-badge count only — distinct accounts, matching every sibling stat here
+  // (Escalations/Growth Opps both count accounts, not raw project rows). The Renewal Due
+  // tab itself still lists every individual overdue project below, unaffected — this only
+  // fixes the summary number so it stops implying a different (and larger) worklist than
+  // Account Manager View's own "Renewal Due" stat, which has always counted accounts.
+  const renewalDueAccountCount = new Set(renewalDue.map(r => r.customerName)).size;
   const upsellSignals: SignalItem[]      = pageData?.upsellSignals ?? [];
 
   const allAMs = mergeAccountManagers(allUsersData?.data);
@@ -1053,7 +1059,7 @@ export default function CustomerSuccessPage() {
           { icon: <FolderKanban   className="w-4 h-4" />, label: 'Customers',         value: new Set(accounts.map(a => a.customerName)).size, color: 'text-indigo-600', bg: 'bg-indigo-50', tab: null },
           { icon: <AlertTriangle  className="w-4 h-4" />, label: 'Escalations',       value: allEscalatedAccounts.length,  color: 'text-red-600',    bg: 'bg-red-50',    tab: 'escalations'    },
           { icon: <TrendingUp     className="w-4 h-4" />, label: 'Growth Opps',       value: growthAccounts.length,        color: 'text-blue-600',   bg: 'bg-blue-50',   tab: 'growth'         },
-          { icon: <RefreshCw      className="w-4 h-4" />, label: 'Renewal Due',       value: renewalDue.length,            color: 'text-amber-600',  bg: 'bg-amber-50',  tab: 'renewal'        },
+          { icon: <RefreshCw      className="w-4 h-4" />, label: 'Renewal Due',       value: renewalDueAccountCount,        color: 'text-amber-600',  bg: 'bg-amber-50',  tab: 'renewal'        },
         ] as const).map(s => (
           <div key={s.label}
             onClick={() => s.tab && setActiveTab(s.tab)}
@@ -1075,7 +1081,7 @@ export default function CustomerSuccessPage() {
           { key: 'poc',        label: 'POC Projects',         icon: <FlaskConical   className="w-4 h-4" />, count: pocCount                   },
           { key: 'escalations',label: 'Active Escalations',   icon: <AlertTriangle  className="w-4 h-4" />, count: allEscalatedAccounts.length },
           { key: 'growth',     label: 'Growth Opportunities', icon: <TrendingUp     className="w-4 h-4" />, count: growthAccounts.length       },
-          { key: 'renewal',    label: 'Renewal Due',          icon: <RefreshCw      className="w-4 h-4" />, count: renewalDue.length           },
+          { key: 'renewal',    label: 'Renewal Due',          icon: <RefreshCw      className="w-4 h-4" />, count: renewalDueAccountCount      },
         ] as const).map(tab => (
           <button
             key={tab.key}
