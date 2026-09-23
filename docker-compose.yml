@@ -52,6 +52,11 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:-pmo_password}
       DB_NAME:     ${DB_NAME:-pmo_tracker}
       PORT:            3001
+      # backend/src/index.ts now defaults its bind address to 127.0.0.1 (loopback-only,
+      # 2026-09-23 hardening) -- safe for bare-metal/local-dev, but WRONG inside a container:
+      # nginx reaches this service over the pmo-network bridge, not localhost, so it needs
+      # to listen on the container's own interface. Must stay 0.0.0.0 here.
+      HOST:            0.0.0.0
       NODE_ENV:        production
       FRONTEND_URL:    https://${SERVER_IP:-localhost}
       ENABLE_CRON_JOBS: ${ENABLE_CRON_JOBS:-true}
