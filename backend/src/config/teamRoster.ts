@@ -2,18 +2,23 @@
 // The backend can't import frontend TS files, so this is intentionally duplicated --
 // keep the two in sync if the team roster changes (segments.ts is the source of truth
 // the manager-dashboard UI displays).
+// 2026-09-23: rebuilt to actually match frontend/src/lib/segments.ts -- this had drifted
+// (Raghu, Sravan, and Abhishikth existed here as managers with no equivalent in segments.ts
+// at all, misrouting SLA escalations for anyone under them). Raghu, Sravan, Sai Kumar, and
+// Pallavi are dropped entirely (product decision); Abhishikth's former reports now sit
+// under Meghana Chowdada, same as segments.ts.
 const ENGINEER_ASSIGNMENTS: Record<string, string[]> = {
-  'Pranavi':          ['Arun', 'Manoj', 'Pallavi'],
+  'Pranavi':          ['Arun', 'Manoj', 'Vainateya', 'Tanmai', 'Chandra Mouli', 'Swaroop'],
   'Lakshmi Prasanna': ['Chaitanya Gupta', 'Harshith', 'Lakshma Reddy', 'Ganesh Kondameedi', 'Davidraj'],
-  'Abhishikth':       ['Amulya', 'Ranadeep', 'Habeebunnisa', 'Neelima', 'Vijendar'],
-  'Harika':           ['Meena Lakshmi Triveni', 'Ravi Hemanth', 'Siva Kota'],
-  'Raghu':            ['Vineetha', 'Ramana Reddy'],
-  'Sravan':           ['Swaroop', 'Dathu', 'Saikumar'],
+  'Meghana Chowdada': ['Amulya', 'Ranadeep', 'Habeebunnisa', 'Neelima', 'Vijendar'],
+  'Harika':           ['Meena Lakshmi Triveni', 'Ravi Hemanth', 'Siva Kota', 'Ambika'],
+  'Sriram':           ['Dathu', 'Ramana Reddy', 'Vineetha', 'Sanjana'],
+  'Ajay Singh':       ['Nithish'],
 };
 
 const SEGMENT_HIERARCHY: { lead: string; managers: string[] }[] = [
   { lead: 'Abhishek',   managers: ['Lakshmi Prasanna', 'Pranavi'] },
-  { lead: 'Ajay Singh', managers: ['Harika', 'Sravan', 'Raghu', 'Abhishikth', 'Sriram', 'Chandra Mouli', 'Meghana Chowdada'] },
+  { lead: 'Ajay Singh', managers: ['Harika', 'Meghana Chowdada', 'Sriram'] },
 ];
 
 const TOP_LEVEL_LEADS = ['Abhishek', 'Ajay Singh'];
@@ -23,7 +28,7 @@ const TOP_LEVEL_LEADS = ['Abhishek', 'Ajay Singh'];
 // (true for any project created before that field existed).
 const SEGMENT_CONFIG: { label: 'ENT' | 'SMB'; managers: string[] }[] = [
   { label: 'ENT', managers: ['Abhishek', 'Lakshmi Prasanna', 'Pranavi'] },
-  { label: 'SMB', managers: ['Ajay Singh', 'Harika', 'Neelima', 'Meghana Chowdada', 'Sriram'] },
+  { label: 'SMB', managers: ['Ajay Singh', 'Harika', 'Meghana Chowdada', 'Sriram'] },
 ];
 
 export function segmentOfManager(rawName: string | null | undefined): 'ENT' | 'SMB' | null {
