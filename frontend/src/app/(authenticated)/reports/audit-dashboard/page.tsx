@@ -3,7 +3,7 @@
 import { useState, useRef, useMemo, Fragment } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { useProjects, useEmailHygiene, useCallHygiene, useCallTranscriptRating, useRateCallTranscript, useCallHygieneBestWorst, useCallHygieneOrgBestWorst, useCallHygieneWeeklyTrend, useEmailHygieneWeeklyTrend, usePmoHygieneWeeklyTrend } from '@/hooks/useProjects';
+import { useProjects, useEmailHygiene, useCallHygiene, useCallTranscriptRating, useRateCallTranscript, useCallHygieneBestWorst, useCallHygieneOrgBestWorst, useCallHygieneWeeklyTrend, useEmailHygieneWeeklyTrend, useEmailHygieneDailyTrend, usePmoHygieneWeeklyTrend } from '@/hooks/useProjects';
 import { useSettings } from '@/context/SettingsContext';
 import { useAuth } from '@/context/AuthContext';
 import { Card } from '@/components/ui/Card';
@@ -949,6 +949,13 @@ export default function AuditDashboardPage() {
   const pmoWeeklyTrend: any[] = pmoWeeklyTrendData?.data?.weeks ?? [];
   const { data: emailWeeklyTrendData } = useEmailHygieneWeeklyTrend(hygieneTab === 'email');
   const emailWeeklyTrend: any[] = emailWeeklyTrendData?.data?.weeks ?? [];
+  const { data: emailDailyTrendData } = useEmailHygieneDailyTrend(hygieneTab === 'email');
+  const emailDailyTrend: any[] = emailDailyTrendData?.data?.days ?? [];
+  // 'rolling' = the existing rolling-30-day table (default, unchanged behavior). Any other
+  // value is a dayStart date string selected from emailDailyTrend below.
+  const [emailDayView, setEmailDayView] = useState<string>('rolling');
+  const selectedEmailDay = emailDayView !== 'rolling' ? emailDailyTrend.find((d: any) => d.dayStart === emailDayView) : null;
+  const displayedEmailMetrics: any[] = selectedEmailDay ? selectedEmailDay.metrics : emailMetrics;
   const { data: callWeeklyTrendData } = useCallHygieneWeeklyTrend(hygieneTab === 'call' && canSeeCallHygiene);
   const callWeeklyTrend: any[] = callWeeklyTrendData?.data?.weeks ?? [];
 
@@ -2423,6 +2430,36 @@ export default function AuditDashboardPage() {
           {/* Email table */}
           {emailMetrics.length > 0 && (
             <Card>
+              <div className="flex items-center gap-2 mb-3 flex-wrap">
+                <Calendar size={14} className="text-gray-400" />
+                <span className="text-xs font-semibold text-gray-600">Per-individual view:</span>
+                <div className="flex items-center gap-1 flex-wrap">
+                  <button
+                    onClick={() => setEmailDayView('rolling')}
+                    className={`text-xs px-2.5 py-1 rounded-full font-medium transition ${
+                      emailDayView === 'rolling' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    Rolling 30-day
+                  </button>
+                  {emailDailyTrend.map((d: any) => (
+                    <button
+                      key={d.dayStart}
+                      onClick={() => setEmailDayView(d.dayStart)}
+                      title={d.hasData ? undefined : (d.isCurrent ? 'No data yet — computing in the background' : 'No data yet — fills in overnight, or check back for today')}
+                      className={`text-xs px-2.5 py-1 rounded-full font-medium transition ${
+                        emailDayView === d.dayStart
+                          ? 'bg-indigo-600 text-white'
+                          : d.hasData
+                          ? 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          : 'bg-gray-50 text-gray-300 cursor-wait'
+                      }`}
+                    >
+                      {d.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
@@ -2438,7 +2475,12 @@ export default function AuditDashboardPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {emailMetrics.map((m: any, i: number) => {
+                    {displayedEmailMetrics.length === 0 && emailDayView !== 'rolling' && (
+                      <tr><td colSpan={8} className="py-6 px-3 text-center text-xs text-gray-400">
+                        No data yet for this day — it's still being computed in the background. Try again in a minute.
+                      </td></tr>
+                    )}
+                    {displayedEmailMetrics.map((m: any, i: number) => {
                       const sc = emailScoreColor(m.emailHygieneScore);
                       const isBwExpanded = expandedEmailBestWorstUser === m.userEmail;
                       // Clicking a score badge opens the panel scoped to that one category;

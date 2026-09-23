@@ -1,7 +1,7 @@
 import { type AxiosInstance } from 'axios';
 import { query, execute } from '../config/database';
 import { logger } from '../utils/logger';
-import { getIstWeekBounds, istDateStr, weeksInCurrentIstMonth, getIstMonthBounds, istMonthLabel } from '../utils/weekBounds';
+import { getIstWeekBounds, istDateStr, weeksInCurrentIstMonth, getIstMonthBounds, istMonthLabel, getIstDayBounds, istDayLabel } from '../utils/weekBounds';
 import { emailThreadClassifierService, type AmbiguousThread } from './emailThreadClassifierService';
 import {
   isGraphConfigured, getAccessToken, graphClient, buildTeamTimelines, buildExchanges,
@@ -1112,6 +1112,41 @@ function triggerBackgroundLiveWeekFetch(weekStartDate: string, since: Date, unti
   })();
 }
 
+// Same non-blocking cache-or-trigger pattern as _liveWeekCache above, but keyed by IST
+// calendar day — backs the per-individual Daily view's last-14-days list. A day's TTL can
+// be much shorter than a week's since a day-window Graph fetch is proportionally faster.
+const CURRENT_DAY_TTL_MS = 15 * 60 * 1000;
+const _liveDayCache = new Map<string, { computedAt: number; metrics: UserEmailHygiene[]; teamHygiene: TeamHygieneRow[] }>();
+const _liveDayFetchInFlight = new Set<string>();
+
+function getCachedLiveDay(dayStartDate: string): { metrics: UserEmailHygiene[]; teamHygiene: TeamHygieneRow[] } | null {
+  const cached = _liveDayCache.get(dayStartDate);
+  if (cached && Date.now() - cached.computedAt < CURRENT_DAY_TTL_MS) return cached;
+  return null;
+}
+
+// Mirrors triggerBackgroundLiveWeekFetch above — never awaited by the request handler, so
+// a cold day never risks the nginx 300s proxy timeout / a browser 504.
+function triggerBackgroundLiveDayFetch(dayStartDate: string, since: Date, until?: Date): void {
+  if (_liveDayFetchInFlight.has(dayStartDate)) return;
+  _liveDayFetchInFlight.add(dayStartDate);
+  (async () => {
+    try {
+      const client = graphClient(await getAccessToken());
+      const { metrics, teamHygiene } = await computeMetricsForWindow(client, since.toISOString(), until?.toISOString());
+      _liveDayCache.set(dayStartDate, { computedAt: Date.now(), metrics, teamHygiene });
+      if (_liveDayCache.size > 14) {
+        const oldestKey = [..._liveDayCache.entries()].sort((a, b) => a[1].computedAt - b[1].computedAt)[0][0];
+        _liveDayCache.delete(oldestKey);
+      }
+    } catch (err) {
+      logger.error(`[EmailHygiene] Background live-day fetch failed for ${dayStartDate}:`, err);
+    } finally {
+      _liveDayFetchInFlight.delete(dayStartDate);
+    }
+  })();
+}
+
 // How far before a scoring window's `since` to still look for the customer message a
 // reply is actually answering (see buildTeamTimelines()'s customerLookbackMs param).
 // judgeAllExchanges() below already discards any pairing more than 5 days old as
@@ -1328,6 +1363,92 @@ export const emailHygieneService = {
     );
     logger.info(`[EmailHygiene] Finalized week of ${weekStartDate} — ${metrics.length} users`);
     return { finalized: true, weekStartDate };
+  },
+
+  // Locks in a permanent snapshot for a completed IST calendar day — daysAgo=1 (the daily
+  // finalize cron's default) means "yesterday, IST." Idempotent via UNIQUE(day_start),
+  // mirrors finalizeWeek above exactly, just at day granularity.
+  async finalizeDay(daysAgo = 1): Promise<{ finalized: boolean; dayStartDate: string }> {
+    const { dayStart, dayEnd } = getIstDayBounds(daysAgo);
+    const dayStartDate = istDateStr(dayStart);
+    if (!isGraphConfigured()) return { finalized: false, dayStartDate };
+
+    const existing = await query(`SELECT id FROM email_hygiene_daily WHERE day_start = $1`, [dayStartDate]);
+    if (existing.rows.length > 0) return { finalized: false, dayStartDate };
+
+    const token = await getAccessToken();
+    const client = graphClient(token);
+    const { metrics, teamHygiene } = await computeMetricsForWindow(client, dayStart.toISOString(), dayEnd.toISOString());
+
+    await execute(
+      `INSERT INTO email_hygiene_daily (day_start, day_end, metrics, team_hygiene) VALUES ($1, $2, $3, $4)
+       ON CONFLICT (day_start) DO NOTHING`,
+      [dayStartDate, istDateStr(dayEnd), JSON.stringify(metrics), JSON.stringify(teamHygiene)]
+    );
+    logger.info(`[EmailHygiene] Finalized day of ${dayStartDate} — ${metrics.length} users`);
+    return { finalized: true, dayStartDate };
+  },
+
+  // Last 14 IST calendar days, most recent last — finalized days read straight from
+  // email_hygiene_daily, today served live via the same non-blocking cache-or-trigger
+  // pattern as getWeeklyTrend below (never awaits a cold Graph fetch inside the request).
+  async getDailyTrend(): Promise<{
+    days: Array<{ dayStart: string; dayEnd: string; label: string; isCurrent: boolean; hasData: boolean; metrics: UserEmailHygiene[]; teamHygiene: TeamHygieneRow[] }>;
+    isConfigured: boolean;
+  }> {
+    if (!isGraphConfigured()) return { days: [], isConfigured: false };
+
+    const dayOffsets = Array.from({ length: 14 }, (_, i) => 13 - i); // oldest -> newest, today last
+    const dayStartDates = dayOffsets.map((daysAgo) => istDateStr(getIstDayBounds(daysAgo).dayStart));
+    const pastDayDates = dayStartDates.slice(0, -1);
+
+    const finalizedRows = pastDayDates.length
+      ? (await query(
+          `SELECT day_start, day_end, metrics, team_hygiene FROM email_hygiene_daily WHERE day_start = ANY($1)`,
+          [pastDayDates]
+        )).rows
+      : [];
+    const byDayStart = new Map(finalizedRows.map((r: any) => [istDateStr(new Date(r.day_start)), r]));
+
+    const days = dayOffsets.map((daysAgo, idx) => {
+      const dayStartDate = dayStartDates[idx];
+      const isCurrent = daysAgo === 0;
+      const label = istDayLabel(daysAgo);
+
+      if (!isCurrent) {
+        const r: any = byDayStart.get(dayStartDate);
+        if (r) {
+          return {
+            dayStart: istDateStr(new Date(r.day_start)),
+            dayEnd: istDateStr(new Date(r.day_end)),
+            label,
+            isCurrent: false,
+            hasData: true,
+            metrics: r.metrics as UserEmailHygiene[],
+            teamHygiene: (r.team_hygiene ?? []) as TeamHygieneRow[],
+          };
+        }
+      }
+
+      const { dayStart, dayEnd } = getIstDayBounds(daysAgo);
+      const cached = getCachedLiveDay(dayStartDate);
+      if (cached) {
+        return { dayStart: dayStartDate, dayEnd: istDateStr(dayEnd), label, isCurrent, hasData: true, metrics: cached.metrics, teamHygiene: cached.teamHygiene };
+      }
+      // Only auto-trigger a live fetch for the couple of days actually likely to still be
+      // missing due to cron timing (today, and a 1-2 day cushion around the daily 7:20 AM
+      // IST finalize) -- unlike getWeeklyTrend's ~4-5 week window, 14 slots here means an
+      // unbounded trigger-everything-missing pass would fire up to 14 full-roster Graph
+      // syncs at once and starve each other with 429s (reproduced live while testing this
+      // feature). Older gaps (e.g. the historical backfill the first time this feature
+      // runs) fill in naturally, one day per night, via the daily finalize cron instead.
+      if (daysAgo <= 2) {
+        triggerBackgroundLiveDayFetch(dayStartDate, dayStart, isCurrent ? undefined : dayEnd);
+      }
+      return { dayStart: dayStartDate, dayEnd: istDateStr(dayEnd), label, isCurrent, hasData: false, metrics: [], teamHygiene: [] };
+    });
+
+    return { days, isConfigured: true };
   },
 
   // Every finalized week whose Monday falls in the current IST calendar month, plus the

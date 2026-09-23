@@ -780,6 +780,17 @@ async function runMigrations() {
     team_hygiene JSONB,
     computed_at  TIMESTAMPTZ DEFAULT NOW()
   )`);
+  // Daily hygiene snapshots (2026-09-23 — per-individual Daily/Weekly/Monthly view). One
+  // immutable row per finalized IST calendar day, written by the daily finalize cron —
+  // same durability contract as email_hygiene_weekly above, just at day granularity.
+  await execute(`CREATE TABLE IF NOT EXISTS email_hygiene_daily (
+    id           UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    day_start    DATE NOT NULL UNIQUE,
+    day_end      DATE NOT NULL,
+    metrics      JSONB NOT NULL DEFAULT '[]',
+    team_hygiene JSONB,
+    computed_at  TIMESTAMPTZ DEFAULT NOW()
+  )`);
   // Monthly hygiene snapshots (2026-09 — "last month" manager dashboard view). One
   // immutable row per finalized IST calendar month, written by the daily finalize-check
   // (idempotent via UNIQUE month_start) the first time it runs after that month ends —
