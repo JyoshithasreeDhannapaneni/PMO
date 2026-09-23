@@ -39,6 +39,7 @@ import psEngagementsRoutes from './routes/psEngagementsRoutes';
 import actionItemRoutes from './routes/actionItemRoutes';
 import overageRoutes from './routes/overageRoutes';
 import platformReviewRoutes from './routes/platformReviewRoutes';
+import apiKeyRoutes from './routes/apiKeyRoutes';
 import feedbackRoutes from './routes/feedbackRoutes';
 import externalApiRoutes from './routes/externalApiRoutes';
 import { initializeCronJobs } from './jobs';
@@ -129,6 +130,7 @@ app.use('/api/ps-engagements', psEngagementsRoutes);
 app.use('/api/action-items', actionItemRoutes);
 app.use('/api/overage', overageRoutes);
 app.use('/api/platform-reviews', platformReviewRoutes);
+app.use('/api/api-key', apiKeyRoutes);
 app.use('/api/feedback', feedbackRoutes);
 app.use('/api/external', externalApiRoutes);
 app.use('/api/sla-breach-alerts', slaBreachAlertRoutes);
@@ -641,6 +643,19 @@ async function runMigrations() {
     await execute(`CREATE TABLE IF NOT EXISTS app_settings (
       id INTEGER PRIMARY KEY,
       settings JSONB NOT NULL DEFAULT '{}',
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )`);
+  } catch {}
+
+  // Per-scope external API keys, managed from Settings > API Configuration.
+  // Distinct from EXTERNAL_API_KEY (a single env-var key gating /api/external/projects) —
+  // this is an admin-generatable key per scope (all / migrationManager / mbr), each meant
+  // to gate its own future /api/external/<scope> export endpoint.
+  try {
+    await execute(`CREATE TABLE IF NOT EXISTS api_keys (
+      scope VARCHAR(50) PRIMARY KEY,
+      key VARCHAR(255) NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMP NOT NULL DEFAULT NOW()
     )`);
   } catch {}
