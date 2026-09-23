@@ -93,7 +93,10 @@ export function Sidebar() {
         ) : (
           <>
             <Link href="/" className="flex items-center gap-2.5 overflow-hidden">
-              <Image src="/cloudfuze-logo.png" alt="CloudFuze" width={52} height={52} priority className="object-contain flex-shrink-0" />
+              {/* Explicit w-[52px] h-[52px] because Tailwind's preflight (img{height:auto})
+                  otherwise wins over the width/height props, tripping Next.js's
+                  "width or height modified, but not the other" console warning. */}
+              <Image src="/cloudfuze-logo.png" alt="CloudFuze" width={52} height={52} priority className="object-contain flex-shrink-0 w-[52px] h-[52px]" />
               <span className="text-sm font-bold text-slate-800 truncate">{companyName}</span>
             </Link>
             <button
