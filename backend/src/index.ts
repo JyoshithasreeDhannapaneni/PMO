@@ -64,6 +64,14 @@ import { projectService } from './services/projectService';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+// 2026-09-23: default changed from Express's implicit 0.0.0.0 to 127.0.0.1 -- a production
+// audit found this process running directly on the VPS host (not inside the Docker network
+// docker-compose.yml assumes), bound to every interface, protected only by the host
+// firewall's default-deny with no rule of its own either way. Inside a container 0.0.0.0 is
+// required (other containers reach this one via the bridge network, not localhost), so
+// docker-compose.yml sets HOST=0.0.0.0 explicitly for that case. Bare-metal/local-dev now
+// binds to loopback only by default, so a firewall lapse can't expose the raw API directly.
+const HOST = process.env.HOST || '127.0.0.1';
 
 app.use(helmet());
 
@@ -908,12 +916,12 @@ async function runMigrations() {
 }
 
 // Start server
-const server = app.listen(PORT, async () => {
+const server = app.listen(Number(PORT), HOST, async () => {
   // Increase timeout for long-running requests (email hygiene Graph fetch can take 3-4 min)
   server.keepAliveTimeout = 10 * 60 * 1000;
   server.headersTimeout = 11 * 60 * 1000;
 
-  logger.info(`🚀 Server running on port ${PORT}`);
+  logger.info(`🚀 Server running on ${HOST}:${PORT}`);
   logger.info(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
 
   try {
