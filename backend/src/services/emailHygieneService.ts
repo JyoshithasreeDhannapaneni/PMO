@@ -132,30 +132,35 @@ interface TeamRosterEntry {
   segment: 'ENT' | 'SMB';
 }
 
+// 2026-09-23: rebuilt to exactly mirror frontend/src/lib/segments.ts's SEGMENT_HIERARCHY +
+// ENGINEER_ASSIGNMENTS (the Manager Dashboard's roster) -- this array and that file used to
+// be maintained completely independently and had drifted: Raghu, Sravan, and Abhishikth
+// were managers here with no equivalent in Manager Dashboard at all, and Pallavi/Sai Kumar
+// were members under them. Per product decision: Raghu, Sravan, Sai Kumar, and Pallavi are
+// dropped from email hygiene entirely (not reassigned); Abhishikth's former team (Neelima,
+// Amulya, Ranadeep, Vijendar, Habeebunnisa) now reports to Meghana Chowdada, matching the
+// same move made in segments.ts. Keep these two rosters in sync going forward -- there is
+// no shared source of truth between frontend and backend for this yet.
 const TEAM_ROSTER: TeamRosterEntry[] = [
   {
     teamId: 'team1', segment: 'SMB', managerEmail: 'Harika.Velidi@cloudfuze.com',
-    memberEmails: ['Harika.Velidi@cloudfuze.com', 'Siva.Kota@cloudfuze.com', 'Ravi.Hemanth@cloudfuze.com', 'Meena.Lakshmi@cloudfuze.com'],
+    memberEmails: ['Harika.Velidi@cloudfuze.com', 'Siva.Kota@cloudfuze.com', 'Ravi.Hemanth@cloudfuze.com', 'Meena.Lakshmi@cloudfuze.com', 'Ambika.Patil@cloudfuze.com'],
   },
   {
-    teamId: 'team2', segment: 'SMB', managerEmail: 'Raghu.Yellani@cloudfuze.com',
-    memberEmails: ['Raghu.Yellani@cloudfuze.com', 'sriram.ramakrishnan@cloudfuze.com', 'Vineetha.Yenti@cloudfuze.com', 'Ramana.Reddy@cloudfuze.com'],
+    teamId: 'team2', segment: 'SMB', managerEmail: 'sriram.ramakrishnan@cloudfuze.com',
+    memberEmails: ['sriram.ramakrishnan@cloudfuze.com', 'Dathu.Kaluvala@cloudfuze.com', 'Ramana.Reddy@cloudfuze.com', 'Vineetha.Yenti@cloudfuze.com', 'Sanjana.Nerella@cloudfuze.com'],
   },
   {
-    teamId: 'team3', segment: 'SMB', managerEmail: 'Sravan.Kesaram@cloudfuze.com',
-    memberEmails: ['Sravan.Kesaram@cloudfuze.com', 'swaroop@cloudfuze.com', 'Dathu.Kaluvala@cloudfuze.com', 'Saikumar.Kustapuram@cloudfuze.com'],
+    teamId: 'team3', segment: 'SMB', managerEmail: 'meghana.chowdada@cloudfuze.com',
+    memberEmails: ['meghana.chowdada@cloudfuze.com', 'neelima.krotta@cloudfuze.com', 'Amulya.Anapuram@cloudfuze.com', 'Ranadeep.Muddam@cloudfuze.com', 'Vijendar.Burgula@cloudfuze.com', 'Habeebunnisa.Begum@cloudfuze.com'],
   },
   {
     teamId: 'team4', segment: 'ENT', managerEmail: 'Lakshmi.Prasanna@cloudfuze.com',
     memberEmails: ['Lakshmi.Prasanna@cloudfuze.com', 'Chaitanya.Gupta@cloudfuze.com', 'Davidraj.Dumpala@cloudfuze.com', 'harshith.kaduluri@cloudfuze.com', 'LakshmaReddy@cloudfuze.com', 'Ganesh.Kondameedi@cloudfuze.com'],
   },
   {
-    teamId: 'team5', segment: 'SMB', managerEmail: 'Abhishikth.Yenugula@cloudfuze.com',
-    memberEmails: ['Abhishikth.Yenugula@cloudfuze.com', 'neelima.krotta@cloudfuze.com', 'Amulya.Anapuram@cloudfuze.com', 'Ranadeep.Muddam@cloudfuze.com', 'Vijendar.Burgula@cloudfuze.com', 'Habeebunnisa.Begum@cloudfuze.com'],
-  },
-  {
-    teamId: 'team6', segment: 'ENT', managerEmail: 'Pranavi@cloudfuze.com',
-    memberEmails: ['Pranavi@cloudfuze.com', 'chandra.mouli@cloudfuze.com', 'Arun@cloudfuze.com', 'Manoj.Bathula@cloudfuze.com', 'Pallavi.Kosuvaripalli@cloudfuze.com'],
+    teamId: 'team5', segment: 'ENT', managerEmail: 'Pranavi@cloudfuze.com',
+    memberEmails: ['Pranavi@cloudfuze.com', 'chandra.mouli@cloudfuze.com', 'Arun@cloudfuze.com', 'Manoj.Bathula@cloudfuze.com', 'Vainateya.Rasala@cloudfuze.com', 'Tanmai.Arangi@cloudfuze.com', 'swaroop@cloudfuze.com'],
   },
 ];
 

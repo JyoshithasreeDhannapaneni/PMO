@@ -22,8 +22,14 @@ export const MANAGER_QUERY_NAMES: Record<string, string> = {
 // Hardcoded engineer assignments. Shared engineers appear under both managers.
 // Leads (Abhishek / Ajay Singh) manage sub-managers only — no direct engineer list.
 export const ENGINEER_ASSIGNMENTS: Record<string, string[]> = {
-  'Ajay Singh':       ['Amulya', 'Habeebunnisa', 'Vijendar', 'Ranadeep', 'Nithish', 'Neelima'],
-  'Pranavi':          ['Arun', 'Manoj', 'Pallavi', 'Vainateya Rasala', 'Tanmai Arangi', 'Chandra Mouli', 'Swaroop'],
+  // 2026-09-23: Amulya/Habeebunnisa/Vijendar/Ranadeep/Neelima moved here from Ajay Singh
+  // (they previously reported through Abhishikth, a manager who no longer has a team here
+  // at all) -- product decision, not a data-quality fix. Nithish stays under Ajay Singh
+  // directly, unaffected by that move.
+  'Ajay Singh':       ['Nithish'],
+  'Meghana Chowdada': ['Amulya', 'Habeebunnisa', 'Vijendar', 'Ranadeep', 'Neelima'],
+  // Pallavi removed 2026-09-23 (left the team) -- product decision.
+  'Pranavi':          ['Arun', 'Manoj', 'Vainateya Rasala', 'Tanmai Arangi', 'Chandra Mouli', 'Swaroop'],
   // Spellings here must match LMS_SCORES/AUDIO_PERCENTAGES/ticket-export assignee
   // names exactly (or at least share a full first word) — the fuzzy matcher those
   // helpers use can't bridge a mid-word letter difference like "Ranadep" vs
@@ -34,7 +40,6 @@ export const ENGINEER_ASSIGNMENTS: Record<string, string[]> = {
   // Ranadeep, Vineeta -> Vineetha, Davidraj -> David — all were silently missing
   // their LMS/Audio %/ticket-based stats, not just one metric.
   'Lakshmi Prasanna': ['Chaitanya Gupta', 'Harshith', 'Lakshma Reddy', 'Ganesh Kondameedi', 'David'],
-  'Meghana Chowdada': [],
   'Harika':           ['Ravi Hemanth', 'Meena', 'Siva Kotta', 'Ambika'],
   'Sriram':           ['Dathu', 'Ramana', 'Vineetha', 'Sanjana'],
 };
