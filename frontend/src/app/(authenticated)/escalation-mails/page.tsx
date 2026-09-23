@@ -19,6 +19,7 @@ import {
 } from '@/hooks/useProjects';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
+import { Select } from '@/components/ui/Select';
 import { useToast } from '@/context/ToastContext';
 import { useAuth } from '@/context/AuthContext';
 import { cn } from '@/lib/utils';
@@ -419,20 +420,29 @@ export default function EscalationMailsPage() {
       {/* Filter bar */}
       <Card padding="sm">
         <div className="flex flex-col lg:flex-row lg:items-center gap-3">
-          <select value={managerFilter} onChange={(e) => { setManagerFilter(e.target.value); setPage(1); }} className={selectCls}>
-            <option value="">All Managers</option>
-            {managerOptions.map((m) => <option key={m} value={m}>{m}</option>)}
-          </select>
-          <select value={projectFilter} onChange={(e) => { setProjectFilter(e.target.value); setPage(1); }} className={selectCls}>
-            <option value="">All Projects</option>
-            {projectOptions.map((p) => <option key={p} value={p}>{p}</option>)}
-          </select>
+          <Select
+            value={managerFilter}
+            onChange={(e) => { setManagerFilter(e.target.value); setPage(1); }}
+            className={selectCls}
+            options={[{ value: '', label: 'All Managers' }, ...managerOptions.map((m) => ({ value: m, label: m }))]}
+          />
+          <Select
+            value={projectFilter}
+            onChange={(e) => { setProjectFilter(e.target.value); setPage(1); }}
+            className={selectCls}
+            options={[{ value: '', label: 'All Projects' }, ...projectOptions.map((p) => ({ value: p, label: p }))]}
+          />
           {boardTab === 'active' && (
-            <select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }} className={selectCls}>
-              <option value="">All Status</option>
-              <option value="OPEN">Open</option>
-              <option value="IN_PROGRESS">In Progress</option>
-            </select>
+            <Select
+              value={statusFilter}
+              onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
+              className={selectCls}
+              options={[
+                { value: '', label: 'All Status' },
+                { value: 'OPEN', label: 'Open' },
+                { value: 'IN_PROGRESS', label: 'In Progress' },
+              ]}
+            />
           )}
           <div className="relative flex-1 min-w-[180px]">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -1016,7 +1026,11 @@ function splitRaisedBy(raw: string): { name: string; email: string } {
   return { name: value, email: '' };
 }
 
-const selectCls = 'rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-400 lg:w-44';
+// Was a bespoke native-<select> className that looked visually inconsistent with the
+// styled Select component every other filtered list page uses (All Projects, Account
+// Manager View, Reviews, ...). Now just the width constraint on top of Select's own
+// default styling, so this page's filters match everyone else's.
+const selectCls = 'lg:w-44';
 const fieldCls = 'w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400';
 
 function KpiCard({ icon, tint, label, value }: { icon: React.ReactNode; tint: string; label: string; value: number }) {
