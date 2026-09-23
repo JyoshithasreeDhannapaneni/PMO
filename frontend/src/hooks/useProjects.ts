@@ -921,6 +921,16 @@ export function useEmailHygieneWeeklyTrend(enabled = true) {
   });
 }
 
+export function useEmailHygieneDailyTrend(enabled = true) {
+  return useQuery({
+    queryKey: ['email-hygiene-daily-trend'],
+    queryFn: () => emailHygieneApi.getDailyTrend(),
+    enabled,
+    staleTime: 15 * 60 * 1000,
+    retry: 0,
+  });
+}
+
 export function useSlaBreachAlerts(
   page: number, limit: number, search: string, responsibleEmail?: string,
   enabled = true, startDate?: string, endDate?: string

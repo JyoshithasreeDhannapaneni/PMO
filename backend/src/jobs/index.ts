@@ -188,6 +188,22 @@ export function initializeCronJobs(): void {
     }
   }, { timezone: 'Asia/Kolkata' });
 
+  // Email hygiene daily finalize — every day at 7:20 AM IST (after the weekly/monthly
+  // finalize checks above), locks in a permanent snapshot of the IST calendar day that just
+  // ended, for the per-individual Daily view (2026-09-23). Idempotent via UNIQUE(day_start)
+  // — see finalizeDay() on emailHygieneService for the exact contract, mirrors finalizeWeek.
+  cron.schedule('20 7 * * *', async () => {
+    try {
+      if (!emailHygieneService.isConfigured()) return;
+      const result = await emailHygieneService.finalizeDay(1);
+      if (result.finalized) {
+        logger.info(`[EmailHygiene] Daily finalize: finalized day of ${result.dayStartDate}`);
+      }
+    } catch (error) {
+      logger.error('[EmailHygiene] Daily finalize failed:', error);
+    }
+  }, { timezone: 'Asia/Kolkata' });
+
   logger.info('Cron jobs scheduled:');
   logger.info('  - Delay check: Daily at 6:00 AM');
   logger.info('  - Server alerts: Daily at 8:00 AM');
@@ -200,4 +216,5 @@ export function initializeCronJobs(): void {
   logger.info('  - Global logout (clear all sessions): Daily at 6:00 AM IST');
   logger.info('  - Weekly hygiene finalize (PMO/Email/Call): Every Monday at 7:00 AM IST');
   logger.info('  - Email hygiene monthly finalize-check: Daily at 7:15 AM IST');
+  logger.info('  - Email hygiene daily finalize: Daily at 7:20 AM IST');
 }

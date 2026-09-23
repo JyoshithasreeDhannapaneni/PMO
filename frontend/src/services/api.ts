@@ -794,6 +794,10 @@ export const emailHygieneApi = {
     const { data } = await api.get('/email-hygiene/weekly-trend');
     return data;
   },
+  getDailyTrend: async () => {
+    const { data } = await api.get('/email-hygiene/daily-trend');
+    return data;
+  },
   getLastMonth: async () => {
     const { data } = await api.get('/email-hygiene/last-month');
     return data;

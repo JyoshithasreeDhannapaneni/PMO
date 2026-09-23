@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
-import { useManagerGoalsWithStats, useEscalatedProjects, useJiraExcelStatus, useEngineersByManager, useJiraEngineers, useEmailHygiene, useEmailHygieneLastMonth, useTriggerEmailHygieneMonthFinalize, useActionItems, useCreateActionItem, useUpdateActionItem, useDeleteActionItem, useManagerDashboardLeaderboard } from '@/hooks/useProjects';
+import { useManagerGoalsWithStats, useEscalatedProjects, useJiraExcelStatus, useEngineersByManager, useJiraEngineers, useEmailHygiene, useEmailHygieneLastMonth, useEmailHygieneWeeklyTrend, useEmailHygieneDailyTrend, useTriggerEmailHygieneMonthFinalize, useActionItems, useCreateActionItem, useUpdateActionItem, useDeleteActionItem, useManagerDashboardLeaderboard } from '@/hooks/useProjects';
 import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import {
@@ -1050,7 +1050,34 @@ function EmailHygieneLastMonthCard() {
   const finalized: boolean = result?.finalized ?? false;
   const monthLabel: string = result?.monthLabel ?? '';
   const isConfigured: boolean = result?.isConfigured ?? true;
-  const metrics: any[] = result?.metrics ?? [];
+  const monthMetrics: any[] = result?.metrics ?? [];
+
+  // Per-individual granularity picker (2026-09-23) — Monthly (default, unchanged behavior)
+  // vs. Weekly (this month's Mon-Sun weeks) vs. Daily (last 14 IST calendar days). Only
+  // fetched once the card is open — no reason to run these queries for a collapsed card.
+  const [viewMode, setViewMode] = useState<'monthly' | 'weekly' | 'daily'>('monthly');
+  const { data: weeklyTrendData } = useEmailHygieneWeeklyTrend(open && viewMode === 'weekly');
+  const weeklyTrend: any[] = weeklyTrendData?.data?.weeks ?? [];
+  const { data: dailyTrendData } = useEmailHygieneDailyTrend(open && viewMode === 'daily');
+  const dailyTrend: any[] = dailyTrendData?.data?.days ?? [];
+
+  const [selectedWeek, setSelectedWeek] = useState<string | null>(null);
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const activeWeek = weeklyTrend.find((w: any) => w.weekStart === selectedWeek) ?? weeklyTrend[weeklyTrend.length - 1];
+  const activeDay = dailyTrend.find((d: any) => d.dayStart === selectedDay) ?? dailyTrend[dailyTrend.length - 1];
+
+  const metrics: any[] =
+    viewMode === 'weekly' ? (activeWeek?.metrics ?? []) :
+    viewMode === 'daily' ? (activeDay?.metrics ?? []) :
+    monthMetrics;
+  const periodHasData: boolean =
+    viewMode === 'weekly' ? !!activeWeek?.hasData :
+    viewMode === 'daily' ? !!activeDay?.hasData :
+    finalized;
+  const periodLabel: string =
+    viewMode === 'weekly' ? (activeWeek ? `Week of ${activeWeek.weekStart}${activeWeek.isCurrent ? ' (in progress)' : ''}` : 'Weekly') :
+    viewMode === 'daily' ? (activeDay ? `${activeDay.label}${activeDay.isCurrent ? ' (today, in progress)' : ''}` : 'Daily') :
+    (monthLabel || 'Last Month');
 
   // Same manager/engineer roster as the ENT/SMB tabs (SEGMENT_HIERARCHY +
   // ENGINEER_ASSIGNMENTS from lib/segments) instead of the backend's separate
@@ -1145,14 +1172,67 @@ function EmailHygieneLastMonthCard() {
 
       {open && (
         <div className="border-t border-gray-100 p-4 bg-gray-50/50 space-y-3">
-          {!finalized ? (
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs font-semibold text-gray-500">View:</span>
+            {(['monthly', 'weekly', 'daily'] as const).map((m) => (
+              <button
+                key={m}
+                onClick={() => setViewMode(m)}
+                className={`text-xs px-2.5 py-1 rounded-full font-medium capitalize transition ${
+                  viewMode === m ? 'bg-primary-600 text-white' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-100'
+                }`}
+              >
+                {m}
+              </button>
+            ))}
+            {viewMode === 'weekly' && weeklyTrend.length > 0 && (
+              <div className="flex items-center gap-1 flex-wrap ml-2">
+                {weeklyTrend.map((w: any) => (
+                  <button
+                    key={w.weekStart}
+                    onClick={() => setSelectedWeek(w.weekStart)}
+                    title={w.hasData ? undefined : 'No data yet — computing in the background'}
+                    className={`text-[11px] px-2 py-0.5 rounded-full font-medium transition ${
+                      (selectedWeek ?? weeklyTrend[weeklyTrend.length - 1]?.weekStart) === w.weekStart
+                        ? 'bg-indigo-600 text-white'
+                        : w.hasData ? 'bg-gray-100 text-gray-600 hover:bg-gray-200' : 'bg-gray-50 text-gray-300 cursor-wait'
+                    }`}
+                  >
+                    {w.weekStart}{w.isCurrent ? ' (current)' : ''}
+                  </button>
+                ))}
+              </div>
+            )}
+            {viewMode === 'daily' && dailyTrend.length > 0 && (
+              <div className="flex items-center gap-1 flex-wrap ml-2">
+                {dailyTrend.map((d: any) => (
+                  <button
+                    key={d.dayStart}
+                    onClick={() => setSelectedDay(d.dayStart)}
+                    title={d.hasData ? undefined : (d.isCurrent ? 'No data yet — computing in the background' : 'No data yet — fills in overnight, or check back for today')}
+                    className={`text-[11px] px-2 py-0.5 rounded-full font-medium transition ${
+                      (selectedDay ?? dailyTrend[dailyTrend.length - 1]?.dayStart) === d.dayStart
+                        ? 'bg-indigo-600 text-white'
+                        : d.hasData ? 'bg-gray-100 text-gray-600 hover:bg-gray-200' : 'bg-gray-50 text-gray-300 cursor-wait'
+                    }`}
+                  >
+                    {d.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {!periodHasData ? (
             <div className="flex items-center justify-between gap-3">
               <p className="text-xs text-gray-500">
-                {polling || finalizeMutation.isPending
+                {viewMode !== 'monthly'
+                  ? `${periodLabel} hasn't been computed yet — it's running in the background, check back shortly.`
+                  : polling || finalizeMutation.isPending
                   ? 'Computing last month’s hygiene scores… this can take a few minutes.'
                   : `${monthLabel || 'Last month'}’s hygiene scores haven’t been computed yet.`}
               </p>
-              {user?.role === 'ADMIN' && !polling && !finalizeMutation.isPending && (
+              {viewMode === 'monthly' && user?.role === 'ADMIN' && !polling && !finalizeMutation.isPending && (
                 <button
                   onClick={handleComputeNow}
                   className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-primary-300 text-primary-700 bg-white hover:bg-primary-50 whitespace-nowrap"

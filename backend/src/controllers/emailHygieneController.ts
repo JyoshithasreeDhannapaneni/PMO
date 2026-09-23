@@ -190,6 +190,11 @@ export const emailHygieneController = {
     res.json({ success: true, data });
   }),
 
+  getDailyTrend: asyncHandler(async (_req: Request, res: Response): Promise<void> => {
+    const data = await emailHygieneService.getDailyTrend();
+    res.json({ success: true, data });
+  }),
+
   getLastMonth: asyncHandler(async (_req: Request, res: Response): Promise<void> => {
     const data = await emailHygieneService.getLastMonthMetrics();
     res.json({ success: true, data });

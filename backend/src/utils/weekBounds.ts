@@ -27,6 +27,31 @@ export function istDateStr(d: Date): string {
   return new Date(d.getTime() + IST_OFFSET_MS).toISOString().slice(0, 10);
 }
 
+export interface DayBounds {
+  dayStart: Date; // 00:00:00.000 IST, expressed as the equivalent UTC instant
+  dayEnd: Date;   // 23:59:59.999 IST, expressed as the equivalent UTC instant
+}
+
+// daysAgo=0 -> today (IST, still in progress unless queried right at midnight),
+// daysAgo=1 -> the most recently completed IST calendar day. Same shape as
+// getIstWeekBounds/getIstMonthBounds above, just for a single day.
+export function getIstDayBounds(daysAgo = 0): DayBounds {
+  const nowIst = new Date(Date.now() + IST_OFFSET_MS);
+  const istMidnightToday = Date.UTC(nowIst.getUTCFullYear(), nowIst.getUTCMonth(), nowIst.getUTCDate());
+  const istMidnightTarget = istMidnightToday - daysAgo * 86400000;
+  return {
+    dayStart: new Date(istMidnightTarget - IST_OFFSET_MS),
+    dayEnd: new Date(istMidnightTarget + 86400000 - 1 - IST_OFFSET_MS),
+  };
+}
+
+// "Mon, Sep 22" style label for a daysAgo offset — for display, not storage.
+export function istDayLabel(daysAgo = 0): string {
+  const { dayStart } = getIstDayBounds(daysAgo);
+  const nowIst = new Date(dayStart.getTime() + IST_OFFSET_MS);
+  return nowIst.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
+}
+
 // IST calendar-month boundaries. monthsAgo=0 -> the current month (in progress), 1 -> the
 // most recently completed calendar month, etc. monthEnd is EXCLUSIVE (start of the
 // following month) so callers can use it directly as an "until" bound.

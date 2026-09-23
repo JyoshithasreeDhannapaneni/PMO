@@ -10,6 +10,7 @@ router.get('/export/last-month', requireAuth, emailHygieneController.exportLastM
 router.post('/sync', requireAuth, emailHygieneController.triggerSync);
 router.get('/sync-status', requireAuth, emailHygieneController.getSyncStatus);
 router.get('/weekly-trend', requireAuth, emailHygieneController.getWeeklyTrend);
+router.get('/daily-trend', requireAuth, emailHygieneController.getDailyTrend);
 router.get('/last-month', requireAuth, emailHygieneController.getLastMonth);
 router.post('/finalize-month', requireRole('ADMIN'), emailHygieneController.triggerMonthFinalize);
 router.get('/finalize-month-status', requireAuth, emailHygieneController.getMonthFinalizeStatus);
