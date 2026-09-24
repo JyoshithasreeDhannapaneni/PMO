@@ -195,6 +195,16 @@ export const emailHygieneController = {
     res.json({ success: true, data });
   }),
 
+  getRangeMetrics: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const { start, end } = req.query;
+    if (typeof start !== 'string' || typeof end !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end)) {
+      res.status(400).json({ success: false, error: 'start and end query params are required, each as YYYY-MM-DD' });
+      return;
+    }
+    const data = await emailHygieneService.getRangeMetrics(start, end);
+    res.json({ success: true, data });
+  }),
+
   getLastMonth: asyncHandler(async (_req: Request, res: Response): Promise<void> => {
     const data = await emailHygieneService.getLastMonthMetrics();
     res.json({ success: true, data });

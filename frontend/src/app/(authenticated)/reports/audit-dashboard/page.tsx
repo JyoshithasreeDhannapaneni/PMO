@@ -3,7 +3,7 @@
 import { useState, useRef, useMemo, Fragment } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { useProjects, useEmailHygiene, useCallHygiene, useCallTranscriptRating, useRateCallTranscript, useCallHygieneBestWorst, useCallHygieneOrgBestWorst, useCallHygieneWeeklyTrend, useEmailHygieneWeeklyTrend, useEmailHygieneDailyTrend, usePmoHygieneWeeklyTrend } from '@/hooks/useProjects';
+import { useProjects, useEmailHygiene, useCallHygiene, useCallTranscriptRating, useRateCallTranscript, useCallHygieneBestWorst, useCallHygieneOrgBestWorst, useCallHygieneWeeklyTrend, useEmailHygieneWeeklyTrend, useEmailHygieneDailyTrend, useEmailHygieneRange, usePmoHygieneWeeklyTrend } from '@/hooks/useProjects';
 import { useSettings } from '@/context/SettingsContext';
 import { useAuth } from '@/context/AuthContext';
 import { Card } from '@/components/ui/Card';
@@ -951,11 +951,19 @@ export default function AuditDashboardPage() {
   const emailWeeklyTrend: any[] = emailWeeklyTrendData?.data?.weeks ?? [];
   const { data: emailDailyTrendData } = useEmailHygieneDailyTrend(hygieneTab === 'email');
   const emailDailyTrend: any[] = emailDailyTrendData?.data?.days ?? [];
-  // 'rolling' = the existing rolling-30-day table (default, unchanged behavior). Any other
-  // value is a dayStart date string selected from emailDailyTrend below.
+  // 'rolling' = the existing rolling-30-day table (default, unchanged behavior). 'custom' =
+  // the calendar range picker below. Any other value is a dayStart date string selected
+  // from emailDailyTrend below.
   const [emailDayView, setEmailDayView] = useState<string>('rolling');
-  const selectedEmailDay = emailDayView !== 'rolling' ? emailDailyTrend.find((d: any) => d.dayStart === emailDayView) : null;
-  const displayedEmailMetrics: any[] = selectedEmailDay ? selectedEmailDay.metrics : emailMetrics;
+  const selectedEmailDay = emailDayView !== 'rolling' && emailDayView !== 'custom' ? emailDailyTrend.find((d: any) => d.dayStart === emailDayView) : null;
+  const [emailRangeStart, setEmailRangeStart] = useState(todayStr);
+  const [emailRangeEnd, setEmailRangeEnd] = useState(todayStr);
+  const { data: emailRangeData, isFetching: isEmailRangeFetching } = useEmailHygieneRange(emailRangeStart, emailRangeEnd, hygieneTab === 'email' && emailDayView === 'custom');
+  const emailRangeResult = emailRangeData?.data;
+  const displayedEmailMetrics: any[] =
+    emailDayView === 'custom' ? (emailRangeResult?.metrics ?? []) :
+    selectedEmailDay ? selectedEmailDay.metrics :
+    emailMetrics;
   const { data: callWeeklyTrendData } = useCallHygieneWeeklyTrend(hygieneTab === 'call' && canSeeCallHygiene);
   const callWeeklyTrend: any[] = callWeeklyTrendData?.data?.weeks ?? [];
 
@@ -2458,7 +2466,36 @@ export default function AuditDashboardPage() {
                       {d.label}
                     </button>
                   ))}
+                  <button
+                    onClick={() => setEmailDayView('custom')}
+                    className={`text-xs px-2.5 py-1 rounded-full font-medium transition ${
+                      emailDayView === 'custom' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    Custom range…
+                  </button>
                 </div>
+                {emailDayView === 'custom' && (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="date"
+                      value={emailRangeStart}
+                      max={emailRangeEnd}
+                      onChange={(e) => setEmailRangeStart(e.target.value)}
+                      className="text-xs border border-gray-300 rounded-lg px-2 py-1 bg-white text-gray-900"
+                    />
+                    <span className="text-xs text-gray-400">→</span>
+                    <input
+                      type="date"
+                      value={emailRangeEnd}
+                      min={emailRangeStart}
+                      max={todayStr()}
+                      onChange={(e) => setEmailRangeEnd(e.target.value)}
+                      className="text-xs border border-gray-300 rounded-lg px-2 py-1 bg-white text-gray-900"
+                    />
+                    {isEmailRangeFetching && <Loader2 size={12} className="animate-spin text-gray-400" />}
+                  </div>
+                )}
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -2477,7 +2514,9 @@ export default function AuditDashboardPage() {
                   <tbody>
                     {displayedEmailMetrics.length === 0 && emailDayView !== 'rolling' && (
                       <tr><td colSpan={8} className="py-6 px-3 text-center text-xs text-gray-400">
-                        No data yet for this day — it's still being computed in the background. Try again in a minute.
+                        {emailDayView === 'custom'
+                          ? "No data yet for this range — it's still being computed in the background. Try again in a minute."
+                          : "No data yet for this day — it's still being computed in the background. Try again in a minute."}
                       </td></tr>
                     )}
                     {displayedEmailMetrics.map((m: any, i: number) => {

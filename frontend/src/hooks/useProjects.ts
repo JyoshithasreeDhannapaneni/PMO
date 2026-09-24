@@ -931,6 +931,26 @@ export function useEmailHygieneDailyTrend(enabled = true) {
   });
 }
 
+// Backs the calendar/range picker — an arbitrary [start, end] the user picked, not one of
+// the fixed last-14-days pills. refetchInterval only while the range hasn't resolved yet
+// (hasData: false means the background fetch is still running server-side) -- once it
+// lands, stop polling; a range that's still empty after ~2 minutes just stays as-is rather
+// than polling forever.
+export function useEmailHygieneRange(start: string | null, end: string | null, enabled = true) {
+  return useQuery({
+    queryKey: ['email-hygiene-range', start, end],
+    queryFn: () => emailHygieneApi.getRangeMetrics(start as string, end as string),
+    enabled: enabled && !!start && !!end,
+    staleTime: 20 * 60 * 1000,
+    retry: 0,
+    refetchInterval: (query) => {
+      const data: any = query.state.data;
+      if (data?.data?.hasData === false) return 10_000;
+      return false;
+    },
+  });
+}
+
 export function useSlaBreachAlerts(
   page: number, limit: number, search: string, responsibleEmail?: string,
   enabled = true, startDate?: string, endDate?: string

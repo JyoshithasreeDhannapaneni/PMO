@@ -1152,6 +1152,44 @@ function triggerBackgroundLiveDayFetch(dayStartDate: string, since: Date, until?
   })();
 }
 
+// Same non-blocking cache-or-trigger pattern as _liveDayCache above, but for an
+// arbitrary user-picked [start, end] calendar-date range (the Daily view's calendar/range
+// picker) -- keyed by "start_end" since the range itself, not a single anchor date,
+// identifies the request. A bigger TTL than a single day's: an arbitrary multi-week range
+// takes proportionally longer to compute, so it's worth holding onto longer once paid for.
+const CURRENT_RANGE_TTL_MS = 20 * 60 * 1000;
+const _liveRangeCache = new Map<string, { computedAt: number; metrics: UserEmailHygiene[]; teamHygiene: TeamHygieneRow[] }>();
+const _liveRangeFetchInFlight = new Set<string>();
+
+function getCachedLiveRange(key: string): { metrics: UserEmailHygiene[]; teamHygiene: TeamHygieneRow[] } | null {
+  const cached = _liveRangeCache.get(key);
+  if (cached && Date.now() - cached.computedAt < CURRENT_RANGE_TTL_MS) return cached;
+  return null;
+}
+
+// Mirrors triggerBackgroundLiveDayFetch above — never awaited by the request handler, so
+// an arbitrarily wide (and therefore potentially slow) custom range never risks the nginx
+// 300s proxy timeout / a browser 504, no matter how far apart start/end are.
+function triggerBackgroundLiveRangeFetch(key: string, since: Date, until: Date): void {
+  if (_liveRangeFetchInFlight.has(key)) return;
+  _liveRangeFetchInFlight.add(key);
+  (async () => {
+    try {
+      const client = graphClient(await getAccessToken());
+      const { metrics, teamHygiene } = await computeMetricsForWindow(client, since.toISOString(), until.toISOString());
+      _liveRangeCache.set(key, { computedAt: Date.now(), metrics, teamHygiene });
+      if (_liveRangeCache.size > 10) {
+        const oldestKey = [..._liveRangeCache.entries()].sort((a, b) => a[1].computedAt - b[1].computedAt)[0][0];
+        _liveRangeCache.delete(oldestKey);
+      }
+    } catch (err) {
+      logger.error(`[EmailHygiene] Background live-range fetch failed for ${key}:`, err);
+    } finally {
+      _liveRangeFetchInFlight.delete(key);
+    }
+  })();
+}
+
 // How far before a scoring window's `since` to still look for the customer message a
 // reply is actually answering (see buildTeamTimelines()'s customerLookbackMs param).
 // judgeAllExchanges() below already discards any pairing more than 5 days old as
@@ -1454,6 +1492,43 @@ export const emailHygieneService = {
     });
 
     return { days, isConfigured: true };
+  },
+
+  // Arbitrary user-picked [startDate, endDate] (both YYYY-MM-DD, inclusive, IST calendar
+  // days) — backs the calendar/range picker (2026-09-24): pick any single past date, or a
+  // range spanning several days/a week, not just one of the last-14-days quick-pick pills
+  // above. startDate === endDate is a single-day pick. A single day that's already
+  // finalized in email_hygiene_daily is served instantly from there; every other range
+  // (multi-day, or a single day not yet finalized) goes through the same non-blocking
+  // cache-or-trigger pattern as getDailyTrend -- never awaits a cold Graph fetch inside the
+  // request, so an arbitrarily wide range can't itself cause a proxy timeout.
+  async getRangeMetrics(startDate: string, endDate: string): Promise<{
+    startDate: string; endDate: string; hasData: boolean;
+    metrics: UserEmailHygiene[]; teamHygiene: TeamHygieneRow[]; isConfigured: boolean;
+  }> {
+    if (!isGraphConfigured()) return { startDate, endDate, hasData: false, metrics: [], teamHygiene: [], isConfigured: false };
+
+    const since = new Date(`${startDate}T00:00:00.000+05:30`);
+    const until = new Date(`${endDate}T23:59:59.999+05:30`);
+    if (isNaN(since.getTime()) || isNaN(until.getTime()) || since > until) {
+      return { startDate, endDate, hasData: false, metrics: [], teamHygiene: [], isConfigured: true };
+    }
+
+    if (startDate === endDate) {
+      const finalized = await query(`SELECT metrics, team_hygiene FROM email_hygiene_daily WHERE day_start = $1`, [startDate]);
+      if (finalized.rows.length > 0) {
+        const r: any = finalized.rows[0];
+        return { startDate, endDate, hasData: true, metrics: r.metrics as UserEmailHygiene[], teamHygiene: (r.team_hygiene ?? []) as TeamHygieneRow[], isConfigured: true };
+      }
+    }
+
+    const key = `${startDate}_${endDate}`;
+    const cached = getCachedLiveRange(key);
+    if (cached) {
+      return { startDate, endDate, hasData: true, metrics: cached.metrics, teamHygiene: cached.teamHygiene, isConfigured: true };
+    }
+    triggerBackgroundLiveRangeFetch(key, since, until);
+    return { startDate, endDate, hasData: false, metrics: [], teamHygiene: [], isConfigured: true };
   },
 
   // Every finalized week whose Monday falls in the current IST calendar month, plus the

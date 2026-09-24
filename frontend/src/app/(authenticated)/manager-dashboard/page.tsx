@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
-import { useManagerGoalsWithStats, useEscalatedProjects, useJiraExcelStatus, useEngineersByManager, useJiraEngineers, useEmailHygiene, useEmailHygieneLastMonth, useEmailHygieneWeeklyTrend, useEmailHygieneDailyTrend, useTriggerEmailHygieneMonthFinalize, useActionItems, useCreateActionItem, useUpdateActionItem, useDeleteActionItem, useManagerDashboardLeaderboard } from '@/hooks/useProjects';
+import { useManagerGoalsWithStats, useEscalatedProjects, useJiraExcelStatus, useEngineersByManager, useJiraEngineers, useEmailHygiene, useEmailHygieneLastMonth, useEmailHygieneWeeklyTrend, useEmailHygieneDailyTrend, useEmailHygieneRange, useTriggerEmailHygieneMonthFinalize, useActionItems, useCreateActionItem, useUpdateActionItem, useDeleteActionItem, useManagerDashboardLeaderboard } from '@/hooks/useProjects';
 import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import {
@@ -1055,7 +1055,7 @@ function EmailHygieneLastMonthCard() {
   // Per-individual granularity picker (2026-09-23) — Monthly (default, unchanged behavior)
   // vs. Weekly (this month's Mon-Sun weeks) vs. Daily (last 14 IST calendar days). Only
   // fetched once the card is open — no reason to run these queries for a collapsed card.
-  const [viewMode, setViewMode] = useState<'monthly' | 'weekly' | 'daily'>('monthly');
+  const [viewMode, setViewMode] = useState<'monthly' | 'weekly' | 'daily' | 'custom'>('monthly');
   const { data: weeklyTrendData } = useEmailHygieneWeeklyTrend(open && viewMode === 'weekly');
   const weeklyTrend: any[] = weeklyTrendData?.data?.weeks ?? [];
   const { data: dailyTrendData } = useEmailHygieneDailyTrend(open && viewMode === 'daily');
@@ -1066,17 +1066,28 @@ function EmailHygieneLastMonthCard() {
   const activeWeek = weeklyTrend.find((w: any) => w.weekStart === selectedWeek) ?? weeklyTrend[weeklyTrend.length - 1];
   const activeDay = dailyTrend.find((d: any) => d.dayStart === selectedDay) ?? dailyTrend[dailyTrend.length - 1];
 
+  // Custom range — pick any past date, or a range spanning several days/a week, via the
+  // two date inputs below. Defaults to "just today" until the user picks something else.
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const [rangeStart, setRangeStart] = useState(todayStr);
+  const [rangeEnd, setRangeEnd] = useState(todayStr);
+  const { data: rangeData, isFetching: isRangeFetching } = useEmailHygieneRange(rangeStart, rangeEnd, open && viewMode === 'custom');
+  const rangeResult = rangeData?.data;
+
   const metrics: any[] =
     viewMode === 'weekly' ? (activeWeek?.metrics ?? []) :
     viewMode === 'daily' ? (activeDay?.metrics ?? []) :
+    viewMode === 'custom' ? (rangeResult?.metrics ?? []) :
     monthMetrics;
   const periodHasData: boolean =
     viewMode === 'weekly' ? !!activeWeek?.hasData :
     viewMode === 'daily' ? !!activeDay?.hasData :
+    viewMode === 'custom' ? !!rangeResult?.hasData :
     finalized;
   const periodLabel: string =
     viewMode === 'weekly' ? (activeWeek ? `Week of ${activeWeek.weekStart}${activeWeek.isCurrent ? ' (in progress)' : ''}` : 'Weekly') :
     viewMode === 'daily' ? (activeDay ? `${activeDay.label}${activeDay.isCurrent ? ' (today, in progress)' : ''}` : 'Daily') :
+    viewMode === 'custom' ? (rangeStart === rangeEnd ? rangeStart : `${rangeStart} → ${rangeEnd}`) :
     (monthLabel || 'Last Month');
 
   // Same manager/engineer roster as the ENT/SMB tabs (SEGMENT_HIERARCHY +
@@ -1174,7 +1185,7 @@ function EmailHygieneLastMonthCard() {
         <div className="border-t border-gray-100 p-4 bg-gray-50/50 space-y-3">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs font-semibold text-gray-500">View:</span>
-            {(['monthly', 'weekly', 'daily'] as const).map((m) => (
+            {(['monthly', 'weekly', 'daily', 'custom'] as const).map((m) => (
               <button
                 key={m}
                 onClick={() => setViewMode(m)}
@@ -1219,6 +1230,27 @@ function EmailHygieneLastMonthCard() {
                     {d.label}
                   </button>
                 ))}
+              </div>
+            )}
+            {viewMode === 'custom' && (
+              <div className="flex items-center gap-2 ml-2">
+                <input
+                  type="date"
+                  value={rangeStart}
+                  max={rangeEnd}
+                  onChange={(e) => setRangeStart(e.target.value)}
+                  className="text-xs border border-gray-300 rounded-lg px-2 py-1 bg-white text-gray-900"
+                />
+                <span className="text-xs text-gray-400">→</span>
+                <input
+                  type="date"
+                  value={rangeEnd}
+                  min={rangeStart}
+                  max={todayStr}
+                  onChange={(e) => setRangeEnd(e.target.value)}
+                  className="text-xs border border-gray-300 rounded-lg px-2 py-1 bg-white text-gray-900"
+                />
+                {isRangeFetching && <Loader2 size={12} className="animate-spin text-gray-400" />}
               </div>
             )}
           </div>

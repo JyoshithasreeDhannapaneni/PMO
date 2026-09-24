@@ -798,6 +798,10 @@ export const emailHygieneApi = {
     const { data } = await api.get('/email-hygiene/daily-trend');
     return data;
   },
+  getRangeMetrics: async (start: string, end: string) => {
+    const { data } = await api.get('/email-hygiene/range', { params: { start, end } });
+    return data;
+  },
   getLastMonth: async () => {
     const { data } = await api.get('/email-hygiene/last-month');
     return data;
