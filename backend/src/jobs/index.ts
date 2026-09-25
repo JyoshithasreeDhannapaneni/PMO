@@ -221,6 +221,19 @@ export function initializeCronJobs(): void {
     }
   }, { timezone: 'Asia/Kolkata' });
 
+  // SharePoint "Migration Projects Tracker" list → History Archive — daily at 6:30 AM IST.
+  // Silently skipped until MS_GRAPH_* is configured; a missing Sites.Read.All consent
+  // surfaces as a FAILED row in sharepoint_sync_runs (visible on the archive page).
+  cron.schedule('30 6 * * *', async () => {
+    try {
+      const { sharepointSyncService } = require('../services/sharepointSyncService');
+      if (!sharepointSyncService.isConfigured()) return;
+      await sharepointSyncService.syncFromGraph('daily-sync');
+    } catch (error) {
+      logger.error('[SharePointSync] Daily sync failed:', error);
+    }
+  }, { timezone: 'Asia/Kolkata' });
+
   logger.info('Cron jobs scheduled:');
   logger.info('  - Delay check: Daily at 6:00 AM');
   logger.info('  - Server alerts: Daily at 8:00 AM');
@@ -235,4 +248,5 @@ export function initializeCronJobs(): void {
   logger.info('  - Email hygiene monthly finalize-check: Daily at 7:15 AM IST');
   logger.info('  - Email hygiene daily finalize: Daily at 7:20 AM IST');
   logger.info('  - Self-heal diagnosis pass: Every 30 minutes');
+  logger.info('  - SharePoint list → History Archive sync: Daily at 6:30 AM IST');
 }

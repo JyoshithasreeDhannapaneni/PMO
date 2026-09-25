@@ -152,7 +152,14 @@ const TEAM_ROSTER: TeamRosterEntry[] = [
   },
   {
     teamId: 'team3', segment: 'SMB', managerEmail: 'meghana.chowdada@cloudfuze.com',
-    memberEmails: ['meghana.chowdada@cloudfuze.com', 'neelima.krotta@cloudfuze.com', 'Amulya.Anapuram@cloudfuze.com', 'Ranadeep.Muddam@cloudfuze.com', 'Vijendar.Burgula@cloudfuze.com', 'Habeebunnisa.Begum@cloudfuze.com'],
+    memberEmails: ['meghana.chowdada@cloudfuze.com', 'neelima.krotta@cloudfuze.com'],
+  },
+  // 2026-09-24: Neelima promoted to SMB Project Manager for email hygiene only (product
+  // decision) -- Meghana's engineers moved to her; she also stays a member of team3.
+  // segments.ts (Manager Dashboard) was intentionally NOT changed with this.
+  {
+    teamId: 'team6', segment: 'SMB', managerEmail: 'neelima.krotta@cloudfuze.com',
+    memberEmails: ['neelima.krotta@cloudfuze.com', 'Amulya.Anapuram@cloudfuze.com', 'Ranadeep.Muddam@cloudfuze.com', 'Vijendar.Burgula@cloudfuze.com', 'Habeebunnisa.Begum@cloudfuze.com'],
   },
   {
     teamId: 'team4', segment: 'ENT', managerEmail: 'Lakshmi.Prasanna@cloudfuze.com',
@@ -200,8 +207,8 @@ export interface SegmentHead {
   name: string;
   segment: 'ENT' | 'SMB';
   // The segment head's score IS the average of their segment's team scores — not their
-  // own individual mailbox activity. Abhishek's score = mean(team4, team6); Ajay's =
-  // mean(team1, team2, team3, team5). This is a deliberate choice: they're scored on how
+  // own individual mailbox activity. Abhishek's score = mean(team4, team5); Ajay's =
+  // mean(team1, team2, team3, team6). This is a deliberate choice: they're scored on how
   // their teams perform, not on their own personal email volume.
   score: number | null;
   teamIds: string[];

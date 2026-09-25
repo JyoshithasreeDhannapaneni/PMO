@@ -62,7 +62,7 @@ function buildHygieneSheets(
     Basis: `${t.scoredMemberCount}/${t.memberCount} members scored`,
   }));
   // Segment head rows — their score IS the average of their segment's team scores
-  // (mean(team4, team6) for ENT; mean(team1,2,3,5) for SMB), not their own mailbox
+  // (mean(team4, team5) for ENT; mean(team1,2,3,6) for SMB), not their own mailbox
   // activity. Appended to the same sheet so the export is a complete rollup.
   const segmentRows = (['ENT', 'SMB'] as const).map(seg => {
     const head = segmentHeads[seg];
