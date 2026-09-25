@@ -3,7 +3,7 @@
 import { useState, useMemo, useCallback, useRef, Fragment } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
-import { useUpdateProject, useSharePointSyncStatus, useSharePointSync, useSharePointImport, useSharePointItems } from '@/hooks/useProjects';
+import { useUpdateProject, useSharePointSyncStatus, useSharePointSync, useSharePointImport, useSharePointItems, useSharePointAttachmentsImport } from '@/hooks/useProjects';
 import { archiveSharePointApi } from '@/services/api';
 import type { SharePointSyncReport } from '@/services/api';
 import { Card } from '@/components/ui/Card';
@@ -26,6 +26,12 @@ function authFetch(url: string, options?: RequestInit) {
     headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...options?.headers },
   }).then(r => r.json());
 }
+
+// SharePoint REST view of every list item's attachment files. The app's own credentials
+// can't read list attachments, but an admin's signed-in browser can; the saved page is
+// then uploaded via "Import SOW attachments".
+const SP_ATTACHMENTS_URL =
+  "https://cloudfuzecom.sharepoint.com/sites/MigrationPractice/_api/web/lists/getbytitle('Migration%20Projects%20Tracker')/items?$select=Id&$expand=AttachmentFiles&$top=5000";
 
 const STATUS_COLORS: Record<string, string> = {
   COMPLETED:     'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300',
@@ -234,10 +240,13 @@ export default function ArchivePage() {
   const spSync = useSharePointSync();
   const spImport = useSharePointImport();
   const spFileRef = useRef<HTMLInputElement>(null);
+  const spAttImport = useSharePointAttachmentsImport();
+  const spAttFileRef = useRef<HTMLInputElement>(null);
+  const [spAttMsg, setSpAttMsg] = useState<string | null>(null);
   const [spReport, setSpReport] = useState<SharePointSyncReport | null>(null);
   const [spError, setSpError] = useState<string | null>(null);
   const spStatus = spStatusData?.data;
-  const spBusy = spSync.isPending || spImport.isPending;
+  const spBusy = spSync.isPending || spImport.isPending || spAttImport.isPending;
   const SP_PER_PAGE = 50;
   const [spSearch, setSpSearch] = useState('');
   const [spPage, setSpPage] = useState(1);
@@ -254,8 +263,15 @@ export default function ArchivePage() {
       const res = await archiveSharePointApi.getItems({ search: spSearch || undefined, includeRemoved: spShowRemoved, page: 1, limit: 5000 });
       const { columns, items } = res.data;
       if (!items.length) { alert('No SharePoint rows to export.'); return; }
-      const header = [...columns, 'Removed From SharePoint'];
-      const rows = items.map((it) => [...columns.map((c) => it.values[c] ?? ''), it.removedAt ? format(new Date(it.removedAt), 'yyyy-MM-dd') : '']);
+      // ID keeps each row's SharePoint identity, so importing this file into another
+      // environment still matches SOW attachments and later live syncs update in place.
+      const withId = items.some((it) => it.sharepointId);
+      const header = [...(withId ? ['ID'] : []), ...columns, ...(spShowRemoved ? ['Removed From SharePoint'] : [])];
+      const rows = items.map((it) => [
+        ...(withId ? [it.sharepointId ?? ''] : []),
+        ...columns.map((c) => it.values[c] ?? ''),
+        ...(spShowRemoved ? [it.removedAt ? format(new Date(it.removedAt), 'yyyy-MM-dd') : ''] : []),
+      ]);
       const csv = [header, ...rows].map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
       const a = document.createElement('a');
       a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
@@ -292,6 +308,22 @@ export default function ArchivePage() {
     try {
       const res = await spImport.mutateAsync(file);
       setSpReport(res.data);
+      setTab('sharepoint'); setPage(1); setSpPage(1);
+    } catch (err) {
+      setSpError(spErrorMessage(err));
+    }
+  }
+
+  async function handleAttachmentsFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setSpError(null); setSpReport(null); setSpAttMsg(null);
+    try {
+      const res = await spAttImport.mutateAsync(file);
+      const r = res.data;
+      setSpAttMsg(`SOW attachments imported — ${r.files} file${r.files === 1 ? '' : 's'} linked on ${r.itemsWithFiles} row${r.itemsWithFiles === 1 ? '' : 's'}`
+        + (r.unmatchedItemIds.length ? ` (${r.unmatchedItemIds.length} SharePoint item${r.unmatchedItemIds.length === 1 ? '' : 's'} not synced yet — run Sync from SharePoint, then import again)` : ''));
       setTab('sharepoint'); setPage(1); setSpPage(1);
     } catch (err) {
       setSpError(spErrorMessage(err));
@@ -354,6 +386,16 @@ export default function ArchivePage() {
               >
                 {spImport.isPending ? <RefreshCw size={14} className="animate-spin" /> : <FileText size={14} />}
                 {spImport.isPending ? 'Importing…' : 'Import SharePoint Excel/CSV'}
+              </button>
+              <input ref={spAttFileRef} type="file" accept=".xml,.json,.txt,.htm,.html" className="hidden" onChange={handleAttachmentsFile} />
+              <button
+                onClick={() => spAttFileRef.current?.click()}
+                disabled={spBusy}
+                title="Upload the saved SharePoint attachments page (see steps on the SharePoint List tab)"
+                className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
+              >
+                {spAttImport.isPending ? <RefreshCw size={14} className="animate-spin" /> : <FileText size={14} />}
+                {spAttImport.isPending ? 'Importing…' : 'Import SOW attachments'}
               </button>
               <button
                 onClick={handleSharePointSync}
@@ -479,6 +521,32 @@ export default function ArchivePage() {
       </div>
 
       {/* SharePoint sync result / last run */}
+      {spAttMsg && !spError && (
+        <Card>
+          <p className="text-sm font-semibold text-green-700 dark:text-green-300 flex items-center gap-2">
+            <CheckCircle size={15} /> {spAttMsg}
+          </p>
+        </Card>
+      )}
+
+      {isAdmin && tab === 'sharepoint' && (
+        <Card>
+          <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">Add SOW attachment links (one click per file)</p>
+          <ol className="text-xs text-gray-600 dark:text-gray-400 list-decimal ml-4 space-y-0.5">
+            <li>
+              While signed in to SharePoint, open{' '}
+              <a href={SP_ATTACHMENTS_URL} target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline break-all">
+                this attachments list
+              </a>{' '}
+              (it lists every file attached to each row).
+            </li>
+            <li>Press <strong>Ctrl+S</strong> and save the page (as .xml).</li>
+            <li>Click <strong>Import SOW attachments</strong> above and choose that file.</li>
+          </ol>
+          <p className="text-[11px] text-gray-400 mt-1">Repeat after new SOWs are attached. Syncing the list never removes these links.</p>
+        </Card>
+      )}
+
       {(spError || spReport || (tab === 'sharepoint' && spStatus)) && (
         <Card>
           {spError ? (
@@ -560,7 +628,21 @@ export default function ArchivePage() {
                       <tr key={it.id} className={it.removedAt ? 'bg-gray-50 dark:bg-gray-800/40 text-gray-400' : 'hover:bg-gray-50 dark:hover:bg-gray-700/30'}>
                         {spItems.columns.map((c, ci) => (
                           <td key={c} className={`py-2.5 px-3 text-xs whitespace-nowrap ${it.removedAt ? '' : 'text-gray-700 dark:text-gray-300'}`}>
-                            {it.values[c] ?? ''}
+                            {c === 'Attachments (SOW)' && (it.attachments?.length ?? 0) > 0 ? (
+                              <span className="flex flex-wrap gap-x-3 gap-y-1">
+                                {(it.attachments ?? []).filter((a) => /^https:\/\//i.test(a.url)).map((a) => (
+                                  <a key={a.url} href={a.url} target="_blank" rel="noopener noreferrer" title={a.url}
+                                    className="text-primary-600 dark:text-primary-400 hover:underline">
+                                    {a.name}
+                                  </a>
+                                ))}
+                              </span>
+                            ) : /^https:\/\//i.test(it.values[c] ?? '') ? (
+                              <a href={it.values[c]} target="_blank" rel="noopener noreferrer" title={it.values[c]}
+                                className="text-primary-600 dark:text-primary-400 hover:underline">
+                                {c === 'Attachments (SOW)' ? 'View attachments' : 'Open link'}
+                              </a>
+                            ) : (it.values[c] ?? '')}
                             {ci === 0 && it.removedAt && (
                               <span className="ml-2 px-1.5 py-0.5 rounded-full text-[10px] bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
                                 Removed from SharePoint · {format(new Date(it.removedAt), 'MMM d, yyyy')}

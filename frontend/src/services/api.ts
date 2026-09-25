@@ -1033,7 +1033,7 @@ export interface SharePointSyncReport {
 
 export interface SharePointListItems {
   columns: string[];
-  items: { id: string; values: Record<string, string>; removedAt: string | null; lastSyncedAt: string }[];
+  items: { id: string; sharepointId?: string | null; values: Record<string, string>; attachments?: { name: string; url: string }[]; removedAt: string | null; lastSyncedAt: string }[];
   total: number;
   removedTotal: number;
   page: number;
@@ -1074,6 +1074,14 @@ export const archiveSharePointApi = {
       headers: { 'Content-Type': undefined },
     });
     return data as { success: boolean; data: SharePointSyncReport };
+  },
+  importAttachments: async (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const { data } = await api.post('/archive/sharepoint-attachments-import', formData, {
+      headers: { 'Content-Type': undefined },
+    });
+    return data as { success: boolean; data: { itemsWithFiles: number; files: number; unmatchedItemIds: string[] } };
   },
 };
 

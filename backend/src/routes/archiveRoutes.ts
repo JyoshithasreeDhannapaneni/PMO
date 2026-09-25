@@ -13,6 +13,7 @@ router.get('/sharepoint-items', requireAuth, archiveController.getSharePointItem
 router.get('/sharepoint-sync/status', requireAuth, archiveController.getSharePointSyncStatus);
 router.post('/sharepoint-sync', requireRole('ADMIN'), archiveController.syncSharePoint);
 router.post('/sharepoint-import', requireRole('ADMIN'), sharepointUpload.single('file'), archiveController.importSharePointFile);
+router.post('/sharepoint-attachments-import', requireRole('ADMIN'), sharepointUpload.single('file'), archiveController.importSharePointAttachments);
 router.get('/:id/export', archiveController.getProjectData);
 router.post('/:id/restore', archiveController.restoreProject);
 

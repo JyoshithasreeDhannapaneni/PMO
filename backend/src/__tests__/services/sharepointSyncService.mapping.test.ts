@@ -1,6 +1,51 @@
 import { describe, it, expect } from '@jest/globals';
 import * as XLSX from 'xlsx';
-import { parseSpreadsheet, buildSnapshot } from '../../services/sharepointSyncService';
+import { parseSpreadsheet, buildSnapshot, cellText, parseAttachmentExport } from '../../services/sharepointSyncService';
+
+describe('sharepointSyncService.parseAttachmentExport', () => {
+  const xml = `<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom">
+    <entry><id>https://cloudfuzecom.sharepoint.com/sites/MigrationPractice/_api/Web/Lists(guid'x')/Items(47)</id>
+      <link rel="http://schemas.microsoft.com/ado/2007/08/dataservices/related/AttachmentFiles"><m:inline><feed>
+        <entry><id>https://cloudfuzecom.sharepoint.com/sites/MigrationPractice/_api/Web/Lists(guid'x')/Items(47)/AttachmentFiles('CloudFuze-RahrBSG.pdf')</id>
+          <content><m:properties><d:FileName>CloudFuze-RahrBSG.pdf</d:FileName>
+          <d:ServerRelativeUrl>/sites/MigrationPractice/Lists/Migration Projects Tracker/Attachments/47/CloudFuze-RahrBSG.pdf</d:ServerRelativeUrl></m:properties></content></entry>
+        <entry><content><m:properties><d:FileName>SOW &amp; Amendment 1.docx</d:FileName>
+          <d:ServerRelativeUrl>/sites/MigrationPractice/Lists/Migration Projects Tracker/Attachments/47/SOW &amp; Amendment 1.docx</d:ServerRelativeUrl></m:properties></content></entry>
+      </feed></m:inline></link>
+      <content><m:properties><d:Id m:type="Edm.Int32">47</d:Id></m:properties></content></entry>
+    <entry><content><m:properties><d:Id m:type="Edm.Int32">48</d:Id></m:properties></content></entry>
+  </feed>`;
+
+  it('extracts each attachment of each item from the SharePoint REST XML', () => {
+    const byItem = parseAttachmentExport(xml);
+    expect([...byItem.keys()]).toEqual(['47']);
+    expect(byItem.get('47')).toEqual([
+      { name: 'CloudFuze-RahrBSG.pdf', url: 'https://cloudfuzecom.sharepoint.com/sites/MigrationPractice/Lists/Migration%20Projects%20Tracker/Attachments/47/CloudFuze-RahrBSG.pdf' },
+      { name: 'SOW & Amendment 1.docx', url: 'https://cloudfuzecom.sharepoint.com/sites/MigrationPractice/Lists/Migration%20Projects%20Tracker/Attachments/47/SOW%20&%20Amendment%201.docx' },
+    ]);
+  });
+
+  it('ignores attachment links from a different list', () => {
+    const other = '<d:ServerRelativeUrl>/sites/MigrationPractice/Lists/Some Other List/Attachments/47/x.pdf</d:ServerRelativeUrl>';
+    expect(parseAttachmentExport(other).size).toBe(0);
+  });
+
+  it('reads the JSON form too', () => {
+    const json = JSON.stringify({ value: [{ Id: 12, AttachmentFiles: [{ FileName: 'a.pdf', ServerRelativeUrl: '/sites/MigrationPractice/Lists/Migration Projects Tracker/Attachments/12/a.pdf' }] }] });
+    expect(parseAttachmentExport(json).get('12')?.[0].name).toBe('a.pdf');
+  });
+});
+
+describe('sharepointSyncService.cellText', () => {
+  it('returns the URL of a SharePoint hyperlink column value', () => {
+    expect(cellText({ Description: 'Repo folder', Url: 'https://cloudfuzecom.sharepoint.com/:f:/s/MigrationPractice/abc' }))
+      .toBe('https://cloudfuzecom.sharepoint.com/:f:/s/MigrationPractice/abc');
+  });
+
+  it('returns the display name of a person value', () => {
+    expect(cellText({ LookupId: 12, LookupValue: 'Abhishikth Y', Email: 'a@cloudfuze.com' })).toBe('Abhishikth Y');
+  });
+});
 
 const HEADER = ['Project / Customer Name', 'Project Manager', 'Account Manager', 'Plan', 'Delay Status',
   'Delay Days', 'Current Phase', 'SOW Start Date', 'Active/On-Hold', 'Source Platform'];
@@ -48,6 +93,8 @@ describe('sharepointSyncService.parseSpreadsheet (CSV export)', () => {
     const snap = parseSpreadsheet(csv([['ID', 'Project / Customer Name'], ['101', 'NFL'], ['102', 'NFL']]));
     expect(snap.keyMode).toBe('ID');
     expect(snap.rows.map((r) => r.key)).toEqual(['sp:101', 'sp:102']);
+    expect(snap.columns).toEqual(['Project / Customer Name']);
+    expect(snap.rows[0].values).toEqual({ 'Project / Customer Name': 'NFL' });
   });
 
   it('reads the displayed text from an .xlsx export too', () => {
