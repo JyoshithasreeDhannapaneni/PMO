@@ -32,10 +32,10 @@ function fakeUser(email: string, score: number): UserEmailHygiene {
 }
 
 describe('emailHygieneService.computeTeamHygiene', () => {
-  it('produces exactly 5 team rows from the real roster', () => {
+  it('produces exactly 6 team rows from the real roster', () => {
     const rows = computeTeamHygiene([]);
-    expect(rows).toHaveLength(5);
-    expect(rows.map(r => r.teamId)).toEqual(['team1', 'team2', 'team3', 'team4', 'team5']);
+    expect(rows).toHaveLength(6);
+    expect(rows.map(r => r.teamId)).toEqual(['team1', 'team2', 'team3', 'team6', 'team4', 'team5']);
   });
 
   it('returns null teamScore and zero scoredMemberCount when no members have individual scores yet', () => {
@@ -74,11 +74,11 @@ describe('emailHygieneService.computeTeamHygiene', () => {
     expect(team1.teamScore).toBe(25);
   });
 
-  it('assigns team4 and team5 (Lakshmi Prasanna, Pranavi) to ENT, team1-3 to SMB', () => {
+  it('assigns team4 and team5 (Lakshmi Prasanna, Pranavi) to ENT, team1-3 and team6 to SMB', () => {
     const rows = computeTeamHygiene([]);
     const bySegment = Object.fromEntries(rows.map(r => [r.teamId, r.segment]));
     expect(bySegment).toEqual({
-      team1: 'SMB', team2: 'SMB', team3: 'SMB',
+      team1: 'SMB', team2: 'SMB', team3: 'SMB', team6: 'SMB',
       team4: 'ENT', team5: 'ENT',
     });
   });
@@ -88,6 +88,20 @@ describe('emailHygieneService.computeTeamHygiene', () => {
     const team4 = rows.find(r => r.teamId === 'team4')!;
     expect(team4.memberCount).toBe(6);
     expect(team4.members.map(m => m.email.toLowerCase())).toContain('harshith.kaduluri@cloudfuze.com');
+  });
+
+  it("gives Neelima her own SMB team with Meghana's former engineers, while keeping her in team3", () => {
+    const rows = computeTeamHygiene([]);
+    const team6 = rows.find(r => r.teamId === 'team6')!;
+    expect(team6.managerEmail.toLowerCase()).toBe('neelima.krotta@cloudfuze.com');
+    expect(team6.members.map(m => m.email.toLowerCase())).toEqual([
+      'neelima.krotta@cloudfuze.com', 'amulya.anapuram@cloudfuze.com', 'ranadeep.muddam@cloudfuze.com',
+      'vijendar.burgula@cloudfuze.com', 'habeebunnisa.begum@cloudfuze.com',
+    ]);
+    const team3 = rows.find(r => r.teamId === 'team3')!;
+    expect(team3.members.map(m => m.email.toLowerCase())).toEqual([
+      'meghana.chowdada@cloudfuze.com', 'neelima.krotta@cloudfuze.com',
+    ]);
   });
 
   it('resolves a member\'s display name from their individual result when available', () => {
@@ -119,20 +133,20 @@ describe('emailHygieneService.computeSegmentHeads', () => {
     expect(heads.ENT.teamIds).toEqual(['team4', 'team5']);
   });
 
-  it("computes Ajay's (SMB) score as the average of teams 1, 2, and 3", () => {
+  it("computes Ajay's (SMB) score as the average of teams 1, 2, 3, and 6", () => {
     const teamHygiene = computeTeamHygiene([]); // no individual scores at all yet
     const heads = computeSegmentHeads(teamHygiene);
-    expect(heads.SMB.teamIds).toEqual(['team1', 'team2', 'team3']);
+    expect(heads.SMB.teamIds).toEqual(['team1', 'team2', 'team3', 'team6']);
     expect(heads.SMB.score).toBeNull(); // no team has a score yet, so the segment average is null too
   });
 
   it('excludes unscored teams from the segment average rather than treating them as 0', () => {
-    // Only team1 has any scored members; team2, team3 have none.
+    // Only team1 has any scored members; team2, team3, team6 have none.
     const teamHygiene = computeTeamHygiene([
       fakeUser('Harika.Velidi@cloudfuze.com', 100), fakeUser('Siva.Kota@cloudfuze.com', 100),
       fakeUser('Ravi.Hemanth@cloudfuze.com', 100), fakeUser('Meena.Lakshmi@cloudfuze.com', 100),
     ]);
     const heads = computeSegmentHeads(teamHygiene);
-    expect(heads.SMB.score).toBe(100); // only team1 contributes; team2/3 excluded, not averaged in as 0
+    expect(heads.SMB.score).toBe(100); // only team1 contributes; team2/3/6 excluded, not averaged in as 0
   });
 });

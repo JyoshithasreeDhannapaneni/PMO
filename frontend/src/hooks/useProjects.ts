@@ -2,7 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect } from 'react';
-import { projectsApi, dashboardApi, statusReportsApi, managerGoalsApi, migrationTypeApi, pocProjectsApi, accountManagerApi, customerSuccessApi, hubspotApi, psEngagementsApi, kbArticlesApi, emailHygieneApi, callHygieneApi, callTranscriptsApi, escalationMailsApi, auditApi, feedbackApi, actionItemsApi, slaBreachAlertsApi } from '@/services/api';
+import { projectsApi, dashboardApi, statusReportsApi, managerGoalsApi, migrationTypeApi, pocProjectsApi, accountManagerApi, customerSuccessApi, hubspotApi, psEngagementsApi, kbArticlesApi, emailHygieneApi, callHygieneApi, callTranscriptsApi, escalationMailsApi, auditApi, feedbackApi, actionItemsApi, slaBreachAlertsApi, archiveSharePointApi } from '@/services/api';
 import type { CreateProjectInput, UpdateProjectInput } from '@/types';
 
 export function useProjects(params?: {
@@ -1210,5 +1210,53 @@ export function useDeleteEscalationMail() {
   return useMutation({
     mutationFn: (id: string) => escalationMailsApi.delete(id),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['escalation-mails'] }); },
+  });
+}
+
+export function useSharePointSyncStatus() {
+  return useQuery({
+    queryKey: ['sharepointSyncStatus'],
+    queryFn: () => archiveSharePointApi.getStatus(),
+    staleTime: 30_000,
+  });
+}
+
+export function useSharePointItems(params: { search?: string; includeRemoved?: boolean; page?: number; limit?: number }, enabled = true) {
+  return useQuery({
+    queryKey: ['sharepointItems', params],
+    queryFn: () => archiveSharePointApi.getItems(params),
+    enabled,
+    staleTime: 0,
+  });
+}
+
+function invalidateSharePointArchive(qc: ReturnType<typeof useQueryClient>) {
+  qc.invalidateQueries({ queryKey: ['sharepointItems'] });
+  qc.invalidateQueries({ queryKey: ['archive'] });
+  qc.invalidateQueries({ queryKey: ['archiveStats'] });
+  qc.invalidateQueries({ queryKey: ['sharepointSyncStatus'] });
+}
+
+export function useSharePointSync() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => archiveSharePointApi.sync(),
+    onSettled: () => invalidateSharePointArchive(qc),
+  });
+}
+
+export function useSharePointAttachmentsImport() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (file: File) => archiveSharePointApi.importAttachments(file),
+    onSettled: () => invalidateSharePointArchive(qc),
+  });
+}
+
+export function useSharePointImport() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (file: File) => archiveSharePointApi.importFile(file),
+    onSettled: () => invalidateSharePointArchive(qc),
   });
 }

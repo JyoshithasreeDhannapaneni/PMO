@@ -129,7 +129,7 @@ class ArchiveService {
   async getArchiveStats() {
     await this.ensureColumns();
     const ARCH_WHERE = `status IN ('COMPLETED','CANCELLED','CLOSED','DECOMMISSIONED')`;
-    const [byStatus, byMigration, byYear, totals] = await Promise.all([
+    const [byStatus, byMigration, byYear, totals, sharepoint] = await Promise.all([
       query(
         `SELECT status, COUNT(*) as count FROM projects
          WHERE ${ARCH_WHERE}
@@ -163,6 +163,8 @@ class ArchiveService {
          WHERE ${ARCH_WHERE}`,
         []
       ),
+      query(`SELECT COUNT(*) as count FROM sharepoint_list_items WHERE removed_at IS NULL`, [])
+        .catch(() => ({ rows: [{ count: '0' }] })),
     ]);
 
     return {
@@ -176,6 +178,7 @@ class ArchiveService {
         totalActualCost: parseFloat(totals.rows[0]?.totalActualCost || '0'),
         completedBudget: parseFloat(totals.rows[0]?.completedBudget || '0'),
         completedActualCost: parseFloat(totals.rows[0]?.completedActualCost || '0'),
+        sharepoint: parseInt(sharepoint.rows[0]?.count || '0'),
       },
       byStatus: byStatus.rows.map((r: any) => ({ status: r.status, count: parseInt(r.count) })),
       byMigration: byMigration.rows.map((r: any) => ({ type: r.migration_types, count: parseInt(r.count) })),
