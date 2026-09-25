@@ -1245,6 +1245,14 @@ export function useSharePointSync() {
   });
 }
 
+export function useSharePointAttachmentsImport() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (file: File) => archiveSharePointApi.importAttachments(file),
+    onSettled: () => invalidateSharePointArchive(qc),
+  });
+}
+
 export function useSharePointImport() {
   const qc = useQueryClient();
   return useMutation({

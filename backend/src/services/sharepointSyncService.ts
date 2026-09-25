@@ -72,7 +72,8 @@ export function cellText(value: unknown): string {
   if (Array.isArray(value)) return value.map(cellText).filter(Boolean).join('; ');
   if (typeof value === 'object') {
     const obj = value as Record<string, unknown>;
-    return cellText(obj.LookupValue ?? obj.displayName ?? obj.Email ?? obj.Label ?? '');
+    // Hyperlink columns (e.g. "Link to Repository") arrive as { Url, Description }.
+    return cellText(obj.LookupValue ?? obj.displayName ?? obj.Email ?? obj.Url ?? obj.Label ?? '');
   }
   return '';
 }
@@ -92,6 +93,7 @@ export function buildSnapshot(header: string[], body: string[][]): MirrorSnapsho
     const values: Record<string, string> = {};
     let hasData = false;
     for (const c of cols) {
+      if (c === idCol) continue;
       const text = line[c.i] ?? '';
       values[c.name] = text;
       if (text.trim()) hasData = true;
@@ -111,7 +113,9 @@ export function buildSnapshot(header: string[], body: string[][]): MirrorSnapsho
     rows.push({ key, values });
   }
 
-  return { columns: cols.map((c) => c.name), rows, keyMode: idCol ? 'ID' : 'NAME' };
+  // The ID column is the row's identity, not list data the view shows — keep it out of the
+  // displayed columns (the app's own "Export CSV" adds it so re-imports keep SharePoint IDs).
+  return { columns: cols.filter((c) => c !== idCol).map((c) => c.name), rows, keyMode: idCol ? 'ID' : 'NAME' };
 }
 
 // raw:true keeps CSV cells as the exact text in the file (no "38.02" → number or
@@ -141,9 +145,12 @@ interface GraphColumn {
 // "All Items" view's visible order (Plan / Delay Status / Delay Days sit right after the
 // managers there) and appends the remaining columns in list order. A CSV import replaces
 // this with the export's exact header order.
+export const ATTACHMENTS_COLUMN = 'Attachments (SOW)';
+
 const VIEW_LEADING_COLUMNS = [
   'Project / Customer Name', 'Project Manager', 'Account Manager', 'Plan', 'Delay Status',
   'Delay Days', 'Current Phase', 'SOW Start Date', 'Active/On-Hold', 'Source Platform', 'Target Platform',
+  ATTACHMENTS_COLUMN,
 ];
 
 function orderColumns(names: string[]): string[] {
@@ -167,10 +174,12 @@ function formatDate(value: unknown, dateOnly: boolean): string {
 async function fetchListSnapshot(): Promise<MirrorSnapshot> {
   const sitePath = process.env.SHAREPOINT_SITE_PATH || DEFAULT_SITE_PATH;
   const listName = process.env.SHAREPOINT_LIST_NAME || DEFAULT_LIST_NAME;
-  const client = graphClient(await getAccessToken());
+  const token = await getAccessToken();
+  const client = graphClient(token);
   try {
     const siteId = (await client.get(`/sites/${sitePath}`)).data.id as string;
-    const listId = (await client.get(`/sites/${siteId}/lists/${encodeURIComponent(listName)}`)).data.id as string;
+    const listInfo = (await client.get(`/sites/${siteId}/lists/${encodeURIComponent(listName)}`)).data as { id: string; webUrl: string };
+    const listId = listInfo.id;
 
     const allColumns = ((await client.get(`/sites/${siteId}/lists/${listId}/columns`)).data.value ?? []) as GraphColumn[];
     // Calculated columns (Plan, Delay Status, Delay Days, Total Cost…) are read-only but
@@ -228,14 +237,28 @@ async function fetchListSnapshot(): Promise<MirrorSnapshot> {
         else if (c.boolean) values[c.displayName] = raw === true ? 'Yes' : raw === false ? 'No' : '';
         else values[c.displayName] = cellText(raw);
       }
+      // Graph can't list list-item attachment files (no v1.0/beta endpoint; SharePoint REST
+      // rejects client-secret app tokens), so link to the item's display form, which lists
+      // its attached SOW documents.
+      values[ATTACHMENTS_COLUMN] = item.fields.Attachments === true
+        ? `${listInfo.webUrl}/DispForm.aspx?ID=${encodeURIComponent(item.id)}`
+        : '';
       return { key: `sp:${item.id}`, values };
     });
 
-    return { columns: orderColumns(columns.map((c) => c.displayName)), rows };
+    return { columns: orderColumns([...columns.map((c) => c.displayName), ATTACHMENTS_COLUMN]), rows };
   } catch (err) {
     const status = (err as { response?: { status?: number } }).response?.status;
     if (status === 401 || status === 403) {
-      throw new Error(`Microsoft Graph denied access to the SharePoint list (HTTP ${status}). The MICROSOFT_* app needs the Sites.Read.All application permission with admin consent.`);
+      // Name the app/tenant/permissions the token actually carried — the usual cause is the
+      // server signing in with a different app than expected (e.g. docker-compose overriding
+      // MICROSOFT_CLIENT_ID), which is invisible from the bare HTTP status.
+      let who = '';
+      try {
+        const claims = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString()) as { app_displayname?: string; appid?: string; tid?: string; roles?: string[] };
+        who = ` Signed in as app "${claims.app_displayname ?? '?'}" (client ${String(claims.appid ?? '').slice(0, 8)}…, tenant ${String(claims.tid ?? '').slice(0, 8)}…) with permissions: ${claims.roles?.join(', ') || 'none'}.`;
+      } catch { /* token not decodable — fall back to the generic message */ }
+      throw new Error(`Microsoft Graph denied access to the SharePoint list (HTTP ${status}).${who} That app needs the Microsoft Graph Sites.Read.All application permission with admin consent — or set SHAREPOINT_CLIENT_ID / SHAREPOINT_CLIENT_SECRET / SHAREPOINT_TENANT_ID in backend/.env to an app that has it.`);
     }
     if (status === 404) {
       throw new Error(`SharePoint site or list not found (site "${sitePath}", list "${listName}"). Check SHAREPOINT_SITE_PATH / SHAREPOINT_LIST_NAME.`);
@@ -325,9 +348,54 @@ async function saveSnapshot(snapshot: MirrorSnapshot, source: 'GRAPH' | 'FILE', 
   return report;
 }
 
+export interface AttachmentLink {
+  name: string;
+  url: string;
+}
+
+export interface AttachmentImportReport {
+  source: 'ATTACHMENTS';
+  itemsWithFiles: number;
+  files: number;
+  unmatchedItemIds: string[];
+}
+
+const SHAREPOINT_ORIGIN = 'https://cloudfuzecom.sharepoint.com';
+
+function decodeXmlEntities(s: string): string {
+  return s
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_m, d: string) => String.fromCharCode(parseInt(d, 10)))
+    .replace(/&amp;/g, '&');
+}
+
+// Parses what SharePoint returns for
+//   /_api/web/lists/getbytitle('<list>')/items?$select=Id&$expand=AttachmentFiles&$top=5000
+// opened in a signed-in browser (Atom XML by default, or JSON). Every attachment's
+// ServerRelativeUrl already has the shape /sites/<site>/Lists/<list>/Attachments/<itemId>/<file>,
+// so item ID and file name come straight from the URL — no need to walk the nested feed.
+export function parseAttachmentExport(text: string): Map<string, AttachmentLink[]> {
+  const byItem = new Map<string, AttachmentLink[]>();
+  const re = /(\/sites\/[^<>"\s]*?\/Lists\/[^<>"]*?\/Attachments\/(\d+)\/([^<>"\r\n]+?))(?=["<\r\n]|$)/g;
+  const safeDecode = (s: string) => { try { return decodeURIComponent(s); } catch { return s; } };
+  // Only this list's attachments: a saved page from another list has the same URL shape,
+  // and matching its item IDs would put files on the wrong rows (and clear the real ones).
+  const listSegment = `/lists/${(process.env.SHAREPOINT_LIST_URL_NAME || DEFAULT_LIST_NAME).toLowerCase()}/attachments/`;
+  for (const m of decodeXmlEntities(text).matchAll(re)) {
+    if (!safeDecode(m[1]).toLowerCase().includes(listSegment)) continue;
+    const itemId = m[2];
+    const name = safeDecode(m[3].trim());
+    const url = SHAREPOINT_ORIGIN + encodeURI(safeDecode(m[1].trim()));
+    const list = byItem.get(itemId) ?? [];
+    if (!list.some((a) => a.url === url)) list.push({ name, url });
+    byItem.set(itemId, list);
+  }
+  return byItem;
+}
+
 let running = false;
 
-async function recordRun(source: 'GRAPH' | 'FILE', triggeredBy: string, work: () => Promise<SyncReport>): Promise<SyncReport> {
+async function recordRun<R extends object>(source: 'GRAPH' | 'FILE' | 'ATTACHMENTS', triggeredBy: string, work: () => Promise<R>): Promise<R> {
   if (running) throw new Error('A SharePoint sync is already running. Try again in a minute.');
   running = true;
   const run = await query(
@@ -341,7 +409,7 @@ async function recordRun(source: 'GRAPH' | 'FILE', triggeredBy: string, work: ()
       `UPDATE sharepoint_sync_runs SET status = 'SUCCESS', report = ?, finished_at = NOW() WHERE id = ?`,
       [JSON.stringify(report), runId]
     );
-    logger.info(`[SharePointSync] ${source} by ${triggeredBy}: ${report.totalRows} rows, ${report.inserted} new, ${report.updated} updated, ${report.markedRemoved} marked removed`);
+    logger.info(`[SharePointSync] ${source} by ${triggeredBy}: ${JSON.stringify(report)}`);
     return report;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -374,6 +442,28 @@ export const sharepointSyncService = {
     });
   },
 
+  async importAttachments(buffer: Buffer, triggeredBy: string): Promise<AttachmentImportReport> {
+    return recordRun('ATTACHMENTS', triggeredBy, async () => {
+      const byItem = parseAttachmentExport(buffer.toString('utf8'));
+      if (byItem.size === 0) {
+        throw new Error('No SharePoint attachment links found in this file. Open the attachments URL shown on the page while signed in to SharePoint, save the page, and upload that file.');
+      }
+      const report: AttachmentImportReport = { source: 'ATTACHMENTS', itemsWithFiles: 0, files: 0, unmatchedItemIds: [] };
+      for (const [itemId, files] of byItem) {
+        const res = await query(`UPDATE sharepoint_list_items SET attachments = ? WHERE item_key = ?`, [JSON.stringify(files), `sp:${itemId}`]);
+        if ((res.rowCount ?? 0) > 0) { report.itemsWithFiles++; report.files += files.length; }
+        else report.unmatchedItemIds.push(itemId);
+      }
+      // The export lists every item, so an item absent from it has no attachments any more.
+      await query(
+        `UPDATE sharepoint_list_items SET attachments = '[]'
+         WHERE item_key LIKE 'sp:%' AND NOT (item_key = ANY(?)) AND attachments <> '[]'`,
+        [[...byItem.keys()].map((id) => `sp:${id}`)]
+      );
+      return report;
+    });
+  },
+
   async getItems(opts: { search?: string; includeRemoved?: boolean; page: number; limit: number }) {
     const limit = Math.min(Math.max(opts.limit, 1), 5000);
     const offset = (Math.max(opts.page, 1) - 1) * limit;
@@ -387,7 +477,7 @@ export const sharepointSyncService = {
       query(`SELECT display_name FROM sharepoint_list_columns ORDER BY position ASC`),
       query(`SELECT COUNT(*) AS total FROM sharepoint_list_items ${where}`, params),
       query(
-        `SELECT id, item_values, removed_at, last_synced_at FROM sharepoint_list_items ${where}
+        `SELECT id, item_key, item_values, attachments, removed_at, last_synced_at FROM sharepoint_list_items ${where}
          ORDER BY (removed_at IS NOT NULL), row_order ASC, first_seen_at ASC LIMIT ? OFFSET ?`,
         [...params, limit, offset]
       ),
@@ -396,8 +486,10 @@ export const sharepointSyncService = {
     const total = parseInt((count.rows[0] as { total: string }).total || '0');
     return {
       columns: (cols.rows as Array<{ display_name: string }>).map((c) => c.display_name),
-      items: (items.rows as Array<{ id: string; item_values: Record<string, string>; removed_at: string | null; last_synced_at: string }>).map((r) => ({
-        id: r.id, values: r.item_values, removedAt: r.removed_at, lastSyncedAt: r.last_synced_at,
+      items: (items.rows as Array<{ id: string; item_key: string; item_values: Record<string, string>; attachments: AttachmentLink[] | null; removed_at: string | null; last_synced_at: string }>).map((r) => ({
+        id: r.id,
+        sharepointId: r.item_key.startsWith('sp:') ? r.item_key.slice(3) : null,
+        values: r.item_values, attachments: r.attachments ?? [], removedAt: r.removed_at, lastSyncedAt: r.last_synced_at,
       })),
       total,
       removedTotal: parseInt((removedCount.rows[0] as { n: string }).n || '0'),

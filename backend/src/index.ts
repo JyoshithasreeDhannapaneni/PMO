@@ -469,6 +469,12 @@ async function runMigrations() {
   if (!await columnExists('sharepoint_list_items', 'row_order')) {
     try { await execute(`ALTER TABLE sharepoint_list_items ADD COLUMN row_order INT NOT NULL DEFAULT 0`); } catch {}
   }
+  // Attachment file links ([{ name, url }]) for each list item. Kept in their own column
+  // (not item_values) because they come from a separate import — the app's credentials
+  // can't read list attachments — so a list sync must never overwrite them.
+  if (!await columnExists('sharepoint_list_items', 'attachments')) {
+    try { await execute(`ALTER TABLE sharepoint_list_items ADD COLUMN attachments JSONB NOT NULL DEFAULT '[]'`); } catch {}
+  }
   try {
     await execute(`
       CREATE TABLE IF NOT EXISTS sharepoint_sync_runs (

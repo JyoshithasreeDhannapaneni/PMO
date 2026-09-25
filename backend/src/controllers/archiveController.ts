@@ -73,6 +73,20 @@ export const archiveController = {
     }
   }),
 
+  importSharePointAttachments: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const user = (req as Request & { user?: { name?: string; email?: string } }).user;
+    if (!req.file) {
+      res.status(400).json({ success: false, error: 'Upload the saved SharePoint attachments page in the "file" field.' });
+      return;
+    }
+    try {
+      const report = await sharepointSyncService.importAttachments(req.file.buffer, user?.name || user?.email || 'admin');
+      res.json({ success: true, data: report });
+    } catch (err) {
+      res.status(400).json({ success: false, error: err instanceof Error ? err.message : 'Attachment import failed' });
+    }
+  }),
+
   getSharePointSyncStatus: asyncHandler(async (_req: Request, res: Response): Promise<void> => {
     const lastRun = await sharepointSyncService.getLastRun();
     res.json({ success: true, data: { isConfigured: sharepointSyncService.isConfigured(), lastRun } });
