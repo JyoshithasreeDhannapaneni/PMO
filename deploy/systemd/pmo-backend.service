@@ -1,0 +1,20 @@
+[Unit]
+Description=PMO Tracker backend (Express API)
+After=network.target postgresql.service
+# Backs off auto-restart if the process can't stay up at all (e.g. a real startup bug, not
+# a transient crash) -- 5 restarts within 60s and systemd stops trying rather than
+# tight-looping forever. `systemctl status pmo-backend` then shows it as failed, which is
+# the correct signal that this needs a human, not another restart.
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+WorkingDirectory=/root/PMO/backend
+ExecStart=/usr/bin/node dist/index.js
+Environment=NODE_ENV=production
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

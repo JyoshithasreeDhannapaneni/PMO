@@ -3,6 +3,7 @@ import { logger } from '../utils/logger';
 import { projectService } from '../services/projectService';
 import { emailHygieneService } from '../services/emailHygieneService';
 import { auditService } from '../services/auditService';
+import { selfHealService } from '../services/selfHealService';
 import { execute } from '../config/database';
 
 /**
@@ -188,6 +189,22 @@ export function initializeCronJobs(): void {
     }
   }, { timezone: 'Asia/Kolkata' });
 
+  // Self-heal diagnosis pass — every 30 minutes, picks up any captured crashes/5xx
+  // incidents that haven't been diagnosed yet and asks Claude for a root-cause + suggested
+  // fix (see selfHealService.diagnoseUnresolvedIncidents for why this never auto-applies
+  // anything). No-ops cheaply (one cheap query, no API call) whenever there's nothing new,
+  // and no-ops entirely if ANTHROPIC_API_KEY isn't configured.
+  cron.schedule('*/30 * * * *', async () => {
+    try {
+      const result = await selfHealService.diagnoseUnresolvedIncidents();
+      if (result.diagnosed > 0) {
+        logger.info(`[SelfHeal] Diagnosis pass: diagnosed ${result.diagnosed} incident group(s)`);
+      }
+    } catch (error) {
+      logger.error('[SelfHeal] Diagnosis pass failed:', error);
+    }
+  }, { timezone: 'Asia/Kolkata' });
+
   // Email hygiene daily finalize — every day at 7:20 AM IST (after the weekly/monthly
   // finalize checks above), locks in a permanent snapshot of the IST calendar day that just
   // ended, for the per-individual Daily view (2026-09-23). Idempotent via UNIQUE(day_start)
@@ -217,4 +234,5 @@ export function initializeCronJobs(): void {
   logger.info('  - Weekly hygiene finalize (PMO/Email/Call): Every Monday at 7:00 AM IST');
   logger.info('  - Email hygiene monthly finalize-check: Daily at 7:15 AM IST');
   logger.info('  - Email hygiene daily finalize: Daily at 7:20 AM IST');
+  logger.info('  - Self-heal diagnosis pass: Every 30 minutes');
 }
