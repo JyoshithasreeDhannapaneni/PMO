@@ -1,0 +1,6 @@
+[Unit]
+Description=PMO Tracker health-check (restarts a hung, not-crashed, backend/frontend)
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /root/PMO/deploy/systemd/healthcheck.sh

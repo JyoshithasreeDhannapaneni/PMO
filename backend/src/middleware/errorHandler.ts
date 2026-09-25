@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { logger } from '../utils/logger';
+import { selfHealService } from '../services/selfHealService';
 
 export class AppError extends Error {
   statusCode: number;
@@ -30,6 +31,19 @@ export const errorHandler = (
 
   // Log error
   logger.error(`${req.method} ${req.path} — ${err.message || err}`, { stack: err.stack });
+
+  // Only genuinely unexpected errors (500s) go into the self-heal incident log — a
+  // deliberate AppError(4xx) (validation, not found, etc.) is expected, routine traffic,
+  // not something worth an AI diagnosis pass over. Fire-and-forget: never let capturing
+  // the incident delay or fail the actual error response.
+  if (statusCode >= 500) {
+    void selfHealService.captureIncident({
+      source: 'http_5xx',
+      message: err.message || 'Internal Server Error',
+      stack: err.stack,
+      context: { method: req.method, path: req.path, statusCode },
+    });
+  }
 
   // Send response
   res.status(statusCode).json({

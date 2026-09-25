@@ -42,6 +42,7 @@ import platformReviewRoutes from './routes/platformReviewRoutes';
 import apiKeyRoutes from './routes/apiKeyRoutes';
 import feedbackRoutes from './routes/feedbackRoutes';
 import externalApiRoutes from './routes/externalApiRoutes';
+import selfHealRoutes from './routes/selfHealRoutes';
 import { initializeCronJobs } from './jobs';
 import settingsRoutes from './routes/settingsRoutes';
 import accountManagerRoutes from './routes/accountManagerRoutes';
@@ -61,6 +62,28 @@ import { logger } from './utils/logger';
 import { authService } from './services/authService';
 import { templateService } from './services/templateService';
 import { projectService } from './services/projectService';
+import { selfHealService } from './services/selfHealService';
+
+// Registered before anything else so a crash during startup is still captured. Node's own
+// docs are explicit that the process is in an undefined state after either event fires and
+// must not keep running -- this only captures enough to diagnose later, then exits. The
+// actual "heal" (getting a new process back up) is the job of whatever supervises this
+// process (systemd Restart=on-failure in production, tsx watch in local dev), not this
+// handler -- a crash handler that tries to keep the process alive risks limping along in a
+// corrupted state, which is worse than a clean restart.
+process.on('uncaughtException', (err) => {
+  logger.error('[SelfHeal] uncaughtException — process will exit:', err);
+  selfHealService
+    .captureIncident({ source: 'uncaught_exception', severity: 'fatal', message: err.message, stack: err.stack })
+    .finally(() => process.exit(1));
+});
+process.on('unhandledRejection', (reason) => {
+  const err = reason instanceof Error ? reason : new Error(String(reason));
+  logger.error('[SelfHeal] unhandledRejection — process will exit:', err);
+  selfHealService
+    .captureIncident({ source: 'unhandled_rejection', severity: 'fatal', message: err.message, stack: err.stack })
+    .finally(() => process.exit(1));
+});
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -141,6 +164,7 @@ app.use('/api/platform-reviews', platformReviewRoutes);
 app.use('/api/api-key', apiKeyRoutes);
 app.use('/api/feedback', feedbackRoutes);
 app.use('/api/external', externalApiRoutes);
+app.use('/api/self-heal', selfHealRoutes);
 app.use('/api/sla-breach-alerts', slaBreachAlertRoutes);
 
 app.use(notFoundHandler);
@@ -799,6 +823,31 @@ async function runMigrations() {
     team_hygiene JSONB,
     computed_at  TIMESTAMPTZ DEFAULT NOW()
   )`);
+  // Self-heal incident log (2026-09-25). Captures crashes (uncaughtException /
+  // unhandledRejection — logged best-effort right before the process exits, since Node
+  // says the process is in an undefined state after either and must not keep running) and
+  // unexpected 5xx responses. auto_healed marks incidents a mechanical action (process
+  // restart) already recovered from without a human; diagnosis/suggested_fix are filled in
+  // later, asynchronously, by selfHealService.diagnoseUnresolvedIncidents() — never
+  // written synchronously in the crash/error path itself, since that path must stay as
+  // fast and simple as possible.
+  await execute(`CREATE TABLE IF NOT EXISTS self_heal_incidents (
+    id            UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    source        VARCHAR(30) NOT NULL,
+    severity      VARCHAR(10) NOT NULL DEFAULT 'error',
+    message       TEXT NOT NULL,
+    stack         TEXT,
+    context       JSONB DEFAULT '{}',
+    auto_healed   BOOLEAN DEFAULT false,
+    diagnosis     TEXT,
+    suggested_fix TEXT,
+    diagnosed_at  TIMESTAMPTZ,
+    resolved      BOOLEAN DEFAULT false,
+    resolved_at   TIMESTAMPTZ,
+    created_at    TIMESTAMPTZ DEFAULT NOW()
+  )`);
+  await execute(`CREATE INDEX IF NOT EXISTS idx_self_heal_incidents_created ON self_heal_incidents(created_at DESC)`);
+  await execute(`CREATE INDEX IF NOT EXISTS idx_self_heal_incidents_unresolved ON self_heal_incidents(resolved) WHERE resolved = false`);
   // Monthly hygiene snapshots (2026-09 — "last month" manager dashboard view). One
   // immutable row per finalized IST calendar month, written by the daily finalize-check
   // (idempotent via UNIQUE month_start) the first time it runs after that month ends —

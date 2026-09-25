@@ -38,6 +38,7 @@ const allNavigation = [
   { name: 'Customer Success',     href: '/customer-success',       icon: Handshake,       color: '#16a34a', adminOnly: false },
   { name: 'History Archive',      href: '/archive',                icon: Archive,         color: '#78716c', adminOnly: false },
   { name: 'Server Notifications', href: '/server-alerts',          icon: Megaphone,       color: '#f59e0b', adminOnly: false },
+  { name: 'Self-Heal',            href: '/self-heal',              icon: ShieldCheck,     color: '#0d9488', adminOnly: true },
   { name: 'Templates',            href: '/templates',              icon: FileText,        color: '#0d9488', adminOnly: true },
   { name: 'Deal Desk',            href: '/deal-desk',              icon: HandCoins,       color: '#65a30d', adminOnly: true },
   { name: 'Case Studies',         href: '/case-studies',           icon: BookMarked,      color: '#9333ea', adminOnly: false },
