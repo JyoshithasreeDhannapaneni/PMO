@@ -1,9 +1,11 @@
 'use client';
 
-import { useState, useMemo, useCallback, Fragment } from 'react';
+import { useState, useMemo, useCallback, useRef, Fragment } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
-import { useUpdateProject } from '@/hooks/useProjects';
+import { useUpdateProject, useSharePointSyncStatus, useSharePointSync, useSharePointImport, useSharePointItems } from '@/hooks/useProjects';
+import { archiveSharePointApi } from '@/services/api';
+import type { SharePointSyncReport } from '@/services/api';
 import { Card } from '@/components/ui/Card';
 import Link from 'next/link';
 import {
@@ -106,7 +108,7 @@ export default function ArchivePage() {
   const isAccountManager = user?.role === 'ACCOUNT_MANAGER';
   const queryClient = useQueryClient();
 
-  const [tab, setTab]                       = useState<'completed' | 'cancelled'>('completed');
+  const [tab, setTab]                       = useState<'completed' | 'cancelled' | 'sharepoint'>('completed');
   const [search, setSearch]                 = useState('');
   const [managerFilter, setManagerFilter]   = useState('');
   const [monthFrom, setMonthFrom]           = useState('');
@@ -228,6 +230,74 @@ export default function ArchivePage() {
     }
   }
 
+  const { data: spStatusData } = useSharePointSyncStatus();
+  const spSync = useSharePointSync();
+  const spImport = useSharePointImport();
+  const spFileRef = useRef<HTMLInputElement>(null);
+  const [spReport, setSpReport] = useState<SharePointSyncReport | null>(null);
+  const [spError, setSpError] = useState<string | null>(null);
+  const spStatus = spStatusData?.data;
+  const spBusy = spSync.isPending || spImport.isPending;
+  const SP_PER_PAGE = 50;
+  const [spSearch, setSpSearch] = useState('');
+  const [spPage, setSpPage] = useState(1);
+  const [spShowRemoved, setSpShowRemoved] = useState(false);
+  const { data: spItemsData, isLoading: spItemsLoading } = useSharePointItems(
+    { search: spSearch || undefined, includeRemoved: spShowRemoved, page: spPage, limit: SP_PER_PAGE },
+    tab === 'sharepoint'
+  );
+  const spItems = spItemsData?.data;
+
+  async function downloadSharePointCSV() {
+    setIsExportingCSV(true);
+    try {
+      const res = await archiveSharePointApi.getItems({ search: spSearch || undefined, includeRemoved: spShowRemoved, page: 1, limit: 5000 });
+      const { columns, items } = res.data;
+      if (!items.length) { alert('No SharePoint rows to export.'); return; }
+      const header = [...columns, 'Removed From SharePoint'];
+      const rows = items.map((it) => [...columns.map((c) => it.values[c] ?? ''), it.removedAt ? format(new Date(it.removedAt), 'yyyy-MM-dd') : '']);
+      const csv = [header, ...rows].map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+      a.download = `sharepoint-migration-projects-tracker-${format(new Date(), 'yyyy-MM-dd')}.csv`;
+      a.click();
+    } catch (e) {
+      alert('Export failed. Please try again.');
+    } finally {
+      setIsExportingCSV(false);
+    }
+  }
+
+  function spErrorMessage(err: unknown): string {
+    const e = err as { response?: { data?: { error?: string } }; message?: string };
+    return e.response?.data?.error || e.message || 'SharePoint sync failed';
+  }
+
+  async function handleSharePointSync() {
+    setSpError(null); setSpReport(null);
+    try {
+      const res = await spSync.mutateAsync();
+      setSpReport(res.data);
+      setTab('sharepoint'); setPage(1); setSpPage(1);
+    } catch (err) {
+      setSpError(spErrorMessage(err));
+    }
+  }
+
+  async function handleSharePointFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setSpError(null); setSpReport(null);
+    try {
+      const res = await spImport.mutateAsync(file);
+      setSpReport(res.data);
+      setTab('sharepoint'); setPage(1); setSpPage(1);
+    } catch (err) {
+      setSpError(spErrorMessage(err));
+    }
+  }
+
   async function handleRestore(project: any) {
     if (!confirm(`Restore "${project.name}" to Active status? It will be removed from archive.`)) return;
     await restoreMutation.mutateAsync(project.id);
@@ -273,14 +343,37 @@ export default function ArchivePage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {isAdmin && (
+            <>
+              <input ref={spFileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleSharePointFile} />
+              <button
+                onClick={() => spFileRef.current?.click()}
+                disabled={spBusy}
+                title="Upload an Excel/CSV export of the SharePoint 'Migration Projects Tracker' list"
+                className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
+              >
+                {spImport.isPending ? <RefreshCw size={14} className="animate-spin" /> : <FileText size={14} />}
+                {spImport.isPending ? 'Importing…' : 'Import SharePoint Excel/CSV'}
+              </button>
+              <button
+                onClick={handleSharePointSync}
+                disabled={spBusy || !spStatus?.isConfigured}
+                title={spStatus?.isConfigured ? 'Pull the live SharePoint list now' : 'Microsoft Graph is not configured on the server (MS_GRAPH_* in backend/.env)'}
+                className="flex items-center gap-1.5 px-3 py-2 text-sm text-white bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50"
+              >
+                <RefreshCw size={14} className={spSync.isPending ? 'animate-spin' : ''} />
+                {spSync.isPending ? 'Syncing…' : 'Sync from SharePoint'}
+              </button>
+            </>
+          )}
           {!isViewer && (
             <button
-              onClick={downloadCSV}
+              onClick={tab === 'sharepoint' ? downloadSharePointCSV : downloadCSV}
               disabled={isExportingCSV}
               className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
             >
               {isExportingCSV ? <RefreshCw size={14} className="animate-spin" /> : <Download size={14} />}
-              {isExportingCSV ? `Exporting all ${total}…` : 'Export CSV (all)'}
+              {isExportingCSV ? 'Exporting…' : 'Export CSV (all)'}
             </button>
           )}
         </div>
@@ -376,8 +469,128 @@ export default function ArchivePage() {
           <XCircle size={14} /> Cancelled
           {stats && <span className={`ml-1 px-1.5 py-0.5 rounded-full text-xs font-bold ${tab === 'cancelled' ? 'bg-red-100 text-red-700' : 'bg-gray-200 text-gray-600'}`}>{(stats.totals.cancelled || 0) + (stats.totals.closed || 0) + (stats.totals.decommissioned || 0)}</span>}
         </button>
+        <button
+          onClick={() => { setTab('sharepoint'); setPage(1); }}
+          className={`flex items-center gap-2 px-5 py-2 text-sm font-medium rounded-lg transition-colors ${tab === 'sharepoint' ? 'bg-white dark:bg-gray-700 text-teal-600 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+        >
+          <Layers size={14} /> SharePoint List
+          {stats && <span className={`ml-1 px-1.5 py-0.5 rounded-full text-xs font-bold ${tab === 'sharepoint' ? 'bg-teal-100 text-teal-700' : 'bg-gray-200 text-gray-600'}`}>{stats.totals.sharepoint || 0}</span>}
+        </button>
       </div>
 
+      {/* SharePoint sync result / last run */}
+      {(spError || spReport || (tab === 'sharepoint' && spStatus)) && (
+        <Card>
+          {spError ? (
+            <div className="flex items-start gap-2 text-sm text-red-700 dark:text-red-300">
+              <AlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
+              <span>{spError}</span>
+            </div>
+          ) : spReport ? (
+            <div className="space-y-2 text-sm">
+              <p className="font-semibold text-gray-800 dark:text-gray-200">
+                SharePoint {spReport.source === 'FILE' ? 'file import' : 'sync'} complete — {spReport.totalRows} rows, {spReport.columns} columns
+              </p>
+              <div className="flex flex-wrap gap-2 text-xs">
+                <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-700">{spReport.inserted} new</span>
+                <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">{spReport.updated} updated</span>
+                <span className="px-2 py-0.5 rounded-full bg-gray-200 text-gray-600">{spReport.markedRemoved} marked removed from SharePoint</span>
+              </div>
+              {spReport.source === 'FILE' && spReport.keyMode === 'NAME' && (
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Tip: add the <strong>ID</strong> column to the SharePoint view before exporting — rows are then matched by SharePoint ID, so renamed items update in place instead of showing as removed + new.
+                </p>
+              )}
+            </div>
+          ) : spStatus?.lastRun ? (
+            <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
+              <History size={13} />
+              Last SharePoint {spStatus.lastRun.source === 'FILE' ? 'file import' : 'sync'}: {format(new Date(spStatus.lastRun.startedAt), 'MMM d, yyyy HH:mm')}
+              {spStatus.lastRun.triggeredBy ? ` by ${spStatus.lastRun.triggeredBy}` : ''} —{' '}
+              <span className={spStatus.lastRun.status === 'FAILED' ? 'text-red-600' : 'text-green-600'}>{spStatus.lastRun.status}</span>
+              {spStatus.lastRun.error ? ` (${spStatus.lastRun.error})` : ''}
+              {!spStatus.isConfigured && ' · Live sync off until Microsoft Graph is configured on the server'}
+            </p>
+          ) : (
+            <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
+              <History size={13} />
+              No SharePoint data imported yet.{' '}
+              {spStatus?.isConfigured ? 'Daily sync runs at 6:30 AM IST.' : 'Live sync is off until Microsoft Graph is configured — an admin can import an Excel/CSV export meanwhile.'}
+            </p>
+          )}
+        </Card>
+      )}
+
+      {tab === 'sharepoint' && (
+        <Card>
+          <div className="flex flex-wrap gap-3 items-center mb-3">
+            <div className="relative flex-1 min-w-[220px]">
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input value={spSearch} onChange={(e) => { setSpSearch(e.target.value); setSpPage(1); }}
+                placeholder="Search any column…"
+                className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white" />
+            </div>
+            <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400 cursor-pointer">
+              <input type="checkbox" checked={spShowRemoved} onChange={(e) => { setSpShowRemoved(e.target.checked); setSpPage(1); }} />
+              Show rows removed from SharePoint{spItems ? ` (${spItems.removedTotal})` : ''}
+            </label>
+            <p className="text-sm text-gray-600 dark:text-gray-400">{spItems?.total ?? 0} row{spItems?.total === 1 ? '' : 's'}</p>
+          </div>
+          {spItemsLoading ? (
+            <div className="flex justify-center py-16 text-gray-400"><RefreshCw size={24} className="animate-spin" /></div>
+          ) : !spItems || spItems.items.length === 0 ? (
+            <div className="flex flex-col items-center py-16 text-gray-400 gap-3">
+              <Layers size={40} className="opacity-30 text-teal-500" />
+              <p className="text-sm">No SharePoint list rows{spSearch ? ' match your search' : ' yet'}</p>
+              <p className="text-xs text-gray-400">Rows from the SharePoint &quot;Migration Projects Tracker&quot; list appear here exactly as in SharePoint after a sync or Excel/CSV import</p>
+            </div>
+          ) : (
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 dark:bg-gray-700/50">
+                    <tr>
+                      {spItems.columns.map((c) => (
+                        <th key={c} className="py-3 px-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 whitespace-nowrap">{c}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                    {spItems.items.map((it) => (
+                      <tr key={it.id} className={it.removedAt ? 'bg-gray-50 dark:bg-gray-800/40 text-gray-400' : 'hover:bg-gray-50 dark:hover:bg-gray-700/30'}>
+                        {spItems.columns.map((c, ci) => (
+                          <td key={c} className={`py-2.5 px-3 text-xs whitespace-nowrap ${it.removedAt ? '' : 'text-gray-700 dark:text-gray-300'}`}>
+                            {it.values[c] ?? ''}
+                            {ci === 0 && it.removedAt && (
+                              <span className="ml-2 px-1.5 py-0.5 rounded-full text-[10px] bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                                Removed from SharePoint · {format(new Date(it.removedAt), 'MMM d, yyyy')}
+                              </span>
+                            )}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Showing {(spPage - 1) * SP_PER_PAGE + 1}–{Math.min(spPage * SP_PER_PAGE, spItems.total)} of {spItems.total}
+                </p>
+                <div className="flex items-center gap-1">
+                  <button onClick={() => setSpPage((p) => Math.max(1, p - 1))} disabled={spPage === 1}
+                    className="p-1 rounded text-gray-500 disabled:opacity-40 hover:bg-gray-100 dark:hover:bg-gray-700"><ChevronLeft size={16} /></button>
+                  <span className="text-xs text-gray-600 dark:text-gray-300 px-2">{spPage} / {spItems.totalPages}</span>
+                  <button onClick={() => setSpPage((p) => Math.min(spItems.totalPages, p + 1))} disabled={spPage >= spItems.totalPages}
+                    className="p-1 rounded text-gray-500 disabled:opacity-40 hover:bg-gray-100 dark:hover:bg-gray-700"><ChevronRight size={16} /></button>
+                </div>
+              </div>
+            </>
+          )}
+        </Card>
+      )}
+
+      {tab !== 'sharepoint' && (<>
       {/* Filters */}
       <Card>
         <div className="flex flex-wrap gap-3 items-center">
@@ -620,6 +833,7 @@ export default function ArchivePage() {
           </>
         )}
       </Card>
+      </>)}
 
       {/* Info banner */}
       <div className="flex items-start gap-2 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-sm text-blue-700 dark:text-blue-300">

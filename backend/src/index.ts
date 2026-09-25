@@ -438,6 +438,51 @@ async function runMigrations() {
   if (!await columnExists('projects', 'archive_csat_status')) {
     try { await execute(`ALTER TABLE projects ADD COLUMN archive_csat_status VARCHAR(20) DEFAULT NULL`); } catch {}
   }
+  // 2026-09-25: exact mirror of the SharePoint "Migration Projects Tracker" list, shown in
+  // History Archive → SharePoint List. Deliberately NOT stored as projects rows: the tab must
+  // show the list's own columns/values untouched, and keeping it out of `projects` means no
+  // dashboard, SLA or delay query can ever pick these rows up. Column order comes from the
+  // list (CSV header order, or Graph column order when no CSV import has set it).
+  try {
+    await execute(`
+      CREATE TABLE IF NOT EXISTS sharepoint_list_columns (
+        display_name VARCHAR(255) PRIMARY KEY,
+        position INT NOT NULL,
+        updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+      )
+    `);
+  } catch {}
+  try {
+    await execute(`
+      CREATE TABLE IF NOT EXISTS sharepoint_list_items (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        item_key VARCHAR(255) NOT NULL UNIQUE,
+        item_values JSONB NOT NULL DEFAULT '{}',
+        source VARCHAR(20) NOT NULL,
+        row_order INT NOT NULL DEFAULT 0,
+        first_seen_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        last_synced_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        removed_at TIMESTAMP DEFAULT NULL
+      )
+    `);
+  } catch {}
+  if (!await columnExists('sharepoint_list_items', 'row_order')) {
+    try { await execute(`ALTER TABLE sharepoint_list_items ADD COLUMN row_order INT NOT NULL DEFAULT 0`); } catch {}
+  }
+  try {
+    await execute(`
+      CREATE TABLE IF NOT EXISTS sharepoint_sync_runs (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        source VARCHAR(20) NOT NULL,
+        triggered_by VARCHAR(255),
+        status VARCHAR(20) NOT NULL,
+        report JSONB NOT NULL DEFAULT '{}',
+        error TEXT,
+        started_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        finished_at TIMESTAMP
+      )
+    `);
+  } catch {}
   if (!await columnExists('projects', 'delay_happened')) {
     try { await execute(`ALTER TABLE projects ADD COLUMN delay_happened VARCHAR(50) DEFAULT NULL`); } catch {}
   }
