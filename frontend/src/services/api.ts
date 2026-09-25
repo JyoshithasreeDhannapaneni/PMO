@@ -1021,4 +1021,60 @@ export const slaBreachAlertsApi = {
   },
 };
 
+export interface SharePointSyncReport {
+  source: 'GRAPH' | 'FILE';
+  keyMode: 'ID' | 'NAME';
+  totalRows: number;
+  columns: number;
+  inserted: number;
+  updated: number;
+  markedRemoved: number;
+}
+
+export interface SharePointListItems {
+  columns: string[];
+  items: { id: string; values: Record<string, string>; removedAt: string | null; lastSyncedAt: string }[];
+  total: number;
+  removedTotal: number;
+  page: number;
+  totalPages: number;
+}
+
+export interface SharePointSyncStatus {
+  isConfigured: boolean;
+  lastRun: {
+    id: string;
+    source: 'GRAPH' | 'FILE';
+    triggeredBy: string | null;
+    status: 'RUNNING' | 'SUCCESS' | 'FAILED';
+    report: SharePointSyncReport | Record<string, never>;
+    error: string | null;
+    startedAt: string;
+    finishedAt: string | null;
+  } | null;
+}
+
+export const archiveSharePointApi = {
+  getItems: async (params: { search?: string; includeRemoved?: boolean; page?: number; limit?: number }) => {
+    const { data } = await api.get('/archive/sharepoint-items', { params });
+    return data as { success: boolean; data: SharePointListItems };
+  },
+  getStatus: async () => {
+    const { data } = await api.get('/archive/sharepoint-sync/status');
+    return data as { success: boolean; data: SharePointSyncStatus };
+  },
+  sync: async () => {
+    const { data } = await api.post('/archive/sharepoint-sync');
+    return data as { success: boolean; data: SharePointSyncReport };
+  },
+  importFile: async (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const { data } = await api.post('/archive/sharepoint-import', formData, {
+      headers: { 'Content-Type': undefined },
+    });
+    return data as { success: boolean; data: SharePointSyncReport };
+  },
+};
+
 export default api;
