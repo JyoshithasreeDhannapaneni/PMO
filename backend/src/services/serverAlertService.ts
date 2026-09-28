@@ -14,6 +14,9 @@ interface AlertProject {
 
 type AlertType = 'active' | 'warning' | 'overdue';
 
+// See the guard at the top of runDailyAlerts() below for why this exists and what it covers.
+const SERVER_ALERTS_DISABLED = true;
+
 class ServerAlertService {
   async ensureTable() {
     await execute(`
@@ -249,6 +252,15 @@ class ServerAlertService {
   }
 
   async sendAlert(project: AlertProject, type: AlertType, daysRemaining: number): Promise<{ success: boolean; error?: string }> {
+    // Real guard lives here, not just in runDailyAlerts() -- sendManual() (the per-project
+    // "send now" button) reaches this same function without ever going through
+    // runDailyAlerts(), so gating only there would have left this path able to email
+    // customers anyway. This is the one place every caller funnels through before the
+    // actual Graph sendMail happens.
+    if (SERVER_ALERTS_DISABLED) {
+      logger.info(`[ServerAlerts] Disabled — skipping alert for ${project.name}.`);
+      return { success: false, error: 'Server alerts are currently disabled.' };
+    }
     try {
       const { subject, html } = this.buildEmail(type, project, daysRemaining);
       await this.sendViaGraph(project.customerContact, subject, html);
@@ -270,6 +282,16 @@ class ServerAlertService {
   }
 
   async runDailyAlerts(): Promise<{ sent: number; skipped: number; failed: number }> {
+    // DISABLED 2026-09-28 (explicit request) -- this is the one email path in the whole app
+    // that goes straight to the customer with no internal review step, and it needed to stop
+    // immediately, for certain, regardless of the daily cron or the "Run Daily Job Now"
+    // button -- both call this exact function, so gating here (not in only one caller)
+    // guarantees neither path can send. Flip to false (or remove this block) to re-enable.
+    if (SERVER_ALERTS_DISABLED) {
+      logger.info('[ServerAlerts] Disabled — skipping daily alert run entirely.');
+      return { sent: 0, skipped: 0, failed: 0 };
+    }
+
     await this.ensureTable();
     const res = await query(
       `SELECT id, name, customer_name, customer_contact, account_manager, planned_start, planned_end, status
