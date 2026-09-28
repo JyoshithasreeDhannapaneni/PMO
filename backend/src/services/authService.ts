@@ -298,7 +298,10 @@ class AuthService {
       `&state=${state}` +
       `&code_challenge=${codeChallenge}` +
       `&code_challenge_method=S256`;
-    
+
+    // TEMPORARY DEBUG (2026-09-28) -- chasing AADSTS90014 on login. Remove once resolved.
+    logger.info(`[DEBUG-AUTH] Generated Microsoft auth URL: ${authUrl}`);
+
     return { url: authUrl, state };
   }
 
