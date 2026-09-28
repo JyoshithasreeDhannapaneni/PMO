@@ -748,6 +748,7 @@ export default function AuditDashboardPage() {
   // the Speed number) was clicked instead, so that click jumps straight to the answer.
   const [expandedEmailCategory, setExpandedEmailCategory] = useState<'speed' | 'quality' | 'resolution' | 'tone' | null>(null);
   const [expandedHygienePM, setExpandedHygienePM] = useState<string | null>(null);
+  const [showHygieneFormula, setShowHygieneFormula] = useState(false);
   const [ratingModalCall, setRatingModalCall] = useState<{
     eventId: string;
     subject: string;
@@ -2096,6 +2097,102 @@ export default function AuditDashboardPage() {
         </div>
 
         {hygieneTab === 'project' && (<>
+        {/* How is this calculated? */}
+        <Card>
+          <button
+            onClick={() => setShowHygieneFormula((v) => !v)}
+            className="w-full flex items-center justify-between gap-3 text-left"
+          >
+            <span className="flex items-center gap-2 text-sm font-semibold text-gray-800">
+              <AlertCircle size={14} className="text-indigo-600" /> How is the Hygiene Score calculated?
+            </span>
+            {showHygieneFormula ? <ChevronUp size={15} className="text-gray-400" /> : <ChevronDown size={15} className="text-gray-400" />}
+          </button>
+          {showHygieneFormula && (
+            <div className="mt-4 space-y-3 text-xs text-gray-600 leading-relaxed">
+              <p>
+                <strong className="text-gray-800">Overall Hygiene Score</strong> = Activity ×25% + Data Quality ×25% +
+                Case Studies ×15% + Delay Accountability ×20% + Date Integrity ×15%, rounded. Each sub-score is 0–100.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="bg-blue-50/60 rounded-lg p-3">
+                  <div className="font-semibold text-blue-700 mb-1">Activity (25%)</div>
+                  <p>Logins in the selected period: 0→0pts, 1→20, 2–3→40, 4+→60 (out of 60). Project updates: up to 40 more, scaled against an expected volume of 2 updates per active project.</p>
+                  <p className="mt-1.5 text-amber-700 bg-amber-50 rounded px-2 py-1 border border-amber-200">
+                    <strong>Known gap:</strong> project edits aren't written to the audit log yet, so the update-points
+                    component is currently always 0 for everyone — every PM's Activity score is effectively capped at
+                    60/100 (from logins alone) regardless of how much real work they do. This isn't a performance
+                    problem, it's a measurement gap.
+                  </p>
+                </div>
+                <div className="bg-purple-50/60 rounded-lg p-3">
+                  <div className="font-semibold text-purple-700 mb-1">Data Quality (25%)</div>
+                  <p>7 fields checked per active project (or all projects if none active): planned start/end, kickoff date, customer contact, notes, project size, budget. Score = % of fields filled, minus up to 20pts for projects past their planned end date with no delay status set.</p>
+                </div>
+                <div className="bg-teal-50/60 rounded-lg p-3">
+                  <div className="font-semibold text-teal-700 mb-1">Case Studies (15%)</div>
+                  <p>% of completed projects (finished 30+ days ago, to allow a grace period) with a published case study, minus up to 15pts for ones still pending and up to 30pts for ones with none started.</p>
+                </div>
+                <div className="bg-orange-50/60 rounded-lg p-3">
+                  <div className="font-semibold text-orange-700 mb-1">Delay Accountability (20%)</div>
+                  <p>Starts at 100. Each delayed/at-risk project costs 5pts (customer-caused, honestly attributed), 10pts (internal), or 12pts (both) — or <strong>15pts if the delay reason is left blank</strong>, deliberately worse than any honest attribution. Missing the root-cause (RCA) note costs a further 10pts per project.</p>
+                </div>
+                <div className="bg-rose-50/60 rounded-lg p-3 sm:col-span-2">
+                  <div className="font-semibold text-rose-700 mb-1">Phase-Date Integrity (15%)</div>
+                  <p>−8pts for every phase where the start and end date are the exact same day (SOW dates, Cloud Adding, Pilot, Onetime Migration, Final Validation) — a real migration phase can't realistically complete in a single day, so this usually means a copy-paste or data-entry slip, not a true 1-day phase.</p>
+                </div>
+              </div>
+            </div>
+          )}
+        </Card>
+
+        {/* Team-level: where points are actually being lost */}
+        {hygieneBoard.length > 0 && (() => {
+          const sum = (fn: (pm: any) => number) => hygieneBoard.reduce((s: number, pm: any) => s + fn(pm), 0);
+          const drains = [
+            { label: 'Activity — updates not tracked (known gap)', pts: hygieneBoard.length * 40 * 0.25, note: 'affects everyone equally' },
+            { label: 'Data Quality — missing kickoff date',   pts: sum((pm) => pm.qualityPointsLost?.kickoffDate ?? 0) * 0.25 },
+            { label: 'Data Quality — missing planned dates',  pts: sum((pm) => pm.qualityPointsLost?.plannedDates ?? 0) * 0.25 },
+            { label: 'Data Quality — missing customer email', pts: sum((pm) => pm.qualityPointsLost?.customerContact ?? 0) * 0.25 },
+            { label: 'Data Quality — missing notes',          pts: sum((pm) => pm.qualityPointsLost?.notes ?? 0) * 0.25 },
+            { label: 'Data Quality — missing project size',   pts: sum((pm) => pm.qualityPointsLost?.projectSize ?? 0) * 0.25 },
+            { label: 'Data Quality — missing budget',         pts: sum((pm) => pm.qualityPointsLost?.budget ?? 0) * 0.25 },
+            { label: 'Data Quality — overdue, not flagged',   pts: sum((pm) => pm.qualityPointsLost?.overdue ?? 0) * 0.25 },
+            { label: 'Case Studies — pending',                pts: sum((pm) => pm.caseStudyPointsLost?.pending ?? 0) * 0.15 },
+            { label: 'Case Studies — missing entirely',       pts: sum((pm) => pm.caseStudyPointsLost?.missing ?? 0) * 0.15 },
+            { label: 'Delay — reason not attributed / internal / customer', pts: sum((pm) => pm.delayAttributionPenalty ?? 0) * 0.20 },
+            { label: 'Delay — missing RCA note',              pts: sum((pm) => pm.delayRcaPenalty ?? 0) * 0.20 },
+            { label: 'Date Integrity — same-day phase violations', pts: sum((pm) => pm.dateIntegrityPenalty ?? 0) * 0.15 },
+          ]
+            .filter((d) => d.pts > 0)
+            .sort((a, b) => b.pts - a.pts)
+            .slice(0, 6);
+          if (drains.length === 0) return null;
+          const maxPts = drains[0].pts;
+          return (
+            <Card>
+              <div className="text-sm font-semibold text-gray-800 mb-1">Where the team is losing the most Hygiene points</div>
+              <p className="text-xs text-gray-400 mb-3">Summed across all {hygieneBoard.length} PM(s), weighted by each category's share of the overall score — biggest levers first.</p>
+              <div className="space-y-2">
+                {drains.map((d) => (
+                  <div key={d.label} className="flex items-center gap-3">
+                    <div className="w-64 flex-shrink-0 text-xs text-gray-700 truncate" title={d.label}>{d.label}</div>
+                    <div className="flex-1 bg-gray-100 rounded-full h-2.5 overflow-hidden">
+                      <div className="bg-rose-400 h-full rounded-full" style={{ width: `${Math.max(4, (d.pts / maxPts) * 100)}%` }} />
+                    </div>
+                    <div className="w-16 flex-shrink-0 text-xs font-semibold text-rose-600 text-right">
+                      −{d.pts.toFixed(1)} pts{d.note ? ' *' : ''}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {drains.some((d) => d.note) && (
+                <p className="text-[11px] text-gray-400 mt-2">* {drains.find((d) => d.note)?.note} — see the known gap noted above, not a per-PM issue.</p>
+              )}
+            </Card>
+          );
+        })()}
+
         {/* Fleet KPIs */}
         {hygieneBoard.length > 0 && (() => {
           const avg = Math.round(hygieneBoard.reduce((s: number, pm: any) => s + pm.hygieneScore, 0) / hygieneBoard.length);
@@ -2237,32 +2334,33 @@ export default function AuditDashboardPage() {
                                   Activity <span className="text-gray-400 font-normal">({format(new Date(queryStart), 'MMM d')}–{format(new Date(queryEnd), 'MMM d')})</span>
                                 </div>
                                 <div className="space-y-1 text-xs text-gray-700">
-                                  <div className="flex justify-between"><span>Logins</span><span className={neverLoggedIn ? 'text-red-500 font-semibold' : pm.logins30d >= 4 ? 'text-green-600 font-semibold' : ''}>{pm.logins30d}</span></div>
-                                  <div className="flex justify-between"><span>Project Updates</span><span className={pm.projectUpdates30d === 0 && pm.activeProjects > 0 ? 'text-red-500 font-semibold' : ''}>{pm.projectUpdates30d}</span></div>
+                                  <div className="flex justify-between"><span>Logins</span><span className={neverLoggedIn ? 'text-red-500 font-semibold' : pm.logins30d >= 4 ? 'text-green-600 font-semibold' : ''}>{pm.logins30d} <span className="text-gray-400">({pm.loginPts}/60 pts)</span></span></div>
+                                  <div className="flex justify-between"><span>Project Updates</span><span className={pm.projectUpdates30d === 0 && pm.activeProjects > 0 ? 'text-red-500 font-semibold' : ''}>{pm.projectUpdates30d} <span className="text-gray-400">({pm.updatePts}/40 pts)</span></span></div>
                                   <div className="flex justify-between"><span>Case Study Updates</span><span>{pm.caseStudyUpdates30d}</span></div>
                                   <div className="flex justify-between"><span>Last Login</span><span className={neverLoggedIn ? 'text-red-400 italic' : 'text-gray-500'}>{pm.lastLoginAt ? pm.lastLoginAt.slice(0, 10) : 'Never'}</span></div>
                                   <div className="flex justify-between"><span>Last Action</span><span className={pm.lastActionAt ? 'text-gray-500' : 'text-red-400 italic'}>{pm.lastActionAt ? pm.lastActionAt.slice(0, 10) : 'Never'}</span></div>
                                   <div className="flex justify-between"><span>Days Idle</span>{daysIdle === null ? <span className="text-red-400 italic">Never</span> : <span className={daysIdle > 21 ? 'text-red-600 font-semibold' : daysIdle > 14 ? 'text-yellow-600 font-semibold' : 'text-green-600 font-semibold'}>{daysIdle}d</span>}</div>
+                                  <div className="text-[10px] text-amber-600 italic pt-1 border-t border-blue-100 mt-1">Updates always 0/40 right now — not tracked yet, not this PM's fault.</div>
                                 </div>
                               </div>
                               <div className="bg-purple-50/70 rounded-lg p-3">
                                 <div className="text-[11px] font-semibold text-purple-600 mb-2">Data Quality <span className="text-gray-400 font-normal">(current state)</span></div>
                                 <div className="space-y-1 text-xs text-gray-700">
-                                  <div className="flex justify-between"><span>Missing Kickoff Date</span><span className={bad(pm.missingKickoffDate)}>{pm.missingKickoffDate}</span></div>
-                                  <div className="flex justify-between"><span>Missing Planned Dates</span><span className={bad(pm.missingPlannedDates)}>{pm.missingPlannedDates}</span></div>
-                                  <div className="flex justify-between"><span>Missing Customer Email</span><span className={bad(pm.missingCustomerEmail)}>{pm.missingCustomerEmail}</span></div>
-                                  <div className="flex justify-between"><span>Missing Notes</span><span className={bad(pm.missingNotes)}>{pm.missingNotes}</span></div>
-                                  <div className="flex justify-between"><span>Overdue (Not Flagged)</span><span className={bad(pm.overdueNotFlagged)}>{pm.overdueNotFlagged}</span></div>
-                                  <div className="flex justify-between"><span>Missing Project Size</span><span className={bad(pm.missingProjectSize)}>{pm.missingProjectSize}</span></div>
-                                  <div className="flex justify-between"><span>Missing Budget</span><span className={bad(pm.missingBudget)}>{pm.missingBudget}</span></div>
+                                  <div className="flex justify-between"><span>Missing Kickoff Date</span><span className={bad(pm.missingKickoffDate)}>{pm.missingKickoffDate}{pm.qualityPointsLost?.kickoffDate > 0 && <span className="text-gray-400"> (−{pm.qualityPointsLost.kickoffDate})</span>}</span></div>
+                                  <div className="flex justify-between"><span>Missing Planned Dates</span><span className={bad(pm.missingPlannedDates)}>{pm.missingPlannedDates}{pm.qualityPointsLost?.plannedDates > 0 && <span className="text-gray-400"> (−{pm.qualityPointsLost.plannedDates})</span>}</span></div>
+                                  <div className="flex justify-between"><span>Missing Customer Email</span><span className={bad(pm.missingCustomerEmail)}>{pm.missingCustomerEmail}{pm.qualityPointsLost?.customerContact > 0 && <span className="text-gray-400"> (−{pm.qualityPointsLost.customerContact})</span>}</span></div>
+                                  <div className="flex justify-between"><span>Missing Notes</span><span className={bad(pm.missingNotes)}>{pm.missingNotes}{pm.qualityPointsLost?.notes > 0 && <span className="text-gray-400"> (−{pm.qualityPointsLost.notes})</span>}</span></div>
+                                  <div className="flex justify-between"><span>Overdue (Not Flagged)</span><span className={bad(pm.overdueNotFlagged)}>{pm.overdueNotFlagged}{pm.qualityPointsLost?.overdue > 0 && <span className="text-gray-400"> (−{pm.qualityPointsLost.overdue})</span>}</span></div>
+                                  <div className="flex justify-between"><span>Missing Project Size</span><span className={bad(pm.missingProjectSize)}>{pm.missingProjectSize}{pm.qualityPointsLost?.projectSize > 0 && <span className="text-gray-400"> (−{pm.qualityPointsLost.projectSize})</span>}</span></div>
+                                  <div className="flex justify-between"><span>Missing Budget</span><span className={bad(pm.missingBudget)}>{pm.missingBudget}{pm.qualityPointsLost?.budget > 0 && <span className="text-gray-400"> (−{pm.qualityPointsLost.budget})</span>}</span></div>
                                 </div>
                               </div>
                               <div className="bg-teal-50/70 rounded-lg p-3">
                                 <div className="text-[11px] font-semibold text-teal-600 mb-2">Case Studies <span className="text-gray-400 font-normal">(current state)</span></div>
                                 <div className="space-y-1 text-xs text-gray-700">
                                   <div className="flex justify-between"><span>Done</span><span className={pm.csDone > 0 ? 'text-teal-600 font-semibold' : 'text-gray-300'}>{pm.csDone}</span></div>
-                                  <div className="flex justify-between"><span>Pending</span><span className={pm.csPending > 0 ? 'text-yellow-600 font-semibold' : 'text-gray-300'}>{pm.csPending}</span></div>
-                                  <div className="flex justify-between"><span>Missing</span><span className={bad(pm.csMissing)}>{pm.csMissing}</span></div>
+                                  <div className="flex justify-between"><span>Pending</span><span className={pm.csPending > 0 ? 'text-yellow-600 font-semibold' : 'text-gray-300'}>{pm.csPending}{pm.caseStudyPointsLost?.pending > 0 && <span className="text-gray-400"> (−{pm.caseStudyPointsLost.pending})</span>}</span></div>
+                                  <div className="flex justify-between"><span>Missing</span><span className={bad(pm.csMissing)}>{pm.csMissing}{pm.caseStudyPointsLost?.missing > 0 && <span className="text-gray-400"> (−{pm.caseStudyPointsLost.missing})</span>}</span></div>
                                   {pm.csInGrace > 0 && (
                                     <div className="flex justify-between text-gray-400" title="Completed within the 30-day grace window — excluded from the Case Study score">
                                       <span>In Grace Period</span><span>{pm.csInGrace}</span>
@@ -2273,14 +2371,14 @@ export default function AuditDashboardPage() {
                               <div className="bg-orange-50/70 rounded-lg p-3">
                                 <div className="text-[11px] font-semibold text-orange-600 mb-2">Delay Accountability <span className="text-gray-400 font-normal">(current state)</span></div>
                                 <div className="space-y-1 text-xs text-gray-700">
-                                  <div className="flex justify-between"><span>Delayed Projects</span><span className={bad(pm.delayedProjectsCount)}>{pm.delayedProjectsCount}</span></div>
-                                  <div className="flex justify-between"><span>Missing RCA</span><span className={bad(pm.missingRcaCount)}>{pm.missingRcaCount}</span></div>
+                                  <div className="flex justify-between"><span>Delayed Projects</span><span className={bad(pm.delayedProjectsCount)}>{pm.delayedProjectsCount}{pm.delayAttributionPenalty > 0 && <span className="text-gray-400"> (−{pm.delayAttributionPenalty})</span>}</span></div>
+                                  <div className="flex justify-between"><span>Missing RCA</span><span className={bad(pm.missingRcaCount)}>{pm.missingRcaCount}{pm.delayRcaPenalty > 0 && <span className="text-gray-400"> (−{pm.delayRcaPenalty})</span>}</span></div>
                                 </div>
                               </div>
                               <div className="bg-rose-50/70 rounded-lg p-3">
                                 <div className="text-[11px] font-semibold text-rose-600 mb-2">Phase Date Integrity <span className="text-gray-400 font-normal">(current state)</span></div>
                                 <div className="space-y-1 text-xs text-gray-700">
-                                  <div className="flex justify-between"><span>Same-Day Violations</span><span className={bad(pm.dateViolationsCount)}>{pm.dateViolationsCount}</span></div>
+                                  <div className="flex justify-between"><span>Same-Day Violations</span><span className={bad(pm.dateViolationsCount)}>{pm.dateViolationsCount}{pm.dateIntegrityPenalty > 0 && <span className="text-gray-400"> (−{pm.dateIntegrityPenalty})</span>}</span></div>
                                 </div>
                               </div>
                             </div>

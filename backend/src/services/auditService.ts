@@ -751,6 +751,15 @@ class AuditService {
       // missing-field counts are always computed over the same project set.
       const qualityScope = qualityPopulation;
       let qualityScore = 100;
+      // Points-lost breakdown for the UI ("how many hygiene points is this gap costing").
+      // Each of the 7 fields is pooled equally across the population, so a single missing
+      // field's impact on the rounded percentage depends on the population size -- computed
+      // as a counterfactual (score if this one gap were fully closed, minus the real base)
+      // rather than a fixed constant, so it stays accurate as headcount/backlog change.
+      let qualityPointsLost = {
+        kickoffDate: 0, plannedDates: 0, customerContact: 0, notes: 0,
+        projectSize: 0, budget: 0, overdue: 0,
+      };
       if (qualityScope.length > 0) {
         const earned = qualityScope.reduce((sum, p) => {
           let pts = 0;
@@ -763,18 +772,34 @@ class AuditService {
           if (p.estimated_cost)                   pts++;
           return sum + pts;
         }, 0);
-        const base = Math.round((earned / (qualityScope.length * 7)) * 100);
-        qualityScore = Math.max(0, base - Math.min(overdueNotFlagged * 5, 20));
+        const denom = qualityScope.length * 7;
+        const base = Math.round((earned / denom) * 100);
+        const overduePenalty = Math.min(overdueNotFlagged * 5, 20);
+        qualityScore = Math.max(0, base - overduePenalty);
+        const gain = (missingCount: number) => Math.max(0, Math.round(((earned + missingCount) / denom) * 100) - base);
+        qualityPointsLost = {
+          kickoffDate: gain(missingKickoffDate),
+          plannedDates: gain(missingPlannedDates),
+          customerContact: gain(missingCustomerEmail),
+          notes: gain(missingNotes),
+          projectSize: gain(missingProjectSize),
+          budget: gain(missingBudget),
+          overdue: overduePenalty,
+        };
       }
 
       // ── Case Study Score (0-100) ──────────────────────────────────────
       let caseStudyScore = 100;
+      let caseStudyPointsLost = { pending: 0, missing: 0 };
       if (csScopeCompleted.length > 0) {
         const scopedDone    = csScopeCompleted.filter((p) => p.cs_status === 'COMPLETED' || p.cs_status === 'PUBLISHED').length;
         const scopedPending = csScopeCompleted.filter((p) => p.cs_status === 'PENDING' || p.cs_status === 'IN_PROGRESS').length;
         const scopedMissing = csScopeCompleted.filter((p) => !p.cs_id).length;
         const base = Math.round((scopedDone / csScopeCompleted.length) * 100);
-        caseStudyScore = Math.max(0, base - Math.min(scopedPending * 5, 15) - Math.min(scopedMissing * 10, 30));
+        const pendingPenalty = Math.min(scopedPending * 5, 15);
+        const missingPenalty = Math.min(scopedMissing * 10, 30);
+        caseStudyScore = Math.max(0, base - pendingPenalty - missingPenalty);
+        caseStudyPointsLost = { pending: pendingPenalty, missing: missingPenalty };
       }
 
       // ── Delay Accountability Score (0-100, over active/on-hold projects) ─
@@ -785,17 +810,19 @@ class AuditService {
       let delayScore = 100;
       let delayedProjectsCount = 0;
       let missingRcaCount = 0;
+      let delayAttributionPenalty = 0;
+      let delayRcaPenalty = 0;
       for (const p of active) {
         if (p.delay_status !== 'AT_RISK' && p.delay_status !== 'DELAYED') continue;
         delayedProjectsCount++;
         // Leaving delay_happened blank must cost more than any honest
         // attribution, otherwise reporting an internal delay scores worse than
         // reporting nothing at all.
-        if (p.delay_happened === 'CUSTOMER_DELAY')      delayScore -= 5;
-        else if (p.delay_happened === 'INTERNAL_DELAY') delayScore -= 10;
-        else if (p.delay_happened === 'BOTH')           delayScore -= 12;
-        else                                             delayScore -= 15; // not attributed
-        if (!p.has_rca) { delayScore -= 10; missingRcaCount++; }
+        if (p.delay_happened === 'CUSTOMER_DELAY')      { delayScore -= 5;  delayAttributionPenalty += 5; }
+        else if (p.delay_happened === 'INTERNAL_DELAY') { delayScore -= 10; delayAttributionPenalty += 10; }
+        else if (p.delay_happened === 'BOTH')           { delayScore -= 12; delayAttributionPenalty += 12; }
+        else                                             { delayScore -= 15; delayAttributionPenalty += 15; } // not attributed
+        if (!p.has_rca) { delayScore -= 10; delayRcaPenalty += 10; missingRcaCount++; }
       }
       delayScore = Math.max(0, delayScore);
 
@@ -853,12 +880,19 @@ class AuditService {
         // Delay accountability
         delayedProjectsCount,
         missingRcaCount,
+        delayAttributionPenalty,
+        delayRcaPenalty,
         // Phase-date integrity
         dateViolationsCount,
+        dateIntegrityPenalty: Math.min(dateViolationsCount * 8, 100),
         // Scores
         activityScore,
+        loginPts,
+        updatePts,
         qualityScore,
+        qualityPointsLost,
         caseStudyScore,
+        caseStudyPointsLost,
         delayScore,
         dateIntegrityScore,
         hygieneScore,
