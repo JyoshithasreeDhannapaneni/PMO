@@ -97,14 +97,18 @@ export const platformReviewService = {
   },
 
   // Distinct PM/AM names already on a review — the filter dropdowns' purpose is
-  // narrowing existing reviews, not offering the full team roster up front.
+  // narrowing existing reviews, not offering the full team roster up front. The PM list is
+  // further intersected against actual PROJECT_MANAGER-role users so a pre-sales person (or
+  // a mistyped name) manually entered on some review can never show up as a "PM" filter.
   async getManagerOptions(): Promise<{ projectManagers: string[]; accountManagers: string[] }> {
-    const [pmResult, amResult] = await Promise.all([
+    const [pmResult, amResult, pmUsersResult] = await Promise.all([
       query(`SELECT DISTINCT project_manager FROM platform_reviews WHERE project_manager IS NOT NULL ORDER BY project_manager`),
       query(`SELECT DISTINCT account_manager FROM platform_reviews WHERE account_manager IS NOT NULL ORDER BY account_manager`),
+      query(`SELECT name FROM users WHERE role = 'PROJECT_MANAGER'`),
     ]);
+    const validPmNames = new Set(pmUsersResult.rows.map((u: any) => u.name));
     return {
-      projectManagers: pmResult.rows.map((r: any) => r.project_manager as string),
+      projectManagers: pmResult.rows.map((r: any) => r.project_manager as string).filter((n) => validPmNames.has(n)),
       accountManagers: amResult.rows.map((r: any) => r.account_manager as string),
     };
   },
