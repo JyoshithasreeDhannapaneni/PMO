@@ -21,7 +21,10 @@ const allNavigation = [
   { name: 'Dashboard',            href: '/',                       icon: Home,            color: '#2563eb', adminOnly: false },
   { name: 'All Projects',         href: '/projects',               icon: Folder,          color: '#d97706', adminOnly: false },
   { name: 'Professional Services', href: '/professional-services', icon: Briefcase,       color: '#7c3aed', adminOnly: false },
-  { name: 'Migration Validation', href: '/migration-runbooks',     icon: ShieldCheck,     color: '#059669', adminOnly: false },
+  // Migration Validation temporarily disabled 2026-09-29 (explicit request) -- the page
+  // itself now shows a placeholder too (see migration-runbooks/page.tsx). Restore this
+  // line to bring the nav link back.
+  // { name: 'Migration Validation', href: '/migration-runbooks', icon: ShieldCheck, color: '#059669', adminOnly: false },
   { name: 'Overage Projects',     href: '/overage-projects',       icon: Gauge,           color: '#dc2626', adminOnly: false },
   { name: 'Escalated Projects',   href: '/escalation-projects',    icon: Bell,            color: '#ea580c', adminOnly: false },
   { name: 'Escalation Mails',     href: '/escalation-mails',       icon: Megaphone,       color: '#c2410c', adminOnly: false },
