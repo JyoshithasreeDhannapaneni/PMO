@@ -567,9 +567,26 @@ const TYPE_TABS: { id: MigrationType; label: string; activeClass: string; emptyT
   { id: 'email',   label: 'Email Migration',   activeClass: 'text-blue-700 border-blue-500 bg-blue-50',   emptyText: 'No email migration projects found.' },
 ];
 
-// ── Main Page ─────────────────────────────────────────────────────────────────
-
+// ── Temporarily disabled (2026-09-29) ───────────────────────────────────────
+// Per explicit request -- the full page below is untouched, just not exported as the
+// route's default anymore. To bring it back: delete this placeholder block and restore
+// `export default` on MigrationValidationPageOriginal below.
 export default function MigrationValidationPage() {
+  return (
+    <div className="flex flex-col items-center justify-center h-[60vh] text-center gap-3 px-6">
+      <ShieldCheck size={40} className="text-gray-300" />
+      <h1 className="text-lg font-semibold text-gray-700">Migration Validation is temporarily unavailable</h1>
+      <p className="text-sm text-gray-500 max-w-md">
+        This page has been taken offline for now. It will be brought back if needed —
+        no data has been removed.
+      </p>
+    </div>
+  );
+}
+
+// ── Main Page (disabled above, kept intact here for easy restore) ──────────────
+
+function MigrationValidationPageOriginal() {
   const { user } = useAuth();
   const { showToast } = useToast();
   const { settings } = useSettings();
