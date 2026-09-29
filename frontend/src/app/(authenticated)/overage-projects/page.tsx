@@ -1,8 +1,10 @@
 'use client';
 
 import { useState, useMemo, Fragment } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useOveragedProjects, useMarkOverageProject, useUpdateOverageProject, useUnmarkOverageProject, useDeleteOverageHistoryEntry, useProjects } from '@/hooks/useProjects';
 import { useAuth } from '@/context/AuthContext';
+import { authApi } from '@/services/api';
 import { Card } from '@/components/ui/Card';
 import { MultiSelectDropdown } from '@/components/ui/MultiSelectDropdown';
 import Link from 'next/link';
@@ -178,7 +180,17 @@ export default function OverageProjectsPage() {
     refetch();
   }
 
-  const managers = useMemo(() => [...new Set(projects.map((p) => p.projectManager).filter(Boolean))], [projects]);
+  // Intersect with actual PROJECT_MANAGER-role users -- a pre-sales owner's name should
+  // never surface as a filterable "manager" here (see fix in poc-projects/page.tsx).
+  const { data: usersData } = useQuery({ queryKey: ['users'], queryFn: () => authApi.getUsers(), staleTime: 60_000 });
+  const pmNames = useMemo(
+    () => new Set((usersData?.data || []).filter((u: any) => u.role === 'PROJECT_MANAGER').map((u: any) => u.name)),
+    [usersData?.data]
+  );
+  const managers = useMemo(
+    () => [...new Set(projects.map((p) => p.projectManager).filter((m: any) => m && pmNames.has(m)))],
+    [projects, pmNames]
+  );
   const types = useMemo(() => {
     const all: string[] = [];
     projects.forEach((p) => {

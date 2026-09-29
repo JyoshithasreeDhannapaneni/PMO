@@ -305,7 +305,13 @@ export default function AccountManagerPage() {
     } as ProjectRow;
   }).filter(Boolean) as ProjectRow[];
 
-  const allPMs = Array.from(new Set(allRows.map(r => r.projectManager).filter(Boolean))).sort() as string[];
+  // Intersect with actual PROJECT_MANAGER-role users -- a POC row's projectManager can hold
+  // a pre-sales owner's name (historical data; new POCs no longer write it, see
+  // poc-projects/page.tsx), and that must never surface as a filterable "manager" here.
+  const pmRoleNames = new Set((allUsersData?.data || []).filter((u: any) => u.role === 'PROJECT_MANAGER').map((u: any) => u.name));
+  const allPMs = Array.from(new Set(
+    allRows.flatMap(r => (r.projectManager || '').split(',').map(n => n.trim())).filter(n => n && pmRoleNames.has(n))
+  )).sort() as string[];
   const allAMs = mergeAccountManagers(allUsersData?.data);
 
   // Filter — each *Filter value is a comma-separated list (MultiSelectDropdown's shape); empty means "no filter"

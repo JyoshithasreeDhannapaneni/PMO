@@ -4,7 +4,7 @@ import { useState, useMemo, useCallback, useRef, Fragment } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
 import { useUpdateProject, useSharePointSyncStatus, useSharePointSync, useSharePointImport, useSharePointItems, useSharePointAttachmentsImport } from '@/hooks/useProjects';
-import { archiveSharePointApi } from '@/services/api';
+import { archiveSharePointApi, authApi } from '@/services/api';
 import type { SharePointSyncReport } from '@/services/api';
 import { Card } from '@/components/ui/Card';
 import Link from 'next/link';
@@ -174,7 +174,17 @@ export default function ArchivePage() {
   const totalPages      = archiveData?.totalPages || 1;
   const stats           = statsData?.data;
 
-  const managers = useMemo(() => [...new Set(projects.map((p) => p.projectManager).filter(Boolean))], [projects]);
+  // Intersect with actual PROJECT_MANAGER-role users -- a pre-sales owner's name should
+  // never surface as a filterable "manager" here (see fix in poc-projects/page.tsx).
+  const { data: usersData } = useQuery({ queryKey: ['users'], queryFn: () => authApi.getUsers(), staleTime: 60_000 });
+  const pmNames = useMemo(
+    () => new Set((usersData?.data || []).filter((u: any) => u.role === 'PROJECT_MANAGER').map((u: any) => u.name)),
+    [usersData?.data]
+  );
+  const managers = useMemo(
+    () => [...new Set(projects.map((p) => p.projectManager).filter((m: any) => m && pmNames.has(m)))],
+    [projects, pmNames]
+  );
 
   const resetFilters = () => {
     setSearch('');

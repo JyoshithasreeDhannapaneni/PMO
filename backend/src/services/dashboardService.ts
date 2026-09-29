@@ -297,13 +297,18 @@ class DashboardService {
 
   async getManagerStats(managerName?: string) {
     const { clause: w, params: p } = this.managerWhere(managerName);
-    const result = await query(
-      `SELECT project_manager, status, delay_status FROM projects ${w}`, p
-    );
+    // POCs are pre-sales owned, not PM owned -- exclude them, and only bucket rows under an
+    // actual PROJECT_MANAGER-role user (see fix in poc-projects/page.tsx for the source bug).
+    const pocFilter = w ? `${w} AND (project_type IS NULL OR project_type != 'POC')` : `WHERE (project_type IS NULL OR project_type != 'POC')`;
+    const [result, pmUsersResult] = await Promise.all([
+      query(`SELECT project_manager, status, delay_status FROM projects ${pocFilter}`, p),
+      query(`SELECT name FROM users WHERE role = 'PROJECT_MANAGER'`),
+    ]);
     const rows = result.rows;
+    const validPmNames = new Set(pmUsersResult.rows.map((u) => u.name));
     const managerMap: Record<string, { total: number; completed: number; delayed: number; active: number }> = {};
     rows.forEach((r) => {
-      const m = r.project_manager || 'Unassigned';
+      const m = (r.project_manager && validPmNames.has(r.project_manager)) ? r.project_manager : 'Unassigned';
       if (!managerMap[m]) managerMap[m] = { total: 0, completed: 0, delayed: 0, active: 0 };
       managerMap[m].total++;
       if (r.status === 'COMPLETED') managerMap[m].completed++;

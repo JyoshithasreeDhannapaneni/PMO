@@ -1070,7 +1070,11 @@ export default function AuditDashboardPage() {
     const email   = projects.filter(p => classify(p.migrationTypes).has('email'));
     const uniqueIds = new Set([...content, ...message, ...email].map(p => p.id));
 
-    const managers = [...new Set(projects.map(p => p.projectManager).filter(Boolean))].sort() as string[];
+    // Intersect with actual PROJECT_MANAGER-role users -- a POC row's projectManager can
+    // hold a pre-sales owner's name (historical data; new POCs no longer write it, see
+    // poc-projects/page.tsx), and that must never surface as a "manager" in this snapshot.
+    const pmRoleNames = new Set((allUsersData?.data || []).filter((u: any) => u.role === 'PROJECT_MANAGER').map((u: any) => u.name));
+    const managers = [...new Set(projects.map(p => p.projectManager).filter((m) => m && pmRoleNames.has(m)))].sort() as string[];
     const byManager = managers.map(manager => {
       const mp = projects.filter(p => p.projectManager === manager);
       const cSet = new Set(mp.filter(p => classify(p.migrationTypes).has('content')).map(p => p.id));
@@ -1088,7 +1092,7 @@ export default function AuditDashboardPage() {
       emailCount: email.length,
       byManager,
     };
-  }, [allProjectsData, nameToCategory]);
+  }, [allProjectsData, nameToCategory, allUsersData]);
 
   const delayRows = useMemo(() => {
     const projects: Project[] = allProjectsData?.data ?? [];

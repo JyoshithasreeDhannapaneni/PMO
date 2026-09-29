@@ -63,14 +63,19 @@ class ManagerGoalsService {
     const whereClause = managerName ? `AND project_manager = $1` : '';
     const params = managerName ? [managerName] : [];
 
-    const [projectsResult, goalsResult] = await Promise.all([
-      query(`SELECT project_manager, status, delay_status, delay_days FROM projects WHERE archived_at IS NULL AND status != 'COMPLETED' ${whereClause}`, params),
+    // POCs are pre-sales owned, not PM owned -- exclude them, and only bucket rows under
+    // an actual PROJECT_MANAGER-role user (a mistyped/pre-sales name in project_manager
+    // must not show up as a "manager" on this dashboard, see fix in poc-projects/page.tsx).
+    const [projectsResult, goalsResult, pmUsersResult] = await Promise.all([
+      query(`SELECT project_manager, status, delay_status, delay_days FROM projects WHERE archived_at IS NULL AND status != 'COMPLETED' AND (project_type IS NULL OR project_type != 'POC') ${whereClause}`, params),
       query(`SELECT manager_name, goal_pct FROM manager_goals`),
+      query(`SELECT name FROM users WHERE role = 'PROJECT_MANAGER'`),
     ]);
 
     const rows = projectsResult.rows;
     const goalsMap: Record<string, number> = {};
     goalsResult.rows.forEach((g) => { goalsMap[g.manager_name] = g.goal_pct; });
+    const validPmNames = new Set(pmUsersResult.rows.map((u) => u.name));
 
     const managerMap: Record<string, {
       total: number; completed: number; delayed: number; active: number;
@@ -78,7 +83,7 @@ class ManagerGoalsService {
     }> = {};
 
     rows.forEach((r) => {
-      const m = r.project_manager || 'Unassigned';
+      const m = (r.project_manager && validPmNames.has(r.project_manager)) ? r.project_manager : 'Unassigned';
       if (!managerMap[m]) {
         managerMap[m] = { total: 0, completed: 0, delayed: 0, active: 0, inactive: 0, atRisk: 0, onTime: 0, delayedDaysList: [] };
       }

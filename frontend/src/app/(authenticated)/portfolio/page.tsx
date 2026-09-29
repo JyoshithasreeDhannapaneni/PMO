@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect, useRef, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { authApi } from '@/services/api';
 import { Card } from '@/components/ui/Card';
 import {
   Loader2, Plus, Calendar, ChevronDown, Maximize2,
@@ -373,10 +375,19 @@ export default function PortfolioPage() {
   });
   const projects: Project[] = (projectsData?.data as any) || [];
 
-  // All unique managers in this dataset (for admin tabs)
+  // Actual PROJECT_MANAGER-role users -- not raw project.projectManager strings, which can
+  // contain a pre-sales owner's name on POC rows (see fix in poc-projects/page.tsx).
+  const { data: usersData } = useQuery({
+    queryKey: ['users'],
+    queryFn: () => authApi.getUsers(),
+    staleTime: 60_000,
+  });
   const allManagers = useMemo(
-    () => [...new Set(projects.map((p) => p.projectManager).filter(Boolean))].sort() as string[],
-    [projects]
+    () => (usersData?.data || [])
+      .filter((u: any) => u.role === 'PROJECT_MANAGER')
+      .map((u: any) => u.name)
+      .sort() as string[],
+    [usersData?.data]
   );
 
   const { data: weeklyData } = useWeeklyReport(
