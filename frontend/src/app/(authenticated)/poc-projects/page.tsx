@@ -1310,7 +1310,10 @@ export default function PocProjectsPage() {
         ...newForm,
         migrationTypes: migrationTypesStr,
         pocDataVolume:  newForm.pocDataVolume || null,
-        projectManager: newForm.projectManager || newForm.pocPreSalesOwner || '',
+        // POCs are owned by a Pre-Sales person, not a Project Manager -- do not fall back
+        // to the pre-sales owner here, that's what was making pre-sales people show up
+        // everywhere PM lists are derived from this column.
+        projectManager: newForm.projectManager || '',
       } as any);
       showToast('success', 'POC created');
       closeModal();
