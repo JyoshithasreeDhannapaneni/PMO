@@ -18,7 +18,7 @@ import {
   UserX, ShieldCheck, FileSpreadsheet, X, Send, Clock, Phone,
 } from 'lucide-react';
 import { auditApi, emailHygieneApi, callHygieneApi, authApi } from '@/services/api';
-import { SEGMENT_CONFIG } from '@/lib/segments';
+import { SEGMENT_CONFIG, managerNameMatches } from '@/lib/segments';
 import { ScoreBreakdownPanel, EmailBestWorstPanel } from '@/components/EmailHygieneBreakdown';
 import { format, subDays, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { toPng } from 'html-to-image';
@@ -525,6 +525,212 @@ function downloadHygieneTableImage(
   link.href = canvas.toDataURL('image/png');
   link.click();
 }
+
+// Loads /cloudfuze-logo.png once for the branded slide exports below. Resolves to null on
+// any failure (missing file, blocked request) so a slide still downloads without the logo
+// rather than the whole export silently failing.
+function loadLogo(): Promise<HTMLImageElement | null> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = '/cloudfuze-logo.png';
+  });
+}
+
+// One branded "slide" image per segment (ENT or SMB) -- a full redesign of the PMO Hygiene
+// download to match a reference PPT-style slide: CloudFuze header, per-manager clusters of
+// weekly bars with value labels, a top week legend, and a "Slide Owner" footer badge. No
+// data table (unlike downloadHygieneTableImage above) -- this is a pure chart slide.
+async function downloadPmoHygieneSegmentSlide(
+  segmentLabel: string,
+  rows: Array<{ name: string; weekScores: Array<number | null> }>,
+  weekCount: number,
+  filename: string,
+) {
+  const BRAND = '#4B0BC4';
+  const WHITE = '#FFFFFF';
+  const WEEK_COLORS = ['#C7D2FE', '#A5B4FC', '#818CF8', '#4F46E5', '#4338CA', '#3730A3'];
+
+  const W = 1270;
+  const H = 716;
+  const PAD = 40;
+  const HEADER_H = 96;
+  const PLOT_TOP = HEADER_H + 100;
+  const PLOT_BOTTOM = H - 110;
+  const PLOT_LEFT = PAD + 34;
+  const PLOT_RIGHT = W - PAD;
+  const PLOT_HEIGHT = PLOT_BOTTOM - PLOT_TOP;
+
+  const logo = await loadLogo();
+
+  const canvas = document.createElement('canvas');
+  canvas.width = W * 2;
+  canvas.height = H * 2;
+  const ctx = canvas.getContext('2d')!;
+  ctx.scale(2, 2);
+
+  function roundedTopBar(x: number, y: number, w: number, h: number, r: number) {
+    const rr = Math.min(r, w / 2, h);
+    ctx.beginPath();
+    ctx.moveTo(x, y + h);
+    ctx.lineTo(x, y + rr);
+    ctx.arcTo(x, y, x + rr, y, rr);
+    ctx.lineTo(x + w - rr, y);
+    ctx.arcTo(x + w, y, x + w, y + rr, rr);
+    ctx.lineTo(x + w, y + h);
+    ctx.closePath();
+    ctx.fill();
+  }
+  function roundRectPath(x: number, y: number, w: number, h: number, r: number) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  // Base + outer card border
+  ctx.fillStyle = WHITE;
+  ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = '#E5E7EB';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(1, 1, W - 2, H - 2);
+
+  // ── Header ──────────────────────────────────────────────────────
+  ctx.fillStyle = BRAND;
+  ctx.fillRect(0, 0, W, HEADER_H);
+  ctx.fillStyle = WHITE;
+  ctx.font = 'bold 28px Calibri, Arial, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(`${segmentLabel} PMO Hygiene Score by Manager`, W / 2, HEADER_H / 2, W - PAD * 2 - 160);
+
+  if (logo) {
+    const logoSize = 40;
+    ctx.drawImage(logo, W - PAD - logoSize, HEADER_H / 2 - logoSize - 4, logoSize, logoSize);
+  }
+  ctx.font = 'bold 17px Calibri, Arial, sans-serif';
+  ctx.textAlign = 'right';
+  ctx.fillText('CloudFuze', W - PAD, HEADER_H / 2 + 22);
+
+  // ── Subtitle ────────────────────────────────────────────────────
+  ctx.fillStyle = BRAND;
+  ctx.font = 'bold 13px Calibri, Arial, sans-serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(
+    `WEEKLY PMO HYGIENE SCORE · OUT OF 100 · WEEKS 1–${weekCount} · ${segmentLabel} MANAGERS`,
+    PAD, HEADER_H + 34
+  );
+
+  // ── Legend (one entry per week) ────────────────────────────────
+  const legendLabels = Array.from({ length: weekCount }, (_, i) => `Week ${i + 1}`);
+  ctx.font = '13px Calibri, Arial, sans-serif';
+  const legendGap = 22;
+  const swatchLabelGap = 8;
+  const entryWidths = legendLabels.map((l) => 12 + swatchLabelGap + ctx.measureText(l).width);
+  const legendTotalW = entryWidths.reduce((a, b) => a + b, 0) + legendGap * (legendLabels.length - 1);
+  let legendX = W / 2 - legendTotalW / 2;
+  const legendY = HEADER_H + 74;
+  legendLabels.forEach((label, i) => {
+    ctx.fillStyle = WEEK_COLORS[i % WEEK_COLORS.length];
+    roundRectPath(legendX, legendY - 6, 12, 12, 2);
+    ctx.fill();
+    ctx.fillStyle = '#374151';
+    ctx.textAlign = 'left';
+    ctx.fillText(label, legendX + 12 + swatchLabelGap, legendY);
+    legendX += entryWidths[i] + legendGap;
+  });
+
+  // ── Y-axis gridlines (0/20/40/60/80/100) ───────────────────────
+  ctx.font = '11px Calibri, Arial, sans-serif';
+  ctx.fillStyle = '#9CA3AF';
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+  [0, 20, 40, 60, 80, 100].forEach((v) => {
+    const y = PLOT_BOTTOM - (v / 100) * PLOT_HEIGHT;
+    ctx.strokeStyle = '#F0F0F5';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(PLOT_LEFT, y);
+    ctx.lineTo(PLOT_RIGHT, y);
+    ctx.stroke();
+    ctx.fillText(String(v), PLOT_LEFT - 10, y);
+  });
+  // Baseline (0) drawn solid, matching the reference's dark x-axis line
+  ctx.strokeStyle = '#111827';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(PLOT_LEFT, PLOT_BOTTOM);
+  ctx.lineTo(PLOT_RIGHT, PLOT_BOTTOM);
+  ctx.stroke();
+
+  // ── Grouped bars, one cluster per manager ──────────────────────
+  const managerCount = Math.max(rows.length, 1);
+  const groupW = (PLOT_RIGHT - PLOT_LEFT) / managerCount;
+  const GROUP_GAP = Math.min(28, groupW * 0.18);
+  const clusterW = groupW - GROUP_GAP;
+  const barSlot = clusterW / weekCount;
+  const barW = Math.max(6, Math.min(52, barSlot * 0.74));
+
+  rows.forEach((row, idx) => {
+    const clusterX = PLOT_LEFT + groupW * idx + GROUP_GAP / 2;
+    const groupCenterX = PLOT_LEFT + groupW * idx + groupW / 2;
+
+    row.weekScores.slice(0, weekCount).forEach((score, weekIdx) => {
+      const hasData = score !== null;
+      const value = score ?? 0;
+      const barX = clusterX + weekIdx * barSlot + (barSlot - barW) / 2;
+      const barH = Math.max(2, (value / 100) * PLOT_HEIGHT);
+      const barY = PLOT_BOTTOM - barH;
+      const isLast = weekIdx === weekCount - 1;
+
+      ctx.globalAlpha = hasData ? 1 : 0.12;
+      ctx.fillStyle = WEEK_COLORS[weekIdx % WEEK_COLORS.length];
+      roundedTopBar(barX, barY, barW, barH, 3);
+      ctx.globalAlpha = 1;
+
+      if (hasData) {
+        ctx.fillStyle = isLast ? '#111827' : '#4B5563';
+        ctx.font = isLast ? 'bold 14px Calibri, Arial, sans-serif' : '13px Calibri, Arial, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'alphabetic';
+        ctx.fillText(String(Math.round(value)), barX + barW / 2, barY - 8);
+      }
+    });
+
+    // Manager name, horizontal (not rotated -- there's room with 4-5 managers per segment)
+    ctx.fillStyle = '#374151';
+    ctx.font = 'bold 13px Calibri, Arial, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText(row.name, groupCenterX, PLOT_BOTTOM + 14, groupW - 8);
+  });
+
+  // ── Footer badge ("Slide Owner: Ops") ──────────────────────────
+  const badgeText = 'Slide Owner: Ops';
+  ctx.font = 'bold 13px Calibri, Arial, sans-serif';
+  const badgeW = ctx.measureText(badgeText).width + 28;
+  const badgeH = 32;
+  const badgeX = PAD - 20;
+  const badgeY = H - badgeH - 20;
+  ctx.fillStyle = BRAND;
+  roundRectPath(badgeX, badgeY, badgeW, badgeH, 6);
+  ctx.fill();
+  ctx.fillStyle = WHITE;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(badgeText, badgeX + badgeW / 2, badgeY + badgeH / 2);
+
+  const link = document.createElement('a');
+  link.download = filename;
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+}
+
 function weekStart() { return format(subDays(new Date(), 7), 'yyyy-MM-dd'); }
 function lastWeekStart() { return format(subDays(new Date(), 14), 'yyyy-MM-dd'); }
 function lastWeekEnd() { return format(subDays(new Date(), 8), 'yyyy-MM-dd'); }
@@ -850,23 +1056,33 @@ export default function AuditDashboardPage() {
     } catch {}
   }
 
-  function handleDownloadPmoHygieneImage() {
+  // One branded slide per segment (ENT, then SMB), each showing that segment's managers
+  // as clusters of weekly bars -- matches the reference PPT-style slide, not a data table.
+  async function handleDownloadPmoHygieneImage() {
     if (!hygieneBoard.length) return;
-    const allPMs = new Set(SEGMENT_CONFIG.flatMap(s => s.managers).map(m => m.toLowerCase()));
-    const pmRows = hygieneBoard
-      .filter((pm: any) => {
-        const n = (pm.projectManager ?? '').toLowerCase();
-        return allPMs.has(n) || [...allPMs].some(m => n.startsWith(m) || m.startsWith(n.split(' ')[0]));
-      })
-      .map((pm: any) => ({ name: pm.projectManager, score: Math.round(pm.hygieneScore ?? 0) }))
-      .sort((a: { score: number }, b: { score: number }) => b.score - a.score);
-    downloadHygieneTableImage(
-      'PMO Hygiene',
-      'Project Manager',
-      'Hygiene Score',
-      pmRows,
-      `pmo-hygiene-${format(new Date(), 'yyyy-MM-dd')}.png`,
-    );
+    const weeks = pmoWeeklyTrend.slice(-4);
+    const weekCount = Math.max(weeks.length, 1);
+
+    for (const seg of SEGMENT_CONFIG) {
+      const rows = seg.managers.map((canonicalName) => {
+        let displayName = canonicalName;
+        const weekScores = weeks.map((w: any) => {
+          const match = (w.metrics || []).find((m: any) => managerNameMatches(m.projectManager, canonicalName));
+          if (match?.projectManager && match.projectManager.length > displayName.length) {
+            displayName = match.projectManager;
+          }
+          return match ? Math.round(match.hygieneScore ?? 0) : null;
+        });
+        return { name: displayName, weekScores };
+      });
+
+      await downloadPmoHygieneSegmentSlide(
+        seg.label,
+        rows,
+        weekCount,
+        `pmo-hygiene-${seg.label.toLowerCase()}-${format(new Date(), 'yyyy-MM-dd')}.png`,
+      );
+    }
   }
 
   // A manager's "team-wise" score: for the two segment heads (Abhishek/Ajay) that's their
