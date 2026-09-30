@@ -45,7 +45,9 @@ const allNavigation = [
   // Restore these lines to bring the nav links back.
   // { name: 'Server Notifications', href: '/server-alerts', icon: Megaphone, color: '#f59e0b', adminOnly: false },
   { name: 'Self-Heal',            href: '/self-heal',              icon: ShieldCheck,     color: '#0d9488', adminOnly: true },
-  { name: 'Templates',            href: '/templates',              icon: FileText,        color: '#0d9488', adminOnly: true },
+  // Templates temporarily disabled 2026-09-30 (explicit request) -- its page now shows a
+  // placeholder too (see templates/page.tsx). Restore this line to bring the nav link back.
+  // { name: 'Templates', href: '/templates', icon: FileText, color: '#0d9488', adminOnly: true },
   // { name: 'Deal Desk', href: '/deal-desk', icon: HandCoins, color: '#65a30d', adminOnly: true },
   { name: 'Case Studies',         href: '/case-studies',           icon: BookMarked,      color: '#9333ea', adminOnly: false },
   { name: 'KB Articles',          href: '/kb-articles',            icon: BookOpen,        color: '#0284c7', adminOnly: false },
