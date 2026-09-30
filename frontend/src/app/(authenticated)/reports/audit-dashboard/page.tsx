@@ -542,10 +542,17 @@ function loadLogo(): Promise<HTMLImageElement | null> {
 // download to match a reference PPT-style slide: CloudFuze header, per-manager clusters of
 // weekly bars with value labels, a top week legend, and a "Slide Owner" footer badge. No
 // data table (unlike downloadHygieneTableImage above) -- this is a pure chart slide.
-async function downloadPmoHygieneSegmentSlide(
+// Synchronous by design -- `logo` is loaded ONCE up front by the caller (see
+// handleDownloadPmoHygieneImage) so every segment's download fires back-to-back in the same
+// tick with no `await` in between. Browsers (Chrome especially) block or silently drop an
+// automatically-triggered download that happens after an async gap breaks its association
+// with the original click -- two separate `await loadLogo()` calls here meant the second
+// segment's image often never downloaded at all.
+function downloadPmoHygieneSegmentSlide(
   segmentLabel: string,
   rows: Array<{ name: string; weekScores: Array<number | null> }>,
   weekCount: number,
+  logo: HTMLImageElement | null,
   filename: string,
 ) {
   const BRAND = '#4B0BC4';
@@ -561,8 +568,6 @@ async function downloadPmoHygieneSegmentSlide(
   const PLOT_LEFT = PAD + 34;
   const PLOT_RIGHT = W - PAD;
   const PLOT_HEIGHT = PLOT_BOTTOM - PLOT_TOP;
-
-  const logo = await loadLogo();
 
   const canvas = document.createElement('canvas');
   canvas.width = W * 2;
@@ -1062,6 +1067,10 @@ export default function AuditDashboardPage() {
     if (!hygieneBoard.length) return;
     const weeks = pmoWeeklyTrend.slice(-4);
     const weekCount = Math.max(weeks.length, 1);
+    // Loaded ONCE, outside the loop -- both segments' downloads then fire synchronously,
+    // back-to-back, with no further `await` between them (see the note on
+    // downloadPmoHygieneSegmentSlide for why that matters for the browser not blocking one).
+    const logo = await loadLogo();
 
     for (const seg of SEGMENT_CONFIG) {
       const rows = seg.managers.map((canonicalName) => {
@@ -1076,10 +1085,11 @@ export default function AuditDashboardPage() {
         return { name: displayName, weekScores };
       });
 
-      await downloadPmoHygieneSegmentSlide(
+      downloadPmoHygieneSegmentSlide(
         seg.label,
         rows,
         weekCount,
+        logo,
         `pmo-hygiene-${seg.label.toLowerCase()}-${format(new Date(), 'yyyy-MM-dd')}.png`,
       );
     }
