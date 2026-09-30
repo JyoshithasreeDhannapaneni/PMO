@@ -72,21 +72,34 @@ export function istMonthLabel(monthsAgo = 0): string {
   return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
 }
 
-// All Mondays (as IST date strings) from the 1st of the current IST month through today's
+// All Mondays (as IST date strings) from "Week 1" of the current IST month through today's
 // week, inclusive — this is what makes the trend chart "week 1, 2, 3... of this month" and
 // grow automatically as the month progresses, per the 2026-08-24 design decision.
+//
+// "Week 1" is the week containing the 1st of the month, even when that week's Monday falls
+// in the PREVIOUS month (e.g. an Oct 1 that lands on a Thursday makes Week 1 of October run
+// Mon Sep 28 - Sun Oct 4) — confirmed 2026-09-30: the new month "claims" that boundary week
+// entirely rather than splitting it, so it stops appearing as the previous month's trailing
+// week once the calendar turns over. The underlying pmo_hygiene_weekly row for that week is
+// keyed by its Monday (week_start) regardless of month, so this is purely a read-time
+// grouping choice — no backfill needed when this rule changes.
 export function weeksInCurrentIstMonth(): string[] {
   const { weekStart: currentWeekStart } = getIstWeekBounds(0);
   const nowIst = new Date(Date.now() + IST_OFFSET_MS);
   const firstOfMonthIst = Date.UTC(nowIst.getUTCFullYear(), nowIst.getUTCMonth(), 1);
 
+  // Monday of the week that contains the 1st of the month -- this, not the 1st itself, is
+  // the actual cutoff so a mid-week month start still pulls in the few prior-month days.
+  const firstOfMonthDow = new Date(firstOfMonthIst).getUTCDay(); // 0=Sun..6=Sat
+  const daysSinceMondayForFirst = (firstOfMonthDow + 6) % 7; // Mon=0, Tue=1, ..., Sun=6
+  const week1Monday = firstOfMonthIst - daysSinceMondayForFirst * 86400000;
+
   const weeks: string[] = [];
   let cursor = currentWeekStart.getTime();
-  // Walk backwards week by week from the current week while that week's Monday still
-  // falls within the current IST calendar month.
+  // Walk backwards week by week from the current week down to (and including) Week 1's Monday.
   while (true) {
     const cursorIstMidnight = Math.round((cursor + IST_OFFSET_MS) / 86400000) * 86400000;
-    if (cursorIstMidnight < firstOfMonthIst) break;
+    if (cursorIstMidnight < week1Monday) break;
     weeks.unshift(istDateStr(new Date(cursor)));
     cursor -= 7 * 86400000;
   }
