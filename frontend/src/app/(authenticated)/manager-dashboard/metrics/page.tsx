@@ -4,11 +4,11 @@ import { useState, useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { cn } from '@/lib/utils';
 import { format, addDays, startOfWeek } from 'date-fns';
-import { useProjects, useEscalationMails } from '@/hooks/useProjects';
+import { useProjects } from '@/hooks/useProjects';
 import { segmentOfManager } from '@/lib/segments';
 import {
   Loader2, AlertCircle, Star, AlertTriangle, CheckCircle, RotateCcw,
-  ClipboardList, Smile, ShieldCheck, Handshake, Phone, Mail, Calendar,
+  ClipboardList, Smile, ShieldCheck, Handshake, Phone, Calendar,
   ChevronDown, ChevronRight, Plus, Trash2, X, Database, type LucideIcon,
 } from 'lucide-react';
 
@@ -21,7 +21,6 @@ type LeaderProfile = 'STANDARD' | 'ANKIT';
 interface StandardChecks {
   onTime: boolean;        // delivered <= SOW date — good
   fiveStar: boolean;       // 5-star review — good
-  escalation: boolean;     // escalation happened — bad
   slaBreach: boolean;      // SLA breach — bad
 }
 
@@ -30,11 +29,9 @@ interface AnkitChecks {
   reopened: boolean;           // bad
   requirementAccurate: boolean; // good
   csat: boolean;                // good
-  rcaOnTime: boolean;           // good
   escalationPrevented: boolean; // good
   handoffQuality: boolean;      // good
   callAttendance: boolean;      // good
-  escalationMail: boolean;      // bad
 }
 
 type Checks = StandardChecks | AnkitChecks;
@@ -70,14 +67,6 @@ const LEADER_SEGMENT: Record<'ajay' | 'abhishek', 'SMB' | 'ENT'> = {
   abhishek: 'ENT',
 };
 
-// Escalation Mails' `escalationOwner` field uses these exact first names for
-// all three leaders (see backend/src/services/escalationMailService.ts).
-const LEADER_ESCALATION_OWNER: Record<LeaderKey, string> = {
-  ajay: 'Ajay',
-  abhishek: 'Abhishek',
-  ankit: 'Ankit',
-};
-
 interface MetricDef {
   key: string;
   label: string;
@@ -90,8 +79,8 @@ interface MetricDef {
   // rate and its target is a ceiling — this flag only controls checkbox UI
   // (hint text, tag color) so data entry can't be backwards by accident.
   checkedIsGood: boolean;
-  // 'pmo': computed live from real project/escalation-mail records — no manual
-  // entry needed and none is possible (the checkbox is disabled in the form).
+  // 'pmo': computed live from real project records — no manual entry needed
+  // and none is possible (the checkbox is disabled in the form).
   // 'manual': no corresponding PMO data exists, so it stays hand-logged.
   source: 'pmo' | 'manual';
 }
@@ -99,7 +88,6 @@ interface MetricDef {
 const STANDARD_METRICS: MetricDef[] = [
   { key: 'onTime',     label: 'On Time',        icon: CheckCircle,    target: 70, direction: 'higher', checkedIsGood: true,  source: 'pmo' },
   { key: 'fiveStar',   label: '5-Star Reviews', icon: Star,           target: 50, direction: 'higher', checkedIsGood: true,  source: 'manual' },
-  { key: 'escalation', label: 'Escalation',     icon: AlertTriangle,  target: 5,  direction: 'lower',  checkedIsGood: false, source: 'pmo' },
   { key: 'slaBreach',  label: 'SLA Breach',     icon: AlertCircle,    target: 5,  direction: 'lower',  checkedIsGood: false, source: 'pmo' },
 ];
 
@@ -108,11 +96,9 @@ const ANKIT_METRICS: MetricDef[] = [
   { key: 'reopened',              label: 'Reopen Rate',                      icon: RotateCcw,     target: 5,  direction: 'lower',  checkedIsGood: false, source: 'manual' },
   { key: 'requirementAccurate',   label: 'Requirement Capture Accuracy',     icon: ClipboardList, target: 90, direction: 'higher', checkedIsGood: true,  source: 'manual' },
   { key: 'csat',                  label: 'Customer Satisfaction (CSAT)',     icon: Smile,         target: 90, direction: 'higher', checkedIsGood: true,  source: 'manual' },
-  { key: 'rcaOnTime',             label: 'RCA Submission Timeliness (≤24hrs)', icon: ClipboardList, target: 90, direction: 'higher', checkedIsGood: true,  source: 'pmo' },
   { key: 'escalationPrevented',   label: 'Escalation Prevention Rate',       icon: ShieldCheck,   target: 95, direction: 'higher', checkedIsGood: true,  source: 'manual' },
   { key: 'handoffQuality',        label: 'Handoff Quality to CS/Migration',  icon: Handshake,     target: 90, direction: 'higher', checkedIsGood: true,  source: 'manual' },
   { key: 'callAttendance',        label: 'Call Attendance / Responsiveness', icon: Phone,         target: 95, direction: 'higher', checkedIsGood: true,  source: 'manual' },
-  { key: 'escalationMail',        label: 'Escalation Mail from Customer/Anthony', icon: Mail,     target: 5,  direction: 'lower',  checkedIsGood: false, source: 'pmo' },
 ];
 
 const metricsFor = (profile: LeaderProfile): MetricDef[] => profile === 'ANKIT' ? ANKIT_METRICS : STANDARD_METRICS;
@@ -123,11 +109,10 @@ function defaultChecks(profile: LeaderProfile): Checks {
   if (profile === 'ANKIT') {
     return {
       resolved4hr: true, reopened: false, requirementAccurate: true, csat: true,
-      rcaOnTime: true, escalationPrevented: true, handoffQuality: true,
-      callAttendance: true, escalationMail: false,
+      escalationPrevented: true, handoffQuality: true, callAttendance: true,
     };
   }
-  return { onTime: true, fiveStar: true, escalation: false, slaBreach: false };
+  return { onTime: true, fiveStar: true, slaBreach: false };
 }
 
 // ── localStorage persistence ──────────────────────────────────────────────────
@@ -175,26 +160,22 @@ function weekOf(dateStr: string, cycleStart: string): number | null {
 }
 
 // ── PMO auto-pull ──────────────────────────────────────────────────────────────
-// Weekly percentages computed straight from real projects / escalation mails
-// for metrics that have a genuine data source — no manual entry involved.
+// Weekly percentages computed straight from real project records for metrics
+// that have a genuine data source — no manual entry involved.
 
 interface PmoWeekStats {
   onTimePct: number | null;
   slaBreachPct: number | null;
-  escalationPct: number | null;
-  rcaOnTimePct: number | null;
-  escalationMailPct: number | null; // share of that leader's escalation mails vs. total mails that week
 }
 
 const EMPTY_PMO_WEEK: PmoWeekStats = {
-  onTimePct: null, slaBreachPct: null, escalationPct: null, rcaOnTimePct: null, escalationMailPct: null,
+  onTimePct: null, slaBreachPct: null,
 };
 
 function computePmoWeeks(
   leaderKey: LeaderKey,
   cycleStart: string,
   allProjects: any[],
-  allMails: any[],
 ): PmoWeekStats[] {
   const weeks: PmoWeekStats[] = [0, 1, 2, 3].map(() => ({ ...EMPTY_PMO_WEEK }));
 
@@ -212,39 +193,6 @@ function computePmoWeeks(
         weeks[w].onTimePct = Math.round((onTime / dueThisWeek.length) * 100);
         weeks[w].slaBreachPct = Math.round((breached / dueThisWeek.length) * 100);
       }
-      // Escalation % = mails owned by this leader that week, as a share of
-      // their segment's total project count (a rough "how much of the book
-      // of business needed escalation" reading, not a per-project rate).
-      const ownerMailsThisWeek = allMails.filter((m) =>
-        m.escalationOwner === LEADER_ESCALATION_OWNER[leaderKey] && weekOf((m.receivedAt || '').slice(0, 10), cycleStart) === w
-      );
-      if (segmentProjects.length > 0) {
-        weeks[w].escalationPct = Math.round((ownerMailsThisWeek.length / segmentProjects.length) * 100);
-      }
-    }
-  }
-
-  if (leaderKey === 'ankit') {
-    const ownerMails = allMails.filter((m) => m.escalationOwner === LEADER_ESCALATION_OWNER.ankit);
-    for (let w = 0; w < 4; w++) {
-      const receivedThisWeek = ownerMails.filter((m) => weekOf((m.receivedAt || '').slice(0, 10), cycleStart) === w);
-      if (receivedThisWeek.length > 0) {
-        const resolved = receivedThisWeek.filter((m) => m.resolvedAt && m.rca);
-        const onTimeRca = resolved.filter((m) => {
-          const received = new Date(m.receivedAt).getTime();
-          const resolvedAt = new Date(m.resolvedAt).getTime();
-          return (resolvedAt - received) <= 24 * 60 * 60 * 1000;
-        });
-        // RCA timeliness is judged only against mails that have actually been
-        // resolved — an open mail hasn't missed the window yet, so counting it
-        // as a miss would understate the rate for a week still in progress.
-        if (resolved.length > 0) {
-          weeks[w].rcaOnTimePct = Math.round((onTimeRca.length / resolved.length) * 100);
-        }
-      }
-      weeks[w].escalationMailPct = allMails.length > 0
-        ? Math.round((receivedThisWeek.length / allMails.length) * 100)
-        : null;
     }
   }
 
@@ -256,9 +204,6 @@ function computePmoWeeks(
 const PMO_METRIC_FIELD: Partial<Record<string, keyof PmoWeekStats>> = {
   onTime: 'onTimePct',
   slaBreach: 'slaBreachPct',
-  escalation: 'escalationPct',
-  rcaOnTime: 'rcaOnTimePct',
-  escalationMail: 'escalationMailPct',
 };
 
 function pmoMetricPct(week: PmoWeekStats, metric: MetricDef): number | null {
@@ -275,35 +220,18 @@ function computePmoMonthToDate(
   leaderKey: LeaderKey,
   cycleStart: string,
   allProjects: any[],
-  allMails: any[],
 ): PmoWeekStats {
   if (leaderKey === 'ajay' || leaderKey === 'abhishek') {
     const segment = LEADER_SEGMENT[leaderKey];
     const segmentProjects = allProjects.filter((p) => segment === (p.segment || segmentOfManager(p.projectManager)));
     const dueInCycle = segmentProjects.filter((p) => weekOf((p.plannedEnd || '').slice(0, 10), cycleStart) !== null);
-    const ownerMailsInCycle = allMails.filter((m) =>
-      m.escalationOwner === LEADER_ESCALATION_OWNER[leaderKey] && weekOf((m.receivedAt || '').slice(0, 10), cycleStart) !== null
-    );
     return {
       onTimePct: dueInCycle.length > 0 ? Math.round((dueInCycle.filter((p) => p.delayStatus === 'NOT_DELAYED').length / dueInCycle.length) * 100) : null,
       slaBreachPct: dueInCycle.length > 0 ? Math.round((dueInCycle.filter((p) => p.delayStatus === 'DELAYED').length / dueInCycle.length) * 100) : null,
-      escalationPct: segmentProjects.length > 0 ? Math.round((ownerMailsInCycle.length / segmentProjects.length) * 100) : null,
-      rcaOnTimePct: null,
-      escalationMailPct: null,
     };
   }
 
-  const ownerMails = allMails.filter((m) => m.escalationOwner === LEADER_ESCALATION_OWNER.ankit);
-  const receivedInCycle = ownerMails.filter((m) => weekOf((m.receivedAt || '').slice(0, 10), cycleStart) !== null);
-  const resolvedInCycle = receivedInCycle.filter((m) => m.resolvedAt && m.rca);
-  const onTimeRca = resolvedInCycle.filter((m) => (new Date(m.resolvedAt).getTime() - new Date(m.receivedAt).getTime()) <= 24 * 60 * 60 * 1000);
-  return {
-    onTimePct: null,
-    slaBreachPct: null,
-    escalationPct: null,
-    rcaOnTimePct: resolvedInCycle.length > 0 ? Math.round((onTimeRca.length / resolvedInCycle.length) * 100) : null,
-    escalationMailPct: allMails.length > 0 ? Math.round((receivedInCycle.length / allMails.length) * 100) : null,
-  };
+  return { onTimePct: null, slaBreachPct: null };
 }
 
 // ── Scorecard math ────────────────────────────────────────────────────────────
@@ -380,8 +308,8 @@ function AddEntryForm({ profile, dateLabel, onAdd, onCancel }: {
   const [checks, setChecks] = useState<Checks>(defaultChecks(profile));
 
   // Only metrics with no real PMO data source are hand-logged here — the rest
-  // are computed live from projects/escalation mails and would just be a
-  // second, disconnected source of truth if also editable in this form.
+  // are computed live from projects and would just be a second, disconnected
+  // source of truth if also editable in this form.
   const allMetrics = metricsFor(profile);
   const metrics = allMetrics.filter((m) => m.source === 'manual');
   const autoMetrics = allMetrics.filter((m) => m.source === 'pmo');
@@ -390,8 +318,8 @@ function AddEntryForm({ profile, dateLabel, onAdd, onCancel }: {
 
   const markAllGood = () => {
     const good: Checks = profile === 'ANKIT'
-      ? { resolved4hr: true, reopened: false, requirementAccurate: true, csat: true, rcaOnTime: true, escalationPrevented: true, handoffQuality: true, callAttendance: true, escalationMail: false }
-      : { onTime: true, fiveStar: true, escalation: false, slaBreach: false };
+      ? { resolved4hr: true, reopened: false, requirementAccurate: true, csat: true, escalationPrevented: true, handoffQuality: true, callAttendance: true }
+      : { onTime: true, fiveStar: true, slaBreach: false };
     setChecks(good);
   };
 
@@ -671,22 +599,19 @@ function LeaderPanel({ leaderKey, profile }: { leaderKey: LeaderKey; profile: Le
   const metrics = metricsFor(profile);
   const dateLabel = profile === 'ANKIT' ? 'Date' : 'SOW Date';
 
-  // PMO-sourced metrics (On Time, SLA Breach, Escalation, RCA Timeliness,
-  // Escalation Mail volume) come from real projects/escalation-mail records —
-  // fetched at high limit so the segment/owner rollup below sees everything,
-  // matching how Manager Dashboard's org-chart view already fetches full lists.
+  // PMO-sourced metrics (On Time, SLA Breach) come from real project records —
+  // fetched at high limit so the segment rollup below sees everything, matching
+  // how Manager Dashboard's org-chart view already fetches full lists.
   const { data: projectsResp } = useProjects({ limit: 5000 });
-  const { data: mailsResp } = useEscalationMails();
   const allProjects: any[] = (projectsResp as any)?.data ?? [];
-  const allMails: any[] = (mailsResp as any)?.data ?? [];
 
   const pmoWeeks = useMemo(
-    () => computePmoWeeks(leaderKey, state.cycleStart, allProjects, allMails),
-    [leaderKey, state.cycleStart, allProjects, allMails]
+    () => computePmoWeeks(leaderKey, state.cycleStart, allProjects),
+    [leaderKey, state.cycleStart, allProjects]
   );
   const pmoMtd = useMemo(
-    () => computePmoMonthToDate(leaderKey, state.cycleStart, allProjects, allMails),
-    [leaderKey, state.cycleStart, allProjects, allMails]
+    () => computePmoMonthToDate(leaderKey, state.cycleStart, allProjects),
+    [leaderKey, state.cycleStart, allProjects]
   );
 
   const persist = (next: LeaderState) => {
@@ -797,9 +722,9 @@ function LeaderPanel({ leaderKey, profile }: { leaderKey: LeaderKey; profile: Le
 
       {view === 'day' && (
         <>
-          {/* PMO-sourced metrics can't be split by shift — projects/escalation
-              mails aren't tagged Day/Night — so this view only shows the
-              manually-logged metrics for entries recorded on the day shift. */}
+          {/* PMO-sourced metrics can't be split by shift — projects aren't
+              tagged Day/Night — so this view only shows the manually-logged
+              metrics for entries recorded on the day shift. */}
           <WeeklySummaryTable entries={dayEntries} metrics={metrics.filter((m) => m.source === 'manual')} cycleStart={state.cycleStart} />
           <DailyLog entries={dayEntries} cycleStart={state.cycleStart} profile={profile} onDelete={deleteEntry} />
         </>
