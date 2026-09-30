@@ -58,7 +58,26 @@ const DOC_TYPES_KEY = 'templateDocTypes';
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
+// ── Temporarily disabled (2026-09-30) ───────────────────────────────────────
+// Per explicit request -- the full page below is untouched, just not exported as the
+// route's default anymore. To bring it back: delete this placeholder block and restore
+// `export default` on TemplatesPageOriginal below.
 export default function TemplatesPage() {
+  return (
+    <div className="flex flex-col items-center justify-center h-[60vh] text-center gap-3 px-6">
+      <FolderOpen size={40} className="text-gray-300" />
+      <h1 className="text-lg font-semibold text-gray-700">Templates is temporarily unavailable</h1>
+      <p className="text-sm text-gray-500 max-w-md">
+        This page has been taken offline for now. It will be brought back if needed —
+        no data has been removed.
+      </p>
+    </div>
+  );
+}
+
+// ── Main Page (disabled above, kept intact here for easy restore) ──────────────
+
+function TemplatesPageOriginal() {
   const { settings } = useSettings();
   const { user, isLoading: authLoading } = useAuth();
   const isViewer = user?.role === 'VIEWER';
