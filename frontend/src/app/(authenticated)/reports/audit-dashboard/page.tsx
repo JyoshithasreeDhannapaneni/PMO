@@ -198,361 +198,17 @@ type SortKey = 'name' | 'totalProjects' | 'activeProjects' | 'completedProjects'
 
 function todayStr() { return format(new Date(), 'yyyy-MM-dd'); }
 
-function downloadHygieneTableImage(
-  title: string,
-  col1: string,
-  col2: string,
-  rows: { name: string; score: number; teamScore?: number | null; userEmail?: string }[],
-  filename: string,
-  col3?: string,
-  weeklyTrend?: {
-    weeks: Array<{ weekStart: string; isCurrent: boolean; metrics: any[] }>;
-    // Per-row (per-manager) score lookup for these weeks -- e.g. matching a row's
-    // userEmail against that week's stored metrics array. Powers both the inline
-    // per-row sparkline column AND the single combined line chart below the table
-    // (one line per manager, all on the same axes). A row with no resolvable score in
-    // any week is simply left out of both rather than shown as an empty line/sparkline.
-    perRowScoreFn: (weekMetrics: any[], row: { name: string; userEmail?: string }) => number | null;
-  },
-) {
-  const BRAND   = '#4B0BC4';
-  const WHITE   = '#FFFFFF';
-  const ROW_DIV = 'rgba(75,11,196,0.15)';
-  const PAD     = 18;
-  const TITLE_H = 58;
-  const HEAD_H  = 40;
-  const TREND_TITLE_H = 34;
-  const TREND_PLOT_H = 226; // the bar-plotting area itself, excluding the legend below it
-  const LEGEND_COLS = 3;
-  const LEGEND_ROW_H = 20;
-
-  const hasTeam = !!col3;
-  const W_BASE  = hasTeam ? 620 : 540;
-  const COL1_X  = hasTeam ? 270 : 340;   // end of name column
-  const COL2_X  = hasTeam ? 445 : W_BASE; // end of personal score column (=W_BASE for 2-col)
-  const COL3_X  = W_BASE;                 // end of team-wise score column (only meaningful when hasTeam)
-
-  // One weekly series per row, kept in the SAME order as `rows` (not filtered) so it can
-  // be looked up by index -- a row with no resolvable score in a given week just leaves a
-  // gap there in the combined chart below, rather than being dropped entirely or drawn as
-  // a misleading zero. (There's no more per-row inline sparkline column -- this data now
-  // only feeds the single combined "Weekly Trend — By Manager" chart under the table.)
-  const weeks = weeklyTrend?.weeks ?? [];
-  const perRowTrend = weeklyTrend
-    ? rows.map((row) => weeks.map((w) => {
-        const value = weeklyTrend.perRowScoreFn(w.metrics, row);
-        return { value: value ?? 0, hasData: value !== null, isCurrent: w.isCurrent };
-      }))
-    : null;
-  const hasWeeklyData = !!perRowTrend && perRowTrend.some((series) => series.some((w) => w.hasData));
-
-  // Managers with at least one real data point -- these get a cluster of bars + a legend
-  // entry in the combined chart. Kept alongside their row so the legend can show current score too.
-  const lineChartSeries = (hasWeeklyData && perRowTrend)
-    ? rows.map((row, idx) => ({ row, series: perRowTrend[idx] })).filter(({ series }) => series.some((w) => w.hasData))
-    : [];
-  const legendRows = lineChartSeries.length > 0 ? Math.ceil(weeks.length / LEGEND_COLS) : 0;
-  const TREND_CHART_H = TREND_PLOT_H + (legendRows > 0 ? 14 + legendRows * LEGEND_ROW_H : 0);
-
-  const W = W_BASE;
-  const ROW_H = 38;
-
-  const totalH  = TITLE_H + HEAD_H + rows.length * ROW_H
-    + (lineChartSeries.length > 0 ? TREND_TITLE_H + TREND_CHART_H : 0);
-
-  const canvas = document.createElement('canvas');
-  canvas.width  = W * 2;
-  canvas.height = totalH * 2;
-  const ctx = canvas.getContext('2d')!;
-  ctx.scale(2, 2);
-
-  function roundRectPath(x: number, y: number, w: number, h: number, r: number) {
-    ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.arcTo(x + w, y, x + w, y + h, r);
-    ctx.arcTo(x + w, y + h, x, y + h, r);
-    ctx.arcTo(x, y + h, x, y, r);
-    ctx.arcTo(x, y, x + w, y, r);
-    ctx.closePath();
-  }
-
-  // Bar with rounded top corners only (flat bottom) -- matches the softer, rounded-bar
-  // look of the on-page Recharts trend charts instead of harsh rectangular canvas bars.
-  function roundedTopBar(x: number, y: number, w: number, h: number, r: number) {
-    const rr = Math.min(r, w / 2, h);
-    ctx.beginPath();
-    ctx.moveTo(x, y + h);
-    ctx.lineTo(x, y + rr);
-    ctx.arcTo(x, y, x + rr, y, rr);
-    ctx.lineTo(x + w - rr, y);
-    ctx.arcTo(x + w, y, x + w, y + rr, rr);
-    ctx.lineTo(x + w, y + h);
-    ctx.closePath();
-    ctx.fill();
-  }
-
-  // White base
-  ctx.fillStyle = WHITE;
-  ctx.fillRect(0, 0, W, totalH);
-
-  // ── Title band ──────────────────────────────────────────────────
-  ctx.fillStyle = BRAND;
-  ctx.fillRect(0, 0, W, TITLE_H);
-  ctx.fillStyle = WHITE;
-  ctx.font = 'bold 18px Calibri, Arial, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(title, W / 2, TITLE_H / 2, W - PAD * 2);
-
-  // ── Sub-heading band ────────────────────────────────────────────
-  ctx.fillStyle = BRAND;
-  ctx.fillRect(0, TITLE_H, W, HEAD_H);
-  ctx.fillStyle = WHITE;
-  ctx.font = 'bold 14px Calibri, Arial, sans-serif';
-  ctx.textBaseline = 'middle';
-
-  ctx.textAlign = 'left';
-  ctx.fillText(col1, PAD, TITLE_H + HEAD_H / 2, COL1_X - PAD - 12);
-
-  ctx.textAlign = 'center';
-  ctx.fillText(col2, COL1_X + (COL2_X - COL1_X) / 2, TITLE_H + HEAD_H / 2, COL2_X - COL1_X - PAD);
-
-  if (hasTeam && col3) {
-    ctx.fillText(col3, COL2_X + (COL3_X - COL2_X) / 2, TITLE_H + HEAD_H / 2, COL3_X - COL2_X - PAD);
-  }
-
-  // White dividers in sub-heading
-  ctx.strokeStyle = 'rgba(255,255,255,0.30)';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(COL1_X, TITLE_H + 8);
-  ctx.lineTo(COL1_X, TITLE_H + HEAD_H - 8);
-  ctx.stroke();
-  if (hasTeam) {
-    ctx.beginPath();
-    ctx.moveTo(COL2_X, TITLE_H + 8);
-    ctx.lineTo(COL2_X, TITLE_H + HEAD_H - 8);
-    ctx.stroke();
-  }
-
-  // ── Data rows ────────────────────────────────────────────────────
-  const dataY = TITLE_H + HEAD_H;
-  rows.forEach((row, i) => {
-    const y = dataY + i * ROW_H;
-
-    // Name
-    ctx.fillStyle = '#111827';
-    ctx.font = '14px Calibri, Arial, sans-serif';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(row.name, PAD, y + ROW_H / 2, COL1_X - PAD - 12);
-
-    // Personal hygiene score
-    const sc = row.score >= 80 ? '#15803D' : row.score >= 60 ? '#B45309' : '#B91C1C';
-    ctx.fillStyle = sc;
-    ctx.font = 'bold 15px Calibri, Arial, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(String(row.score), COL1_X + (COL2_X - COL1_X) / 2, y + ROW_H / 2);
-
-    // Team hygiene score
-    if (hasTeam) {
-      const ts = row.teamScore;
-      if (ts != null) {
-        const tc = ts >= 80 ? '#15803D' : ts >= 60 ? '#B45309' : '#B91C1C';
-        ctx.fillStyle = tc;
-        ctx.font = 'bold 15px Calibri, Arial, sans-serif';
-        ctx.fillText(String(Math.round(ts)), COL2_X + (COL3_X - COL2_X) / 2, y + ROW_H / 2);
-      } else {
-        ctx.fillStyle = '#9CA3AF';
-        ctx.font = '14px Calibri, Arial, sans-serif';
-        ctx.fillText('—', COL2_X + (COL3_X - COL2_X) / 2, y + ROW_H / 2);
-      }
-    }
-
-    // Horizontal row divider (skip last row)
-    if (i < rows.length - 1) {
-      ctx.strokeStyle = ROW_DIV;
-      ctx.lineWidth = 0.75;
-      ctx.beginPath();
-      ctx.moveTo(2, y + ROW_H);
-      ctx.lineTo(W - 2, y + ROW_H);
-      ctx.stroke();
-    }
-  });
-
-  // ── Column dividers through data area ────────────────────────────
-  ctx.strokeStyle = ROW_DIV;
-  ctx.lineWidth = 0.75;
-  ctx.beginPath();
-  ctx.moveTo(COL1_X, dataY);
-  ctx.lineTo(COL1_X, dataY + rows.length * ROW_H);
-  ctx.stroke();
-  if (hasTeam) {
-    ctx.beginPath();
-    ctx.moveTo(COL2_X, dataY);
-    ctx.lineTo(COL2_X, dataY + rows.length * ROW_H);
-    ctx.stroke();
-  }
-
-  // ── Weekly trend, per manager, all in one combined chart ──────────────────────────
-  // Grouped by MANAGER on the X axis (not by week) -- each manager gets its own small
-  // cluster of bars showing that manager's week-over-week trend, side by side with
-  // every other manager's cluster, so a single glance compares both "how did this
-  // person trend" and "how do people compare" without needing separate charts.
-  // CloudFuze's brand purple (#4B0BC4, used as BRAND above) fanned into a ramp -- lightest
-  // for the oldest week, deepening toward the brand color itself for the most recent
-  // finalized week, so the chart reads as CloudFuze's own palette instead of a generic
-  // rainbow. The in-progress "so far" week is still overridden to the lighter indicator
-  // color below, matching the sparkline/legend convention used elsewhere on this page.
-  const WEEK_COLORS = [
-    '#D8CCF5', '#B79AEB', '#9568E0', '#7C3AED', '#5A17CE', '#4B0BC4', '#3A0899', '#2C0673',
-  ];
-  const weekColor = (weekIdx: number, isCurrent: boolean) =>
-    isCurrent ? '#C7D2FE' : WEEK_COLORS[weekIdx % WEEK_COLORS.length];
-
-  if (lineChartSeries.length > 0) {
-    const trendY = TITLE_H + HEAD_H + rows.length * ROW_H;
-
-    ctx.fillStyle = BRAND;
-    ctx.fillRect(0, trendY, W, TREND_TITLE_H);
-    ctx.fillStyle = WHITE;
-    ctx.font = 'bold 13px Calibri, Arial, sans-serif';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('Weekly Trend — By Manager', PAD, trendY + TREND_TITLE_H / 2);
-
-    const plotLeft = PAD + 26; // room for the 0/25/50/75/100 axis labels
-    const plotRight = W - PAD;
-    const plotTop = trendY + TREND_TITLE_H + 14;
-    const plotBottom = plotTop + TREND_PLOT_H - 90; // leaves room for the angled manager-name labels underneath
-    const plotHeight = plotBottom - plotTop;
-    const n = weeks.length;
-    const managerCount = lineChartSeries.length;
-    const groupW = (plotRight - plotLeft) / managerCount;
-    // Visible whitespace between one manager's cluster of bars and the next -- the cluster
-    // is centered within its group slot, so this gap is split evenly on both sides.
-    const GROUP_GAP = Math.min(18, groupW * 0.25);
-    const clusterW = groupW - GROUP_GAP;
-    const barSlot = clusterW / n;
-    const barW = Math.max(2, Math.min(14, barSlot * 0.8));
-
-    // Y gridlines at 0/25/50/75/100, with labels
-    ctx.font = '9px Calibri, Arial, sans-serif';
-    ctx.fillStyle = '#9CA3AF';
-    ctx.textAlign = 'right';
-    ctx.textBaseline = 'middle';
-    [0, 25, 50, 75, 100].forEach((v) => {
-      const y = plotBottom - (v / 100) * plotHeight;
-      ctx.strokeStyle = 'rgba(75,11,196,0.08)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(plotLeft, y);
-      ctx.lineTo(plotRight, y);
-      ctx.stroke();
-      ctx.fillText(String(v), plotLeft - 8, y);
-    });
-
-    // Manager-name labels, angled under each manager's cluster of bars so names don't
-    // collide even with a dozen-plus managers on the axis.
-    ctx.font = '10px Calibri, Arial, sans-serif';
-    ctx.fillStyle = '#6B7280';
-    ctx.textAlign = 'right';
-    ctx.textBaseline = 'middle';
-    lineChartSeries.forEach(({ row }, idx) => {
-      const groupCenterX = plotLeft + groupW * idx + groupW / 2;
-      ctx.save();
-      ctx.translate(groupCenterX, plotBottom + 8);
-      ctx.rotate(-Math.PI / 4.2);
-      ctx.fillText(row.name, 0, 0);
-      ctx.restore();
-    });
-
-    // Faint separators between each manager's cluster of bars
-    ctx.strokeStyle = ROW_DIV;
-    ctx.lineWidth = 0.75;
-    for (let i = 1; i < managerCount; i++) {
-      const x = plotLeft + groupW * i;
-      ctx.beginPath();
-      ctx.moveTo(x, plotTop);
-      ctx.lineTo(x, plotBottom);
-      ctx.stroke();
-    }
-
-    // One small bar per week, clustered by manager -- a manager with no score that week
-    // gets a faint sliver instead of a bar drawn to zero, so "no data" reads differently
-    // from "actually scored zero."
-    lineChartSeries.forEach(({ series }, idx) => {
-      const clusterX = plotLeft + groupW * idx + GROUP_GAP / 2;
-      series.forEach((wk, weekIdx) => {
-        const barX = clusterX + weekIdx * barSlot + (barSlot - barW) / 2;
-        const barH = Math.max(2, (wk.value / 100) * plotHeight);
-        const barY = plotBottom - barH;
-
-        ctx.globalAlpha = wk.hasData || wk.isCurrent ? 1 : 0.12;
-        ctx.fillStyle = weekColor(weekIdx, wk.isCurrent);
-        roundedTopBar(barX, barY, barW, barH, Math.min(2, barW / 3));
-        ctx.globalAlpha = 1;
-      });
-    });
-
-    // Legend -- one entry per week (not per manager), since color now encodes the week.
-    const legendTop = plotBottom + 100;
-    const legendColW = (W - PAD * 2) / LEGEND_COLS;
-    ctx.font = '11px Calibri, Arial, sans-serif';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    weeks.forEach((w, i) => {
-      const col = i % LEGEND_COLS;
-      const legendRow = Math.floor(i / LEGEND_COLS);
-      const x = PAD + col * legendColW;
-      const y = legendTop + legendRow * LEGEND_ROW_H + LEGEND_ROW_H / 2;
-      ctx.fillStyle = weekColor(i, w.isCurrent);
-      ctx.beginPath();
-      ctx.arc(x + 4, y, 4, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#374151';
-      ctx.fillText(w.isCurrent ? `Wk ${i + 1} (so far)` : `Wk ${i + 1}`, x + 13, y, legendColW - 18);
-    });
-  }
-
-  // ── Outer border ─────────────────────────────────────────────────
-  ctx.strokeStyle = BRAND;
-  ctx.lineWidth = 2;
-  ctx.strokeRect(1, 1, W - 2, totalH - 2);
-
-  const link = document.createElement('a');
-  link.download = filename;
-  link.href = canvas.toDataURL('image/png');
-  link.click();
-}
-
-// Loads /cloudfuze-logo.png once for the branded slide exports below. Resolves to null on
-// any failure (missing file, blocked request) so a slide still downloads without the logo
-// rather than the whole export silently failing.
-function loadLogo(): Promise<HTMLImageElement | null> {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = () => resolve(null);
-    img.src = '/cloudfuze-logo.png';
-  });
-}
-
-// One branded "slide" image per segment (ENT or SMB) -- a full redesign of the PMO Hygiene
-// download to match a reference PPT-style slide: CloudFuze header, per-manager clusters of
-// weekly bars with value labels, a top week legend, and a "Slide Owner" footer badge. No
-// data table (unlike downloadHygieneTableImage above) -- this is a pure chart slide.
-// Synchronous by design -- `logo` is loaded ONCE up front by the caller (see
-// handleDownloadPmoHygieneImage) so every segment's download fires back-to-back in the same
-// tick with no `await` in between. Browsers (Chrome especially) block or silently drop an
-// automatically-triggered download that happens after an async gap breaks its association
-// with the original click -- two separate `await loadLogo()` calls here meant the second
-// segment's image often never downloaded at all.
-function downloadPmoHygieneSegmentSlide(
-  segmentLabel: string,
+// One clean "slide" image per segment (ENT or SMB), shared by both PMO Hygiene and Email
+// Hygiene downloads -- per-manager clusters of weekly bars with value labels and a top week
+// legend. No header band, no logo, no footer badge (dropped 2026-09-30 per explicit
+// request), no data table -- just the chart, matching the reference exactly. Synchronous
+// and self-contained (no image loading, so no async gap between the two segments' downloads
+// that could get one of them blocked by the browser).
+function downloadHygieneWeeklySegmentSlide(
+  metricLabel: string, // e.g. 'PMO HYGIENE' or 'EMAIL HYGIENE' -- goes into the subtitle line
+  segmentLabel: string, // 'ENT' or 'SMB'
   rows: Array<{ name: string; weekScores: Array<number | null> }>,
   weekCount: number,
-  logo: HTMLImageElement | null,
   filename: string,
 ) {
   const BRAND = '#4B0BC4';
@@ -560,11 +216,10 @@ function downloadPmoHygieneSegmentSlide(
   const WEEK_COLORS = ['#C7D2FE', '#A5B4FC', '#818CF8', '#4F46E5', '#4338CA', '#3730A3'];
 
   const W = 1270;
-  const H = 716;
+  const H = 580;
   const PAD = 40;
-  const HEADER_H = 96;
-  const PLOT_TOP = HEADER_H + 100;
-  const PLOT_BOTTOM = H - 110;
+  const PLOT_TOP = 110;
+  const PLOT_BOTTOM = H - 70;
   const PLOT_LEFT = PAD + 34;
   const PLOT_RIGHT = W - PAD;
   const PLOT_HEIGHT = PLOT_BOTTOM - PLOT_TOP;
@@ -604,31 +259,14 @@ function downloadPmoHygieneSegmentSlide(
   ctx.lineWidth = 2;
   ctx.strokeRect(1, 1, W - 2, H - 2);
 
-  // ── Header ──────────────────────────────────────────────────────
-  ctx.fillStyle = BRAND;
-  ctx.fillRect(0, 0, W, HEADER_H);
-  ctx.fillStyle = WHITE;
-  ctx.font = 'bold 28px Calibri, Arial, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(`${segmentLabel} PMO Hygiene Score by Manager`, W / 2, HEADER_H / 2, W - PAD * 2 - 160);
-
-  if (logo) {
-    const logoSize = 40;
-    ctx.drawImage(logo, W - PAD - logoSize, HEADER_H / 2 - logoSize - 4, logoSize, logoSize);
-  }
-  ctx.font = 'bold 17px Calibri, Arial, sans-serif';
-  ctx.textAlign = 'right';
-  ctx.fillText('CloudFuze', W - PAD, HEADER_H / 2 + 22);
-
-  // ── Subtitle ────────────────────────────────────────────────────
+  // ── Subtitle (the only "header" now -- plain text, no band behind it) ──
   ctx.fillStyle = BRAND;
   ctx.font = 'bold 13px Calibri, Arial, sans-serif';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
   ctx.fillText(
-    `WEEKLY PMO HYGIENE SCORE · OUT OF 100 · WEEKS 1–${weekCount} · ${segmentLabel} MANAGERS`,
-    PAD, HEADER_H + 34
+    `WEEKLY ${metricLabel} SCORE · OUT OF 100 · WEEKS 1–${weekCount} · ${segmentLabel} MANAGERS`,
+    PAD, 34
   );
 
   // ── Legend (one entry per week) ────────────────────────────────
@@ -639,7 +277,7 @@ function downloadPmoHygieneSegmentSlide(
   const entryWidths = legendLabels.map((l) => 12 + swatchLabelGap + ctx.measureText(l).width);
   const legendTotalW = entryWidths.reduce((a, b) => a + b, 0) + legendGap * (legendLabels.length - 1);
   let legendX = W / 2 - legendTotalW / 2;
-  const legendY = HEADER_H + 74;
+  const legendY = 74;
   legendLabels.forEach((label, i) => {
     ctx.fillStyle = WEEK_COLORS[i % WEEK_COLORS.length];
     roundRectPath(legendX, legendY - 6, 12, 12, 2);
@@ -714,21 +352,6 @@ function downloadPmoHygieneSegmentSlide(
     ctx.textBaseline = 'top';
     ctx.fillText(row.name, groupCenterX, PLOT_BOTTOM + 14, groupW - 8);
   });
-
-  // ── Footer badge ("Slide Owner: Ops") ──────────────────────────
-  const badgeText = 'Slide Owner: Ops';
-  ctx.font = 'bold 13px Calibri, Arial, sans-serif';
-  const badgeW = ctx.measureText(badgeText).width + 28;
-  const badgeH = 32;
-  const badgeX = PAD - 20;
-  const badgeY = H - badgeH - 20;
-  ctx.fillStyle = BRAND;
-  roundRectPath(badgeX, badgeY, badgeW, badgeH, 6);
-  ctx.fill();
-  ctx.fillStyle = WHITE;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(badgeText, badgeX + badgeW / 2, badgeY + badgeH / 2);
 
   const link = document.createElement('a');
   link.download = filename;
@@ -1061,16 +684,12 @@ export default function AuditDashboardPage() {
     } catch {}
   }
 
-  // One branded slide per segment (ENT, then SMB), each showing that segment's managers
-  // as clusters of weekly bars -- matches the reference PPT-style slide, not a data table.
-  async function handleDownloadPmoHygieneImage() {
+  // One slide per segment (ENT, then SMB), each showing that segment's managers as clusters
+  // of weekly bars -- matches the reference exactly, no data table.
+  function handleDownloadPmoHygieneImage() {
     if (!hygieneBoard.length) return;
     const weeks = pmoWeeklyTrend.slice(-4);
     const weekCount = Math.max(weeks.length, 1);
-    // Loaded ONCE, outside the loop -- both segments' downloads then fire synchronously,
-    // back-to-back, with no further `await` between them (see the note on
-    // downloadPmoHygieneSegmentSlide for why that matters for the browser not blocking one).
-    const logo = await loadLogo();
 
     for (const seg of SEGMENT_CONFIG) {
       const rows = seg.managers.map((canonicalName) => {
@@ -1085,62 +704,46 @@ export default function AuditDashboardPage() {
         return { name: displayName, weekScores };
       });
 
-      downloadPmoHygieneSegmentSlide(
+      downloadHygieneWeeklySegmentSlide(
+        'PMO HYGIENE',
         seg.label,
         rows,
         weekCount,
-        logo,
         `pmo-hygiene-${seg.label.toLowerCase()}-${format(new Date(), 'yyyy-MM-dd')}.png`,
       );
     }
   }
 
-  // A manager's "team-wise" score: for the two segment heads (Abhishek/Ajay) that's their
-  // segment average (mean of that segment's team scores); for a team manager, it's the
-  // score of the specific team they run. Never their own personal mailbox activity.
-  function teamWiseScoreFor(email: string | undefined): number | null {
-    if (!email) return null;
-    const lower = email.toLowerCase();
-    if (emailSegmentHeads.ENT?.email.toLowerCase() === lower) return emailSegmentHeads.ENT.score;
-    if (emailSegmentHeads.SMB?.email.toLowerCase() === lower) return emailSegmentHeads.SMB.score;
-    const team = emailTeamHygiene.find((t: any) => t.managerEmail?.toLowerCase() === lower);
-    return team ? team.teamScore : null;
-  }
 
+  // Same segment-slide style as PMO Hygiene above -- one image per segment, weekly bar
+  // clusters per manager, matched by userName the same way handleDownloadPmoHygieneImage
+  // matches by projectManager.
   function handleDownloadEmailHygieneImage() {
     if (!emailMetrics.length) return;
-    const allPMs = new Set(SEGMENT_CONFIG.flatMap(s => s.managers).map(m => m.toLowerCase()));
-    const pmRows = emailMetrics
-      .filter((m: any) => {
-        const n = (m.userName ?? '').toLowerCase();
-        return allPMs.has(n) || [...allPMs].some(pm => n.startsWith(pm) || pm.startsWith(n.split(' ')[0]));
-      })
-      .map((m: any) => ({
-        name: m.userName,
-        score: Math.round(m.emailHygieneScore ?? 0),
-        teamScore: teamWiseScoreFor(m.userEmail),
-        userEmail: m.userEmail,
-      }))
-      .sort((a: { score: number }, b: { score: number }) => b.score - a.score);
+    const weeks = emailWeeklyTrend.slice(-4);
+    const weekCount = Math.max(weeks.length, 1);
 
-    downloadHygieneTableImage(
-      'Email Hygiene',
-      'Managers',
-      'Individual Score (/100)',
-      pmRows,
-      `email-hygiene-${format(new Date(), 'yyyy-MM-dd')}.png`,
-      'Team-wise Score (/100)',
-      {
-        weeks: emailWeeklyTrend,
-        // Same week's stored metrics array, but looked up for THIS specific manager
-        // instead of averaged across everyone -- powers both the inline sparkline
-        // column and the single combined "all managers" line chart.
-        perRowScoreFn: (weekMetrics: any[], row: { userEmail?: string }) => {
-          const m = weekMetrics.find((x: any) => x.userEmail === row.userEmail);
-          return m ? Math.round(m.emailHygieneScore) : null;
-        },
-      },
-    );
+    for (const seg of SEGMENT_CONFIG) {
+      const rows = seg.managers.map((canonicalName) => {
+        let displayName = canonicalName;
+        const weekScores = weeks.map((w: any) => {
+          const match = (w.metrics || []).find((m: any) => managerNameMatches(m.userName, canonicalName));
+          if (match?.userName && match.userName.length > displayName.length) {
+            displayName = match.userName;
+          }
+          return match ? Math.round(match.emailHygieneScore ?? 0) : null;
+        });
+        return { name: displayName, weekScores };
+      });
+
+      downloadHygieneWeeklySegmentSlide(
+        'EMAIL HYGIENE',
+        seg.label,
+        rows,
+        weekCount,
+        `email-hygiene-${seg.label.toLowerCase()}-${format(new Date(), 'yyyy-MM-dd')}.png`,
+      );
+    }
   }
 
   // ── Hygiene scorecard email — send now / scheduled send ──────────
