@@ -103,9 +103,12 @@ services:
   nginx:
     image: nginx:alpine
     container_name: pmo-nginx
+    # Loopback-only: the host's system nginx terminates public TLS and proxies to
+    # 127.0.0.1:8091. Binding 0.0.0.0 exposed this container directly on the public IP,
+    # bypassing the host nginx (Docker's iptables rules skip ufw). Port 80 isn't
+    # published because the host nginx already does the HTTP→HTTPS redirect.
     ports:
-      - "8089:80"
-      - "8091:443"
+      - "127.0.0.1:8091:443"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - /etc/letsencrypt:/etc/letsencrypt:ro
