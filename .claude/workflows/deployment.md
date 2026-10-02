@@ -7,7 +7,7 @@ Use this blueprint when preparing or executing a deploy of PMO Tracker.
 ## Topology
 Docker Compose, four services, on a single VPS behind nginx:
 ```
-postgres (postgres:15-alpine) → backend (Express, port 3001 internal) → frontend (Next.js, port 3000 internal) → nginx (host ports 8089/8091 → 80/443)
+postgres (postgres:15-alpine) → backend (Express, port 3001 internal) → frontend (Next.js, port 3000 internal) → nginx (host 127.0.0.1:8091 → 443, behind the VPS system nginx)
 ```
 No Vercel, no managed database, no CI/CD pipeline (no `.github/workflows/`) — deploys are manual `docker compose` runs on the server.
 

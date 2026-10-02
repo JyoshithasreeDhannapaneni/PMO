@@ -52,7 +52,7 @@ cd ~/.claude/skills/gstack
 - **Controllers → Services → raw `pg` queries.** Controllers are thin (validate → call service → respond). Services own all SQL and business logic.
 - **Schema is NOT managed by a single migration tool.** Three layers, in order of authority: (1) `backend/src/db/init.ts` — idempotent `CREATE TABLE IF NOT EXISTS` base schema, run on every boot; (2) `backend/src/index.ts`'s `runMigrations()` — an accumulating list of `ALTER TABLE`/`CREATE TABLE IF NOT EXISTS` statements, also run every boot, each guarded by a `columnExists()` check; (3) `database/schema.sql` — the **original 2026-04 baseline only**, now stale (still shows Postgres `ENUM` types that `runMigrations()` converts to `VARCHAR` at runtime). **Treat `runMigrations()` in `index.ts` as the current source of truth for schema, not `database/schema.sql`.**
 - **Delay calculation** is computed live on every read (`calculateDelay()` in `backend/src/utils/delayCalculator.ts`), not just cached in the DB, so it reflects "today" even if a cron hasn't run.
-- **Deployment**: Docker Compose (`postgres` + `backend` + `frontend` + `nginx`) behind an nginx reverse proxy on a VPS (ports 8089/8091 → 80/443), not Vercel/managed hosting.
+- **Deployment**: Docker Compose (`postgres` + `backend` + `frontend` + `nginx`) behind the VPS system nginx, which proxies the public domain to the container nginx on loopback-only `127.0.0.1:8091`, not Vercel/managed hosting.
 - Full detail: `.claude/memory/architecture.md`, `.claude/memory/repository-map.md`.
 
 ## Critical Constraints
