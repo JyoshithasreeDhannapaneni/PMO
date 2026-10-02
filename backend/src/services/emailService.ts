@@ -11,6 +11,16 @@ export interface EmailOptions {
 
 const BRAND_COLOR = '#2563eb';
 
+// admin@company.com is the placeholder address on the built-in `admin` account
+// (authService.createDefaultAdmin, db/seed.ts, reset-admin.js). That account has role ADMIN,
+// so every "mail all admins/PMs" job was sending to it daily. Blocked here at the send layer so
+// no current or future recipient query can reach it.
+const BLOCKED_RECIPIENTS = new Set(['admin@company.com']);
+
+export function isBlockedRecipient(email: string): boolean {
+  return BLOCKED_RECIPIENTS.has(email.trim().toLowerCase());
+}
+
 /** Wrap any body HTML in a consistent CloudFuze-branded shell. */
 export function brandedEmail(title: string, body: string, accentColor = BRAND_COLOR): string {
   return `<!DOCTYPE html>
@@ -143,8 +153,14 @@ async function sendViaGraph(to: string, subject: string, html: string, cc?: stri
 
 class EmailService {
   async sendEmail(options: EmailOptions): Promise<void> {
-    const recipients = Array.isArray(options.to) ? options.to : [options.to];
-    const cc = options.cc ? (Array.isArray(options.cc) ? options.cc : [options.cc]) : undefined;
+    const allTo = Array.isArray(options.to) ? options.to : [options.to];
+    const allCc = options.cc ? (Array.isArray(options.cc) ? options.cc : [options.cc]) : [];
+    const blocked = [...allTo, ...allCc].filter(isBlockedRecipient);
+    if (blocked.length > 0) logger.info(`Email skipped for blocked recipient(s): ${blocked.join(', ')} | Subject: ${options.subject}`);
+
+    const recipients = allTo.filter((addr) => !isBlockedRecipient(addr));
+    const filteredCc = allCc.filter((addr) => !isBlockedRecipient(addr));
+    const cc = filteredCc.length > 0 ? filteredCc : undefined;
 
     for (const to of recipients) {
       try {
