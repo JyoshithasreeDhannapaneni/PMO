@@ -1,5 +1,6 @@
 import { query, execute } from '../config/database';
 import { logger } from '../utils/logger';
+import { isBlockedRecipient } from './emailService';
 
 interface AlertProject {
   id: string;
@@ -197,6 +198,10 @@ class ServerAlertService {
   }
 
   private async sendViaGraph(to: string, subject: string, html: string): Promise<void> {
+    if (isBlockedRecipient(to)) {
+      logger.info(`[Graph] Email skipped for blocked recipient ${to} | Subject: ${subject}`);
+      return;
+    }
     const clientId = process.env.AZURE_CLIENT_ID || process.env.MICROSOFT_CLIENT_ID;
     const clientSecret = process.env.AZURE_CLIENT_SECRET || process.env.MICROSOFT_CLIENT_SECRET;
     const fromEmail = process.env.ALERT_FROM_EMAIL || 'Bharath.Tummaganti@cloudfuze.com';

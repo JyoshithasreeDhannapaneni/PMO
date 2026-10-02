@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { notificationService } from '../services/notificationService';
 import { asyncHandler } from '../middleware/errorHandler';
+import { isBlockedRecipient } from '../services/emailService';
 
 export const notificationController = {
   /**
@@ -80,6 +81,10 @@ export const notificationController = {
     const { to, smtpSettings, subject, body, notificationType } = req.body;
     if (!to) {
       res.status(400).json({ success: false, error: { message: 'Recipient email required' } });
+      return;
+    }
+    if (isBlockedRecipient(String(to))) {
+      res.status(400).json({ success: false, error: { message: `${to} is blocked from receiving emails` } });
       return;
     }
 

@@ -1,5 +1,6 @@
 import { query, execute } from '../config/db';
 import nodemailer from 'nodemailer';
+import { isBlockedRecipient } from './emailService';
 
 export interface SmtpSettings {
   id?: string;
@@ -91,6 +92,9 @@ class SmtpSettingsService {
     settings: Omit<SmtpSettings, 'id' | 'updatedAt'>,
     recipientEmail: string
   ): Promise<{ success: boolean; message: string }> {
+    if (isBlockedRecipient(recipientEmail)) {
+      return { success: false, message: `${recipientEmail} is blocked from receiving emails` };
+    }
     try {
       const secure = settings.security === 'SSL';
       const transporter = nodemailer.createTransport({
