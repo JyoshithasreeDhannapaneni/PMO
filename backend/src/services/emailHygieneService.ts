@@ -253,11 +253,51 @@ export function computeSegmentHeads(teamHygiene: TeamHygieneRow[]): Record<'ENT'
 // below without reintroducing a live sync from a plain page load.
 const CACHE_TTL_MS = 90 * 60 * 1000;
 
+// 2026-10-05: removed from email hygiene only (product decision). Kept out here rather than
+// via email_hygiene_members.is_active because that table also drives call hygiene and SLA
+// breach alerts, which should still include them.
+const REMOVED_FROM_EMAIL_HYGIENE = new Set([
+  'pallavi.kosuvaripalli@cloudfuze.com',
+  'sravan.kesaram@cloudfuze.com',
+  'raghu.yellani@cloudfuze.com',
+  'saikumar.kustapuram@cloudfuze.com',
+  'abhishikth.yenugula@cloudfuze.com',
+]);
+
+function isRemovedFromEmailHygiene(email: string | null | undefined): boolean {
+  return !!email && REMOVED_FROM_EMAIL_HYGIENE.has(email.toLowerCase());
+}
+
+// Saved snapshots (cache, daily/weekly/monthly tables) were written before the removal, so
+// every read path strips these users too, not just new computations.
+function withoutRemovedUsers(metrics: UserEmailHygiene[]): UserEmailHygiene[] {
+  return metrics.filter((m) => !isRemovedFromEmailHygiene(m.userEmail));
+}
+
+// Older snapshots also hold whole teams these people managed (pre-2026-09-23 roster), and
+// those team scores feed the ENT/SMB segment heads — drop their teams, remove them from the
+// rest, and recompute each team's score from who's left.
+function withoutRemovedTeams(teams: TeamHygieneRow[]): TeamHygieneRow[] {
+  return teams
+    .filter((t) => !isRemovedFromEmailHygiene(t.managerEmail))
+    .map((t) => {
+      const members = (t.members ?? []).filter((m) => !isRemovedFromEmailHygiene(m.email));
+      const scored = members.filter((m) => m.score !== null);
+      return {
+        ...t,
+        members,
+        memberCount: members.length,
+        scoredMemberCount: scored.length,
+        teamScore: scored.length > 0 ? Math.round(scored.reduce((sum, m) => sum + (m.score as number), 0) / scored.length) : null,
+      };
+    });
+}
+
 async function getCFUsers(): Promise<Array<{ email: string; name: string }>> {
   const result = await query(
     `SELECT email, display_name AS name FROM email_hygiene_members WHERE is_active = true ORDER BY display_name`
   );
-  return result.rows as Array<{ email: string; name: string }>;
+  return (result.rows as Array<{ email: string; name: string }>).filter((u) => !isRemovedFromEmailHygiene(u.email));
 }
 
 async function userMailboxExists(client: AxiosInstance, userPath: string): Promise<boolean> {
@@ -1332,9 +1372,9 @@ export const emailHygieneService = {
           // per-user teamHygieneScore/teamDlEmail fields from the dead DL-mailbox approach).
           const isNewSchema = metrics.length === 0 || Array.isArray(metrics[0]?.insights);
           if (isNewSchema && row.team_hygiene !== null && Date.now() - new Date(row.computed_at).getTime() < CACHE_TTL_MS) {
-            const cachedTeamHygiene = row.team_hygiene as TeamHygieneRow[];
+            const cachedTeamHygiene = withoutRemovedTeams(row.team_hygiene as TeamHygieneRow[]);
             return {
-              metrics: metrics as UserEmailHygiene[],
+              metrics: withoutRemovedUsers(metrics as UserEmailHygiene[]),
               teamHygiene: cachedTeamHygiene,
               segmentHeads: computeSegmentHeads(cachedTeamHygiene),
               computedAt: row.computed_at as string,
@@ -1486,8 +1526,8 @@ export const emailHygieneService = {
             label,
             isCurrent: false,
             hasData: true,
-            metrics: r.metrics as UserEmailHygiene[],
-            teamHygiene: (r.team_hygiene ?? []) as TeamHygieneRow[],
+            metrics: withoutRemovedUsers(r.metrics as UserEmailHygiene[]),
+            teamHygiene: withoutRemovedTeams((r.team_hygiene ?? []) as TeamHygieneRow[]),
           };
         }
       }
@@ -1495,7 +1535,7 @@ export const emailHygieneService = {
       const { dayStart, dayEnd } = getIstDayBounds(daysAgo);
       const cached = getCachedLiveDay(dayStartDate);
       if (cached) {
-        return { dayStart: dayStartDate, dayEnd: istDateStr(dayEnd), label, isCurrent, hasData: true, metrics: cached.metrics, teamHygiene: cached.teamHygiene };
+        return { dayStart: dayStartDate, dayEnd: istDateStr(dayEnd), label, isCurrent, hasData: true, metrics: withoutRemovedUsers(cached.metrics), teamHygiene: withoutRemovedTeams(cached.teamHygiene) };
       }
       // Only auto-trigger a live fetch for the couple of days actually likely to still be
       // missing due to cron timing (today, and a 1-2 day cushion around the daily 7:20 AM
@@ -1537,14 +1577,14 @@ export const emailHygieneService = {
       const finalized = await query(`SELECT metrics, team_hygiene FROM email_hygiene_daily WHERE day_start = $1`, [startDate]);
       if (finalized.rows.length > 0) {
         const r: any = finalized.rows[0];
-        return { startDate, endDate, hasData: true, metrics: r.metrics as UserEmailHygiene[], teamHygiene: (r.team_hygiene ?? []) as TeamHygieneRow[], isConfigured: true };
+        return { startDate, endDate, hasData: true, metrics: withoutRemovedUsers(r.metrics as UserEmailHygiene[]), teamHygiene: withoutRemovedTeams((r.team_hygiene ?? []) as TeamHygieneRow[]), isConfigured: true };
       }
     }
 
     const key = `${startDate}_${endDate}`;
     const cached = getCachedLiveRange(key);
     if (cached) {
-      return { startDate, endDate, hasData: true, metrics: cached.metrics, teamHygiene: cached.teamHygiene, isConfigured: true };
+      return { startDate, endDate, hasData: true, metrics: withoutRemovedUsers(cached.metrics), teamHygiene: withoutRemovedTeams(cached.teamHygiene), isConfigured: true };
     }
     triggerBackgroundLiveRangeFetch(key, since, until);
     return { startDate, endDate, hasData: false, metrics: [], teamHygiene: [], isConfigured: true };
@@ -1592,15 +1632,15 @@ export const emailHygieneService = {
           weekEnd: istDateStr(new Date(r.week_end)),
           isCurrent: false,
           hasData: true,
-          metrics: r.metrics as UserEmailHygiene[],
-          teamHygiene: (r.team_hygiene ?? []) as TeamHygieneRow[],
+          metrics: withoutRemovedUsers(r.metrics as UserEmailHygiene[]),
+          teamHygiene: withoutRemovedTeams((r.team_hygiene ?? []) as TeamHygieneRow[]),
         };
       }
       const weekStart = new Date(`${weekStartDate}T00:00:00.000+05:30`);
       const weekEnd = new Date(weekStart.getTime() + 7 * 86400000 - 1);
       const cached = getCachedLiveWeek(weekStartDate);
       if (cached) {
-        return { weekStart: weekStartDate, weekEnd: istDateStr(weekEnd), isCurrent: false, hasData: true, metrics: cached.metrics, teamHygiene: cached.teamHygiene };
+        return { weekStart: weekStartDate, weekEnd: istDateStr(weekEnd), isCurrent: false, hasData: true, metrics: withoutRemovedUsers(cached.metrics), teamHygiene: withoutRemovedTeams(cached.teamHygiene) };
       }
       triggerBackgroundLiveWeekFetch(weekStartDate, weekStart, weekEnd);
       return { weekStart: weekStartDate, weekEnd: istDateStr(weekEnd), isCurrent: false, hasData: false, metrics: [], teamHygiene: [] };
@@ -1615,8 +1655,8 @@ export const emailHygieneService = {
         weekEnd: currentWeekEnd,
         isCurrent: true,
         hasData: true,
-        metrics: cachedCurrent.metrics,
-        teamHygiene: cachedCurrent.teamHygiene,
+        metrics: withoutRemovedUsers(cachedCurrent.metrics),
+        teamHygiene: withoutRemovedTeams(cachedCurrent.teamHygiene),
       });
     } else {
       triggerBackgroundLiveWeekFetch(currentWeekStartDate, currentWeekStart);
@@ -1723,9 +1763,9 @@ export const emailHygieneService = {
       };
     }
 
-    const teamHygiene = (row.team_hygiene ?? []) as TeamHygieneRow[];
+    const teamHygiene = withoutRemovedTeams((row.team_hygiene ?? []) as TeamHygieneRow[]);
     return {
-      metrics: row.metrics as UserEmailHygiene[],
+      metrics: withoutRemovedUsers(row.metrics as UserEmailHygiene[]),
       teamHygiene,
       segmentHeads: computeSegmentHeads(teamHygiene),
       monthStart: istDateStr(new Date(row.month_start)),
