@@ -1,7 +1,7 @@
 import { type AxiosInstance } from 'axios';
 import { query, execute } from '../config/database';
 import { logger } from '../utils/logger';
-import { getIstWeekBounds, istDateStr, weeksInCurrentIstMonth, getIstMonthBounds, istMonthLabel, getIstDayBounds, istDayLabel } from '../utils/weekBounds';
+import { getIstWeekBounds, istDateStr, weeksInCurrentIstMonth, getIstMonthBounds, istMonthLabel, getIstDayBounds, istDayLabel, parseIstMonthStart, istMonthLabelFromStart } from '../utils/weekBounds';
 import { emailThreadClassifierService, type AmbiguousThread } from './emailThreadClassifierService';
 import {
   isGraphConfigured, getAccessToken, graphClient, buildTeamTimelines, buildExchanges,
@@ -212,6 +212,18 @@ export interface SegmentHead {
   // their teams perform, not on their own personal email volume.
   score: number | null;
   teamIds: string[];
+}
+
+export interface MonthSnapshot {
+  metrics: UserEmailHygiene[];
+  teamHygiene: TeamHygieneRow[];
+  segmentHeads: Record<'ENT' | 'SMB', SegmentHead>;
+  monthStart: string;
+  monthEnd: string;
+  monthLabel: string;
+  computedAt: string | null;
+  isConfigured: boolean;
+  finalized: boolean;
 }
 
 export function computeSegmentHeads(teamHygiene: TeamHygieneRow[]): Record<'ENT' | 'SMB', SegmentHead> {
@@ -1672,20 +1684,23 @@ export const emailHygieneService = {
   // finalize-check cron's job, or the manual admin trigger above); a missing row just means
   // the month hasn't been finalized yet, which the caller surfaces honestly instead of
   // blocking on a multi-minute Graph sync from a plain dashboard page load.
-  async getLastMonthMetrics(): Promise<{
-    metrics: UserEmailHygiene[];
-    teamHygiene: TeamHygieneRow[];
-    segmentHeads: Record<'ENT' | 'SMB', SegmentHead>;
-    monthStart: string;
-    monthEnd: string;
-    monthLabel: string;
-    computedAt: string | null;
-    isConfigured: boolean;
-    finalized: boolean;
-  }> {
-    const { monthStart, monthEnd } = getIstMonthBounds(1);
-    const monthStartDate = istDateStr(monthStart);
-    const monthLabel = istMonthLabel(1);
+  async getLastMonthMetrics(): Promise<MonthSnapshot> {
+    return emailHygieneService.getMonthMetrics(istDateStr(getIstMonthBounds(1).monthStart));
+  },
+
+  // Months that have a finalized snapshot, newest first — drives the Manager Dashboard
+  // month picker, which only offers months that can actually be shown.
+  async listMonths(): Promise<Array<{ monthStart: string; monthLabel: string }>> {
+    const rows = (await query(`SELECT month_start::text AS month_start FROM email_hygiene_monthly ORDER BY month_start DESC`)).rows;
+    return rows.map((r: any) => ({ monthStart: r.month_start, monthLabel: istMonthLabelFromStart(r.month_start) }));
+  },
+
+  // Same DB-read-only contract as getLastMonthMetrics, for any 'YYYY-MM-01' month.
+  // Caller validates the format (parseIstMonthStart) before calling.
+  async getMonthMetrics(monthStartDate: string): Promise<MonthSnapshot> {
+    const bounds = parseIstMonthStart(monthStartDate);
+    if (!bounds) throw new Error(`Invalid month start: ${monthStartDate}`);
+    const { monthEnd, monthLabel } = bounds;
 
     if (!isGraphConfigured()) {
       return {

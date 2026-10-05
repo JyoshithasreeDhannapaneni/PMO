@@ -16,6 +16,9 @@ router.get('/manager-dashboard-leaderboard', requireRole('ADMIN'), auditControll
 router.get('/weekly-trend', requireRole('ADMIN'), auditController.getWeeklyTrend);
 router.get('/hygiene-board', requireRole('ADMIN'), auditController.getHygieneBoard);
 router.get('/hygiene-board/weekly-trend', requireRole('ADMIN'), auditController.getHygieneWeeklyTrend);
+router.get('/hygiene-board/months', requireRole('ADMIN'), auditController.listHygieneMonths);
+router.get('/hygiene-board/month', requireRole('ADMIN'), auditController.getHygieneMonth);
+router.post('/hygiene-board/finalize-month', requireRole('ADMIN'), auditController.finalizeHygieneMonth);
 router.get('/export/hygiene-board', requireRole('ADMIN'), auditController.exportHygieneExcel);
 // Manual test trigger for the daily 6PM IST hygiene scorecard email — role check is inline (ADMIN only), see controller.
 router.post('/hygiene-scorecard/run-now', requireRole('ADMIN'), auditController.runHygieneScorecardNow);

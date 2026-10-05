@@ -11,6 +11,7 @@ import { errorHandler } from './middleware/errorHandler';
 import { notFoundHandler } from './middleware/notFoundHandler';
 import { viewerReadOnly } from './middleware/viewerReadOnly';
 import { query, execute, pool } from './config/db';
+import { ACCOUNT_MANAGER_BASELINE } from './config/accountManagers';
 import { schema as dbSchema } from './db/init';
 
 import authRoutes from './routes/authRoutes';
@@ -436,9 +437,9 @@ async function runMigrations() {
       UPDATE projects
       SET account_manager = NULL
       WHERE account_manager IS NOT NULL
-        AND account_manager NOT IN ('Joy Prakash','Arundhati Sen','Anthony Raymond','Lennis Brown','Deepak R J')
+        AND account_manager <> ALL($1::text[])
         AND account_manager NOT IN (SELECT name FROM users WHERE role = 'ACCOUNT_MANAGER')
-    `);
+    `, [ACCOUNT_MANAGER_BASELINE]);
   } catch {}
 
   // Onetime migration progress (stored as integer: 10, 20, ..., 90)
@@ -851,6 +852,19 @@ async function runMigrations() {
     week_start  DATE NOT NULL UNIQUE,
     week_end    DATE NOT NULL,
     metrics     JSONB NOT NULL DEFAULT '[]',
+    computed_at TIMESTAMPTZ DEFAULT NOW()
+  )`);
+  // Monthly PMO hygiene (2026-10-05 — month-over-month comparison on the Manager Dashboard).
+  // Built by averaging the month's pmo_hygiene_weekly rows rather than re-running the board
+  // over the month: 3 of the 5 score components only reflect project state at compute time,
+  // so a past month can only be reconstructed from the snapshots taken during it.
+  await execute(`CREATE TABLE IF NOT EXISTS pmo_hygiene_monthly (
+    id          UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    month_start DATE NOT NULL UNIQUE,
+    month_end   DATE NOT NULL,
+    metrics     JSONB NOT NULL DEFAULT '[]',
+    weeks_used  INT NOT NULL DEFAULT 0,
+    weeks_total INT NOT NULL DEFAULT 0,
     computed_at TIMESTAMPTZ DEFAULT NOW()
   )`);
   await execute(`CREATE TABLE IF NOT EXISTS email_hygiene_weekly (

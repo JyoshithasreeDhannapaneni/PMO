@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import * as XLSX from 'xlsx';
 import { emailHygieneService } from '../services/emailHygieneService';
 import { asyncHandler } from '../middleware/errorHandler';
+import { parseIstMonthStart } from '../utils/weekBounds';
 
 // Excel's hard per-cell text limit is 32,767 characters — a raw email/Teams thread
 // (quoted history, signatures) can exceed that easily. Cap well under it; a cell this
@@ -207,6 +208,21 @@ export const emailHygieneController = {
 
   getLastMonth: asyncHandler(async (_req: Request, res: Response): Promise<void> => {
     const data = await emailHygieneService.getLastMonthMetrics();
+    res.json({ success: true, data });
+  }),
+
+  listMonths: asyncHandler(async (_req: Request, res: Response): Promise<void> => {
+    const data = await emailHygieneService.listMonths();
+    res.json({ success: true, data });
+  }),
+
+  getMonth: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const { monthStart } = req.query;
+    if (typeof monthStart !== 'string' || !parseIstMonthStart(monthStart)) {
+      res.status(400).json({ success: false, error: 'monthStart query param is required as YYYY-MM-01' });
+      return;
+    }
+    const data = await emailHygieneService.getMonthMetrics(monthStart);
     res.json({ success: true, data });
   }),
 

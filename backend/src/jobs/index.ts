@@ -5,6 +5,7 @@ import { emailHygieneService } from '../services/emailHygieneService';
 import { auditService } from '../services/auditService';
 import { selfHealService } from '../services/selfHealService';
 import { execute } from '../config/database';
+import { getIstMonthBounds, istDateStr } from '../utils/weekBounds';
 
 /**
  * Initialize all cron jobs
@@ -189,6 +190,20 @@ export function initializeCronJobs(): void {
     }
   }, { timezone: 'Asia/Kolkata' });
 
+  // PMO hygiene monthly finalize-check — daily at 7:16 AM IST. Built from last month's weekly
+  // snapshots, so it no-ops (weeks_pending) until the Monday cron has finalized the month's
+  // last week, then writes once; idempotent like the email check above.
+  cron.schedule('16 7 * * *', async () => {
+    try {
+      const result = await auditService.finalizeMonth(istDateStr(getIstMonthBounds(1).monthStart));
+      if (result.finalized) {
+        logger.info(`[PmoHygiene] Monthly finalize-check: finalized month of ${result.monthStart} (${result.weeksUsed}/${result.weeksTotal} weeks)`);
+      }
+    } catch (error) {
+      logger.error('[PmoHygiene] Monthly finalize-check failed:', error);
+    }
+  }, { timezone: 'Asia/Kolkata' });
+
   // Self-heal diagnosis pass — every 30 minutes, picks up any captured crashes/5xx
   // incidents that haven't been diagnosed yet and asks Claude for a root-cause + suggested
   // fix (see selfHealService.diagnoseUnresolvedIncidents for why this never auto-applies
@@ -246,6 +261,7 @@ export function initializeCronJobs(): void {
   logger.info('  - Global logout (clear all sessions): Daily at 6:00 AM IST');
   logger.info('  - Weekly hygiene finalize (PMO/Email/Call): Every Monday at 7:00 AM IST');
   logger.info('  - Email hygiene monthly finalize-check: Daily at 7:15 AM IST');
+  logger.info('  - PMO hygiene monthly finalize-check: Daily at 7:16 AM IST');
   logger.info('  - Email hygiene daily finalize: Daily at 7:20 AM IST');
   logger.info('  - Self-heal diagnosis pass: Every 30 minutes');
   logger.info('  - SharePoint list → History Archive sync: Daily at 6:30 AM IST');

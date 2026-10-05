@@ -216,7 +216,7 @@ export interface RecentActivity {
 
 export interface DelaySummary {
   byStatus: { status: DelayStatus; count: number }[];
-  topDelayed: { id: string; name: string; delayDays: number; customerName: string }[];
+  topDelayed: { id: string; name: string; delayDays: number; customerName: string; projectManager?: string | null; accountManager?: string | null }[];
 }
 
 export interface UpcomingDeadline {
@@ -226,7 +226,12 @@ export interface UpcomingDeadline {
   plannedEnd: string;
   daysRemaining: number;
   phase: ProjectPhase;
+  projectManager?: string | null;
+  accountManager?: string | null;
 }
+
+// Which manager column the dashboard scopes and groups by.
+export type ManagerDimension = 'pm' | 'am';
 
 export interface MigrationTypeStat {
   type: string;

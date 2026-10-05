@@ -72,6 +72,49 @@ export function istMonthLabel(monthsAgo = 0): string {
   return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
 }
 
+const MONTH_START_RE = /^(\d{4})-(0[1-9]|1[0-2])-01$/;
+
+// Parses a 'YYYY-MM-01' IST month key. Returns null for anything else (not the 1st, bad
+// format) so controllers can 400 instead of silently snapping to some other month.
+export function parseIstMonthStart(monthStartDate: string): { monthStart: Date; monthEnd: Date; monthLabel: string } | null {
+  const m = MONTH_START_RE.exec(monthStartDate);
+  if (!m) return null;
+  const year = Number(m[1]);
+  const monthIdx = Number(m[2]) - 1;
+  const firstIst = Date.UTC(year, monthIdx, 1);
+  return {
+    monthStart: new Date(firstIst - IST_OFFSET_MS),
+    monthEnd: new Date(Date.UTC(year, monthIdx + 1, 1) - IST_OFFSET_MS),
+    monthLabel: new Date(firstIst).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }),
+  };
+}
+
+export function istMonthLabelFromStart(monthStartDate: string): string {
+  return parseIstMonthStart(monthStartDate)?.monthLabel ?? monthStartDate;
+}
+
+function mondayOfWeekContaining(istMidnightUtcMs: number): number {
+  const dow = new Date(istMidnightUtcMs).getUTCDay();
+  return istMidnightUtcMs - ((dow + 6) % 7) * 86400000;
+}
+
+// Mondays (IST date strings) of every week belonging to a given month, using the same
+// boundary rule as weeksInCurrentIstMonth below: a month owns the week containing its 1st
+// and stops before the week containing the next month's 1st, so no week counts twice.
+export function weeksInIstMonth(monthStartDate: string): string[] {
+  const m = MONTH_START_RE.exec(monthStartDate);
+  if (!m) return [];
+  const year = Number(m[1]);
+  const monthIdx = Number(m[2]) - 1;
+  const firstMonday = mondayOfWeekContaining(Date.UTC(year, monthIdx, 1));
+  const nextFirstMonday = mondayOfWeekContaining(Date.UTC(year, monthIdx + 1, 1));
+  const weeks: string[] = [];
+  for (let d = firstMonday; d < nextFirstMonday; d += 7 * 86400000) {
+    weeks.push(new Date(d).toISOString().slice(0, 10));
+  }
+  return weeks;
+}
+
 // All Mondays (as IST date strings) from "Week 1" of the current IST month through today's
 // week, inclusive — this is what makes the trend chart "week 1, 2, 3... of this month" and
 // grow automatically as the month progresses, per the 2026-08-24 design decision.

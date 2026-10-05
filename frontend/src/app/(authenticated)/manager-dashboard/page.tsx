@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
-import { useManagerGoalsWithStats, useEscalatedProjects, useJiraExcelStatus, useEngineersByManager, useJiraEngineers, useEmailHygiene, useEmailHygieneLastMonth, useEmailHygieneWeeklyTrend, useEmailHygieneDailyTrend, useEmailHygieneRange, useTriggerEmailHygieneMonthFinalize, useActionItems, useCreateActionItem, useUpdateActionItem, useDeleteActionItem, useManagerDashboardLeaderboard } from '@/hooks/useProjects';
+import { useManagerGoalsWithStats, useEscalatedProjects, useJiraExcelStatus, useEngineersByManager, useJiraEngineers, useEmailHygiene, useEmailHygieneLastMonth, useEmailHygieneWeeklyTrend, useEmailHygieneDailyTrend, useEmailHygieneRange, useTriggerEmailHygieneMonthFinalize, useEmailHygieneMonths, useEmailHygieneMonth, usePmoHygieneMonths, usePmoHygieneMonth, useActionItems, useCreateActionItem, useUpdateActionItem, useDeleteActionItem, useManagerDashboardLeaderboard } from '@/hooks/useProjects';
 import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import {
@@ -14,7 +14,7 @@ import {
   ArrowLeft, ExternalLink, Upload, FileSpreadsheet, Trash2,
   Plus, Pencil, Check,
 } from 'lucide-react';
-import api, { emailHygieneApi } from '@/services/api';
+import api, { emailHygieneApi, type PmoHygieneMonthRow } from '@/services/api';
 import { SEGMENT_CONFIG, SEGMENT_HIERARCHY, MANAGER_QUERY_NAMES, ENGINEER_ASSIGNMENTS, LMS_SCORES, MEETING_ATTENDANCE, AUDIO_PERCENTAGES, segmentOfManager, isNamedManager, type Segment } from '@/lib/segments';
 import { ScoreBreakdownPanel } from '@/components/EmailHygieneBreakdown';
 
@@ -1006,11 +1006,31 @@ function HygienePanel({ metric }: { metric: any }) {
 // One clickable name+score row, shared by the lead/manager/engineer rows in the Email
 // Hygiene "Last Month" card below — click to expand the same full sub-metric breakdown
 // panel the Engineers tab uses for the current week.
+// Month-over-month change chip: green ▲ up, red ▼ down, gray 0 unchanged, nothing when
+// either month has no score (the "—" on the older side already says why).
+function ScoreDelta({ prev, curr }: { prev: number | null | undefined; curr: number | null | undefined }) {
+  if (prev == null || curr == null) return null;
+  const diff = curr - prev;
+  const cls = diff > 0 ? 'text-green-600' : diff < 0 ? 'text-red-600' : 'text-gray-400';
+  return (
+    <span className={`text-[11px] font-bold tabular-nums ${cls}`}>
+      {diff > 0 ? `▲${diff}` : diff < 0 ? `▼${Math.abs(diff)}` : '0'}
+    </span>
+  );
+}
+
+// "older → newer" prefix shown in front of a score badge when comparing two months.
+function PrevScore({ prev }: { prev: number | null | undefined }) {
+  return <span className="text-[11px] text-gray-400 tabular-nums">{prev ?? '—'} →</span>;
+}
+
 function EmailHygieneRow({
-  name, metric, bold = false, expandedEmail, setExpandedEmail,
+  name, metric, prevMetric, compare = false, bold = false, expandedEmail, setExpandedEmail,
 }: {
   name: string;
   metric: any | null;
+  prevMetric?: any | null;
+  compare?: boolean;
   bold?: boolean;
   expandedEmail: string | null;
   setExpandedEmail: (email: string | null) => void;
@@ -1025,13 +1045,102 @@ function EmailHygieneRow({
         className="w-full flex items-center justify-between gap-3 px-3 py-2 text-left hover:bg-gray-50 disabled:cursor-default disabled:hover:bg-transparent"
       >
         <span className={`text-xs truncate ${bold ? 'font-semibold text-gray-800' : 'text-gray-700'}`}>{name}</span>
-        <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold ring-1 ${metric ? hygieneScoreBadgeClass(metric.emailHygieneScore) : 'bg-gray-100 text-gray-400 ring-gray-200'}`}>
-          {metric?.emailHygieneScore ?? 'N/A'}
+        <span className="flex items-center gap-1.5 shrink-0">
+          {compare && <PrevScore prev={prevMetric?.emailHygieneScore} />}
+          <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold ring-1 ${metric ? hygieneScoreBadgeClass(metric.emailHygieneScore) : 'bg-gray-100 text-gray-400 ring-gray-200'}`}>
+            {metric?.emailHygieneScore ?? 'N/A'}
+          </span>
+          {compare && <ScoreDelta prev={prevMetric?.emailHygieneScore} curr={metric?.emailHygieneScore} />}
         </span>
       </button>
       {expanded && metric && <HygienePanel metric={metric} />}
     </div>
   );
+}
+
+// Same manager/engineer roster as the ENT/SMB tabs (SEGMENT_HIERARCHY +
+// ENGINEER_ASSIGNMENTS from lib/segments) instead of the backend's separate 6-team roster,
+// so "who's listed here" always matches what managers already see in those tabs. Pure, so
+// the month comparison can run it once per month and line the two results up by position.
+function buildEmailHygieneRollups(metrics: any[]) {
+  // Applied uniformly to the lead too, since a lead can have direct reports of their own
+  // (Ajay Singh does) even though they also have sub-managers underneath them.
+  const buildBlock = (person: string) => {
+    const personMetric = getEngineerHygieneData(metrics, person);
+    const engineers = (ENGINEER_ASSIGNMENTS[person] ?? []).map((name) => ({
+      name,
+      metric: getEngineerHygieneData(metrics, name),
+    }));
+    const scored = [personMetric, ...engineers.map((e) => e.metric)].filter(Boolean) as any[];
+    const teamScore = scored.length > 0
+      ? Math.round(scored.reduce((sum, m) => sum + m.emailHygieneScore, 0) / scored.length)
+      : null;
+    return { person, personMetric, engineers, teamScore, scoredCount: scored.length, totalCount: engineers.length + 1 };
+  };
+  return SEGMENT_HIERARCHY.map((seg) => {
+    const leadBlock = buildBlock(seg.lead);
+    const managerBlocks = seg.managers.map((mgr) => buildBlock(mgr));
+    const teamScores = [leadBlock, ...managerBlocks].map((b) => b.teamScore).filter((s): s is number => s != null);
+    const segScore = teamScores.length > 0
+      ? Math.round(teamScores.reduce((a, b) => a + b, 0) / teamScores.length)
+      : null;
+    return { ...seg, leadBlock, managerBlocks, segScore };
+  });
+}
+
+// The two month dropdowns shared by the Email and PMO hygiene cards. "Compare" is the older
+// month, "With" the newer one; "None" turns the comparison off.
+function MonthCompareSelect({
+  months, compareMonth, withMonth, onCompareChange, onWithChange,
+}: {
+  months: { monthStart: string; monthLabel: string }[];
+  compareMonth: string | null;
+  withMonth: string | null;
+  onCompareChange: (v: string | null) => void;
+  onWithChange: (v: string) => void;
+}) {
+  if (months.length === 0) return null;
+  const selectCls = 'text-xs border border-gray-300 rounded-lg px-2 py-1 bg-white text-gray-900';
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      <span className="text-xs font-semibold text-gray-500">Compare</span>
+      <select value={compareMonth ?? ''} onChange={(e) => onCompareChange(e.target.value || null)} className={selectCls}>
+        <option value="">None</option>
+        {months.filter((m) => m.monthStart !== withMonth).map((m) => (
+          <option key={m.monthStart} value={m.monthStart}>{m.monthLabel}</option>
+        ))}
+      </select>
+      <span className="text-xs font-semibold text-gray-500">with</span>
+      <select value={withMonth ?? ''} onChange={(e) => onWithChange(e.target.value)} className={selectCls}>
+        {months.map((m) => (
+          <option key={m.monthStart} value={m.monthStart}>{m.monthLabel}</option>
+        ))}
+      </select>
+      {months.length < 2 && (
+        <span className="text-[11px] text-gray-400">Comparison available once two months are finalized</span>
+      )}
+    </div>
+  );
+}
+
+// Defaults the pickers to the two newest snapshot months ("With" = newest, "Compare" = the
+// one before), until the user picks something else. compareMonth: undefined = default,
+// null = user chose "None".
+function useMonthComparePicker(months: { monthStart: string; monthLabel: string }[]) {
+  const [withPick, setWithPick] = useState<string | null>(null);
+  const [comparePick, setComparePick] = useState<string | null | undefined>(undefined);
+  const withMonth = withPick ?? months[0]?.monthStart ?? null;
+  const defaultCompare = months.find((m) => m.monthStart < (withMonth ?? ''))?.monthStart ?? null;
+  const compareMonth = comparePick === undefined ? defaultCompare : comparePick;
+  const labelOf = (ms: string | null) => months.find((m) => m.monthStart === ms)?.monthLabel ?? '';
+  return {
+    withMonth,
+    compareMonth: compareMonth === withMonth ? null : compareMonth,
+    setWithMonth: (v: string) => setWithPick(v),
+    setCompareMonth: (v: string | null) => setComparePick(v),
+    withLabel: labelOf(withMonth),
+    compareLabel: labelOf(compareMonth),
+  };
 }
 
 // Rolling "last full calendar month" Email Hygiene summary — always the month before the
@@ -1046,7 +1155,16 @@ function EmailHygieneLastMonthCard() {
   const finalizeMutation = useTriggerEmailHygieneMonthFinalize();
   const { user } = useAuth();
 
-  const result = data?.data;
+  // Month-over-month comparison (2026-10-05): any two finalized months, defaulting to the
+  // newest two. With no finalized months yet, falls back to the last-month read above so
+  // the "Compute now" flow still works.
+  const { data: monthsData, refetch: refetchMonths } = useEmailHygieneMonths(true);
+  const months: { monthStart: string; monthLabel: string }[] = monthsData?.data ?? [];
+  const picker = useMonthComparePicker(months);
+  const { data: withMonthData, isLoading: isWithLoading } = useEmailHygieneMonth(picker.withMonth, true);
+  const { data: compareMonthData } = useEmailHygieneMonth(picker.compareMonth, true);
+
+  const result = withMonthData?.data ?? data?.data;
   const finalized: boolean = result?.finalized ?? false;
   const monthLabel: string = result?.monthLabel ?? '';
   const isConfigured: boolean = result?.isConfigured ?? true;
@@ -1090,45 +1208,24 @@ function EmailHygieneLastMonthCard() {
     viewMode === 'custom' ? (rangeStart === rangeEnd ? rangeStart : `${rangeStart} → ${rangeEnd}`) :
     (monthLabel || 'Last Month');
 
-  // Same manager/engineer roster as the ENT/SMB tabs (SEGMENT_HIERARCHY +
-  // ENGINEER_ASSIGNMENTS from lib/segments) instead of the backend's separate
-  // 6-team roster -- so "who's listed here" always matches what managers already
-  // see in those tabs. Hygiene scores are matched onto that roster by name via the
-  // same fuzzy getEngineerHygieneData() the Engineers tab popup already uses.
-  const segmentRollups = useMemo(() => {
-    // Same lookup EngineersTabView uses for any manager's own tab (line ~512) — applied
-    // uniformly to the lead too, since a lead can have direct reports of their own
-    // (Ajay Singh does: Amulya, Habeebunnisa, Vijendar, Ranadeep, Nithish, Neelima) even
-    // though they also have sub-managers underneath them.
-    const buildBlock = (person: string) => {
-      const personMetric = getEngineerHygieneData(metrics, person);
-      const engineers = (ENGINEER_ASSIGNMENTS[person] ?? []).map((name) => ({
-        name,
-        metric: getEngineerHygieneData(metrics, name),
-      }));
-      const scored = [personMetric, ...engineers.map((e) => e.metric)].filter(Boolean) as any[];
-      const teamScore = scored.length > 0
-        ? Math.round(scored.reduce((sum, m) => sum + m.emailHygieneScore, 0) / scored.length)
-        : null;
-      return { person, personMetric, engineers, teamScore, scoredCount: scored.length, totalCount: engineers.length + 1 };
-    };
-    return SEGMENT_HIERARCHY.map((seg) => {
-      const leadBlock = buildBlock(seg.lead);
-      const managerBlocks = seg.managers.map((mgr) => buildBlock(mgr));
-      const teamScores = [leadBlock, ...managerBlocks].map((b) => b.teamScore).filter((s): s is number => s != null);
-      const segScore = teamScores.length > 0
-        ? Math.round(teamScores.reduce((a, b) => a + b, 0) / teamScores.length)
-        : null;
-      return { ...seg, leadBlock, managerBlocks, segScore };
-    });
-  }, [metrics]);
+  // Hygiene scores are matched onto the roster by name via the same fuzzy
+  // getEngineerHygieneData() the Engineers tab popup already uses.
+  const segmentRollups = useMemo(() => buildEmailHygieneRollups(metrics), [metrics]);
+
+  const compareResult = compareMonthData?.data;
+  const compare = viewMode === 'monthly' && !!compareResult?.finalized;
+  // Same roster and order as segmentRollups, so blocks/engineers line up by index.
+  const prevRollups = useMemo(
+    () => (compare ? buildEmailHygieneRollups(compareResult?.metrics ?? []) : null),
+    [compare, compareResult]
+  );
 
   // Once triggered, keep polling until the backend reports it's no longer running —
   // finalizing a whole month re-runs Graph + grading and can take a few minutes.
   useEffect(() => {
     if (!polling) return;
-    if (finalized) { setPolling(false); return; }
-  }, [polling, finalized]);
+    if (finalized) { setPolling(false); refetchMonths(); return; }
+  }, [polling, finalized, refetchMonths]);
 
   if (!isConfigured) return null;
 
@@ -1156,15 +1253,21 @@ function EmailHygieneLastMonthCard() {
       >
         <div className="flex items-center gap-2">
           <ChevronRight size={16} className={`text-gray-400 transition-transform ${open ? 'rotate-90' : ''}`} />
-          <span className="text-sm font-semibold text-gray-800">Email Hygiene — {monthLabel || 'Last Month'}</span>
-          {isLoading && <Loader2 size={14} className="animate-spin text-gray-400" />}
+          <span className="text-sm font-semibold text-gray-800">
+            Email Hygiene — {compare ? `${compareResult?.monthLabel} vs ${monthLabel}` : (monthLabel || 'Last Month')}
+          </span>
+          {(isLoading || isWithLoading) && <Loader2 size={14} className="animate-spin text-gray-400" />}
         </div>
         {finalized && (
           <div className="flex items-center gap-4">
-            {segmentRollups.map((seg) => (
+            {segmentRollups.map((seg, si) => (
               seg.segScore != null && (
-                <span key={seg.label} className={`px-2.5 py-1 rounded-full text-xs font-bold ring-1 ${hygieneScoreBadgeClass(seg.segScore)}`}>
-                  {seg.label} {seg.segScore}
+                <span key={seg.label} className="flex items-center gap-1.5">
+                  {compare && <PrevScore prev={prevRollups?.[si]?.segScore} />}
+                  <span className={`px-2.5 py-1 rounded-full text-xs font-bold ring-1 ${hygieneScoreBadgeClass(seg.segScore)}`}>
+                    {seg.label} {seg.segScore}
+                  </span>
+                  {compare && <ScoreDelta prev={prevRollups?.[si]?.segScore} curr={seg.segScore} />}
                 </span>
               )
             ))}
@@ -1254,6 +1357,15 @@ function EmailHygieneLastMonthCard() {
               </div>
             )}
           </div>
+          {viewMode === 'monthly' && (
+            <MonthCompareSelect
+              months={months}
+              compareMonth={picker.compareMonth}
+              withMonth={picker.withMonth}
+              onCompareChange={picker.setCompareMonth}
+              onWithChange={picker.setWithMonth}
+            />
+          )}
 
           {!periodHasData ? (
             <div className="flex items-center justify-between gap-3">
@@ -1276,7 +1388,9 @@ function EmailHygieneLastMonthCard() {
             </div>
           ) : (
             <div className="space-y-4">
-              {segmentRollups.map((seg) => (
+              {segmentRollups.map((seg, si) => {
+                const prevSeg = prevRollups?.[si];
+                return (
                 <div key={seg.label}>
                   <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wide mb-1.5">{seg.label}</p>
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
@@ -1284,9 +1398,11 @@ function EmailHygieneLastMonthCard() {
                         engineers too (e.g. Ajay Singh has 6), not just sub-managers. */}
                     <div className="bg-white rounded-xl border border-gray-100 overflow-hidden lg:col-span-2">
                       <div className="flex items-center gap-3 p-3">
+                        {compare && <PrevScore prev={prevSeg?.leadBlock.teamScore} />}
                         <span className={`text-lg font-bold px-2.5 py-1 rounded-lg ring-1 ${hygieneScoreBadgeClass(seg.leadBlock.teamScore ?? 0)}`}>
                           {seg.leadBlock.teamScore ?? 'N/A'}
                         </span>
+                        {compare && <ScoreDelta prev={prevSeg?.leadBlock.teamScore} curr={seg.leadBlock.teamScore} />}
                         <div className="min-w-0">
                           <p className="text-xs font-semibold text-gray-700 truncate">{seg.lead} (Lead)</p>
                           <p className="text-[11px] text-gray-400">{seg.leadBlock.scoredCount}/{seg.leadBlock.totalCount} scored</p>
@@ -1296,15 +1412,19 @@ function EmailHygieneLastMonthCard() {
                         <EmailHygieneRow
                           name={seg.lead}
                           metric={seg.leadBlock.personMetric}
+                          prevMetric={prevSeg?.leadBlock.personMetric}
+                          compare={compare}
                           bold
                           expandedEmail={expandedEmail}
                           setExpandedEmail={setExpandedEmail}
                         />
-                        {seg.leadBlock.engineers.map((e) => (
+                        {seg.leadBlock.engineers.map((e, ei) => (
                           <EmailHygieneRow
                             key={e.name}
                             name={e.name}
                             metric={e.metric}
+                            prevMetric={prevSeg?.leadBlock.engineers[ei]?.metric}
+                            compare={compare}
                             expandedEmail={expandedEmail}
                             setExpandedEmail={setExpandedEmail}
                           />
@@ -1313,12 +1433,16 @@ function EmailHygieneLastMonthCard() {
                     </div>
 
                     {/* Same manager -> engineer roster as the ENT/SMB tabs */}
-                    {seg.managerBlocks.map((b) => (
+                    {seg.managerBlocks.map((b, bi) => {
+                      const prevBlock = prevSeg?.managerBlocks[bi];
+                      return (
                       <div key={b.person} className="bg-white rounded-xl border border-gray-100 overflow-hidden">
                         <div className="flex items-center gap-3 p-3">
+                          {compare && <PrevScore prev={prevBlock?.teamScore} />}
                           <span className={`text-lg font-bold px-2.5 py-1 rounded-lg ring-1 ${hygieneScoreBadgeClass(b.teamScore ?? 0)}`}>
                             {b.teamScore ?? 'N/A'}
                           </span>
+                          {compare && <ScoreDelta prev={prevBlock?.teamScore} curr={b.teamScore} />}
                           <div className="min-w-0">
                             <p className="text-xs font-semibold text-gray-700 truncate">{b.person}</p>
                             <p className="text-[11px] text-gray-400">{b.scoredCount}/{b.totalCount} scored</p>
@@ -1328,25 +1452,215 @@ function EmailHygieneLastMonthCard() {
                           <EmailHygieneRow
                             name={`${b.person} (Manager)`}
                             metric={b.personMetric}
+                            prevMetric={prevBlock?.personMetric}
+                            compare={compare}
                             expandedEmail={expandedEmail}
                             setExpandedEmail={setExpandedEmail}
                           />
-                          {b.engineers.map((e) => (
+                          {b.engineers.map((e, ei) => (
                             <EmailHygieneRow
                               key={e.name}
                               name={e.name}
                               metric={e.metric}
+                              prevMetric={prevBlock?.engineers[ei]?.metric}
+                              compare={compare}
                               expandedEmail={expandedEmail}
                               setExpandedEmail={setExpandedEmail}
                             />
                           ))}
                         </div>
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const PMO_SUB_SCORES: { key: keyof PmoHygieneMonthRow; label: string; weight: string }[] = [
+  { key: 'activityScore', label: 'Activity', weight: '25%' },
+  { key: 'qualityScore', label: 'Data Quality', weight: '25%' },
+  { key: 'caseStudyScore', label: 'Case Study', weight: '15%' },
+  { key: 'delayScore', label: 'Delay Accountability', weight: '20%' },
+  { key: 'dateIntegrityScore', label: 'Phase-Date Integrity', weight: '15%' },
+];
+
+function avgScore(rows: (PmoHygieneMonthRow | undefined)[]): number | null {
+  const scores = rows.map((r) => r?.hygieneScore).filter((s): s is number => s != null);
+  return scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null;
+}
+
+// Monthly PMO Hygiene, same month-over-month layout as the Email card above. Months come
+// from pmo_hygiene_monthly (averaged weekly snapshots — see auditService.finalizeMonth);
+// PMs are grouped ENT/SMB by the same roster the rest of this page uses.
+function PmoHygieneMonthCard() {
+  const [open, setOpen] = useState(false);
+  const [expandedPm, setExpandedPm] = useState<string | null>(null);
+  const { data: monthsData, isLoading: isMonthsLoading } = usePmoHygieneMonths(true);
+  const months: { monthStart: string; monthLabel: string }[] = monthsData?.data ?? [];
+  const picker = useMonthComparePicker(months);
+  const { data: withData, isLoading: isWithLoading } = usePmoHygieneMonth(picker.withMonth, true);
+  const { data: compareData } = usePmoHygieneMonth(picker.compareMonth, true);
+
+  const current = withData?.data;
+  const previous = compareData?.data;
+  const compare = !!previous?.finalized;
+
+  const groups = useMemo(() => {
+    const prevByPm = new Map((previous?.metrics ?? []).map((r) => [r.projectManager.toLowerCase(), r]));
+    const currByPm = new Map((current?.metrics ?? []).map((r) => [r.projectManager.toLowerCase(), r]));
+    // Union of both months so a PM who only appears in the older month still shows (→ —).
+    const names = new Map<string, string>();
+    for (const r of [...(current?.metrics ?? []), ...(compare ? previous?.metrics ?? [] : [])]) {
+      names.set(r.projectManager.toLowerCase(), r.projectManager);
+    }
+    const rows = [...names.entries()].map(([key, name]) => {
+      const curr = currByPm.get(key);
+      const prev = compare ? prevByPm.get(key) : undefined;
+      const segment = segmentOfManager(name) ?? curr?.segment ?? prev?.segment ?? null;
+      return { name, curr, prev, segment };
+    }).sort((a, b) => (b.curr?.hygieneScore ?? -1) - (a.curr?.hygieneScore ?? -1));
+    return (['ENT', 'SMB', null] as const)
+      .map((seg) => {
+        const segRows = rows.filter((r) => r.segment === seg);
+        return {
+          label: seg ?? 'Other',
+          rows: segRows,
+          score: avgScore(segRows.map((r) => r.curr)),
+          prevScore: avgScore(segRows.map((r) => r.prev)),
+        };
+      })
+      .filter((g) => g.rows.length > 0);
+  }, [current, previous, compare]);
+
+  const title = compare
+    ? `${previous?.monthLabel} vs ${current?.monthLabel}`
+    : (current?.monthLabel ?? 'Monthly');
+
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between gap-3 px-4 py-3 hover:bg-gray-50 transition"
+      >
+        <div className="flex items-center gap-2">
+          <ChevronRight size={16} className={`text-gray-400 transition-transform ${open ? 'rotate-90' : ''}`} />
+          <span className="text-sm font-semibold text-gray-800">PMO Hygiene — {title}</span>
+          {(isMonthsLoading || isWithLoading) && <Loader2 size={14} className="animate-spin text-gray-400" />}
+        </div>
+        {current?.finalized && (
+          <div className="flex items-center gap-4">
+            {groups.filter((g) => g.label !== 'Other' && g.score != null).map((g) => (
+              <span key={g.label} className="flex items-center gap-1.5">
+                {compare && <PrevScore prev={g.prevScore} />}
+                <span className={`px-2.5 py-1 rounded-full text-xs font-bold ring-1 ${hygieneScoreBadgeClass(g.score ?? 0)}`}>
+                  {g.label} {g.score}
+                </span>
+                {compare && <ScoreDelta prev={g.prevScore} curr={g.score} />}
+              </span>
+            ))}
+          </div>
+        )}
+      </button>
+
+      {open && (
+        <div className="border-t border-gray-100 p-4 bg-gray-50/50 space-y-3">
+          <MonthCompareSelect
+            months={months}
+            compareMonth={picker.compareMonth}
+            withMonth={picker.withMonth}
+            onCompareChange={picker.setCompareMonth}
+            onWithChange={picker.setWithMonth}
+          />
+
+          {!current?.finalized ? (
+            <p className="text-xs text-gray-500">
+              {isMonthsLoading || isWithLoading
+                ? 'Loading…'
+                : 'No monthly PMO hygiene snapshot yet — a month is saved automatically once all of its weekly snapshots are in.'}
+            </p>
+          ) : (
+            <>
+              {current.weeksUsed < current.weeksTotal && (
+                <p className="text-[11px] text-amber-600">
+                  {current.monthLabel} is averaged from {current.weeksUsed} of {current.weeksTotal} weekly snapshots (the rest were never saved).
+                </p>
+              )}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                {groups.map((g) => (
+                  <div key={g.label} className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+                    <div className="flex items-center gap-3 p-3">
+                      {compare && <PrevScore prev={g.prevScore} />}
+                      <span className={`text-lg font-bold px-2.5 py-1 rounded-lg ring-1 ${g.score != null ? hygieneScoreBadgeClass(g.score) : 'bg-gray-100 text-gray-400 ring-gray-200'}`}>
+                        {g.score ?? 'N/A'}
+                      </span>
+                      {compare && <ScoreDelta prev={g.prevScore} curr={g.score} />}
+                      <p className="text-xs font-semibold text-gray-700">{g.label} ({g.rows.length} PMs)</p>
+                    </div>
+                    <div className="border-t border-gray-100 divide-y divide-gray-50">
+                      {g.rows.map((r) => {
+                        const expanded = expandedPm === r.name;
+                        return (
+                          <div key={r.name}>
+                            <button
+                              onClick={() => setExpandedPm(expanded ? null : r.name)}
+                              className="w-full flex items-center justify-between gap-3 px-3 py-2 text-left hover:bg-gray-50"
+                            >
+                              <span className="text-xs text-gray-700 truncate">{r.name}</span>
+                              <span className="flex items-center gap-1.5 shrink-0">
+                                {compare && <PrevScore prev={r.prev?.hygieneScore} />}
+                                <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold ring-1 ${r.curr?.hygieneScore != null ? hygieneScoreBadgeClass(r.curr.hygieneScore) : 'bg-gray-100 text-gray-400 ring-gray-200'}`}>
+                                  {r.curr?.hygieneScore ?? 'N/A'}
+                                </span>
+                                {compare && <ScoreDelta prev={r.prev?.hygieneScore} curr={r.curr?.hygieneScore} />}
+                              </span>
+                            </button>
+                            {expanded && (
+                              <div className="px-3 pb-3">
+                                <table className="w-full text-[11px]">
+                                  <thead>
+                                    <tr className="text-gray-400">
+                                      <th className="text-left font-medium py-1">Component</th>
+                                      {compare && <th className="text-right font-medium py-1">{previous?.monthLabel}</th>}
+                                      <th className="text-right font-medium py-1">{current.monthLabel}</th>
+                                      {compare && <th className="text-right font-medium py-1">Change</th>}
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-gray-50">
+                                    {PMO_SUB_SCORES.map((s) => {
+                                      const prevVal = r.prev?.[s.key] as number | null | undefined;
+                                      const currVal = r.curr?.[s.key] as number | null | undefined;
+                                      return (
+                                        <tr key={s.key}>
+                                          <td className="py-1 text-gray-600">{s.label} <span className="text-gray-400">({s.weight})</span></td>
+                                          {compare && <td className="py-1 text-right tabular-nums text-gray-500">{prevVal ?? '—'}</td>}
+                                          <td className="py-1 text-right tabular-nums font-semibold text-gray-800">{currVal ?? '—'}</td>
+                                          {compare && <td className="py-1 text-right"><ScoreDelta prev={prevVal} curr={currVal} /></td>}
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                                <p className="mt-1 text-[10px] text-gray-400">
+                                  Averaged over {r.curr?.weeksScored ?? 0} week(s){compare ? ` vs ${r.prev?.weeksScored ?? 0} week(s)` : ''}.
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
           )}
         </div>
       )}
@@ -1749,8 +2063,9 @@ export default function ManagerDashboardPage() {
         <ExcelUploadBanner />
       </div>
 
-      {/* Email Hygiene — rolling last full calendar month, visible on every tab */}
+      {/* Email + PMO Hygiene — month-over-month, visible on every tab */}
       <EmailHygieneLastMonthCard />
+      <PmoHygieneMonthCard />
 
       {/* Observations tab */}
       {activeTab === 'OBSERVATIONS' && <ObservationsView />}

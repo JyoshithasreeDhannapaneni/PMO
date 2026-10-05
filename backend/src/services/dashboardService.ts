@@ -1,4 +1,5 @@
 import { query, execute } from '../config/db';
+import { ACCOUNT_MANAGER_BASELINE } from '../config/accountManagers';
 
 export interface DashboardStats {
   totalProjects: number;
@@ -13,24 +14,32 @@ export interface DashboardStats {
   overagedCount: number;
 }
 
+export type ManagerDimension = 'pm' | 'am';
+
+// The column name is interpolated into SQL, so it must only ever come from this map.
+const MANAGER_COLUMN: Record<ManagerDimension, string> = {
+  pm: 'project_manager',
+  am: 'account_manager',
+};
+
 class DashboardService {
   // Build a WHERE clause fragment for manager filtering
-  private managerWhere(managerName?: string): { clause: string; params: string[] } {
+  private managerWhere(managerName?: string, by: ManagerDimension = 'pm'): { clause: string; params: string[] } {
     if (managerName) {
-      return { clause: `WHERE project_manager = $1`, params: [managerName] };
+      return { clause: `WHERE ${MANAGER_COLUMN[by]} = $1`, params: [managerName] };
     }
     return { clause: '', params: [] };
   }
 
-  private andManagerWhere(managerName?: string, existingParamCount = 0): { clause: string; params: string[] } {
+  private andManagerWhere(managerName?: string, by: ManagerDimension = 'pm', existingParamCount = 0): { clause: string; params: string[] } {
     if (managerName) {
-      return { clause: `AND project_manager = $${existingParamCount + 1}`, params: [managerName] };
+      return { clause: `AND ${MANAGER_COLUMN[by]} = $${existingParamCount + 1}`, params: [managerName] };
     }
     return { clause: '', params: [] };
   }
 
-  async getStats(managerName?: string): Promise<DashboardStats> {
-    const { clause: aw, params: ap } = this.andManagerWhere(managerName);
+  async getStats(managerName?: string, by: ManagerDimension = 'pm'): Promise<DashboardStats> {
+    const { clause: aw, params: ap } = this.andManagerWhere(managerName, by);
 
     const [
       totalResult,
@@ -53,7 +62,7 @@ class DashboardService {
       query(`SELECT COUNT(*) as count FROM projects WHERE status = 'ACTIVE' AND delay_status = 'AT_RISK' ${aw}`, ap),
       query(`SELECT COUNT(*) as count FROM case_studies cs JOIN projects p ON cs.project_id = p.id WHERE cs.status = 'PENDING' ${aw.replace(/^AND /, 'AND p.')}`, ap),
       query(`SELECT AVG(delay_days) as avg FROM projects WHERE delay_days > 0 ${aw}`, ap),
-      query(`SELECT COUNT(*) as count FROM projects WHERE is_overaged = true`, []),
+      query(`SELECT COUNT(*) as count FROM projects WHERE is_overaged = true ${aw}`, ap),
       query(`SELECT COUNT(*) as count FROM projects WHERE status = 'INACTIVE' ${aw}`, ap),
     ]);
 
@@ -72,8 +81,8 @@ class DashboardService {
     };
   }
 
-  async getProjectsByStatus(managerName?: string) {
-    const { clause: w, params: p } = this.managerWhere(managerName);
+  async getProjectsByStatus(managerName?: string, by: ManagerDimension = 'pm') {
+    const { clause: w, params: p } = this.managerWhere(managerName, by);
     const result = await query(
       `SELECT status, COUNT(*) as count FROM projects ${w} GROUP BY status`, p
     );
@@ -83,8 +92,8 @@ class DashboardService {
     }));
   }
 
-  async getProjectsByPhase(managerName?: string) {
-    const { clause: w, params: p } = this.managerWhere(managerName);
+  async getProjectsByPhase(managerName?: string, by: ManagerDimension = 'pm') {
+    const { clause: w, params: p } = this.managerWhere(managerName, by);
     const result = await query(
       `SELECT phase, COUNT(*) as count FROM projects ${w} GROUP BY phase`, p
     );
@@ -94,8 +103,8 @@ class DashboardService {
     }));
   }
 
-  async getProjectsByPlan(managerName?: string) {
-    const { clause: w, params: p } = this.managerWhere(managerName);
+  async getProjectsByPlan(managerName?: string, by: ManagerDimension = 'pm') {
+    const { clause: w, params: p } = this.managerWhere(managerName, by);
     const result = await query(
       `SELECT plan_type, COUNT(*) as count FROM projects ${w} GROUP BY plan_type`, p
     );
@@ -105,9 +114,9 @@ class DashboardService {
     }));
   }
 
-  async getRecentActivity(limit: number = 10, managerName?: string) {
+  async getRecentActivity(limit: number = 10, managerName?: string, by: ManagerDimension = 'pm') {
     const safeLimit = Math.max(1, Math.min(100, Math.floor(limit)));
-    const { clause: w, params: p } = this.managerWhere(managerName);
+    const { clause: w, params: p } = this.managerWhere(managerName, by);
     const result = await query(
       `SELECT id, name, status, phase, updated_at
        FROM projects ${w} ORDER BY updated_at DESC LIMIT ${safeLimit}`, p
@@ -123,16 +132,16 @@ class DashboardService {
     }));
   }
 
-  async getDelaySummary(managerName?: string) {
-    const { clause: w, params: p } = this.managerWhere(managerName);
-    const { clause: aw, params: ap } = this.andManagerWhere(managerName);
+  async getDelaySummary(managerName?: string, by: ManagerDimension = 'pm') {
+    const { clause: w, params: p } = this.managerWhere(managerName, by);
+    const { clause: aw, params: ap } = this.andManagerWhere(managerName, by);
     const [statusResults, topDelayed] = await Promise.all([
       query(
         `SELECT delay_status, COUNT(*) as count, AVG(delay_days) as avg_days
          FROM projects ${w} GROUP BY delay_status`, p
       ),
       query(
-        `SELECT id, name, customer_name, delay_days, delay_status, project_manager
+        `SELECT id, name, customer_name, delay_days, delay_status, project_manager, account_manager
          FROM projects WHERE delay_status = 'DELAYED' AND status NOT IN ('COMPLETED', 'INACTIVE', 'CANCELLED') ${aw}
          ORDER BY delay_days DESC LIMIT 5`, ap
       ),
@@ -151,16 +160,17 @@ class DashboardService {
         delayDays: r.delay_days,
         delayStatus: r.delay_status,
         projectManager: r.project_manager,
+        accountManager: r.account_manager,
       })),
     };
   }
 
-  async getUpcomingDeadlines(days: number = 14, managerName?: string) {
+  async getUpcomingDeadlines(days: number = 14, managerName?: string, by: ManagerDimension = 'pm') {
   const safeDays = Math.max(1, Math.min(365, Math.floor(days)));
-  const { clause: aw, params: ap } = this.andManagerWhere(managerName);
+  const { clause: aw, params: ap } = this.andManagerWhere(managerName, by);
 
   const result = await query(
-    `SELECT id, name, customer_name, planned_end, phase, delay_status
+    `SELECT id, name, customer_name, planned_end, phase, delay_status, project_manager, account_manager
      FROM projects
      WHERE status = 'ACTIVE'
        AND planned_end >= NOW()
@@ -177,6 +187,8 @@ class DashboardService {
     deadline: p.planned_end,
     phase: p.phase,
     delayStatus: p.delay_status,
+    projectManager: p.project_manager,
+    accountManager: p.account_manager,
   }));
 }
   // Determine the top-level category for a migration template code/name.
@@ -198,8 +210,8 @@ class DashboardService {
     return 'Content Migration';
   }
 
-  async getMigrationTypeStats(managerName?: string) {
-    const { clause: w, params: p } = this.managerWhere(managerName);
+  async getMigrationTypeStats(managerName?: string, by: ManagerDimension = 'pm') {
+    const { clause: w, params: p } = this.managerWhere(managerName, by);
 
     const CAT_DEFS = [
       { key: 'Content Migration', icon: '📁', color: 'blue' },
@@ -295,20 +307,25 @@ class DashboardService {
     };
   }
 
-  async getManagerStats(managerName?: string) {
-    const { clause: w, params: p } = this.managerWhere(managerName);
+  async getManagerStats(managerName?: string, by: ManagerDimension = 'pm') {
+    const { clause: w, params: p } = this.managerWhere(managerName, by);
     // POCs are pre-sales owned, not PM owned -- exclude them, and only bucket rows under an
     // actual PROJECT_MANAGER-role user (see fix in poc-projects/page.tsx for the source bug).
     const pocFilter = w ? `${w} AND (project_type IS NULL OR project_type != 'POC')` : `WHERE (project_type IS NULL OR project_type != 'POC')`;
-    const [result, pmUsersResult] = await Promise.all([
-      query(`SELECT project_manager, status, delay_status FROM projects ${pocFilter}`, p),
-      query(`SELECT name FROM users WHERE role = 'PROJECT_MANAGER'`),
+    const column = MANAGER_COLUMN[by];
+    // Only bucket rows under a real manager of the chosen kind. For AMs the boot cleanup in
+    // index.ts isn't enough: project edits can store any free text until the next restart.
+    const [result, managerUsersResult] = await Promise.all([
+      query(`SELECT ${column} AS manager, status, delay_status FROM projects ${pocFilter}`, p),
+      query(`SELECT name FROM users WHERE role = $1`, [by === 'am' ? 'ACCOUNT_MANAGER' : 'PROJECT_MANAGER']),
     ]);
     const rows = result.rows;
-    const validPmNames = new Set(pmUsersResult.rows.map((u) => u.name));
+    const validNames = new Set<string>(managerUsersResult.rows.map((u) => u.name));
+    if (by === 'am') ACCOUNT_MANAGER_BASELINE.forEach((n) => validNames.add(n));
+    const isValidManager = (name: string | null) => !!name && validNames.has(name);
     const managerMap: Record<string, { total: number; completed: number; delayed: number; active: number }> = {};
     rows.forEach((r) => {
-      const m = (r.project_manager && validPmNames.has(r.project_manager)) ? r.project_manager : 'Unassigned';
+      const m = isValidManager(r.manager) ? r.manager : 'Unassigned';
       if (!managerMap[m]) managerMap[m] = { total: 0, completed: 0, delayed: 0, active: 0 };
       managerMap[m].total++;
       if (r.status === 'COMPLETED') managerMap[m].completed++;
@@ -458,9 +475,9 @@ class DashboardService {
     };
   }
 
-  async getOveragedProjects(managerName?: string) {
+  async getOveragedProjects(managerName?: string, by: ManagerDimension = 'pm') {
     await this.ensureOverageHistoryTable();
-    const { clause: aw, params: ap } = this.andManagerWhere(managerName);
+    const { clause: aw, params: ap } = this.andManagerWhere(managerName, by);
     const result = await query(
       `SELECT id, name, customer_name, client_name, project_manager, account_manager, status, phase,
               planned_end, delay_days, delay_status, migration_types, is_overaged, overage_amount, overage_notes,
@@ -540,9 +557,9 @@ class DashboardService {
     this._escalationHistoryReady = true;
   }
 
-  async getEscalatedProjects(managerName?: string) {
+  async getEscalatedProjects(managerName?: string, by: ManagerDimension = 'pm') {
     await this.ensureEscalationHistoryTable();
-    const { clause: aw, params: ap } = this.andManagerWhere(managerName);
+    const { clause: aw, params: ap } = this.andManagerWhere(managerName, by);
     const result = await query(
       `SELECT id, name, customer_name, client_name, project_manager, account_manager, status, phase,
               planned_end, delay_days, delay_status, migration_types,
@@ -959,7 +976,8 @@ class DashboardService {
     );
   }
 
-  async getProjectsByMigrationType(type: string) {
+  async getProjectsByMigrationType(type: string, managerName?: string, by: ManagerDimension = 'pm') {
+    const { clause: aw, params: ap } = this.andManagerWhere(managerName, by);
     const CATEGORIES = ['Content Migration', 'Messaging', 'Email'];
     const isCategory = CATEGORIES.some(c => c.toLowerCase() === type.toLowerCase());
 
@@ -1001,10 +1019,10 @@ class DashboardService {
     };
 
     const result = await query(
-      `SELECT id, name, customer_name, project_manager, status, phase, delay_status, delay_days, planned_end, migration_types
-       FROM projects WHERE migration_types IS NOT NULL AND migration_types <> ''
+      `SELECT id, name, customer_name, project_manager, account_manager, status, phase, delay_status, delay_days, planned_end, migration_types
+       FROM projects WHERE migration_types IS NOT NULL AND migration_types <> '' ${aw}
        ORDER BY updated_at DESC`,
-      []
+      ap
     );
 
     const rows = isCategory
@@ -1020,6 +1038,7 @@ class DashboardService {
       name: r.name,
       customerName: r.customer_name,
       projectManager: r.project_manager,
+      accountManager: r.account_manager,
       status: r.status,
       phase: r.phase,
       delayStatus: r.delay_status,

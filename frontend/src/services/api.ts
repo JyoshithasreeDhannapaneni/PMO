@@ -9,6 +9,7 @@ import type {
   CaseStudy,
   Notification,
   ProjectPhaseRecord,
+  ManagerDimension,
 } from '@/types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
@@ -101,14 +102,22 @@ export const projectsApi = {
 };
 
 // Dashboard API
+// `by` is only sent for account managers so PM requests stay identical to before.
+function dashboardParams(manager: string | undefined, by: ManagerDimension): Record<string, string> | undefined {
+  const params: Record<string, string> = {};
+  if (manager) params.manager = manager;
+  if (by === 'am') params.by = 'am';
+  return Object.keys(params).length ? params : undefined;
+}
+
 export const dashboardApi = {
   getDelayHappenedNotes: async (): Promise<Record<string, string>> => {
     const { data } = await api.get('/dashboard/delay-happened-notes');
     return data.data as Record<string, string>;
   },
 
-  getOverview: async (manager?: string): Promise<ApiResponse<DashboardOverview>> => {
-    const { data } = await api.get('/dashboard/overview', { params: manager ? { manager } : undefined });
+  getOverview: async (manager?: string, by: ManagerDimension = 'pm'): Promise<ApiResponse<DashboardOverview>> => {
+    const { data } = await api.get('/dashboard/overview', { params: dashboardParams(manager, by) });
     return data;
   },
 
@@ -127,8 +136,8 @@ export const dashboardApi = {
     return data;
   },
 
-  getManagerStats: async (manager?: string) => {
-    const { data } = await api.get('/dashboard/manager-stats', { params: manager ? { manager } : undefined });
+  getManagerStats: async (manager?: string, by: ManagerDimension = 'pm') => {
+    const { data } = await api.get('/dashboard/manager-stats', { params: dashboardParams(manager, by) });
     return data;
   },
 
@@ -653,8 +662,8 @@ export const hubspotApi = {
 
 // Projects by migration type
 export const migrationTypeApi = {
-  getProjectsByType: async (type: string) => {
-    const { data } = await api.get(`/dashboard/projects-by-migration-type/${type}`);
+  getProjectsByType: async (type: string, manager?: string, by: ManagerDimension = 'pm') => {
+    const { data } = await api.get(`/dashboard/projects-by-migration-type/${type}`, { params: dashboardParams(manager, by) });
     return data;
   },
 };
@@ -806,6 +815,14 @@ export const emailHygieneApi = {
     const { data } = await api.get('/email-hygiene/last-month');
     return data;
   },
+  listMonths: async () => {
+    const { data } = await api.get('/email-hygiene/months');
+    return data as { success: boolean; data: HygieneMonthOption[] };
+  },
+  getMonth: async (monthStart: string) => {
+    const { data } = await api.get('/email-hygiene/month', { params: { monthStart } });
+    return data;
+  },
   triggerMonthFinalize: async () => {
     const { data } = await api.post('/email-hygiene/finalize-month');
     return data as { success: boolean; data: { alreadyRunning: boolean; running: boolean; startedAt: string | null; completedAt: string | null; error: string | null; monthStart: string | null } };
@@ -917,7 +934,42 @@ export const auditApi = {
     const { data } = await api.get('/audit/hygiene-board/weekly-trend');
     return data;
   },
+  listHygieneMonths: async () => {
+    const { data } = await api.get('/audit/hygiene-board/months');
+    return data as { success: boolean; data: HygieneMonthOption[] };
+  },
+  getHygieneMonth: async (monthStart: string) => {
+    const { data } = await api.get('/audit/hygiene-board/month', { params: { monthStart } });
+    return data as { success: boolean; data: PmoHygieneMonth };
+  },
 };
+
+export interface HygieneMonthOption {
+  monthStart: string;
+  monthLabel: string;
+}
+
+export interface PmoHygieneMonthRow {
+  projectManager: string;
+  segment: 'ENT' | 'SMB' | null;
+  weeksScored: number;
+  hygieneScore: number | null;
+  activityScore: number | null;
+  qualityScore: number | null;
+  caseStudyScore: number | null;
+  delayScore: number | null;
+  dateIntegrityScore: number | null;
+}
+
+export interface PmoHygieneMonth {
+  monthStart: string;
+  monthLabel: string;
+  finalized: boolean;
+  computedAt: string | null;
+  weeksUsed: number;
+  weeksTotal: number;
+  metrics: PmoHygieneMonthRow[];
+}
 
 export const slaBreachAlertsApi = {
   list: async (params: {

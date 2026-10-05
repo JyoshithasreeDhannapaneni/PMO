@@ -14,6 +14,7 @@ import {
   TrendingUp, X, Download, CalendarDays, UserCheck, Filter,
 } from 'lucide-react';
 import { formatDistanceToNow, format } from 'date-fns';
+import type { ManagerDimension } from '@/types';
 
 type ViewMode = 'my' | 'overall';
 
@@ -106,8 +107,10 @@ function EscalateControl({ projectId, isEscalated, defaultPriority, busy, onEsca
 }
 
 /* ── Migration Type Projects Modal ──────────────────────────────── */
-function MigrationTypeModal({ type, onClose }: { type: string; onClose: () => void }) {
-  const { data, isLoading } = useProjectsByMigrationType(type);
+function MigrationTypeModal({ type, onClose, manager, by, nameBy }: {
+  type: string; onClose: () => void; manager?: string; by: ManagerDimension; nameBy: ManagerDimension;
+}) {
+  const { data, isLoading } = useProjectsByMigrationType(type, manager, by);
   const projects: any[] = data?.data || [];
   const CATEGORY_META: Record<string, { emoji: string; bg: string }> = {
     'Content Migration': { emoji: '📁', bg: 'bg-blue-600' },
@@ -154,7 +157,7 @@ function MigrationTypeModal({ type, onClose }: { type: string; onClose: () => vo
                   {projects.map((p: any) => (
                     <tr key={p.id} className="border-t border-blue-50 hover:bg-blue-50/50 cursor-pointer" onClick={() => { window.location.href = `/projects/${p.id}`; onClose(); }}>
                       <td className="py-2.5 px-3 font-medium text-gray-900 max-w-[200px] truncate">{p.name}</td>
-                      <td className="text-center py-2.5 px-3 text-gray-600 text-xs">{p.projectManager}</td>
+                      <td className="text-center py-2.5 px-3 text-gray-600 text-xs">{nameBy === 'am' ? p.accountManager : p.projectManager}</td>
                       <td className="text-center py-2.5 px-3">
                         <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${p.status === 'ACTIVE' ? 'bg-green-100 text-green-700' : p.status === 'COMPLETED' ? 'bg-blue-100 text-blue-700' : p.status === 'ON_HOLD' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>{p.status}</span>
                       </td>
@@ -227,9 +230,21 @@ export default function DashboardPage() {
   const isAdmin = user?.role === 'ADMIN';
   const isManager = user?.role === 'PROJECT_MANAGER';
   const isViewer = user?.role === 'VIEWER';
+  const isAccountManager = user?.role === 'ACCOUNT_MANAGER';
   // ADMIN defaults to overall; MANAGER/others default to my
   const [viewMode, setViewMode] = useState<ViewMode>(isAdmin ? 'overall' : 'my');
-  const pmFilter = viewMode === 'my' && user?.name ? `&projectManager=${encodeURIComponent(user.name)}` : '';
+  // My View is scoped by the column matching the user's role: account managers see the
+  // projects where they are the Account Manager, everyone else where they are the PM.
+  const myDimension: ManagerDimension = isAccountManager ? 'am' : 'pm';
+  // Overall View data is unfiltered either way; this tab only switches the performance
+  // table's grouping and which manager name the project lists show.
+  const [overallDimension, setOverallDimension] = useState<ManagerDimension>(myDimension);
+  const queryDimension: ManagerDimension = viewMode === 'my' ? myDimension : 'pm';
+  const nameDimension: ManagerDimension = viewMode === 'my' ? myDimension : overallDimension;
+  const managerOf = (p: any): string => (nameDimension === 'am' ? p.accountManager : p.projectManager) || '';
+  const ownerLinkFilter = viewMode === 'my' && user?.name
+    ? `&${myDimension === 'am' ? 'accountManager' : 'projectManager'}=${encodeURIComponent(user.name)}`
+    : '';
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedMigrationType, setSelectedMigrationType] = useState<string | null>(null);
   const [showOveragedPanel, setShowOveragedPanel] = useState(false);
@@ -241,17 +256,18 @@ export default function DashboardPage() {
   // MANAGER 'overall': no filter — show full portfolio health across all managers
   // ADMIN 'my': filter to their own; ADMIN 'overall': no filter
   const managerFilter = viewMode === 'my' ? (user?.name ?? '') : undefined;
-  const { data, isLoading, error, refetch } = useDashboard(managerFilter);
-  const { data: managerData } = useManagerStats(managerFilter);
-  const { data: overagedData, refetch: refetchOveraged } = useOveragedProjects(managerFilter);
-  const { data: escalatedData, refetch: refetchEscalated } = useEscalatedProjects(managerFilter);
+  const { data, isLoading, error, refetch } = useDashboard(managerFilter, queryDimension);
+  const { data: managerData } = useManagerStats(managerFilter, nameDimension);
+  const { data: overagedData, refetch: refetchOveraged } = useOveragedProjects(managerFilter, queryDimension);
+  const { data: escalatedData, refetch: refetchEscalated } = useEscalatedProjects(managerFilter, queryDimension);
   const overagedProjects: any[] = overagedData?.data || [];
   const escalatedProjects: any[] = escalatedData?.data || [];
 
   // Fetch all projects for frontend category grouping
   const { data: allProjectsData } = useProjects({ status: undefined, limit: 500000 });
   const allProjectsList: any[] = (allProjectsData?.data || []).filter(
-    (p: any) => viewMode === 'overall' || !managerFilter || p.projectManager === managerFilter
+    (p: any) => viewMode === 'overall' || !managerFilter
+      || (myDimension === 'am' ? p.accountManager : p.projectManager) === managerFilter
   );
   const activeProjectsList = allProjectsList.filter((p: any) => p.status !== 'COMPLETED' && p.status !== 'CANCELLED');
   const migrationProjectsCount = activeProjectsList.filter((p: any) => !p.projectType || p.projectType !== 'POC').length;
@@ -335,7 +351,14 @@ export default function DashboardPage() {
   );
 
   const { stats, projectsByStatus, projectsByPhase, recentActivity, delaySummary, upcomingDeadlines, migrationTypeStats } = data.data;
-  const managers: any[] = managerData?.data || [];
+  const allManagerRows: any[] = managerData?.data || [];
+  // Many projects have no account manager; that bucket would dominate the AM table, so it's
+  // shown as a one-line count instead of a row.
+  const unassignedRow = nameDimension === 'am' ? allManagerRows.find((m: any) => m.manager === 'Unassigned') : undefined;
+  const managers: any[] = unassignedRow ? allManagerRows.filter((m: any) => m !== unassignedRow) : allManagerRows;
+  const managerColumnLabel = nameDimension === 'am' ? 'Account Manager' : 'Project Manager';
+  // Every status, cancelled included, so an AM whose projects are all cancelled isn't told they have none.
+  const ownedProjectCount = (projectsByStatus || []).reduce((sum: number, r: any) => sum + (r.count || 0), 0);
 
   return (
     <div className="space-y-5">
@@ -383,7 +406,25 @@ export default function DashboardPage() {
       </div>
 
       {/* Context banner */}
-      {isManager ? (
+      {isAccountManager && viewMode === 'my' && ownedProjectCount === 0 ? (
+        <div className="flex items-center gap-3 p-3 bg-yellow-50 border border-yellow-300 rounded-xl text-xs text-yellow-800">
+          <AlertCircle size={14} className="flex-shrink-0" />
+          <span>
+            <strong>No projects list you as Account Manager</strong> ({user?.name}). Ask an admin to assign you as the Account Manager on your projects.
+            <button onClick={() => setViewMode('overall')} className="ml-2 underline hover:no-underline">Switch to Overall View →</button>
+          </span>
+        </div>
+      ) : isAccountManager ? (
+        <div className="flex items-center gap-3 p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-700">
+          <User size={14} className="flex-shrink-0" />
+          <span>
+            {viewMode === 'my'
+              ? <><strong>My View</strong> — Showing projects where <strong>{user?.name}</strong> is the Account Manager.</>
+              : <><strong>Overview</strong> — Showing full portfolio health across all managers.</>
+            }
+          </span>
+        </div>
+      ) : isManager ? (
         <div className="flex items-center gap-3 p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-700">
           <User size={14} className="flex-shrink-0" />
           <span>
@@ -405,7 +446,7 @@ export default function DashboardPage() {
 
       {/* ── KPI Row ────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Link href={`/projects?hideCompleted=true${pmFilter}`} className="col-span-2 lg:col-span-1 block group">
+        <Link href={`/projects?hideCompleted=true${ownerLinkFilter}`} className="col-span-2 lg:col-span-1 block group">
           <Card className="h-full transition-transform group-hover:scale-[1.02] group-hover:shadow-lg">
             <div className="flex items-center justify-between">
               <div>
@@ -432,7 +473,7 @@ export default function DashboardPage() {
             </div>
           </Card>
         </Link>
-        <Link href={`/projects?status=ACTIVE${pmFilter}`} className="block group">
+        <Link href={`/projects?status=ACTIVE${ownerLinkFilter}`} className="block group">
           <Card className="h-full transition-transform group-hover:scale-[1.02] group-hover:shadow-lg border-green-200">
             <div className="flex items-center justify-between">
               <div className="flex-1 min-w-0">
@@ -456,7 +497,7 @@ export default function DashboardPage() {
             </div>
           </Card>
         </Link>
-        <Link href={`/projects?status=ON_HOLD${pmFilter}`} className="block group">
+        <Link href={`/projects?status=ON_HOLD${ownerLinkFilter}`} className="block group">
           <Card className="h-full transition-transform group-hover:scale-[1.02] group-hover:shadow-lg border-yellow-200">
             <div className="flex items-center justify-between">
               <div>
@@ -470,7 +511,7 @@ export default function DashboardPage() {
             </div>
           </Card>
         </Link>
-        <Link href={`/projects?status=COMPLETED${pmFilter}`} className="block group">
+        <Link href={`/projects?status=COMPLETED${ownerLinkFilter}`} className="block group">
           <Card className="h-full transition-transform group-hover:scale-[1.02] group-hover:shadow-lg border-blue-200">
             <div className="flex items-center justify-between">
               <div>
@@ -522,7 +563,7 @@ export default function DashboardPage() {
           </Card>
         </Link>
 
-        <Link href="/projects?delayStatus=DELAYED" className="block group">
+        <Link href={`/projects?delayStatus=DELAYED${ownerLinkFilter}`} className="block group">
           <Card className="text-center py-3 h-full transition-transform group-hover:scale-[1.02] group-hover:shadow-lg">
             <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center mx-auto mb-2">
               <TrendingUp size={18} className="text-gray-600" />
@@ -583,7 +624,7 @@ export default function DashboardPage() {
                 <table className="w-full text-sm">
                   <thead className="bg-blue-50/60 sticky top-0 z-10">
                     <tr>
-                      {['Project Name','Manager','Due Date','Days Overdue','Status','Escalate','Download'].map(h => (
+                      {['Project Name',managerColumnLabel,'Due Date','Days Overdue','Status','Escalate','Download'].map(h => (
                         <th key={h} className={`py-2.5 px-3 font-semibold text-gray-500 text-xs uppercase tracking-wide ${h==='Project Name'?'text-left':'text-center'}`}>{h}</th>
                       ))}
                     </tr>
@@ -600,7 +641,7 @@ export default function DashboardPage() {
                           </Link>
                           <p className="text-[11px] text-gray-400 mt-0.5">{p.customerName}</p>
                         </td>
-                        <td className="text-center py-3 px-3 text-gray-600 text-xs">{p.projectManager}</td>
+                        <td className="text-center py-3 px-3 text-gray-600 text-xs">{managerOf(p)}</td>
                         <td className="text-center py-3 px-3 text-gray-500 text-xs">{new Date(p.plannedEnd).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</td>
                         <td className="text-center py-3 px-3">
                           <span className={`font-bold text-sm ${p.daysOverdue >= 14 ? 'text-red-600' : 'text-orange-600'}`}>{p.daysOverdue}d</span>
@@ -682,7 +723,7 @@ export default function DashboardPage() {
                 <table className="w-full text-sm">
                   <thead className="bg-blue-50/60 sticky top-0 z-10">
                     <tr>
-                      {['Project Name','Manager','Days Delayed','Change Priority','Status','Action','Download'].map(h => (
+                      {['Project Name',managerColumnLabel,'Days Delayed','Change Priority','Status','Action','Download'].map(h => (
                         <th key={h} className={`py-2.5 px-3 font-semibold text-gray-500 text-xs uppercase tracking-wide ${h==='Project Name'?'text-left':'text-center'}`}>{h}</th>
                       ))}
                     </tr>
@@ -699,7 +740,7 @@ export default function DashboardPage() {
                           </Link>
                           <p className="text-[11px] text-gray-400 mt-0.5">{p.customerName}</p>
                         </td>
-                        <td className="text-center py-3 px-3 text-gray-600 text-xs">{p.projectManager}</td>
+                        <td className="text-center py-3 px-3 text-gray-600 text-xs">{managerOf(p)}</td>
                         <td className="text-center py-3 px-3">
                           <span className={`font-bold text-sm ${p.delayDays >= 14 ? 'text-red-600' : 'text-orange-500'}`}>{p.delayDays}d</span>
                         </td>
@@ -793,7 +834,7 @@ export default function DashboardPage() {
             </div>
             <div className="px-5 py-3 border-t border-blue-100 flex justify-between items-center bg-gray-50">
               <p className="text-xs text-gray-400">Click project name to open · Change priority inline · Escalate or remove directly</p>
-              <Link href="/projects?delayStatus=DELAYED" onClick={() => setShowEscalatedPanel(false)} className="text-xs text-red-600 font-semibold hover:underline">View All Delayed Projects →</Link>
+              <Link href={`/projects?delayStatus=DELAYED${ownerLinkFilter}`} onClick={() => setShowEscalatedPanel(false)} className="text-xs text-red-600 font-semibold hover:underline">View All Delayed Projects →</Link>
             </div>
           </div>
         </div>
@@ -894,7 +935,7 @@ export default function DashboardPage() {
                   </div>
                   <div className="flex flex-col items-end gap-0.5 flex-shrink-0 ml-2">
                     <span className="text-sm font-bold text-red-600">+{project.delayDays}d</span>
-                    <span className="text-[10px] text-gray-400">{project.projectManager}</span>
+                    <span className="text-[10px] text-gray-400">{managerOf(project)}</span>
                   </div>
                 </Link>
               )) : (
@@ -905,7 +946,7 @@ export default function DashboardPage() {
               )}
             </div>
             {delaySummary?.topDelayed?.length > 0 && (
-              <Link href="/projects?delayStatus=DELAYED" className="mt-2 text-xs text-red-600 font-medium flex items-center justify-end gap-0.5 hover:underline">
+              <Link href={`/projects?delayStatus=DELAYED${ownerLinkFilter}`} className="mt-2 text-xs text-red-600 font-medium flex items-center justify-end gap-0.5 hover:underline">
                 View All Delayed <ChevronRight size={12} />
               </Link>
             )}
@@ -917,13 +958,23 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
 
         {/* Manager Performance */}
-        {managers.length > 0 && (
+        {(managers.length > 0 || viewMode === 'overall') && (
           <Card>
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between gap-2 mb-4 flex-wrap">
               <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                <Users size={16} className="text-primary-600" /> Manager Performance
+                <Users size={16} className="text-primary-600" /> {nameDimension === 'am' ? 'Account Manager Performance' : 'Manager Performance'}
               </h3>
-              {isAdmin && (
+              {viewMode === 'overall' && (
+                <div className="flex items-center bg-blue-50 border border-blue-200 rounded-lg p-0.5 gap-0.5">
+                  {([['pm', 'Project Managers'], ['am', 'Account Managers']] as const).map(([key, label]) => (
+                    <button key={key} onClick={() => setOverallDimension(key)}
+                      className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${overallDimension === key ? 'bg-white text-blue-700 shadow-sm border border-blue-200' : 'text-slate-500 hover:text-blue-600'}`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {isAdmin && nameDimension === 'pm' && (
                 <Link href="/manager-dashboard" className="text-xs text-primary-600 hover:text-primary-700 font-medium flex items-center gap-0.5">
                   View Details <ChevronRight size={12} />
                 </Link>
@@ -933,8 +984,8 @@ export default function DashboardPage() {
               <table className="w-full text-sm">
                 <thead className="bg-blue-50/60">
                   <tr>
-                    {['Project Manager', 'Total', 'Active', 'Completed', 'Delayed', 'Completion'].map((h) => (
-                      <th key={h} className={`py-2 px-3 font-medium text-gray-500 text-xs ${h === 'Project Manager' ? 'text-left' : 'text-center'}`}>{h}</th>
+                    {[managerColumnLabel, 'Total', 'Active', 'Completed', 'Delayed', 'Completion'].map((h) => (
+                      <th key={h} className={`py-2 px-3 font-medium text-gray-500 text-xs ${h === managerColumnLabel ? 'text-left' : 'text-center'}`}>{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -972,9 +1023,17 @@ export default function DashboardPage() {
                       </td>
                     </tr>
                   ))}
+                  {managers.length === 0 && (
+                    <tr><td colSpan={6} className="py-6 text-center text-xs text-gray-400">No {managerColumnLabel.toLowerCase()} data yet</td></tr>
+                  )}
                 </tbody>
               </table>
             </div>
+            {unassignedRow && unassignedRow.total > 0 && (
+              <p className="mt-2 text-[11px] text-gray-400">
+                {unassignedRow.total} project{unassignedRow.total !== 1 ? 's have' : ' has'} no account manager assigned.
+              </p>
+            )}
           </Card>
         )}
 
@@ -992,7 +1051,7 @@ export default function DashboardPage() {
                     className="flex items-center justify-between p-2.5 rounded-lg border border-gray-100 hover:border-primary-300 hover:bg-primary-50 transition-all">
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-medium text-gray-900 truncate">{project.name}</p>
-                      <p className="text-[10px] text-gray-400">{project.projectManager}</p>
+                      <p className="text-[10px] text-gray-400">{managerOf(project)}</p>
                     </div>
                     <span className={`text-xs font-semibold flex-shrink-0 px-2 py-0.5 rounded ml-2 ${new Date(project.deadline) < new Date(Date.now() + 3 * 86400000) ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'}`}>
                       {format(new Date(project.deadline), 'MMM d')}
@@ -1013,7 +1072,8 @@ export default function DashboardPage() {
 
       {/* ── Migration Type Modal ───────────────────────────────────── */}
       {selectedMigrationType && (
-        <MigrationTypeModal type={selectedMigrationType} onClose={() => setSelectedMigrationType(null)} />
+        <MigrationTypeModal type={selectedMigrationType} onClose={() => setSelectedMigrationType(null)}
+          manager={managerFilter} by={queryDimension} nameBy={nameDimension} />
       )}
 
     </div>

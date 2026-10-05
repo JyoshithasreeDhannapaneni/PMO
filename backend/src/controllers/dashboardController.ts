@@ -1,6 +1,9 @@
 import { Request, Response } from 'express';
-import { dashboardService } from '../services/dashboardService';
+import { dashboardService, ManagerDimension } from '../services/dashboardService';
 import { asyncHandler } from '../middleware/errorHandler';
+
+// ?by=am filters/groups by account_manager instead of project_manager. Anything else means pm.
+const parseDimension = (req: Request): ManagerDimension => (req.query.by === 'am' ? 'am' : 'pm');
 
 export const dashboardController = {
   /**
@@ -103,6 +106,7 @@ export const dashboardController = {
   getOverview: asyncHandler(async (req: Request, res: Response): Promise<void> => {
     // Optional ?manager=Name filter — used for My View (manager sees only their projects)
     const managerName = req.query.manager as string | undefined;
+    const by = parseDimension(req);
 
     const [
       stats,
@@ -114,14 +118,14 @@ export const dashboardController = {
       upcomingDeadlines,
       migrationTypeStats,
     ] = await Promise.all([
-      dashboardService.getStats(managerName),
-      dashboardService.getProjectsByStatus(managerName),
-      dashboardService.getProjectsByPhase(managerName),
-      dashboardService.getProjectsByPlan(managerName),
-      dashboardService.getRecentActivity(5, managerName),
-      dashboardService.getDelaySummary(managerName),
-      dashboardService.getUpcomingDeadlines(14, managerName),
-      dashboardService.getMigrationTypeStats(managerName),
+      dashboardService.getStats(managerName, by),
+      dashboardService.getProjectsByStatus(managerName, by),
+      dashboardService.getProjectsByPhase(managerName, by),
+      dashboardService.getProjectsByPlan(managerName, by),
+      dashboardService.getRecentActivity(5, managerName, by),
+      dashboardService.getDelaySummary(managerName, by),
+      dashboardService.getUpcomingDeadlines(14, managerName, by),
+      dashboardService.getMigrationTypeStats(managerName, by),
     ]);
 
     res.json({
@@ -144,7 +148,7 @@ export const dashboardController = {
    */
   getManagerStats: asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const managerName = req.query.manager as string | undefined;
-    const data = await dashboardService.getManagerStats(managerName);
+    const data = await dashboardService.getManagerStats(managerName, parseDimension(req));
     res.json({ success: true, data });
   }),
 
@@ -179,19 +183,20 @@ export const dashboardController = {
    */
   getProjectsByMigrationType: asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const { type } = req.params;
-    const data = await dashboardService.getProjectsByMigrationType(type);
+    const managerName = req.query.manager as string | undefined;
+    const data = await dashboardService.getProjectsByMigrationType(type, managerName, parseDimension(req));
     res.json({ success: true, data });
   }),
 
   getOveragedProjects: asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const managerName = req.query.manager as string | undefined;
-    const data = await dashboardService.getOveragedProjects(managerName);
+    const data = await dashboardService.getOveragedProjects(managerName, parseDimension(req));
     res.json({ success: true, data });
   }),
 
   getEscalatedProjects: asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const managerName = req.query.manager as string | undefined;
-    const data = await dashboardService.getEscalatedProjects(managerName);
+    const data = await dashboardService.getEscalatedProjects(managerName, parseDimension(req));
     res.json({ success: true, data });
   }),
 

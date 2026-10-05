@@ -13,6 +13,8 @@ router.get('/weekly-trend', requireAuth, emailHygieneController.getWeeklyTrend);
 router.get('/daily-trend', requireAuth, emailHygieneController.getDailyTrend);
 router.get('/range', requireAuth, emailHygieneController.getRangeMetrics);
 router.get('/last-month', requireAuth, emailHygieneController.getLastMonth);
+router.get('/months', requireAuth, emailHygieneController.listMonths);
+router.get('/month', requireAuth, emailHygieneController.getMonth);
 router.post('/finalize-month', requireRole('ADMIN'), emailHygieneController.triggerMonthFinalize);
 router.get('/finalize-month-status', requireAuth, emailHygieneController.getMonthFinalizeStatus);
 

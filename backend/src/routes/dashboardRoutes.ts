@@ -4,6 +4,9 @@ import { requireAuth } from '../middleware/auth';
 
 const router = Router();
 
+// Every dashboard endpoint exposes project data, so all of them require a logged-in user.
+router.use(requireAuth);
+
 // GET /api/dashboard/overview - Get complete dashboard overview
 router.get('/overview', dashboardController.getOverview);
 
@@ -47,43 +50,43 @@ router.get('/overaged-projects', dashboardController.getOveragedProjects);
 router.get('/escalated-projects', dashboardController.getEscalatedProjects);
 
 // POST /api/dashboard/mark-overage/:id - Add a new overage event
-router.post('/mark-overage/:id', requireAuth, dashboardController.markOverageProject);
+router.post('/mark-overage/:id', dashboardController.markOverageProject);
 
 // PUT /api/dashboard/update-overage/:id - Edit the latest overage event (no new history row)
-router.put('/update-overage/:id', requireAuth, dashboardController.updateOverageProject);
+router.put('/update-overage/:id', dashboardController.updateOverageProject);
 
 // POST /api/dashboard/unmark-overage/:id - Remove overage from a project
-router.post('/unmark-overage/:id', requireAuth, dashboardController.unmarkOverageProject);
+router.post('/unmark-overage/:id', dashboardController.unmarkOverageProject);
 
 // DELETE /api/dashboard/overage-history/:historyId - Delete a single overage history entry
-router.delete('/overage-history/:historyId', requireAuth, dashboardController.deleteOverageHistoryEntry);
+router.delete('/overage-history/:historyId', dashboardController.deleteOverageHistoryEntry);
 
 // POST /api/dashboard/escalate/:id - Mark a project as escalated
-router.post('/escalate/:id', requireAuth, dashboardController.escalateProject);
+router.post('/escalate/:id', dashboardController.escalateProject);
 
 // POST /api/dashboard/deescalate/:id - Remove escalation from a project
-router.post('/deescalate/:id', requireAuth, dashboardController.deescalateProject);
+router.post('/deescalate/:id', dashboardController.deescalateProject);
 
 // POST /api/dashboard/set-resolved-date/:id - Set or clear the resolved date
-router.post('/set-resolved-date/:id', requireAuth, dashboardController.setResolvedDate);
+router.post('/set-resolved-date/:id', dashboardController.setResolvedDate);
 
 // GET /api/dashboard/archived-escalations - Completed/archived escalated projects
 router.get('/archived-escalations', dashboardController.getArchivedEscalations);
 
 // POST /api/dashboard/archive-escalation/:id - Archive an escalated project
-router.post('/archive-escalation/:id', requireAuth, dashboardController.archiveEscalation);
+router.post('/archive-escalation/:id', dashboardController.archiveEscalation);
 
 // POST /api/dashboard/unarchive-escalation/:id - Restore to active escalations
-router.post('/unarchive-escalation/:id', requireAuth, dashboardController.unarchiveEscalation);
+router.post('/unarchive-escalation/:id', dashboardController.unarchiveEscalation);
 
 // GET /api/dashboard/escalation-daily-notes/:projectId - Get daily notes for an escalated project
 router.get('/escalation-daily-notes/:projectId', dashboardController.getEscalationDailyNotes);
 
 // POST /api/dashboard/escalation-daily-notes/:projectId - Add a daily note
-router.post('/escalation-daily-notes/:projectId', requireAuth, dashboardController.addEscalationDailyNote);
+router.post('/escalation-daily-notes/:projectId', dashboardController.addEscalationDailyNote);
 
 // DELETE /api/dashboard/escalation-daily-notes/:projectId/:noteId - Delete a daily note
-router.delete('/escalation-daily-notes/:projectId/:noteId', requireAuth, dashboardController.deleteEscalationDailyNote);
+router.delete('/escalation-daily-notes/:projectId/:noteId', dashboardController.deleteEscalationDailyNote);
 
 // GET /api/dashboard/delay-happened-notes - All delay happened notes keyed by projectId (for CSV export)
 router.get('/delay-happened-notes', dashboardController.getDelayHappenedNotesByProject);
@@ -92,9 +95,9 @@ router.get('/delay-happened-notes', dashboardController.getDelayHappenedNotesByP
 router.get('/at-risk-projects', dashboardController.getAtRiskProjects);
 
 // POST /api/dashboard/mark-at-risk/:id - Mark a project as at risk (adds a history entry)
-router.post('/mark-at-risk/:id', requireAuth, dashboardController.markAtRisk);
+router.post('/mark-at-risk/:id', dashboardController.markAtRisk);
 
 // POST /api/dashboard/unmark-at-risk/:id - Remove the at risk flag from a project
-router.post('/unmark-at-risk/:id', requireAuth, dashboardController.unmarkAtRisk);
+router.post('/unmark-at-risk/:id', dashboardController.unmarkAtRisk);
 
 export default router;

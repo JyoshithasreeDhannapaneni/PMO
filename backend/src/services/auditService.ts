@@ -1,7 +1,7 @@
 import { query, execute } from '../config/database';
 import { logger } from '../utils/logger';
 import { v4 as uuidv4 } from 'uuid';
-import { getIstWeekBounds, istDateStr, weeksInCurrentIstMonth } from '../utils/weekBounds';
+import { getIstWeekBounds, istDateStr, weeksInCurrentIstMonth, weeksInIstMonth, parseIstMonthStart, istMonthLabelFromStart } from '../utils/weekBounds';
 import { segmentOfManager } from '../config/teamRoster';
 
 type AuditAction = 'CREATE' | 'UPDATE' | 'DELETE' | 'LOGIN' | 'LOGOUT' | 'PASSWORD_CHANGE' | 'STATUS_CHANGE' | 'EXPORT';
@@ -924,6 +924,96 @@ class AuditService {
     );
     logger.info(`[PmoHygiene] Finalized week of ${weekStartDate} — ${board.length} PMs`);
     return { finalized: true, weekStartDate };
+  }
+
+  // Builds the permanent monthly PMO snapshot for monthStartDate ('YYYY-MM-01') by averaging
+  // each PM's finalized weekly snapshots in that month (see the pmo_hygiene_monthly comment
+  // in index.ts for why it can't be recomputed directly). Idempotent via UNIQUE(month_start).
+  // Waits for every week of the month to be finalized, except when allowPartial is set
+  // (admin backfill) or the month ended over 14 days ago — a week the weekly cron missed
+  // would otherwise block the month forever.
+  async finalizeMonth(
+    monthStartDate: string,
+    opts: { allowPartial?: boolean } = {}
+  ): Promise<{ finalized: boolean; monthStart: string; reason?: 'exists' | 'weeks_pending' | 'no_weeks' | 'invalid_month'; weeksUsed?: number; weeksTotal?: number }> {
+    const bounds = parseIstMonthStart(monthStartDate);
+    if (!bounds) return { finalized: false, monthStart: monthStartDate, reason: 'invalid_month' };
+
+    const existing = await query(`SELECT id FROM pmo_hygiene_monthly WHERE month_start = $1`, [monthStartDate]);
+    if (existing.rows.length > 0) return { finalized: false, monthStart: monthStartDate, reason: 'exists' };
+
+    const weeks = weeksInIstMonth(monthStartDate);
+    const rows = (await query(
+      `SELECT week_start::text AS week_start, metrics FROM pmo_hygiene_weekly WHERE week_start = ANY($1::date[])`,
+      [weeks]
+    )).rows;
+    const weeksTotal = weeks.length;
+    const weeksUsed = rows.length;
+    if (weeksUsed === 0) return { finalized: false, monthStart: monthStartDate, reason: 'no_weeks', weeksUsed, weeksTotal };
+
+    const graceExpired = Date.now() > bounds.monthEnd.getTime() + 14 * 86400000;
+    if (weeksUsed < weeksTotal && !opts.allowPartial && !graceExpired) {
+      return { finalized: false, monthStart: monthStartDate, reason: 'weeks_pending', weeksUsed, weeksTotal };
+    }
+
+    const SCORE_KEYS = ['hygieneScore', 'activityScore', 'qualityScore', 'caseStudyScore', 'delayScore', 'dateIntegrityScore'] as const;
+    const byPm = new Map<string, { sums: Record<string, number>; counts: Record<string, number>; weeks: number }>();
+    for (const r of rows) {
+      for (const pm of (r.metrics ?? []) as any[]) {
+        if (!pm?.projectManager) continue;
+        const acc = byPm.get(pm.projectManager) ?? { sums: {}, counts: {}, weeks: 0 };
+        acc.weeks++;
+        for (const k of SCORE_KEYS) {
+          if (typeof pm[k] === 'number') {
+            acc.sums[k] = (acc.sums[k] ?? 0) + pm[k];
+            acc.counts[k] = (acc.counts[k] ?? 0) + 1;
+          }
+        }
+        byPm.set(pm.projectManager, acc);
+      }
+    }
+
+    const metrics = [...byPm.entries()].map(([projectManager, acc]) => {
+      const row: Record<string, any> = { projectManager, segment: segmentOfManager(projectManager), weeksScored: acc.weeks };
+      for (const k of SCORE_KEYS) row[k] = acc.counts[k] ? Math.round(acc.sums[k] / acc.counts[k]) : null;
+      return row;
+    }).sort((a, b) => (b.hygieneScore ?? 0) - (a.hygieneScore ?? 0));
+
+    await execute(
+      `INSERT INTO pmo_hygiene_monthly (month_start, month_end, metrics, weeks_used, weeks_total) VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (month_start) DO NOTHING`,
+      [monthStartDate, istDateStr(bounds.monthEnd), JSON.stringify(metrics), weeksUsed, weeksTotal]
+    );
+    logger.info(`[PmoHygiene] Finalized month of ${monthStartDate} — ${metrics.length} PMs from ${weeksUsed}/${weeksTotal} weeks`);
+    return { finalized: true, monthStart: monthStartDate, weeksUsed, weeksTotal };
+  }
+
+  async listPmoHygieneMonths(): Promise<Array<{ monthStart: string; monthLabel: string }>> {
+    const rows = (await query(`SELECT month_start::text AS month_start FROM pmo_hygiene_monthly ORDER BY month_start DESC`)).rows;
+    return rows.map((r: any) => ({ monthStart: r.month_start, monthLabel: istMonthLabelFromStart(r.month_start) }));
+  }
+
+  async getPmoHygieneMonth(monthStartDate: string): Promise<{
+    monthStart: string; monthLabel: string; finalized: boolean; computedAt: string | null;
+    weeksUsed: number; weeksTotal: number; metrics: any[];
+  }> {
+    const monthLabel = istMonthLabelFromStart(monthStartDate);
+    const row = (await query(
+      `SELECT metrics, weeks_used, weeks_total, computed_at FROM pmo_hygiene_monthly WHERE month_start = $1`,
+      [monthStartDate]
+    )).rows[0];
+    if (!row) {
+      return { monthStart: monthStartDate, monthLabel, finalized: false, computedAt: null, weeksUsed: 0, weeksTotal: weeksInIstMonth(monthStartDate).length, metrics: [] };
+    }
+    return {
+      monthStart: monthStartDate,
+      monthLabel,
+      finalized: true,
+      computedAt: row.computed_at as string,
+      weeksUsed: row.weeks_used,
+      weeksTotal: row.weeks_total,
+      metrics: row.metrics as any[],
+    };
   }
 
   // One slot per week-of-month, in order, even if it was never finalized (e.g. it passed

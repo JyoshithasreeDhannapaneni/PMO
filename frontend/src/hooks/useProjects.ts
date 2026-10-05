@@ -3,7 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect } from 'react';
 import { projectsApi, dashboardApi, statusReportsApi, managerGoalsApi, migrationTypeApi, pocProjectsApi, accountManagerApi, customerSuccessApi, hubspotApi, psEngagementsApi, kbArticlesApi, emailHygieneApi, callHygieneApi, callTranscriptsApi, auditApi, feedbackApi, actionItemsApi, slaBreachAlertsApi, archiveSharePointApi } from '@/services/api';
-import type { CreateProjectInput, UpdateProjectInput } from '@/types';
+import type { CreateProjectInput, UpdateProjectInput, ManagerDimension } from '@/types';
 
 export function useProjects(params?: {
   page?: number;
@@ -91,10 +91,10 @@ export function useDeleteProject() {
   });
 }
 
-export function useDashboard(manager?: string) {
+export function useDashboard(manager?: string, by: ManagerDimension = 'pm') {
   return useQuery({
-    queryKey: ['dashboard', manager],
-    queryFn: () => dashboardApi.getOverview(manager),
+    queryKey: ['dashboard', manager, by],
+    queryFn: () => dashboardApi.getOverview(manager, by),
     staleTime: 30_000,
     refetchOnWindowFocus: true,
     refetchInterval: 30_000,
@@ -108,10 +108,10 @@ export function useWeeklyReport(manager?: string, startDate?: string, endDate?: 
   });
 }
 
-export function useManagerStats(manager?: string) {
+export function useManagerStats(manager?: string, by: ManagerDimension = 'pm') {
   return useQuery({
-    queryKey: ['managerStats', manager],
-    queryFn: () => dashboardApi.getManagerStats(manager),
+    queryKey: ['managerStats', manager, by],
+    queryFn: () => dashboardApi.getManagerStats(manager, by),
   });
 }
 
@@ -351,10 +351,10 @@ export function useDeleteActionItem() {
   });
 }
 
-export function useProjectsByMigrationType(type: string | null) {
+export function useProjectsByMigrationType(type: string | null, manager?: string, by: ManagerDimension = 'pm') {
   return useQuery({
-    queryKey: ['projectsByMigrationType', type],
-    queryFn: () => migrationTypeApi.getProjectsByType(type!),
+    queryKey: ['projectsByMigrationType', type, manager, by],
+    queryFn: () => migrationTypeApi.getProjectsByType(type!, manager, by),
     enabled: !!type,
   });
 }
@@ -364,6 +364,14 @@ const authFetch = (url: string, opts?: RequestInit) => {
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
   const authHeader = token ? { Authorization: `Bearer ${token}` } : {};
   return fetch(url, { ...opts, headers: { ...authHeader, ...(opts?.headers ?? {}) } }).then(r => r.json());
+};
+
+const dashboardQuery = (manager: string | undefined, by: ManagerDimension): string => {
+  const params = new URLSearchParams();
+  if (manager) params.set('manager', manager);
+  if (by === 'am') params.set('by', 'am');
+  const qs = params.toString();
+  return qs ? `?${qs}` : '';
 };
 
 export function useAllUsers() {
@@ -434,19 +442,19 @@ export function useJiraBoardTickets() {
   });
 }
 
-export function useOveragedProjects(manager?: string) {
+export function useOveragedProjects(manager?: string, by: ManagerDimension = 'pm') {
   return useQuery({
-    queryKey: ['overagedProjects', manager],
-    queryFn: () => authFetch(`${API_BASE}/api/dashboard/overaged-projects${manager ? `?manager=${encodeURIComponent(manager)}` : ''}`),
+    queryKey: ['overagedProjects', manager, by],
+    queryFn: () => authFetch(`${API_BASE}/api/dashboard/overaged-projects${dashboardQuery(manager, by)}`),
     staleTime: 0,
     refetchInterval: 30_000,
   });
 }
 
-export function useEscalatedProjects(manager?: string) {
+export function useEscalatedProjects(manager?: string, by: ManagerDimension = 'pm') {
   return useQuery({
-    queryKey: ['escalatedProjects', manager],
-    queryFn: () => authFetch(`${API_BASE}/api/dashboard/escalated-projects${manager ? `?manager=${encodeURIComponent(manager)}` : ''}`),
+    queryKey: ['escalatedProjects', manager, by],
+    queryFn: () => authFetch(`${API_BASE}/api/dashboard/escalated-projects${dashboardQuery(manager, by)}`),
     staleTime: 0,
     refetchInterval: 30_000,
   });
@@ -999,6 +1007,46 @@ export function useTriggerEmailHygieneMonthFinalize() {
   return useMutation({
     mutationFn: () => emailHygieneApi.triggerMonthFinalize(),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['email-hygiene-last-month'] }),
+  });
+}
+
+export function useEmailHygieneMonths(enabled = true) {
+  return useQuery({
+    queryKey: ['email-hygiene-months'],
+    queryFn: () => emailHygieneApi.listMonths(),
+    enabled,
+    staleTime: 30 * 60 * 1000,
+    retry: 0,
+  });
+}
+
+export function useEmailHygieneMonth(monthStart: string | null, enabled = true) {
+  return useQuery({
+    queryKey: ['email-hygiene-month', monthStart],
+    queryFn: () => emailHygieneApi.getMonth(monthStart as string),
+    enabled: enabled && !!monthStart,
+    staleTime: 30 * 60 * 1000,
+    retry: 0,
+  });
+}
+
+export function usePmoHygieneMonths(enabled = true) {
+  return useQuery({
+    queryKey: ['pmo-hygiene-months'],
+    queryFn: () => auditApi.listHygieneMonths(),
+    enabled,
+    staleTime: 30 * 60 * 1000,
+    retry: 0,
+  });
+}
+
+export function usePmoHygieneMonth(monthStart: string | null, enabled = true) {
+  return useQuery({
+    queryKey: ['pmo-hygiene-month', monthStart],
+    queryFn: () => auditApi.getHygieneMonth(monthStart as string),
+    enabled: enabled && !!monthStart,
+    staleTime: 30 * 60 * 1000,
+    retry: 0,
   });
 }
 

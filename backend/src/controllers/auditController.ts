@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx';
 import { auditService } from '../services/auditService';
 import { hygieneScorecardService } from '../services/hygieneScorecardService';
 import { asyncHandler, AppError } from '../middleware/errorHandler';
+import { parseIstMonthStart } from '../utils/weekBounds';
 
 function sendWorkbook(res: Response, sheets: Record<string, any[]>, filename: string) {
   const workbook = XLSX.utils.book_new();
@@ -187,6 +188,33 @@ export const auditController = {
 
   getHygieneWeeklyTrend: asyncHandler(async (_req: Request, res: Response): Promise<void> => {
     const data = await auditService.getPmoHygieneWeeklyTrend();
+    res.json({ success: true, data });
+  }),
+
+  listHygieneMonths: asyncHandler(async (_req: Request, res: Response): Promise<void> => {
+    const data = await auditService.listPmoHygieneMonths();
+    res.json({ success: true, data });
+  }),
+
+  getHygieneMonth: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const { monthStart } = req.query;
+    if (typeof monthStart !== 'string' || !parseIstMonthStart(monthStart)) {
+      res.status(400).json({ success: false, error: 'monthStart query param is required as YYYY-MM-01' });
+      return;
+    }
+    const data = await auditService.getPmoHygieneMonth(monthStart);
+    res.json({ success: true, data });
+  }),
+
+  // POST /api/audit/hygiene-board/finalize-month?monthStart=YYYY-MM-01 — admin backfill for
+  // months that ended before monthly PMO snapshots existed; uses whatever weeks are saved.
+  finalizeHygieneMonth: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const { monthStart } = req.query;
+    if (typeof monthStart !== 'string' || !parseIstMonthStart(monthStart)) {
+      res.status(400).json({ success: false, error: 'monthStart query param is required as YYYY-MM-01' });
+      return;
+    }
+    const data = await auditService.finalizeMonth(monthStart, { allowPartial: true });
     res.json({ success: true, data });
   }),
 

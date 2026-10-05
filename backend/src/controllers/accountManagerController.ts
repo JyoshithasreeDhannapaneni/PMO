@@ -8,6 +8,7 @@ export const accountManagerController = {
     const result = await query(`
       SELECT
         customer_name,
+        client_name,
         account_manager,
         project_type,
         id,
@@ -40,19 +41,22 @@ export const accountManagerController = {
         customer_contact
       FROM projects
       WHERE status != 'CANCELLED'
-      ORDER BY customer_name ASC, project_type ASC
+      ORDER BY COALESCE(NULLIF(TRIM(client_name), ''), TRIM(name)) ASC, project_type ASC, created_at ASC
     `);
 
     const rows = result.rows;
 
-    // Group by customer_name
+    // Group by the same account key the All Projects page uses (Client / Account, falling
+    // back to project name). customer_name usually holds the customer's contact person, so
+    // grouping on it hid accounts and split or merged them differently from All Projects.
     const customerMap: Record<string, any> = {};
 
     for (const row of rows) {
-      const key = (row.customer_name || '').toLowerCase();
+      const accountLabel = accountLabelOf(row);
+      const key = accountLabel.toLowerCase();
       if (!customerMap[key]) {
         customerMap[key] = {
-          customerName: row.customer_name,
+          customerName: accountLabel,
           accountManager: row.account_manager || '',
           pocTrack: null,
           migrationTracks: [],
@@ -125,6 +129,11 @@ export const accountManagerController = {
   }),
 };
 
+// Mirrors the All Projects grouping key in frontend projects/page.tsx.
+function accountLabelOf(row: { client_name?: string | null; name?: string | null }): string {
+  return row.client_name?.trim() || row.name?.trim() || 'Unnamed';
+}
+
 function mapProjectRow(row: any) {
   // Compute delay live so it's always accurate (never stale from DB)
   let liveDelayStatus = row.delay_status;
@@ -180,7 +189,9 @@ function mapProjectRow(row: any) {
   return {
     id: row.id,
     name: row.name,
-    customerName: row.customer_name,
+    customerName: accountLabelOf(row),
+    clientName: row.client_name ?? null,
+    contactName: row.customer_name ?? null,
     projectManager: row.project_manager,
     accountManager: row.account_manager,
     phase: row.phase,
