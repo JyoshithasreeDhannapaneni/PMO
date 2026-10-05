@@ -24,10 +24,9 @@ export const MANAGER_QUERY_NAMES: Record<string, string> = {
 export const ENGINEER_ASSIGNMENTS: Record<string, string[]> = {
   // 2026-09-23: Amulya/Habeebunnisa/Vijendar/Ranadeep/Neelima moved here from Ajay Singh
   // (they previously reported through Abhishikth, a manager who no longer has a team here
-  // at all) -- product decision, not a data-quality fix. Nithish stays under Ajay Singh
-  // directly, unaffected by that move.
-  'Ajay Singh':       ['Nithish'],
-  'Meghana Chowdada': ['Amulya', 'Habeebunnisa', 'Vijendar', 'Ranadeep', 'Neelima'],
+  // at all) -- product decision, not a data-quality fix. 2026-10-05: Nithish moved here from
+  // Ajay Singh too (product decision), so Ajay Singh has no direct engineers now.
+  'Meghana Chowdada': ['Amulya', 'Habeebunnisa', 'Vijendar', 'Ranadeep', 'Neelima', 'Nithish'],
   // Pallavi removed 2026-09-23 (left the team) -- product decision.
   'Pranavi':          ['Arun', 'Manoj', 'Vainateya Rasala', 'Tanmai Arangi', 'Chandra Mouli', 'Swaroop'],
   // Spellings here must match LMS_SCORES/AUDIO_PERCENTAGES/ticket-export assignee

@@ -15,7 +15,7 @@ import {
   Plus, Pencil, Check,
 } from 'lucide-react';
 import api, { emailHygieneApi, type PmoHygieneMonthRow } from '@/services/api';
-import { SEGMENT_CONFIG, SEGMENT_HIERARCHY, MANAGER_QUERY_NAMES, ENGINEER_ASSIGNMENTS, LMS_SCORES, MEETING_ATTENDANCE, AUDIO_PERCENTAGES, segmentOfManager, isNamedManager, type Segment } from '@/lib/segments';
+import { SEGMENT_CONFIG, SEGMENT_HIERARCHY, MANAGER_QUERY_NAMES, ENGINEER_ASSIGNMENTS, LMS_SCORES, MEETING_ATTENDANCE, AUDIO_PERCENTAGES, segmentOfManager, isNamedManager, managerNameMatches, type Segment } from '@/lib/segments';
 import { ScoreBreakdownPanel } from '@/components/EmailHygieneBreakdown';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -1064,7 +1064,7 @@ function EmailHygieneRow({
 // the month comparison can run it once per month and line the two results up by position.
 function buildEmailHygieneRollups(metrics: any[]) {
   // Applied uniformly to the lead too, since a lead can have direct reports of their own
-  // (Ajay Singh does) even though they also have sub-managers underneath them.
+  // in ENGINEER_ASSIGNMENTS alongside the sub-managers underneath them.
   const buildBlock = (person: string) => {
     const personMetric = getEngineerHygieneData(metrics, person);
     const engineers = (ENGINEER_ASSIGNMENTS[person] ?? []).map((name) => ({
@@ -1513,32 +1513,123 @@ function PmoHygieneMonthCard() {
   const previous = compareData?.data;
   const compare = !!previous?.finalized;
 
-  const groups = useMemo(() => {
-    const prevByPm = new Map((previous?.metrics ?? []).map((r) => [r.projectManager.toLowerCase(), r]));
-    const currByPm = new Map((current?.metrics ?? []).map((r) => [r.projectManager.toLowerCase(), r]));
+  // Same lead -> manager -> engineer roster as the Email card (SEGMENT_HIERARCHY +
+  // ENGINEER_ASSIGNMENTS), so a person with a PMO score sits under the same manager in
+  // both cards. PMO rows store full names ("Abhishek sakala"), matched like the rest of
+  // the page via managerNameMatches. Only members scored in either month are listed —
+  // most engineers aren't PMs and would just be rows of N/A.
+  const { segments, unassigned } = useMemo(() => {
+    const currRows = current?.metrics ?? [];
+    const prevRows = compare ? previous?.metrics ?? [] : [];
+    const matched = new Set<PmoHygieneMonthRow>();
+    const find = (rows: PmoHygieneMonthRow[], name: string) => {
+      const row = rows.find((r) => managerNameMatches(r.projectManager, name));
+      if (row) matched.add(row);
+      return row;
+    };
+    const buildBlock = (person: string) => {
+      const members = [person, ...(ENGINEER_ASSIGNMENTS[person] ?? [])]
+        .map((name) => ({ name, curr: find(currRows, name), prev: find(prevRows, name) }))
+        .filter((m) => m.curr || m.prev);
+      return {
+        person,
+        members,
+        score: avgScore(members.map((m) => m.curr)),
+        prevScore: avgScore(members.map((m) => m.prev)),
+        totalCount: (ENGINEER_ASSIGNMENTS[person] ?? []).length + 1,
+      };
+    };
+    const segments = SEGMENT_HIERARCHY.map((seg) => {
+      const blocks = [buildBlock(seg.lead), ...seg.managers.map((m) => buildBlock(m))];
+      const avg = (xs: (number | null)[]) => {
+        const v = xs.filter((x): x is number => x != null);
+        return v.length > 0 ? Math.round(v.reduce((a, b) => a + b, 0) / v.length) : null;
+      };
+      return { label: seg.label, lead: seg.lead, blocks, score: avg(blocks.map((b) => b.score)), prevScore: avg(blocks.map((b) => b.prevScore)) };
+    });
     // Union of both months so a PM who only appears in the older month still shows (→ —).
-    const names = new Map<string, string>();
-    for (const r of [...(current?.metrics ?? []), ...(compare ? previous?.metrics ?? [] : [])]) {
-      names.set(r.projectManager.toLowerCase(), r.projectManager);
+    const others = new Map<string, { name: string; curr?: PmoHygieneMonthRow; prev?: PmoHygieneMonthRow }>();
+    for (const r of currRows) if (!matched.has(r)) others.set(r.projectManager.toLowerCase(), { name: r.projectManager, curr: r });
+    for (const r of prevRows) {
+      if (matched.has(r)) continue;
+      const key = r.projectManager.toLowerCase();
+      others.set(key, { ...(others.get(key) ?? { name: r.projectManager }), prev: r });
     }
-    const rows = [...names.entries()].map(([key, name]) => {
-      const curr = currByPm.get(key);
-      const prev = compare ? prevByPm.get(key) : undefined;
-      const segment = segmentOfManager(name) ?? curr?.segment ?? prev?.segment ?? null;
-      return { name, curr, prev, segment };
-    }).sort((a, b) => (b.curr?.hygieneScore ?? -1) - (a.curr?.hygieneScore ?? -1));
-    return (['ENT', 'SMB', null] as const)
-      .map((seg) => {
-        const segRows = rows.filter((r) => r.segment === seg);
-        return {
-          label: seg ?? 'Other',
-          rows: segRows,
-          score: avgScore(segRows.map((r) => r.curr)),
-          prevScore: avgScore(segRows.map((r) => r.prev)),
-        };
-      })
-      .filter((g) => g.rows.length > 0);
+    const unassignedMembers = [...others.values()].sort((a, b) => (b.curr?.hygieneScore ?? -1) - (a.curr?.hygieneScore ?? -1));
+    return {
+      segments,
+      unassigned: { members: unassignedMembers, score: avgScore(unassignedMembers.map((m) => m.curr)), prevScore: avgScore(unassignedMembers.map((m) => m.prev)) },
+    };
   }, [current, previous, compare]);
+
+  const renderMember = (m: { name: string; curr?: PmoHygieneMonthRow; prev?: PmoHygieneMonthRow }, label: string, bold = false) => {
+    const expanded = expandedPm === label;
+    return (
+      <div key={label}>
+        <button
+          onClick={() => setExpandedPm(expanded ? null : label)}
+          className="w-full flex items-center justify-between gap-3 px-3 py-2 text-left hover:bg-gray-50"
+        >
+          <span className={`text-xs truncate ${bold ? 'font-semibold text-gray-800' : 'text-gray-700'}`}>{m.curr?.projectManager ?? m.prev?.projectManager ?? m.name}</span>
+          <span className="flex items-center gap-1.5 shrink-0">
+            {compare && <PrevScore prev={m.prev?.hygieneScore} />}
+            <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold ring-1 ${m.curr?.hygieneScore != null ? hygieneScoreBadgeClass(m.curr.hygieneScore) : 'bg-gray-100 text-gray-400 ring-gray-200'}`}>
+              {m.curr?.hygieneScore ?? 'N/A'}
+            </span>
+            {compare && <ScoreDelta prev={m.prev?.hygieneScore} curr={m.curr?.hygieneScore} />}
+          </span>
+        </button>
+        {expanded && (
+          <div className="px-3 pb-3">
+            <table className="w-full text-[11px]">
+              <thead>
+                <tr className="text-gray-400">
+                  <th className="text-left font-medium py-1">Component</th>
+                  {compare && <th className="text-right font-medium py-1">{previous?.monthLabel}</th>}
+                  <th className="text-right font-medium py-1">{current?.monthLabel}</th>
+                  {compare && <th className="text-right font-medium py-1">Change</th>}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {PMO_SUB_SCORES.map((s) => {
+                  const prevVal = m.prev?.[s.key] as number | null | undefined;
+                  const currVal = m.curr?.[s.key] as number | null | undefined;
+                  return (
+                    <tr key={s.key}>
+                      <td className="py-1 text-gray-600">{s.label} <span className="text-gray-400">({s.weight})</span></td>
+                      {compare && <td className="py-1 text-right tabular-nums text-gray-500">{prevVal ?? '—'}</td>}
+                      <td className="py-1 text-right tabular-nums font-semibold text-gray-800">{currVal ?? '—'}</td>
+                      {compare && <td className="py-1 text-right"><ScoreDelta prev={prevVal} curr={currVal} /></td>}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            <p className="mt-1 text-[10px] text-gray-400">
+              Averaged over {m.curr?.weeksScored ?? 0} week(s){compare ? ` vs ${m.prev?.weeksScored ?? 0} week(s)` : ''}.
+            </p>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderBlock = (key: string, title: string, subtitle: string, score: number | null, prevScore: number | null, body: React.ReactNode, wide = false) => (
+    <div key={key} className={`bg-white rounded-xl border border-gray-100 overflow-hidden ${wide ? 'lg:col-span-2' : ''}`}>
+      <div className="flex items-center gap-3 p-3">
+        {compare && <PrevScore prev={prevScore} />}
+        <span className={`text-lg font-bold px-2.5 py-1 rounded-lg ring-1 ${score != null ? hygieneScoreBadgeClass(score) : 'bg-gray-100 text-gray-400 ring-gray-200'}`}>
+          {score ?? 'N/A'}
+        </span>
+        {compare && <ScoreDelta prev={prevScore} curr={score} />}
+        <div className="min-w-0">
+          <p className="text-xs font-semibold text-gray-700 truncate">{title}</p>
+          <p className="text-[11px] text-gray-400">{subtitle}</p>
+        </div>
+      </div>
+      <div className="border-t border-gray-100 divide-y divide-gray-50">{body}</div>
+    </div>
+  );
 
   const title = compare
     ? `${previous?.monthLabel} vs ${current?.monthLabel}`
@@ -1557,7 +1648,7 @@ function PmoHygieneMonthCard() {
         </div>
         {current?.finalized && (
           <div className="flex items-center gap-4">
-            {groups.filter((g) => g.label !== 'Other' && g.score != null).map((g) => (
+            {segments.filter((g) => g.score != null).map((g) => (
               <span key={g.label} className="flex items-center gap-1.5">
                 {compare && <PrevScore prev={g.prevScore} />}
                 <span className={`px-2.5 py-1 rounded-full text-xs font-bold ring-1 ${hygieneScoreBadgeClass(g.score ?? 0)}`}>
@@ -1593,72 +1684,41 @@ function PmoHygieneMonthCard() {
                   {current.monthLabel} is averaged from {current.weeksUsed} of {current.weeksTotal} weekly snapshots (the rest were never saved).
                 </p>
               )}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                {groups.map((g) => (
-                  <div key={g.label} className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-                    <div className="flex items-center gap-3 p-3">
-                      {compare && <PrevScore prev={g.prevScore} />}
-                      <span className={`text-lg font-bold px-2.5 py-1 rounded-lg ring-1 ${g.score != null ? hygieneScoreBadgeClass(g.score) : 'bg-gray-100 text-gray-400 ring-gray-200'}`}>
-                        {g.score ?? 'N/A'}
-                      </span>
-                      {compare && <ScoreDelta prev={g.prevScore} curr={g.score} />}
-                      <p className="text-xs font-semibold text-gray-700">{g.label} ({g.rows.length} PMs)</p>
-                    </div>
-                    <div className="border-t border-gray-100 divide-y divide-gray-50">
-                      {g.rows.map((r) => {
-                        const expanded = expandedPm === r.name;
-                        return (
-                          <div key={r.name}>
-                            <button
-                              onClick={() => setExpandedPm(expanded ? null : r.name)}
-                              className="w-full flex items-center justify-between gap-3 px-3 py-2 text-left hover:bg-gray-50"
-                            >
-                              <span className="text-xs text-gray-700 truncate">{r.name}</span>
-                              <span className="flex items-center gap-1.5 shrink-0">
-                                {compare && <PrevScore prev={r.prev?.hygieneScore} />}
-                                <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold ring-1 ${r.curr?.hygieneScore != null ? hygieneScoreBadgeClass(r.curr.hygieneScore) : 'bg-gray-100 text-gray-400 ring-gray-200'}`}>
-                                  {r.curr?.hygieneScore ?? 'N/A'}
-                                </span>
-                                {compare && <ScoreDelta prev={r.prev?.hygieneScore} curr={r.curr?.hygieneScore} />}
-                              </span>
-                            </button>
-                            {expanded && (
-                              <div className="px-3 pb-3">
-                                <table className="w-full text-[11px]">
-                                  <thead>
-                                    <tr className="text-gray-400">
-                                      <th className="text-left font-medium py-1">Component</th>
-                                      {compare && <th className="text-right font-medium py-1">{previous?.monthLabel}</th>}
-                                      <th className="text-right font-medium py-1">{current.monthLabel}</th>
-                                      {compare && <th className="text-right font-medium py-1">Change</th>}
-                                    </tr>
-                                  </thead>
-                                  <tbody className="divide-y divide-gray-50">
-                                    {PMO_SUB_SCORES.map((s) => {
-                                      const prevVal = r.prev?.[s.key] as number | null | undefined;
-                                      const currVal = r.curr?.[s.key] as number | null | undefined;
-                                      return (
-                                        <tr key={s.key}>
-                                          <td className="py-1 text-gray-600">{s.label} <span className="text-gray-400">({s.weight})</span></td>
-                                          {compare && <td className="py-1 text-right tabular-nums text-gray-500">{prevVal ?? '—'}</td>}
-                                          <td className="py-1 text-right tabular-nums font-semibold text-gray-800">{currVal ?? '—'}</td>
-                                          {compare && <td className="py-1 text-right"><ScoreDelta prev={prevVal} curr={currVal} /></td>}
-                                        </tr>
-                                      );
-                                    })}
-                                  </tbody>
-                                </table>
-                                <p className="mt-1 text-[10px] text-gray-400">
-                                  Averaged over {r.curr?.weeksScored ?? 0} week(s){compare ? ` vs ${r.prev?.weeksScored ?? 0} week(s)` : ''}.
-                                </p>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
+              <div className="space-y-4">
+                {segments.map((seg) => (
+                  <div key={seg.label}>
+                    <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wide mb-1.5">{seg.label}</p>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                      {seg.blocks.map((b, bi) => renderBlock(
+                        b.person,
+                        bi === 0 ? `${b.person} (Lead)` : b.person,
+                        `${b.members.length}/${b.totalCount} with a PMO score`,
+                        b.score,
+                        b.prevScore,
+                        b.members.length > 0
+                          ? b.members.map((m) => renderMember(m, `${seg.label}:${b.person}:${m.name}`, m.name === b.person))
+                          : <p className="px-3 py-2 text-[11px] text-gray-400">No PMO scores for this team.</p>,
+                        bi === 0,
+                      ))}
                     </div>
                   </div>
                 ))}
+                {unassigned.members.length > 0 && (
+                  <div>
+                    <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wide mb-1.5">Not on team roster</p>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                      {renderBlock(
+                        'unassigned',
+                        'Other PMs',
+                        `${unassigned.members.length} PM(s) not in the ENT/SMB roster`,
+                        unassigned.score,
+                        unassigned.prevScore,
+                        unassigned.members.map((m) => renderMember(m, `other:${m.name}`)),
+                        true,
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             </>
           )}

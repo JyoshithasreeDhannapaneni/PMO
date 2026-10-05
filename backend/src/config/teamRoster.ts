@@ -10,10 +10,10 @@
 const ENGINEER_ASSIGNMENTS: Record<string, string[]> = {
   'Pranavi':          ['Arun', 'Manoj', 'Vainateya', 'Tanmai', 'Chandra Mouli', 'Swaroop'],
   'Lakshmi Prasanna': ['Chaitanya Gupta', 'Harshith', 'Lakshma Reddy', 'Ganesh Kondameedi', 'Davidraj'],
-  'Meghana Chowdada': ['Amulya', 'Ranadeep', 'Habeebunnisa', 'Neelima', 'Vijendar'],
+  // 2026-10-05: Nithish moved here from Ajay Singh, same as segments.ts.
+  'Meghana Chowdada': ['Amulya', 'Ranadeep', 'Habeebunnisa', 'Neelima', 'Vijendar', 'Nithish'],
   'Harika':           ['Meena Lakshmi Triveni', 'Ravi Hemanth', 'Siva Kota', 'Ambika'],
   'Sriram':           ['Dathu', 'Ramana Reddy', 'Vineetha', 'Sanjana'],
-  'Ajay Singh':       ['Nithish'],
 };
 
 const SEGMENT_HIERARCHY: { lead: string; managers: string[] }[] = [
