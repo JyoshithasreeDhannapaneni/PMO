@@ -1675,7 +1675,7 @@ function PmoHygieneMonthCard() {
             <p className="text-xs text-gray-500">
               {isMonthsLoading || isWithLoading
                 ? 'Loading…'
-                : 'No monthly PMO hygiene snapshot yet — a month is saved automatically once all of its weekly snapshots are in.'}
+                : 'No weekly PMO hygiene snapshots for a completed month yet — months appear here once their weekly snapshots exist.'}
             </p>
           ) : (
             <>

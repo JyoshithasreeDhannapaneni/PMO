@@ -1,7 +1,7 @@
 import { query, execute } from '../config/database';
 import { logger } from '../utils/logger';
 import { v4 as uuidv4 } from 'uuid';
-import { getIstWeekBounds, istDateStr, weeksInCurrentIstMonth, weeksInIstMonth, parseIstMonthStart, istMonthLabelFromStart } from '../utils/weekBounds';
+import { getIstWeekBounds, getIstMonthBounds, istDateStr, weeksInCurrentIstMonth, weeksInIstMonth, parseIstMonthStart, istMonthLabelFromStart } from '../utils/weekBounds';
 import { segmentOfManager } from '../config/teamRoster';
 
 type AuditAction = 'CREATE' | 'UPDATE' | 'DELETE' | 'LOGIN' | 'LOGOUT' | 'PASSWORD_CHANGE' | 'STATUS_CHANGE' | 'EXPORT';
@@ -926,35 +926,16 @@ class AuditService {
     return { finalized: true, weekStartDate };
   }
 
-  // Builds the permanent monthly PMO snapshot for monthStartDate ('YYYY-MM-01') by averaging
-  // each PM's finalized weekly snapshots in that month (see the pmo_hygiene_monthly comment
-  // in index.ts for why it can't be recomputed directly). Idempotent via UNIQUE(month_start).
-  // Waits for every week of the month to be finalized, except when allowPartial is set
-  // (admin backfill) or the month ended over 14 days ago — a week the weekly cron missed
-  // would otherwise block the month forever.
-  async finalizeMonth(
-    monthStartDate: string,
-    opts: { allowPartial?: boolean } = {}
-  ): Promise<{ finalized: boolean; monthStart: string; reason?: 'exists' | 'weeks_pending' | 'no_weeks' | 'invalid_month'; weeksUsed?: number; weeksTotal?: number }> {
-    const bounds = parseIstMonthStart(monthStartDate);
-    if (!bounds) return { finalized: false, monthStart: monthStartDate, reason: 'invalid_month' };
-
-    const existing = await query(`SELECT id FROM pmo_hygiene_monthly WHERE month_start = $1`, [monthStartDate]);
-    if (existing.rows.length > 0) return { finalized: false, monthStart: monthStartDate, reason: 'exists' };
-
+  // Averages each PM's finalized weekly snapshots in monthStartDate's weeks. pmo_hygiene_weekly
+  // rows are immutable once written, so this gives the same answer whenever it runs — it's
+  // how both the saved monthly snapshot and the on-read fallback below are built (see the
+  // pmo_hygiene_monthly comment in index.ts for why a past month can't be recomputed directly).
+  private async averageWeeklyPmoSnapshots(monthStartDate: string): Promise<{ metrics: any[]; weeksUsed: number; weeksTotal: number }> {
     const weeks = weeksInIstMonth(monthStartDate);
     const rows = (await query(
       `SELECT week_start::text AS week_start, metrics FROM pmo_hygiene_weekly WHERE week_start = ANY($1::date[])`,
       [weeks]
     )).rows;
-    const weeksTotal = weeks.length;
-    const weeksUsed = rows.length;
-    if (weeksUsed === 0) return { finalized: false, monthStart: monthStartDate, reason: 'no_weeks', weeksUsed, weeksTotal };
-
-    const graceExpired = Date.now() > bounds.monthEnd.getTime() + 14 * 86400000;
-    if (weeksUsed < weeksTotal && !opts.allowPartial && !graceExpired) {
-      return { finalized: false, monthStart: monthStartDate, reason: 'weeks_pending', weeksUsed, weeksTotal };
-    }
 
     const SCORE_KEYS = ['hygieneScore', 'activityScore', 'qualityScore', 'caseStudyScore', 'delayScore', 'dateIntegrityScore'] as const;
     const byPm = new Map<string, { sums: Record<string, number>; counts: Record<string, number>; weeks: number }>();
@@ -979,6 +960,32 @@ class AuditService {
       return row;
     }).sort((a, b) => (b.hygieneScore ?? 0) - (a.hygieneScore ?? 0));
 
+    return { metrics, weeksUsed: rows.length, weeksTotal: weeks.length };
+  }
+
+  // Saves the permanent monthly PMO snapshot for monthStartDate ('YYYY-MM-01'). Idempotent
+  // via UNIQUE(month_start). Waits for every week of the month to be finalized, except when
+  // allowPartial is set (admin backfill) or the month ended over 14 days ago — a week the
+  // weekly cron missed would otherwise block the month forever. Reads don't depend on this
+  // (getPmoHygieneMonth falls back to averaging the weeks live); it just pins the result.
+  async finalizeMonth(
+    monthStartDate: string,
+    opts: { allowPartial?: boolean } = {}
+  ): Promise<{ finalized: boolean; monthStart: string; reason?: 'exists' | 'weeks_pending' | 'no_weeks' | 'invalid_month'; weeksUsed?: number; weeksTotal?: number }> {
+    const bounds = parseIstMonthStart(monthStartDate);
+    if (!bounds) return { finalized: false, monthStart: monthStartDate, reason: 'invalid_month' };
+
+    const existing = await query(`SELECT id FROM pmo_hygiene_monthly WHERE month_start = $1`, [monthStartDate]);
+    if (existing.rows.length > 0) return { finalized: false, monthStart: monthStartDate, reason: 'exists' };
+
+    const { metrics, weeksUsed, weeksTotal } = await this.averageWeeklyPmoSnapshots(monthStartDate);
+    if (weeksUsed === 0) return { finalized: false, monthStart: monthStartDate, reason: 'no_weeks', weeksUsed, weeksTotal };
+
+    const graceExpired = Date.now() > bounds.monthEnd.getTime() + 14 * 86400000;
+    if (weeksUsed < weeksTotal && !opts.allowPartial && !graceExpired) {
+      return { finalized: false, monthStart: monthStartDate, reason: 'weeks_pending', weeksUsed, weeksTotal };
+    }
+
     await execute(
       `INSERT INTO pmo_hygiene_monthly (month_start, month_end, metrics, weeks_used, weeks_total) VALUES ($1, $2, $3, $4, $5)
        ON CONFLICT (month_start) DO NOTHING`,
@@ -988,11 +995,27 @@ class AuditService {
     return { finalized: true, monthStart: monthStartDate, weeksUsed, weeksTotal };
   }
 
+  // Every completed IST month that has a saved monthly row OR at least one weekly snapshot,
+  // newest first. A week belongs to the month its Sunday falls in — the same boundary rule
+  // weeksInIstMonth uses (a month owns the week containing its 1st).
   async listPmoHygieneMonths(): Promise<Array<{ monthStart: string; monthLabel: string }>> {
-    const rows = (await query(`SELECT month_start::text AS month_start FROM pmo_hygiene_monthly ORDER BY month_start DESC`)).rows;
+    const currentMonthStart = istDateStr(getIstMonthBounds(0).monthStart);
+    const rows = (await query(
+      `SELECT DISTINCT m::text AS month_start FROM (
+         SELECT month_start AS m FROM pmo_hygiene_monthly
+         UNION
+         SELECT date_trunc('month', week_start + 6)::date AS m FROM pmo_hygiene_weekly
+       ) x
+       WHERE m < $1::date
+       ORDER BY 1 DESC`,
+      [currentMonthStart]
+    )).rows;
     return rows.map((r: any) => ({ monthStart: r.month_start, monthLabel: istMonthLabelFromStart(r.month_start) }));
   }
 
+  // Saved monthly snapshot when there is one; otherwise, for a completed month, the same
+  // average built live from that month's weekly snapshots (computedAt: null). `finalized`
+  // means "has data to show", matching the email month endpoint the UI shares a shape with.
   async getPmoHygieneMonth(monthStartDate: string): Promise<{
     monthStart: string; monthLabel: string; finalized: boolean; computedAt: string | null;
     weeksUsed: number; weeksTotal: number; metrics: any[];
@@ -1002,18 +1025,24 @@ class AuditService {
       `SELECT metrics, weeks_used, weeks_total, computed_at FROM pmo_hygiene_monthly WHERE month_start = $1`,
       [monthStartDate]
     )).rows[0];
-    if (!row) {
-      return { monthStart: monthStartDate, monthLabel, finalized: false, computedAt: null, weeksUsed: 0, weeksTotal: weeksInIstMonth(monthStartDate).length, metrics: [] };
+    if (row) {
+      return {
+        monthStart: monthStartDate,
+        monthLabel,
+        finalized: true,
+        computedAt: row.computed_at as string,
+        weeksUsed: row.weeks_used,
+        weeksTotal: row.weeks_total,
+        metrics: row.metrics as any[],
+      };
     }
-    return {
-      monthStart: monthStartDate,
-      monthLabel,
-      finalized: true,
-      computedAt: row.computed_at as string,
-      weeksUsed: row.weeks_used,
-      weeksTotal: row.weeks_total,
-      metrics: row.metrics as any[],
-    };
+
+    const bounds = parseIstMonthStart(monthStartDate);
+    const monthEnded = !!bounds && bounds.monthEnd.getTime() <= Date.now();
+    const { metrics, weeksUsed, weeksTotal } = monthEnded
+      ? await this.averageWeeklyPmoSnapshots(monthStartDate)
+      : { metrics: [], weeksUsed: 0, weeksTotal: weeksInIstMonth(monthStartDate).length };
+    return { monthStart: monthStartDate, monthLabel, finalized: weeksUsed > 0, computedAt: null, weeksUsed, weeksTotal, metrics };
   }
 
   // One slot per week-of-month, in order, even if it was never finalized (e.g. it passed
