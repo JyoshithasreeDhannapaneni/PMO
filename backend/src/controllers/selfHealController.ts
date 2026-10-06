@@ -6,7 +6,10 @@ export const selfHealController = {
   getIncidents: asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const limit = req.query.limit ? Number(req.query.limit) : 100;
     const incidents = await selfHealService.getRecentIncidents(limit);
-    res.json({ success: true, data: { incidents, isConfigured: selfHealService.isConfigured() } });
+    res.json({
+      success: true,
+      data: { incidents, isConfigured: selfHealService.isConfigured(), isGithubConfigured: selfHealService.isGithubConfigured() },
+    });
   }),
 
   resolveIncident: asyncHandler(async (req: Request, res: Response): Promise<void> => {
@@ -14,10 +17,10 @@ export const selfHealController = {
     res.json({ success: true });
   }),
 
-  // Manual trigger — an admin can ask for a diagnosis pass right now instead of waiting
-  // for the next cron tick.
+  // Manual trigger — runs the same full self-heal pass as the 15-minute cron right now
+  // (auto-resolve, diagnose, fix PRs) instead of waiting for the next tick.
   triggerDiagnosis: asyncHandler(async (_req: Request, res: Response): Promise<void> => {
-    const result = await selfHealService.diagnoseUnresolvedIncidents();
+    const result = await selfHealService.runFullPass();
     res.json({ success: true, data: result });
   }),
 };

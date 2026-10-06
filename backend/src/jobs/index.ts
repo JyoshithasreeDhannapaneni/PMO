@@ -127,7 +127,7 @@ export function initializeCronJobs(): void {
     }
   }, { timezone: 'Asia/Kolkata' });
 
-  // 1-hour reply-SLA breach alerts — polled every 15 minutes. Separate from the daily
+  // 45-minute reply-SLA breach alerts — polled every 15 minutes. Separate from the daily
   // Email Hygiene sync (which grades on a 4-hour SLA weekly); this is a real-time
   // trip-wire that emails the responsible manager(s) (cc: all admins) the moment a
   // customer email has gone unreplied by ANYONE on the team for 60+ minutes. Team-aware
@@ -204,19 +204,18 @@ export function initializeCronJobs(): void {
     }
   }, { timezone: 'Asia/Kolkata' });
 
-  // Self-heal diagnosis pass — every 30 minutes, picks up any captured crashes/5xx
-  // incidents that haven't been diagnosed yet and asks Claude for a root-cause + suggested
-  // fix (see selfHealService.diagnoseUnresolvedIncidents for why this never auto-applies
-  // anything). No-ops cheaply (one cheap query, no API call) whenever there's nothing new,
-  // and no-ops entirely if ANTHROPIC_API_KEY isn't configured.
-  cron.schedule('*/30 * * * *', async () => {
+  // Self-heal pass — every 15 minutes, resolves incidents with no human step where it safely
+  // can: (1) closes transient infra errors once the DB is healthy and they've stopped,
+  // (2) has Claude triage + diagnose anything new, (3) hands code bugs to the GitHub
+  // self-heal-fix workflow, which opens a fix PR, (4) closes code bugs whose fix PR merged
+  // and whose error stopped recurring. Each step is independent — one failing (e.g. GitHub
+  // unreachable) doesn't block the rest. Steps 2-4 no-op without ANTHROPIC_API_KEY /
+  // SELF_HEAL_GITHUB_* configured.
+  cron.schedule('*/15 * * * *', async () => {
     try {
-      const result = await selfHealService.diagnoseUnresolvedIncidents();
-      if (result.diagnosed > 0) {
-        logger.info(`[SelfHeal] Diagnosis pass: diagnosed ${result.diagnosed} incident group(s)`);
-      }
+      await selfHealService.runFullPass();
     } catch (error) {
-      logger.error('[SelfHeal] Diagnosis pass failed:', error);
+      logger.error('[SelfHeal] Self-heal pass failed:', error);
     }
   }, { timezone: 'Asia/Kolkata' });
 
@@ -257,12 +256,12 @@ export function initializeCronJobs(): void {
   logger.info('  - Email hygiene sync: Hourly, on the hour (IST)');
   logger.info('  - Call hygiene refresh: Daily at 5:00 AM IST');
   logger.info('  - Call transcript grading: Daily at 5:30 AM IST');
-  logger.info('  - 1-hour reply-SLA breach alerts: Every 15 minutes');
+  logger.info('  - 45-minute reply-SLA breach alerts: Every 15 minutes');
   logger.info('  - Global logout (clear all sessions): Daily at 6:00 AM IST');
   logger.info('  - Weekly hygiene finalize (PMO/Email/Call): Every Monday at 7:00 AM IST');
   logger.info('  - Email hygiene monthly finalize-check: Daily at 7:15 AM IST');
   logger.info('  - PMO hygiene monthly finalize-check: Daily at 7:16 AM IST');
   logger.info('  - Email hygiene daily finalize: Daily at 7:20 AM IST');
-  logger.info('  - Self-heal diagnosis pass: Every 30 minutes');
+  logger.info('  - Self-heal pass (auto-resolve, diagnose, fix PRs): Every 15 minutes');
   logger.info('  - SharePoint list → History Archive sync: Daily at 6:30 AM IST');
 }

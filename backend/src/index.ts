@@ -10,7 +10,7 @@ import morgan from 'morgan';
 import { errorHandler } from './middleware/errorHandler';
 import { notFoundHandler } from './middleware/notFoundHandler';
 import { viewerReadOnly } from './middleware/viewerReadOnly';
-import { query, execute, pool } from './config/db';
+import { query, execute, pool, isTransientDbConnectError } from './config/db';
 import { ACCOUNT_MANAGER_BASELINE } from './config/accountManagers';
 import { schema as dbSchema } from './db/init';
 
@@ -79,6 +79,14 @@ process.on('uncaughtException', (err) => {
 });
 process.on('unhandledRejection', (reason) => {
   const err = reason instanceof Error ? reason : new Error(String(reason));
+  // A failed DB *connect* from some fire-and-forget job (e.g. the Oct 1 2026 crash) leaves
+  // nothing half-done in this process — exiting would only drop every in-flight request on
+  // top of the DB blip. Record it for self-heal and keep serving.
+  if (isTransientDbConnectError(err)) {
+    logger.error('[SelfHeal] unhandledRejection (transient DB connect error) — not exiting:', err.message);
+    void selfHealService.captureIncident({ source: 'unhandled_rejection', severity: 'error', message: err.message, stack: err.stack });
+    return;
+  }
   logger.error('[SelfHeal] unhandledRejection — process will exit:', err);
   selfHealService
     .captureIncident({ source: 'unhandled_rejection', severity: 'fatal', message: err.message, stack: err.stack })
@@ -911,6 +919,22 @@ async function runMigrations() {
   )`);
   await execute(`CREATE INDEX IF NOT EXISTS idx_self_heal_incidents_created ON self_heal_incidents(created_at DESC)`);
   await execute(`CREATE INDEX IF NOT EXISTS idx_self_heal_incidents_unresolved ON self_heal_incidents(resolved) WHERE resolved = false`);
+  // Autonomous resolution (2026-10-05): category is Claude's triage (code_bug / transient /
+  // config / unknown); code bugs get one GitHub fix-PR dispatch per error signature, tracked
+  // by fix_requested_at + fix_pr_url so the resolver can close the incident once that PR is
+  // merged and the error stops recurring.
+  if (!await columnExists('self_heal_incidents', 'category')) {
+    try { await execute(`ALTER TABLE self_heal_incidents ADD COLUMN category VARCHAR(20)`); } catch {}
+  }
+  if (!await columnExists('self_heal_incidents', 'fix_requested_at')) {
+    try { await execute(`ALTER TABLE self_heal_incidents ADD COLUMN fix_requested_at TIMESTAMPTZ`); } catch {}
+  }
+  if (!await columnExists('self_heal_incidents', 'fix_pr_url')) {
+    try { await execute(`ALTER TABLE self_heal_incidents ADD COLUMN fix_pr_url TEXT`); } catch {}
+  }
+  if (!await columnExists('self_heal_incidents', 'resolved_by')) {
+    try { await execute(`ALTER TABLE self_heal_incidents ADD COLUMN resolved_by VARCHAR(20)`); } catch {}
+  }
   // Monthly hygiene snapshots (2026-09 — "last month" manager dashboard view). One
   // immutable row per finalized IST calendar month, written by the daily finalize-check
   // (idempotent via UNIQUE month_start) the first time it runs after that month ends —

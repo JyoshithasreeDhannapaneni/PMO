@@ -43,7 +43,7 @@ cd ~/.claude/skills/gstack
 - **Backend**: Node.js + Express, TypeScript, **raw `pg` (node-postgres) — NOT Prisma**, PostgreSQL, node-cron, Nodemailer, Winston, multer, xlsx (SheetJS), Microsoft Graph (email/call hygiene, transcript grading), OpenAI SDK (call-transcript grading)
 - **Auth**: Hand-rolled JWT (stored in localStorage), role-based (`ADMIN` / `PROJECT_MANAGER` / `VIEWER` / `PRE_SALES` / `ACCOUNT_MANAGER`)
 - **Jira Integration**: OAuth 2.0 (3LO) only — scopes `read:jira-work read:jira-user offline_access`
-- **No CI/CD pipeline exists yet** (no `.github/workflows/`) — `/review` and `npx tsc --noEmit` are the only pre-merge gates today
+- **No CI/CD pipeline exists yet** — `/review` and `npx tsc --noEmit` are the only pre-merge gates today. The one workflow, `.github/workflows/self-heal-fix.yml`, is not CI: the backend's self-heal pass triggers it to have Claude Code open a fix PR for a production code bug (never merges)
 - **No test infrastructure exists yet** — `testing-standard.md` documents the intended approach, but neither `jest` nor any `.test.*` file exists in this repo currently. Don't assume tests run; check before claiming coverage.
 
 > **Correction note:** `README.md` and some older `.claude/` docs describe a Prisma-based backend (`backend/prisma/schema.prisma`, `db:generate`/`db:migrate`). That's stale — there is no `prisma/` folder. The backend uses raw parameterized SQL via `backend/src/config/database.ts` (`query`/`execute`). See `.claude/memory/architecture.md`.
@@ -108,7 +108,10 @@ MICROSOFT_CLIENT_ID / MICROSOFT_CLIENT_SECRET / MICROSOFT_TENANT_ID   # separate
 OPENAI_API_KEY / OPENAI_MODEL   # call-transcript grading (defaults to gpt-4o-mini)
 ALERT_FROM_EMAIL / EXTERNAL_API_KEY / HUBSPOT_ACCESS_TOKEN
 EXTERNAL_PHASE_WEBHOOK_URL   # optional: other internal app's webhook endpoint; POSTed to (with EXTERNAL_API_KEY as X-API-Key) whenever a project's phase newly moves to DELTA. Unset = feature no-ops.
-SLA_BREACH_ALERT_TEST_RECIPIENT   # optional: while set, 1-hour SLA breach alerts go only to this address instead of the real manager+admins. Remove to go live.
+SLA_BREACH_ALERT_TEST_RECIPIENT   # optional: while set, 45-minute SLA breach alerts go only to this address instead of the real manager+admins. Remove to go live.
+ANTHROPIC_API_KEY / ANTHROPIC_MODEL   # self-heal incident triage + diagnosis
+SELF_HEAL_GITHUB_REPO / SELF_HEAL_GITHUB_TOKEN   # optional: "owner/repo" + fine-grained PAT (Contents: read & write, Pull requests: read) so code-bug incidents trigger the self-heal-fix workflow. Unset = no fix PRs; transient incidents still auto-resolve.
+SELF_HEAL_MAX_FIX_PRS_PER_DAY   # optional, default 3
 ```
 
 ## Common Commands

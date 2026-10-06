@@ -28,7 +28,8 @@ function escapeHtml(text: string): string {
 // visible history.
 const MAX_QUOTED_CHARS = 3000;
 
-const SLA_MINUTES = 60;
+// 2026-10-06: tightened from 60 to 45 minutes (product decision).
+const SLA_MINUTES = 45;
 // How far back to look each run -- generous enough that a message can't slip through
 // between cron ticks, small enough to keep the shared-timeline fetch cheap. Once a
 // message is alerted on, it's recorded in sla_breach_alerts and skipped on every later
@@ -100,7 +101,7 @@ async function sendBreachAlert(ex: Exchange, recipients: { email: string; name: 
 
   const body = `
     ${testModeNote}
-    <p>A customer email has not received a reply from anyone on the team within the 1-hour SLA.</p>
+    <p>A customer email has not received a reply from anyone on the team within the ${SLA_MINUTES}-minute SLA.</p>
     <table cellpadding="0" cellspacing="0" style="width:100%;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;margin:16px 0;">
       <tr><td style="padding:8px 12px;font-size:13px;color:#64748b;border-bottom:1px solid #f1f5f9;">Recipient(s) on this email</td><td style="padding:8px 12px;font-size:13px;font-weight:600;border-bottom:1px solid #f1f5f9;">${escapeHtml(namesList)}</td></tr>
       <tr><td style="padding:8px 12px;font-size:13px;color:#64748b;border-bottom:1px solid #f1f5f9;">Customer</td><td style="padding:8px 12px;font-size:13px;font-weight:600;border-bottom:1px solid #f1f5f9;">${escapeHtml(ex.customerMessage.customerEmail || 'unknown')}</td></tr>
@@ -111,13 +112,13 @@ async function sendBreachAlert(ex: Exchange, recipients: { email: string; name: 
     <p style="font-size:13px;font-weight:600;color:#334155;margin:0 0 6px 0;">What the customer sent:</p>
     <blockquote style="margin:0 0 16px 0;padding:10px 14px;border-left:3px solid #cbd5e1;background:#f8fafc;border-radius:4px;font-size:13px;color:#334155;white-space:pre-wrap;max-height:400px;overflow-y:auto;">${quotedText || '<em style="color:#94a3b8;">(no message text available)</em>'}</blockquote>
     ${truncated ? `<p style="font-size:12px;color:#94a3b8;margin:-10px 0 16px 0;">Message truncated — showing the first ${MAX_QUOTED_CHARS.toLocaleString()} characters.</p>` : ''}
-    <p style="font-size:13px;color:#64748b;">This is a real-time 1-hour reply trip-wire, separate from the weekly Email Hygiene score (which grades on a 4-hour SLA). One alert covers everyone this email was sent to — you'll get a follow-up note here once anyone on the team replies.</p>`;
+    <p style="font-size:13px;color:#64748b;">This is a real-time ${SLA_MINUTES}-minute reply trip-wire, separate from the weekly Email Hygiene score (which grades on a 4-hour SLA). One alert covers everyone this email was sent to — you'll get a follow-up note here once anyone on the team replies.</p>`;
 
   await emailService.sendEmail({
     to,
     cc,
     subject: `${testRecipient ? '[TEST] ' : ''}SLA Alert: Unreplied customer email (${namesList}) — ${overdueLabel} overdue`,
-    html: brandedEmail('1-Hour Reply SLA Breach', body, '#ef4444'),
+    html: brandedEmail(`${SLA_MINUTES}-Minute Reply SLA Breach`, body, '#ef4444'),
   });
 
   await execute(

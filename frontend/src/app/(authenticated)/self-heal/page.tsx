@@ -20,6 +20,13 @@ function authFetch(url: string, options?: RequestInit) {
   }).then(r => r.json());
 }
 
+const CATEGORY_LABEL: Record<string, string> = {
+  code_bug: 'Code bug',
+  transient: 'Transient',
+  config: 'Config',
+  unknown: 'Unclear',
+};
+
 const SOURCE_LABEL: Record<string, string> = {
   uncaught_exception: 'Crash — uncaught exception',
   unhandled_rejection: 'Crash — unhandled rejection',
@@ -46,10 +53,12 @@ export default function SelfHealPage() {
     onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: ['self-heal-incidents'] });
       if (!result?.success) return;
-      if (result.data?.skipped) showToast('error', 'Diagnosis skipped', result.data.reason);
-      else showToast('success', `Diagnosis complete — ${result.data?.diagnosed ?? 0} incident group(s) analyzed`);
+      const r = result.data ?? {};
+      const summary = `${r.transientResolved ?? 0} auto-resolved, ${r.diagnosed ?? 0} diagnosed, ${r.fixPrsRequested ?? 0} fix PR(s) requested, ${r.fixedResolved ?? 0} closed after fix`;
+      if (r.errors?.length) showToast('error', 'Self-heal pass finished with errors', `${summary}. ${r.errors.join('; ')}`);
+      else showToast('success', 'Self-heal pass complete', summary);
     },
-    onError: (err: any) => showToast('error', 'Diagnosis pass failed', err.message),
+    onError: (err: any) => showToast('error', 'Self-heal pass failed', err.message),
   });
 
   const resolveMutation = useMutation({
@@ -71,6 +80,8 @@ export default function SelfHealPage() {
 
   const incidents: any[] = data?.data?.incidents ?? [];
   const isConfigured: boolean = data?.data?.isConfigured ?? false;
+  const isGithubConfigured: boolean = data?.data?.isGithubConfigured ?? false;
+  const autoResolvedCount = incidents.filter((i) => i.resolved && (i.resolved_by === 'auto_transient' || i.resolved_by === 'auto_fix_pr')).length;
   const visible = showResolved ? incidents : incidents.filter((i) => !i.resolved);
   const unresolvedCount = incidents.filter((i) => !i.resolved).length;
 
@@ -83,8 +94,9 @@ export default function SelfHealPage() {
             <ShieldCheck size={24} className="text-primary-600" /> Self-Heal
           </h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            Crashes and unexpected server errors — process-level recovery is automatic (systemd);
-            AI diagnosis below is a suggestion only, nothing is ever applied automatically.
+            Runs every 15 minutes with no human step: transient errors (DB timeouts, restarts) close themselves
+            once the database is healthy and they stop; code bugs get an AI fix opened as a pull request, and close
+            once that PR is merged and the error stops recurring.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -100,7 +112,7 @@ export default function SelfHealPage() {
             className="flex items-center gap-1.5 px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-60"
           >
             {diagnoseMutation.isPending ? <RefreshCw size={14} className="animate-spin" /> : <Play size={14} />}
-            Diagnose now
+            Run self-heal now
           </button>
         </div>
       </div>
@@ -110,12 +122,22 @@ export default function SelfHealPage() {
           <Info size={16} className="mt-0.5 flex-shrink-0" />
           <span>
             <strong>ANTHROPIC_API_KEY</strong> isn't configured — incidents are still being captured below,
-            but the AI diagnosis pass (and the "Diagnose now" button) will no-op until a key is added to backend/.env.
+            but the AI diagnosis pass will no-op until a key is added to backend/.env. Transient errors still auto-resolve.
           </span>
         </div>
       )}
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+      {!isGithubConfigured && (
+        <div className="flex items-start gap-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
+          <Info size={16} className="mt-0.5 flex-shrink-0" />
+          <span>
+            <strong>SELF_HEAL_GITHUB_REPO / SELF_HEAL_GITHUB_TOKEN</strong> aren't configured — code bugs are diagnosed
+            but no fix pull request is opened for them until both are added to backend/.env.
+          </span>
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <div className="bg-red-50 rounded-xl p-4 border border-white">
           <div className="text-2xl font-bold text-red-700">{unresolvedCount}</div>
           <div className="text-xs text-gray-500 mt-0.5">Unresolved</div>
@@ -123,6 +145,10 @@ export default function SelfHealPage() {
         <div className="bg-teal-50 rounded-xl p-4 border border-white">
           <div className="text-2xl font-bold text-teal-700">{incidents.filter((i) => i.diagnosis).length}</div>
           <div className="text-xs text-gray-500 mt-0.5">Diagnosed</div>
+        </div>
+        <div className="bg-green-50 rounded-xl p-4 border border-white">
+          <div className="text-2xl font-bold text-green-700">{autoResolvedCount}</div>
+          <div className="text-xs text-gray-500 mt-0.5">Auto-resolved</div>
         </div>
         <div className="bg-gray-50 rounded-xl p-4 border border-white">
           <div className="text-2xl font-bold text-gray-700">{incidents.length}</div>
@@ -157,9 +183,19 @@ export default function SelfHealPage() {
                       </span>
                       {incident.auto_healed && (
                         <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700">
-                          <Zap size={11} /> Auto-healed
+                          <Zap size={11} /> {incident.resolved_by === 'auto_fix_pr' ? 'Auto-resolved after fix' : incident.resolved_by === 'auto_transient' ? 'Auto-resolved (transient)' : 'Auto-healed'}
                         </span>
                       )}
+                      {incident.category && (
+                        <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{CATEGORY_LABEL[incident.category] ?? incident.category}</span>
+                      )}
+                      {incident.fix_pr_url ? (
+                        <a href={incident.fix_pr_url} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 hover:underline">
+                          Fix PR
+                        </a>
+                      ) : incident.fix_requested_at && !incident.resolved ? (
+                        <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600">Fix PR in progress</span>
+                      ) : null}
                       <span className="text-xs text-gray-400">{format(new Date(incident.created_at), 'MMM d, yyyy HH:mm')}</span>
                     </div>
                     <p className="text-sm font-medium text-gray-800 mt-1.5">{incident.message}</p>

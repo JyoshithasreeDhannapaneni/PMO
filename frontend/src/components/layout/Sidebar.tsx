@@ -29,10 +29,11 @@ const allNavigation = [
   { name: 'Escalated Projects',   href: '/escalation-projects',    icon: Bell,            color: '#ea580c', adminOnly: false },
   { name: 'Reviews',              href: '/reviews',                icon: Star,            color: '#eab308', adminOnly: false },
   {
-    name: 'Manager Dashboard', href: '/manager-dashboard', icon: Users, color: '#0891b2', adminOnly: true,
+    // Account managers get the page's account-manager mode (2026-10-06); Metrics stays PM/admin-only.
+    name: 'Manager Dashboard', href: '/manager-dashboard', icon: Users, color: '#0891b2', roles: ['ADMIN', 'ACCOUNT_MANAGER'],
     children: [
       { name: 'Overview', href: '/manager-dashboard' },
-      { name: 'Metrics',  href: '/manager-dashboard/metrics' },
+      { name: 'Metrics',  href: '/manager-dashboard/metrics', adminOnly: true },
     ],
   },
   { name: 'Pre-sales',            href: '/poc-projects',           icon: Target,          color: '#db2777', adminOnly: false },
