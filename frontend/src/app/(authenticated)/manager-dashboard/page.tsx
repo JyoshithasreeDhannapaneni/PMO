@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect, Fragment } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
@@ -1024,28 +1024,135 @@ function PrevScore({ prev }: { prev: number | null | undefined }) {
   return <span className="text-[11px] text-gray-400 tabular-nums">{prev ?? '—'} →</span>;
 }
 
+const EMAIL_CATEGORY_SCORES: { key: 'speed' | 'quality' | 'resolution' | 'tone'; scoreKey: string; label: string; max: number }[] = [
+  { key: 'speed', scoreKey: 'speedScore', label: 'Speed', max: 30 },
+  { key: 'quality', scoreKey: 'qualityScore', label: 'Quality', max: 30 },
+  { key: 'resolution', scoreKey: 'resolutionScore', label: 'Resolution', max: 20 },
+  { key: 'tone', scoreKey: 'toneScore', label: 'Tone', max: 20 },
+];
+
+interface MetricDeltaRow {
+  label: string;
+  max: number;
+  prev: number | null;
+  curr: number | null;
+}
+
+interface CategoryDeltaRow extends MetricDeltaRow {
+  key: string;
+  subs: MetricDeltaRow[];
+}
+
+// Month-over-month change per hygiene category and sub-metric for one person. Category
+// scores sum to emailHygieneScore, so their deltas add up to the overall delta. Sub-metrics
+// come from scoreBreakdown, lined up by label across the two monthly snapshots.
+function emailMetricDeltas(prev: any | null | undefined, curr: any | null | undefined): CategoryDeltaRow[] {
+  const num = (v: unknown): number | null => (typeof v === 'number' ? v : null);
+  return EMAIL_CATEGORY_SCORES.map((c) => {
+    const prevItems: any[] = prev?.scoreBreakdown?.[c.key] ?? [];
+    const currItems: any[] = curr?.scoreBreakdown?.[c.key] ?? [];
+    const labels = Array.from(new Set([...currItems, ...prevItems].map((i) => String(i.label))));
+    return {
+      key: c.key,
+      label: c.label,
+      max: c.max,
+      prev: num(prev?.[c.scoreKey]),
+      curr: num(curr?.[c.scoreKey]),
+      subs: labels.map((label) => {
+        const p = prevItems.find((i) => i.label === label);
+        const n = currItems.find((i) => i.label === label);
+        return { label, max: num(n?.maxSubScore) ?? num(p?.maxSubScore) ?? 10, prev: num(p?.subScore), curr: num(n?.subScore) };
+      }),
+    };
+  });
+}
+
+// The biggest category gain and the biggest category drop, for the collapsed-row hint.
+function emailTopMovers(deltas: CategoryDeltaRow[]): { up: { label: string; diff: number } | null; down: { label: string; diff: number } | null } {
+  let up: { label: string; diff: number } | null = null;
+  let down: { label: string; diff: number } | null = null;
+  for (const d of deltas) {
+    if (d.prev == null || d.curr == null) continue;
+    const diff = d.curr - d.prev;
+    if (diff > 0 && (!up || diff > up.diff)) up = { label: d.label, diff };
+    if (diff < 0 && (!down || diff < down.diff)) down = { label: d.label, diff };
+  }
+  return { up, down };
+}
+
+function EmailHygieneDeltaTable({ deltas, prevLabel, currLabel }: { deltas: CategoryDeltaRow[]; prevLabel: string; currLabel: string }) {
+  return (
+    <div className="border-t border-gray-100 px-4 py-3 bg-gray-50/50">
+      <p className="text-xs font-semibold text-gray-700 mb-1">Change by metric</p>
+      <table className="w-full text-[11px]">
+        <thead>
+          <tr className="text-gray-400">
+            <th className="text-left font-medium py-1">Metric</th>
+            <th className="text-right font-medium py-1">{prevLabel}</th>
+            <th className="text-right font-medium py-1">{currLabel}</th>
+            <th className="text-right font-medium py-1">Change</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-100">
+          {deltas.map((d) => (
+            <Fragment key={d.key}>
+              <tr>
+                <td className="py-1 font-semibold text-gray-700">{d.label} <span className="font-normal text-gray-400">(/{d.max})</span></td>
+                <td className="py-1 text-right tabular-nums text-gray-500">{d.prev ?? '—'}</td>
+                <td className="py-1 text-right tabular-nums font-semibold text-gray-800">{d.curr ?? '—'}</td>
+                <td className="py-1 text-right"><ScoreDelta prev={d.prev} curr={d.curr} /></td>
+              </tr>
+              {/* Tone has a single sub-metric equal to the category score — skip the repeat. */}
+              {d.subs.length > 1 && d.subs.map((s) => (
+                <tr key={s.label}>
+                  <td className="py-1 pl-4 text-gray-500">{s.label} <span className="text-gray-400">(/{s.max})</span></td>
+                  <td className="py-1 text-right tabular-nums text-gray-400">{s.prev ?? '—'}</td>
+                  <td className="py-1 text-right tabular-nums text-gray-600">{s.curr ?? '—'}</td>
+                  <td className="py-1 text-right"><ScoreDelta prev={s.prev} curr={s.curr} /></td>
+                </tr>
+              ))}
+            </Fragment>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function EmailHygieneRow({
-  name, metric, prevMetric, compare = false, bold = false, expandedEmail, setExpandedEmail,
+  name, metric, prevMetric, compare = null, bold = false, expandedEmail, setExpandedEmail,
 }: {
   name: string;
   metric: any | null;
   prevMetric?: any | null;
-  compare?: boolean;
+  // Month labels when comparing two months, null when the comparison is off.
+  compare?: { prevLabel: string; currLabel: string } | null;
   bold?: boolean;
   expandedEmail: string | null;
   setExpandedEmail: (email: string | null) => void;
 }) {
-  const key = metric?.userEmail?.toLowerCase() ?? name;
+  const key = (metric ?? prevMetric)?.userEmail?.toLowerCase() ?? name;
   const expanded = expandedEmail === key;
+  // While comparing, someone scored only in the older month can still open their change table.
+  const canExpand = !!metric || (!!compare && !!prevMetric);
+  const deltas = useMemo(() => (compare ? emailMetricDeltas(prevMetric, metric) : null), [compare, prevMetric, metric]);
+  const movers = deltas ? emailTopMovers(deltas) : null;
   return (
     <div>
       <button
-        onClick={() => metric && setExpandedEmail(expanded ? null : key)}
-        disabled={!metric}
+        onClick={() => canExpand && setExpandedEmail(expanded ? null : key)}
+        disabled={!canExpand}
         className="w-full flex items-center justify-between gap-3 px-3 py-2 text-left hover:bg-gray-50 disabled:cursor-default disabled:hover:bg-transparent"
       >
         <span className={`text-xs truncate ${bold ? 'font-semibold text-gray-800' : 'text-gray-700'}`}>{name}</span>
         <span className="flex items-center gap-1.5 shrink-0">
+          {movers && (movers.up || movers.down) && (
+            <span className="hidden sm:inline text-[10px] text-gray-400 mr-1 tabular-nums">
+              {movers.up && <span className="text-green-600">▲ {movers.up.label} +{movers.up.diff}</span>}
+              {movers.up && movers.down && ' · '}
+              {movers.down && <span className="text-red-600">▼ {movers.down.label} {movers.down.diff}</span>}
+            </span>
+          )}
           {compare && <PrevScore prev={prevMetric?.emailHygieneScore} />}
           <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold ring-1 ${metric ? hygieneScoreBadgeClass(metric.emailHygieneScore) : 'bg-gray-100 text-gray-400 ring-gray-200'}`}>
             {metric?.emailHygieneScore ?? 'N/A'}
@@ -1053,6 +1160,9 @@ function EmailHygieneRow({
           {compare && <ScoreDelta prev={prevMetric?.emailHygieneScore} curr={metric?.emailHygieneScore} />}
         </span>
       </button>
+      {expanded && compare && deltas && (
+        <EmailHygieneDeltaTable deltas={deltas} prevLabel={compare.prevLabel} currLabel={compare.currLabel} />
+      )}
       {expanded && metric && <HygienePanel metric={metric} />}
     </div>
   );
@@ -1218,6 +1328,10 @@ function EmailHygieneLastMonthCard() {
   const prevRollups = useMemo(
     () => (compare ? buildEmailHygieneRollups(compareResult?.metrics ?? []) : null),
     [compare, compareResult]
+  );
+  const compareLabels = useMemo(
+    () => (compare ? { prevLabel: compareResult?.monthLabel ?? '', currLabel: monthLabel } : null),
+    [compare, compareResult, monthLabel]
   );
 
   // Once triggered, keep polling until the backend reports it's no longer running —
@@ -1413,7 +1527,7 @@ function EmailHygieneLastMonthCard() {
                           name={seg.lead}
                           metric={seg.leadBlock.personMetric}
                           prevMetric={prevSeg?.leadBlock.personMetric}
-                          compare={compare}
+                          compare={compareLabels}
                           bold
                           expandedEmail={expandedEmail}
                           setExpandedEmail={setExpandedEmail}
@@ -1424,7 +1538,7 @@ function EmailHygieneLastMonthCard() {
                             name={e.name}
                             metric={e.metric}
                             prevMetric={prevSeg?.leadBlock.engineers[ei]?.metric}
-                            compare={compare}
+                            compare={compareLabels}
                             expandedEmail={expandedEmail}
                             setExpandedEmail={setExpandedEmail}
                           />
@@ -1453,7 +1567,7 @@ function EmailHygieneLastMonthCard() {
                             name={`${b.person} (Manager)`}
                             metric={b.personMetric}
                             prevMetric={prevBlock?.personMetric}
-                            compare={compare}
+                            compare={compareLabels}
                             expandedEmail={expandedEmail}
                             setExpandedEmail={setExpandedEmail}
                           />
@@ -1463,7 +1577,7 @@ function EmailHygieneLastMonthCard() {
                               name={e.name}
                               metric={e.metric}
                               prevMetric={prevBlock?.engineers[ei]?.metric}
-                              compare={compare}
+                              compare={compareLabels}
                               expandedEmail={expandedEmail}
                               setExpandedEmail={setExpandedEmail}
                             />

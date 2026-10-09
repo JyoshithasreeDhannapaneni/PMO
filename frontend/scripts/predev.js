@@ -22,8 +22,10 @@ try {
   console.warn('⚠ Could not create .next directory:', e.message);
 }
 
-// Step 3 — Mark as SYSTEM so OneDrive skips syncing it
-const result = spawnSync('attrib', ['+s', nextDir], { stdio: 'pipe', shell: true });
+// Step 3 — Mark as SYSTEM so OneDrive skips syncing it. No `shell: true`: the shell
+// splits the unquoted path at the spaces in "OneDrive - CloudFuze, Inc" and attrib
+// silently does nothing while still exiting 0.
+const result = spawnSync('attrib', ['+s', nextDir], { stdio: 'pipe' });
 if (result.status === 0) {
   console.log('✓ .next marked as system folder (OneDrive will skip it)');
 } else {

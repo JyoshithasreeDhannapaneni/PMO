@@ -26,6 +26,27 @@ rate the same calls, then compare. Adjust thresholds if there's systematic disag
 **Depends on:** The Call Hygiene Quality scoring feature must be live and have accumulated
 real graded calls first.
 
+## Email Hygiene / Manager Dashboard
+
+### Unit-test the month-over-month per-metric delta helpers
+
+**What:** Once the frontend has jest/ts-jest, unit-test the pure `metricDeltas()` and
+`topMovers()` helpers behind the Email Hygiene card's per-metric month comparison.
+
+**Why:** Two things are easy to break silently: the 4 category deltas (Speed/Quality/
+Resolution/Tone) must always sum to the overall score delta, and a person missing from
+either month must show "—" with no ▲/▼ instead of a bogus change.
+
+**Context:** Deferred during `/plan-eng-review` on 2026-10-09 (D4) to keep the feature PR
+free of test-infra changes; it shipped with manual QA only. Helpers live in
+`frontend/src/app/(authenticated)/manager-dashboard/page.tsx`. Put tests under
+`frontend/src/__tests__/utils/` per `.claude/rules/testing-standard.md`; the first test
+also has to add jest to `frontend/package.json`.
+
+**Effort:** S
+**Priority:** P3
+**Depends on:** The per-metric comparison feature landing; frontend jest setup.
+
 ## Completed (resolved during design, not shipped separately)
 
 ### Decide PROJECT_MANAGER role exposure for the Quality score
