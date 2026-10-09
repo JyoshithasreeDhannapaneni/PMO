@@ -15,8 +15,9 @@ import {
 } from 'lucide-react';
 import { formatDistanceToNow, format } from 'date-fns';
 import type { ManagerDimension } from '@/types';
+import AccountManagerDashboard from '@/components/AccountManagerDashboard';
 
-type ViewMode = 'my' | 'overall';
+type ViewMode = 'my' | 'overall' | 'am';
 
 
 /* ── Portfolio Status Donut ─────────────────────────────────────── */
@@ -236,11 +237,13 @@ export default function DashboardPage() {
   // My View is scoped by the column matching the user's role: account managers see the
   // projects where they are the Account Manager, everyone else where they are the PM.
   const myDimension: ManagerDimension = isAccountManager ? 'am' : 'pm';
-  // Overall View data is unfiltered either way; this tab only switches the performance
-  // table's grouping and which manager name the project lists show.
-  const [overallDimension, setOverallDimension] = useState<ManagerDimension>(myDimension);
+  // Overall View is the project-manager dashboard; account-manager numbers live only in the
+  // separate AM Dashboard view (2026-10-06), so the two never share a screen.
   const queryDimension: ManagerDimension = viewMode === 'my' ? myDimension : 'pm';
-  const nameDimension: ManagerDimension = viewMode === 'my' ? myDimension : overallDimension;
+  const nameDimension: ManagerDimension = viewMode === 'my' ? myDimension : 'pm';
+  const canSeeAmDashboard = isAdmin || isAccountManager;
+  // An account manager's My View is their own AM dashboard, not the PM-style project view.
+  const showAmDashboard = (viewMode === 'am' && canSeeAmDashboard) || (isAccountManager && viewMode === 'my');
   const managerOf = (p: any): string => (nameDimension === 'am' ? p.accountManager : p.projectManager) || '';
   const ownerLinkFilter = viewMode === 'my' && user?.name
     ? `&${myDimension === 'am' ? 'accountManager' : 'projectManager'}=${encodeURIComponent(user.name)}`
@@ -330,6 +333,68 @@ export default function DashboardPage() {
   };
 
 
+  const headerEl = (
+    <>
+      {/* ── Header ─────────────────────────────────────────────────── */}
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">PMO Dashboard</h1>
+          <p className="text-sm text-gray-500 mt-0.5">Welcome back, {user?.name || 'Administrator'}</p>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* View toggle — all roles */}
+          <div className="flex items-center bg-blue-50 border border-blue-200 rounded-xl p-1 gap-1">
+            <button onClick={() => setViewMode('my')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${viewMode === 'my' ? 'bg-white text-blue-700 shadow-sm border border-blue-200' : 'text-slate-500 hover:text-blue-600'}`}>
+              <User size={13} />
+              My View
+            </button>
+            <button onClick={() => setViewMode('overall')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${viewMode === 'overall' ? 'bg-white text-blue-700 shadow-sm border border-blue-200' : 'text-slate-500 hover:text-blue-600'}`}>
+              <Users size={13} />
+              Overall View
+            </button>
+            {canSeeAmDashboard && (
+              <button onClick={() => setViewMode('am')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${viewMode === 'am' ? 'bg-white text-blue-700 shadow-sm border border-blue-200' : 'text-slate-500 hover:text-blue-600'}`}>
+                <UserCheck size={13} />
+                AM Dashboard
+              </button>
+            )}
+          </div>
+          <span className={`hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ${
+            viewMode === 'my'
+              ? 'bg-blue-100 text-blue-700'
+              : isManager
+                ? 'bg-blue-100 text-blue-700'
+                : 'bg-purple-100 text-purple-700'
+          }`}>
+            {viewMode === 'my' ? <User size={10} /> : viewMode === 'am' ? <UserCheck size={10} /> : <Users size={10} />}
+            {viewMode === 'my' ? (isAccountManager ? 'My accounts only' : 'My projects only') : viewMode === 'am' ? 'All account managers' : 'All managers'}
+          </span>
+          <span className="text-xs text-gray-400 hidden md:block">Updated {format(new Date(), 'MMM d · h:mm a')}</span>
+          <button onClick={handleRefresh} className={`p-2 rounded-lg bg-white border border-blue-200 hover:bg-blue-50 transition-all ${isRefreshing ? 'animate-spin' : ''}`}>
+            <RefreshCw size={15} className="text-slate-500" />
+          </button>
+          {!isViewer && (
+            <Link href="/projects/new" className="flex items-center gap-1.5 px-3 py-2 bg-primary-600 text-white rounded-lg text-xs font-medium hover:bg-primary-700 transition-colors">
+              <Plus size={14} /> New Project
+            </Link>
+          )}
+        </div>
+      </div>
+    </>
+  );
+
+  if (showAmDashboard) {
+    return (
+      <div className="space-y-5">
+        {headerEl}
+        <AccountManagerDashboard fixedAm={viewMode === 'my' ? (user?.name ?? '') : undefined} />
+      </div>
+    );
+  }
+
   if (isLoading) return (
     <div className="flex items-center justify-center h-96">
       <div className="text-center">
@@ -363,47 +428,7 @@ export default function DashboardPage() {
   return (
     <div className="space-y-5">
 
-      {/* ── Header ─────────────────────────────────────────────────── */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">PMO Dashboard</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Welcome back, {user?.name || 'Administrator'}</p>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* View toggle — all roles */}
-          <div className="flex items-center bg-blue-50 border border-blue-200 rounded-xl p-1 gap-1">
-            <button onClick={() => setViewMode('my')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${viewMode === 'my' ? 'bg-white text-blue-700 shadow-sm border border-blue-200' : 'text-slate-500 hover:text-blue-600'}`}>
-              <User size={13} />
-              My View
-            </button>
-            <button onClick={() => setViewMode('overall')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${viewMode === 'overall' ? 'bg-white text-blue-700 shadow-sm border border-blue-200' : 'text-slate-500 hover:text-blue-600'}`}>
-              <Users size={13} />
-              Overall View
-            </button>
-          </div>
-          <span className={`hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ${
-            viewMode === 'my'
-              ? 'bg-blue-100 text-blue-700'
-              : isManager
-                ? 'bg-blue-100 text-blue-700'
-                : 'bg-purple-100 text-purple-700'
-          }`}>
-            {viewMode === 'my' ? <User size={10} /> : <Users size={10} />}
-            {viewMode === 'my' ? 'My projects only' : 'All managers'}
-          </span>
-          <span className="text-xs text-gray-400 hidden md:block">Updated {format(new Date(), 'MMM d · h:mm a')}</span>
-          <button onClick={handleRefresh} className={`p-2 rounded-lg bg-white border border-blue-200 hover:bg-blue-50 transition-all ${isRefreshing ? 'animate-spin' : ''}`}>
-            <RefreshCw size={15} className="text-slate-500" />
-          </button>
-          {!isViewer && (
-            <Link href="/projects/new" className="flex items-center gap-1.5 px-3 py-2 bg-primary-600 text-white rounded-lg text-xs font-medium hover:bg-primary-700 transition-colors">
-              <Plus size={14} /> New Project
-            </Link>
-          )}
-        </div>
-      </div>
+      {headerEl}
 
       {/* Context banner */}
       {isAccountManager && viewMode === 'my' && ownedProjectCount === 0 ? (
@@ -964,16 +989,6 @@ export default function DashboardPage() {
               <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
                 <Users size={16} className="text-primary-600" /> {nameDimension === 'am' ? 'Account Manager Performance' : 'Manager Performance'}
               </h3>
-              {viewMode === 'overall' && (
-                <div className="flex items-center bg-blue-50 border border-blue-200 rounded-lg p-0.5 gap-0.5">
-                  {([['pm', 'Project Managers'], ['am', 'Account Managers']] as const).map(([key, label]) => (
-                    <button key={key} onClick={() => setOverallDimension(key)}
-                      className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${overallDimension === key ? 'bg-white text-blue-700 shadow-sm border border-blue-200' : 'text-slate-500 hover:text-blue-600'}`}>
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              )}
               {isAdmin && nameDimension === 'pm' && (
                 <Link href="/manager-dashboard" className="text-xs text-primary-600 hover:text-primary-700 font-medium flex items-center gap-0.5">
                   View Details <ChevronRight size={12} />

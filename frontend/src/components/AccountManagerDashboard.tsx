@@ -8,7 +8,8 @@ import { useSettings } from '@/context/SettingsContext';
 import { segmentOfManager } from '@/lib/segments';
 import type { Project, HubspotSignalsData } from '@/types';
 
-// Account-manager mode of the Manager Dashboard (2026-10-06). Built from the same live
+// Account Manager dashboard — the main Dashboard's "AM Dashboard" view, and an account
+// manager's own "My View" when fixedAm is set (2026-10-06). Built from the same live
 // project list as All Projects (useProjects — delay status computed on read, archived
 // projects excluded) so every count here matches that page; the AM roster comes from the
 // dashboard's manager-stats (ACCOUNT_MANAGER users + the baseline AM list), with any other
@@ -126,9 +127,13 @@ function ProjectTable({ projects, columns, empty }: {
   );
 }
 
-export default function AccountManagerDashboard() {
+// fixedAm locks every section to one account manager (an AM's My View): no switching to
+// other AMs, and no cross-AM comparison (other cards, leaderboard).
+export default function AccountManagerDashboard({ fixedAm }: { fixedAm?: string } = {}) {
   const { settings } = useSettings();
-  const [selectedAm, setSelectedAm] = useState<string | null>(null);
+  const [pickedAm, setPickedAm] = useState<string | null>(null);
+  const selectedAm = fixedAm ?? pickedAm;
+  const setSelectedAm = (am: string | null) => { if (!fixedAm) setPickedAm(am); };
   const [leaderSegment, setLeaderSegment] = useState<'ALL' | 'ENT' | 'SMB'>('ALL');
 
   const { data: projectsData, isLoading: projectsLoading } = useProjects({ status: undefined, limit: 500000 });
@@ -193,7 +198,7 @@ export default function AccountManagerDashboard() {
     }).sort((a, b) => b.total - a.total);
   }, [allProjects, statsByAm, today.getTime()]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const amRows = rows.filter((r) => r.manager !== UNASSIGNED);
+  const amRows = rows.filter((r) => r.manager !== UNASSIGNED && (!fixedAm || r.manager === fixedAm));
   const unassignedRow = rows.find((r) => r.manager === UNASSIGNED);
 
   const scoped = selectedAm ? allProjects.filter((p) => p.accountManager === selectedAm) : allProjects;
@@ -276,7 +281,7 @@ export default function AccountManagerDashboard() {
 
   return (
     <div className="space-y-5">
-      {selectedAm && (
+      {selectedAm && !fixedAm && (
         <div className="flex items-center gap-2 px-3 py-2 bg-indigo-50 border border-indigo-200 rounded-lg text-sm text-indigo-800">
           Showing <strong>{selectedAm}</strong>&apos;s accounts in every section below.
           <button onClick={() => setSelectedAm(null)} className="ml-auto inline-flex items-center gap-1 text-xs font-semibold hover:underline">
@@ -286,9 +291,14 @@ export default function AccountManagerDashboard() {
       )}
 
       {/* AM overview cards */}
-      <SectionCard title="Account Managers" subtitle="Click a card to focus every section on that account manager. Open = Active + On Hold.">
+      <SectionCard
+        title={fixedAm ? 'My Accounts' : 'Account Managers'}
+        subtitle={fixedAm ? `Projects where ${fixedAm} is the Account Manager. Open = Active + On Hold.` : 'Click a card to focus every section on that account manager. Open = Active + On Hold.'}
+      >
         {amRows.length === 0 ? (
-          <p className="text-sm text-gray-400 py-4 text-center">No projects are assigned to an account manager yet.</p>
+          <p className="text-sm text-gray-400 py-4 text-center">
+            {fixedAm ? `No projects list ${fixedAm} as Account Manager yet. Ask an admin to assign you on your projects.` : 'No projects are assigned to an account manager yet.'}
+          </p>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
             {amRows.map((r) => {
@@ -324,7 +334,7 @@ export default function AccountManagerDashboard() {
             })}
           </div>
         )}
-        {unassignedRow && (
+        {unassignedRow && !fixedAm && (
           <p className="mt-3 text-xs text-amber-700 flex items-center gap-1.5">
             <AlertCircle size={13} /> {unassignedRow.total} project{unassignedRow.total === 1 ? ' has' : 's have'} no valid account manager and {unassignedRow.total === 1 ? 'is' : 'are'} not counted under anyone.
           </p>
@@ -368,6 +378,7 @@ export default function AccountManagerDashboard() {
       </SectionCard>
 
       {/* Leaderboard */}
+      {!fixedAm && (
       <SectionCard
         title="Account Manager Leaderboard"
         subtitle="Score = portfolio volume (30%) + open projects on time (45%) + open projects not escalated (25%). AM segment = where most of their projects sit."
@@ -423,6 +434,7 @@ export default function AccountManagerDashboard() {
           </>
         )}
       </SectionCard>
+      )}
 
       {/* Migration type overview */}
       <SectionCard title="Migration Type Overview" subtitle={selectedAm ? `${selectedAm}'s projects` : 'All account managers'}>

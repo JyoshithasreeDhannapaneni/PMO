@@ -17,7 +17,6 @@ import {
 import api, { emailHygieneApi, type PmoHygieneMonthRow } from '@/services/api';
 import { SEGMENT_CONFIG, SEGMENT_HIERARCHY, MANAGER_QUERY_NAMES, ENGINEER_ASSIGNMENTS, LMS_SCORES, MEETING_ATTENDANCE, AUDIO_PERCENTAGES, segmentOfManager, isNamedManager, managerNameMatches, type Segment } from '@/lib/segments';
 import { ScoreBreakdownPanel } from '@/components/EmailHygieneBreakdown';
-import AccountManagerDashboard from '@/components/AccountManagerDashboard';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1957,10 +1956,7 @@ function ManagerRow({
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-// Project-manager mode of the Manager Dashboard (everything this page showed before the
-// 2026-10-06 account-manager mode). Admin-only; modeSwitch is the PM/AM toggle rendered
-// under the page header.
-function PmManagerDashboard({ modeSwitch }: { modeSwitch: React.ReactNode }) {
+export default function ManagerDashboardPage() {
   const { user, isLoading: authLoading } = useAuth();
   const [activeTab, setActiveTab] = useState<ActiveTab>('ENT');
   const [selectedManager, setSelectedManager] = useState<string | null>(null);
@@ -2078,7 +2074,6 @@ function PmManagerDashboard({ modeSwitch }: { modeSwitch: React.ReactNode }) {
           <h1 className="text-2xl font-bold text-gray-900">Manager Dashboard</h1>
           <p className="text-sm text-gray-500 mt-0.5">Project health overview by business segment and manager</p>
         </div>
-        {modeSwitch}
         <ManagerTabView
           stat={selectedStat}
           isOthers={selectedManager === 'Others'}
@@ -2099,7 +2094,6 @@ function PmManagerDashboard({ modeSwitch }: { modeSwitch: React.ReactNode }) {
         <h1 className="text-2xl font-bold text-gray-900">Manager Dashboard</h1>
         <p className="text-sm text-gray-500 mt-0.5">Project health overview by business segment and manager</p>
       </div>
-      {modeSwitch}
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-gray-200 overflow-x-auto">
@@ -2865,59 +2859,3 @@ function ActionItemsView() {
   );
 }
 
-// Admins switch between Project Managers and Account Managers; account managers can open
-// this page too (2026-10-06) but only ever see the account-manager mode, covering all AMs.
-export default function ManagerDashboardPage() {
-  const { user, isLoading } = useAuth();
-  const [mode, setMode] = useState<'pm' | 'am'>('pm');
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="w-7 h-7 animate-spin text-primary-600" />
-      </div>
-    );
-  }
-
-  const isAdmin = user?.role === 'ADMIN';
-  const isAccountManager = user?.role === 'ACCOUNT_MANAGER';
-  if (!isAdmin && !isAccountManager) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 gap-3">
-        <AlertCircle size={40} className="text-red-400" />
-        <p className="text-lg font-semibold text-gray-700">Access Denied</p>
-        <p className="text-sm text-gray-400">This page is only accessible to administrators and account managers.</p>
-      </div>
-    );
-  }
-
-  const effectiveMode = isAdmin ? mode : 'am';
-  const modeSwitch = isAdmin ? (
-    <div className="inline-flex rounded-lg border border-gray-200 bg-white p-0.5 mt-3">
-      {([['pm', 'Project Managers'], ['am', 'Account Managers']] as const).map(([key, label]) => (
-        <button
-          key={key}
-          onClick={() => setMode(key)}
-          className={`px-4 py-1.5 text-sm font-medium rounded-md transition ${
-            effectiveMode === key ? 'bg-primary-600 text-white' : 'text-gray-600 hover:bg-gray-50'
-          }`}
-        >
-          {label}
-        </button>
-      ))}
-    </div>
-  ) : null;
-
-  if (effectiveMode === 'pm') return <PmManagerDashboard modeSwitch={modeSwitch} />;
-
-  return (
-    <div className="space-y-6 animate-fadeIn">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Manager Dashboard</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Account health overview by account manager</p>
-        {modeSwitch}
-      </div>
-      <AccountManagerDashboard />
-    </div>
-  );
-}
