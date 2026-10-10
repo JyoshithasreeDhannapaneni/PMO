@@ -44,7 +44,7 @@ cd ~/.claude/skills/gstack
 - **Auth**: Hand-rolled JWT (stored in localStorage), role-based (`ADMIN` / `PROJECT_MANAGER` / `VIEWER` / `PRE_SALES` / `ACCOUNT_MANAGER`)
 - **Jira Integration**: OAuth 2.0 (3LO) only — scopes `read:jira-work read:jira-user offline_access`
 - **No CI/CD pipeline exists yet** — `/review` and `npx tsc --noEmit` are the only pre-merge gates today. The one workflow, `.github/workflows/self-heal-fix.yml`, is not CI: the backend's self-heal pass triggers it to have Claude Code open a fix PR for a production code bug (never merges)
-- **No test infrastructure exists yet** — `testing-standard.md` documents the intended approach, but neither `jest` nor any `.test.*` file exists in this repo currently. Don't assume tests run; check before claiming coverage.
+- **Backend has jest; frontend has no tests** — `cd backend && npm test` runs the suites in `backend/src/__tests__/` (unit tests with `config/database` mocked, no live DB). The frontend has no test setup yet; `testing-standard.md` describes the intended approach. Check before claiming coverage.
 
 > **Correction note:** `README.md` and some older `.claude/` docs describe a Prisma-based backend (`backend/prisma/schema.prisma`, `db:generate`/`db:migrate`). That's stale — there is no `prisma/` folder. The backend uses raw parameterized SQL via `backend/src/config/database.ts` (`query`/`execute`). See `.claude/memory/architecture.md`.
 
@@ -64,7 +64,7 @@ cd ~/.claude/skills/gstack
 6. **OneDrive causes two build-tooling issues** on this Windows dev setup: (a) new lucide-react icons can fail with `os error 426` if not yet locally synced — only use icons already in a file's import list; (b) `frontend/scripts/predev.js` recreates `.next` as a SYSTEM-attribute folder before every `next dev` to stop OneDrive from locking webpack's writes — don't remove it.
 7. **`dotenv.config()`** in `backend/src/index.ts` must use `path.resolve(__dirname, '../.env')` (one level up — `tsx` sets `__dirname` to `backend/src`).
 8. **OAuth scope** — never add `manage:servicedesk-customer` (triggers an org-level approval block on `cf2020.atlassian.net`).
-9. **Known secret exposure:** the root-level `mcp.json` (tracked in git, commit `759b3c9`) hardcodes a live-looking Postgres password. Don't copy that pattern into `.mcp.json`. Flag for rotation if not already handled.
+9. **No credentials in source or examples.** The old root `mcp.json` (hardcoded Postgres password) and `.claude/settings.local.json` were purged from git history with `git filter-repo` on 2026-10-10; `/mcp.json` is now gitignored. The exposed password still needs rotating until confirmed done. `DB_PASSWORD` has no fallback anywhere: the backend exits at startup and docker compose refuses to start without it. Use `.mcp.json` with `${DATABASE_MCP_URL}`.
 
 ## Repository Navigation
 ```
@@ -88,7 +88,7 @@ PMO/
 ├── nginx/nginx.conf, docker-compose.yml   # Production deploy topology
 └── .claude/                  # This knowledge base — see Memory Files below
 ```
-Backend has two stray dead-code folders left over from earlier refactors: `backend/backup_services/` and `backend/src/controllers/backup/`. Do not edit or trust these — see `.claude/memory/repository-map.md`.
+Backend has one stray dead-code folder left over from earlier refactors: `backend/src/controllers/backup/` (excluded from the build). Do not edit or trust it. (`backend/backup_services/` and the nested `backend/backend/` were deleted on 2026-10-10.)
 
 ## Memory Files
 - [`.claude/memory/project-context.md`](.claude/memory/project-context.md) — identity, users, integrations, constraints
@@ -99,14 +99,16 @@ Backend has two stray dead-code folders left over from earlier refactors: `backe
 - [`.claude/memory/progress.md`](.claude/memory/progress.md) — what's done, in progress, known issues
 
 ## Environment Variables (backend/.env — never commit)
+Full, commented list with defaults: `backend/.env.example` (backend), `frontend/.env.example` (NEXT_PUBLIC_* build-time vars), root `.env.example` (docker compose). Key ones:
 ```
-DB_HOST / DB_PORT / DB_USER / DB_PASSWORD / DB_NAME
+DB_HOST / DB_PORT / DB_USER / DB_PASSWORD / DB_NAME   # DB_PASSWORD required — no fallback
 PORT=3001  FRONTEND_URL=http://localhost:3000  ENABLE_CRON_JOBS=true
 JIRA_API_URL / JIRA_OAUTH_CLIENT_ID / JIRA_OAUTH_CLIENT_SECRET / JIRA_OAUTH_REDIRECT_URI
 MS_GRAPH_TENANT_ID / MS_GRAPH_CLIENT_ID / MS_GRAPH_CLIENT_SECRET   # Email + Call Hygiene, transcripts
 MICROSOFT_CLIENT_ID / MICROSOFT_CLIENT_SECRET / MICROSOFT_TENANT_ID   # separate app: SSO + Mail.Send alerts
 OPENAI_API_KEY / OPENAI_MODEL   # call-transcript grading (defaults to gpt-4o-mini)
-ALERT_FROM_EMAIL / EXTERNAL_API_KEY / HUBSPOT_ACCESS_TOKEN
+ALERT_FROM_EMAIL / EXTERNAL_API_KEY
+SHAREPOINT_ORIGIN / SHAREPOINT_SITE_PATH / SHAREPOINT_LIST_NAME / ...   # Migration Projects Tracker sync; defaults in sharepointSyncService.ts
 EXTERNAL_PHASE_WEBHOOK_URL   # optional: other internal app's webhook endpoint; POSTed to (with EXTERNAL_API_KEY as X-API-Key) whenever a project's phase newly moves to DELTA. Unset = feature no-ops.
 SLA_BREACH_ALERT_TEST_RECIPIENT   # optional: while set, 45-minute SLA breach alerts go only to this address instead of the real manager+admins. Remove to go live.
 ANTHROPIC_API_KEY / ANTHROPIC_MODEL   # self-heal incident triage + diagnosis
@@ -118,7 +120,8 @@ SELF_HEAL_MAX_FIX_PRS_PER_DAY   # optional, default 3
 ```bash
 cd backend  && npm run dev        # port 3001 (tsx watch)
 cd frontend && npm run dev        # port 3000 (predev.js resets .next for OneDrive)
-cd backend  && npx tsc --noEmit   # backend type-check (no test suite exists yet)
+cd backend  && npx tsc --noEmit   # backend type-check
+cd backend  && npm test           # backend jest suites
 cd frontend && npx tsc --noEmit && npm run build   # frontend type-check + build
 docker compose up -d --build      # full prod stack (postgres + backend + frontend + nginx)
 ```

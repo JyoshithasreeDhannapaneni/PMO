@@ -32,7 +32,7 @@ PMO Tracker is CloudFuze's internal project migration tracking system. It tracks
 - lucide-react icons on OneDrive may timeout during build (os error 426) — only use icons already in the import list
 - Atlassian org blocks API token auth (401 on all endpoints) — OAuth is mandatory
 - `manage:servicedesk-customer` OAuth scope is blocked by org admin approval — never use it
-- No CI/CD (`.github/workflows/`) and no test infrastructure exist yet — see `.claude/memory/repository-map.md`
+- No CI/CD pipeline (the only workflow is the self-heal fix-PR trigger). Backend has jest tests; the frontend has none.
 
 [[decisions]]
 [[architecture]]

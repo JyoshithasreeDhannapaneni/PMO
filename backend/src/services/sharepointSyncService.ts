@@ -360,7 +360,7 @@ export interface AttachmentImportReport {
   unmatchedItemIds: string[];
 }
 
-const SHAREPOINT_ORIGIN = process.env.SHAREPOINT_ORIGIN || 'https://cloudfuzecom.sharepoint.com';
+const SHAREPOINT_ORIGIN = (process.env.SHAREPOINT_ORIGIN || 'https://cloudfuzecom.sharepoint.com').replace(/\/+$/, '');
 
 function decodeXmlEntities(s: string): string {
   return s

@@ -113,12 +113,12 @@ This project adopted gstack (Garry Tan's Claude Code toolkit, installed globally
 
 ---
 
-## Known Secret Exposure: root `mcp.json`
-The root-level `mcp.json` (not `.mcp.json` — note no leading dot, so Claude Code likely never auto-loaded it as project MCP config anyway) is tracked in git (commit `759b3c9`, "Claude flow added") and hardcodes a live-looking Postgres password.
+## Secret Exposure: root `mcp.json` (purged 2026-10-10)
+The root-level `mcp.json` (not `.mcp.json`) hardcoded a Postgres password, and `.claude/settings.local.json` contained it too (in psql permission entries). On 2026-10-10 both paths were removed from all history with `git filter-repo` and force-pushed to `main` and `joshi`; every commit hash changed. `/mcp.json` is gitignored. The same day the hardcoded `DB_PASSWORD` fallbacks (`config/db.ts`, the deleted `backend/backend/`, compose's `pmo_password` default) were removed.
 
-**Why noted here:** Flagged during the 2026-08 scaffold pass rather than silently fixed, since rotating a DB password is the user's call, not something to do unprompted.
+**Why noted here:** A history rewrite does not un-leak a secret. Clones, forks and GitHub's cached PR refs (`refs/pull/1/head`) can still hold the old commits.
 
-**How to apply:** The new `.mcp.json` uses `${DATABASE_MCP_URL}` env var interpolation instead. Recommend to the user: rotate the DB password, and either delete the old `mcp.json` or strip the hardcoded credential from it.
+**How to apply:** Treat the password as compromised until it is rotated (the local `backend/.env` was still using it on 2026-10-10). Ask GitHub Support to purge cached views/PR refs. Never put credentials in tracked files; `.mcp.json` uses `${DATABASE_MCP_URL}`.
 
 [[project-context]]
 [[architecture]]
