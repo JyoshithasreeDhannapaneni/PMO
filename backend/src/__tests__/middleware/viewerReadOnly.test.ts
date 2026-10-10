@@ -27,6 +27,7 @@ describe('viewerReadOnly', () => {
     expect(run('VIEWER', 'POST', '/auth/change-password').next).toHaveBeenCalled();
     expect(run('VIEWER', 'PUT', '/notifications/abc/read').next).toHaveBeenCalled();
     expect(run('VIEWER', 'PUT', '/notifications/mark-all-read').next).toHaveBeenCalled();
+    expect(run('VIEWER', 'POST', '/feedback').next).toHaveBeenCalled();
   });
 
   it('does not let the self-service allowlist match neighbouring paths', () => {

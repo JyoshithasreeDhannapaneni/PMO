@@ -3,12 +3,13 @@ import { Request, Response, NextFunction } from 'express';
 const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 // Self-service writes a VIEWER still needs: ending their own session, changing their own
-// password, and clearing their own notifications. Paths are relative to /api.
+// password, clearing their own notifications and sending feedback. Paths are relative to /api.
 const VIEWER_ALLOWED_WRITES: { method: string; pattern: RegExp }[] = [
   { method: 'POST', pattern: /^\/auth\/logout$/ },
   { method: 'POST', pattern: /^\/auth\/change-password$/ },
   { method: 'PUT', pattern: /^\/notifications\/[^/]+\/read$/ },
   { method: 'PUT', pattern: /^\/notifications\/mark-all-read$/ },
+  { method: 'POST', pattern: /^\/feedback$/ },
 ];
 
 // Must run after apiAuthGate: req.user only exists once the session is resolved. It was
