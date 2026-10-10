@@ -10,6 +10,8 @@ import morgan from 'morgan';
 import { errorHandler } from './middleware/errorHandler';
 import { notFoundHandler } from './middleware/notFoundHandler';
 import { viewerReadOnly } from './middleware/viewerReadOnly';
+import { apiAuthGate } from './middleware/apiAuthGate';
+import { isActiveContentFile } from './utils/uploadSafety';
 import { query, execute, pool, isTransientDbConnectError } from './config/db';
 import { ACCOUNT_MANAGER_BASELINE } from './config/accountManagers';
 import { schema as dbSchema } from './db/init';
@@ -121,7 +123,17 @@ app.use(cors({
 app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: true, limit: '5mb' }));
 // serve uploaded poc documents
-app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
+app.use('/uploads', express.static(path.join(process.cwd(), 'uploads'), {
+  setHeaders: (res, filePath) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    // Uploads share the app's origin: never let one render as a page (stored XSS).
+    if (isActiveContentFile(filePath)) {
+      res.setHeader('Content-Type', 'application/octet-stream');
+      res.setHeader('Content-Disposition', 'attachment');
+      res.setHeader('Content-Security-Policy', "sandbox; default-src 'none'");
+    }
+  },
+}));
 
 app.use(morgan('combined', {
   stream: { write: (message) => logger.info(message.trim()) }
@@ -133,10 +145,10 @@ app.get('/health', (req, res) => {
 
 app.get('/.well-known/appspecific/com.chrome.devtools.json', (req, res) => res.status(204).end());
 
-// Global read-only gate for VIEWER role — see middleware/viewerReadOnly.ts.
-// Applied once here so it covers every route file, since most of them don't
-// check role themselves.
-app.use(viewerReadOnly);
+// Every /api route needs a session except the short public list in apiAuthGate.ts.
+// viewerReadOnly must come after it: it reads req.user, which the gate sets.
+app.use('/api', apiAuthGate);
+app.use('/api', viewerReadOnly);
 
 app.use('/api/auth', authRoutes);
 app.use('/api/projects', projectRoutes);

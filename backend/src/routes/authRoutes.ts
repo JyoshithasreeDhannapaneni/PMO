@@ -6,8 +6,8 @@ const router = Router();
 // POST /api/auth/login - Login user
 router.post('/login', authController.login);
 
-// POST /api/auth/register - Register new user
-router.post('/register', authController.register);
+// Public self-registration removed 2026-10-10: it handed anyone a session, and accounts are
+// created by admins (POST /users) or via Microsoft SSO.
 
 // GET /api/auth/me - Get current user
 router.get('/me', authController.me);

@@ -38,6 +38,7 @@ interface SectionContent {
 }
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+const authHeaders = (): Record<string, string> => ({ Authorization: `Bearer ${localStorage.getItem('token') ?? ''}` });
 
 export default function NewCaseStudyPage() {
   const searchParams = useSearchParams();
@@ -87,7 +88,7 @@ export default function NewCaseStudyPage() {
   const fetchProjects = async () => {
     try {
       setIsLoading(true);
-      const response = await fetch(`${API_URL}/api/projects?status=COMPLETED`);
+      const response = await fetch(`${API_URL}/api/projects?status=COMPLETED`, { headers: authHeaders() });
       const data = await response.json();
       
       if (data.success) {
@@ -151,6 +152,7 @@ export default function NewCaseStudyPage() {
       setIsGenerating(true);
       const response = await fetch(`${API_URL}/api/case-studies/generate/${selectedProjectId}`, {
         method: 'POST',
+        headers: authHeaders(),
       });
       const data = await response.json();
 
@@ -201,7 +203,7 @@ export default function NewCaseStudyPage() {
       
       const response = await fetch(`${API_URL}/api/case-studies`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({
           projectId: selectedProjectId,
           title,

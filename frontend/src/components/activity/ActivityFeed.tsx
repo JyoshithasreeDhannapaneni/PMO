@@ -75,7 +75,7 @@ export function ActivityFeed({ entityType, entityId, limit = 20, showHeader = tr
         url = `${API_URL}/api/activities/entity/${entityType}/${entityId}?limit=${limit}`;
       }
       
-      const res = await fetch(url);
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${localStorage.getItem('token') ?? ''}` } });
       const json = await res.json();
       if (json.success) {
         setActivities(json.data);

@@ -2,6 +2,11 @@ import { Request, Response, NextFunction } from 'express';
 import { authService } from '../services/authService';
 
 export async function requireAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
+  // The /api auth gate already resolved the session; skip a second DB lookup.
+  if ((req as any).user) {
+    next();
+    return;
+  }
   const header = req.headers.authorization;
   if (!header?.startsWith('Bearer ')) {
     res.status(401).json({ success: false, error: 'Authentication required' });

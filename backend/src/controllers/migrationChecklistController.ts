@@ -3,6 +3,7 @@ import { asyncHandler } from '../middleware/errorHandler';
 import { query, execute } from '../config/database';
 import { authService } from '../services/authService';
 import { v4 as uuidv4 } from 'uuid';
+import { isActiveContentFile } from '../utils/uploadSafety';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -180,6 +181,10 @@ export const migrationChecklistController = {
     const { fileName, fileData, mimeType } = req.body;
     if (!fileData || !fileName) {
       res.status(400).json({ success: false, error: 'fileName and fileData are required' });
+      return;
+    }
+    if (isActiveContentFile(fileName)) {
+      res.status(400).json({ success: false, error: 'HTML, SVG, XML and script files cannot be uploaded' });
       return;
     }
     const uploadsDir = path.join(process.cwd(), 'uploads', 'checklist-images');

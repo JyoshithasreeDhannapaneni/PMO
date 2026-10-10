@@ -45,11 +45,17 @@ export const errorHandler = (
     });
   }
 
-  // Send response
+  // Raw Postgres errors echo query fragments and values back ("column ... does not exist",
+  // "invalid input syntax for type integer: <subquery result>"), which turns any injectable
+  // spot into a data-leak channel. Keep them in the log only; other thrown messages are
+  // written for users (e.g. SharePoint "site or list not found") and still pass through.
+  const pgCode = (err as { code?: unknown }).code;
+  const isDatabaseError = typeof pgCode === 'string' && /^[0-9A-Z]{5}$/.test(pgCode) && 'severity' in err;
+
   res.status(statusCode).json({
     success: false,
     error: {
-      message: err instanceof AppError ? message : err.message || message,
+      message: err instanceof AppError ? message : isDatabaseError ? message : err.message || message,
     },
   });
 };

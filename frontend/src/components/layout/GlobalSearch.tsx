@@ -56,7 +56,9 @@ export function GlobalSearch() {
     const t = setTimeout(async () => {
       setLoading(true);
       try {
-        const res = await fetch(`${API_URL}/api/search?q=${encodeURIComponent(query)}&limit=15`);
+        const res = await fetch(`${API_URL}/api/search?q=${encodeURIComponent(query)}&limit=15`, {
+          headers: { Authorization: `Bearer ${localStorage.getItem('token') ?? ''}` },
+        });
         const json = await res.json();
         if (json.success) { setResults(json.data); setSelectedIndex(0); }
       } catch {}

@@ -6,6 +6,7 @@ import { formatDistanceToNow } from 'date-fns';
 import Link from 'next/link';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+const authHeaders = (): Record<string, string> => ({ Authorization: `Bearer ${localStorage.getItem('token') ?? ''}` });
 
 interface Notification {
   id: string;
@@ -56,7 +57,7 @@ export function NotificationCenter() {
 
   const fetchNotifications = async () => {
     try {
-      const res = await fetch(`${API_URL}/api/notifications?limit=20`);
+      const res = await fetch(`${API_URL}/api/notifications?limit=20`, { headers: authHeaders() });
       const json = await res.json();
       if (json.success) {
         setNotifications(json.data);
@@ -66,10 +67,10 @@ export function NotificationCenter() {
   };
 
   const markAsRead = async (id: string) => {
-    try { await fetch(`${API_URL}/api/notifications/${id}/read`, { method: 'PUT' }); fetchNotifications(); } catch {}
+    try { await fetch(`${API_URL}/api/notifications/${id}/read`, { method: 'PUT', headers: authHeaders() }); fetchNotifications(); } catch {}
   };
   const markAllAsRead = async () => {
-    try { await fetch(`${API_URL}/api/notifications/mark-all-read`, { method: 'PUT' }); fetchNotifications(); } catch {}
+    try { await fetch(`${API_URL}/api/notifications/mark-all-read`, { method: 'PUT', headers: authHeaders() }); fetchNotifications(); } catch {}
   };
 
   return (

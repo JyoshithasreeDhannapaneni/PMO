@@ -121,6 +121,25 @@ export interface PaginationOptions {
   sortOrder?: 'asc' | 'desc';
 }
 
+// API sort keys (camelCase or the raw column name) → projects columns allowed in ORDER BY.
+const PROJECT_SORT_COLUMNS: Record<string, string> = {
+  createdAt: 'created_at', created_at: 'created_at',
+  updatedAt: 'updated_at', updated_at: 'updated_at',
+  name: 'name',
+  customerName: 'customer_name', customer_name: 'customer_name',
+  clientName: 'client_name', client_name: 'client_name',
+  projectManager: 'project_manager', project_manager: 'project_manager',
+  accountManager: 'account_manager', account_manager: 'account_manager',
+  status: 'status',
+  phase: 'phase',
+  planType: 'plan_type', plan_type: 'plan_type',
+  plannedStart: 'planned_start', planned_start: 'planned_start',
+  plannedEnd: 'planned_end', planned_end: 'planned_end',
+  actualStart: 'actual_start', actual_start: 'actual_start',
+  actualEnd: 'actual_end', actual_end: 'actual_end',
+  delayStatus: 'delay_status', delay_status: 'delay_status',
+};
+
 function mapProjectRow(row: any) {
   // Compute delay live so all pages reflect current status without waiting for cron
   let liveDelayStatus = row.delay_status;
@@ -339,7 +358,10 @@ class ProjectService {
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-    const sortColumn = sortBy === 'createdAt' ? 'created_at' : sortBy;
+    // sortBy/sortOrder arrive straight from the query string and are spliced into ORDER BY
+    // (identifiers can't be bound parameters), so only allowlisted values may reach SQL.
+    const sortColumn = PROJECT_SORT_COLUMNS[sortBy] ?? 'created_at';
+    const sortDirection = String(sortOrder).toLowerCase() === 'asc' ? 'ASC' : 'DESC';
     // Capped high enough that "get everything for export" (frontend requests
     // 10000) actually returns everything, instead of being silently truncated.
     const safeLimit = Math.max(1, Math.min(20000, Math.floor(limit)));
@@ -348,7 +370,7 @@ class ProjectService {
     const [projectsResult, countResult] = await Promise.all([
       query(
         `SELECT * FROM projects ${whereClause} 
-         ORDER BY ${sortColumn} ${sortOrder} 
+         ORDER BY ${sortColumn} ${sortDirection}
          LIMIT ${safeLimit} OFFSET ${safeOffset}`,
         params
       ),
