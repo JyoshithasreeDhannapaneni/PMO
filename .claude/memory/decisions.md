@@ -114,7 +114,7 @@ This project adopted gstack (Garry Tan's Claude Code toolkit, installed globally
 ---
 
 ## Secret Exposure: root `mcp.json` (purged 2026-10-10)
-The root-level `mcp.json` (not `.mcp.json`) hardcoded a Postgres password, and `.claude/settings.local.json` contained it too (in psql permission entries). On 2026-10-10 both paths were removed from all history with `git filter-repo` and force-pushed to `main` and `joshi`; every commit hash changed. `/mcp.json` is gitignored. The same day the hardcoded `DB_PASSWORD` fallbacks (`config/db.ts`, the deleted `backend/backend/`, compose's `pmo_password` default) were removed.
+The root-level `mcp.json` (not `.mcp.json`) hardcoded a Postgres password, and `.claude/settings.local.json` contained it too (in psql permission entries). On 2026-10-10 both paths were removed from all history with `git filter-repo` and force-pushed to `main` and `joshi`; every commit hash changed. `/mcp.json` is gitignored. The same day the hardcoded `DB_PASSWORD` fallbacks (`config/db.ts`, the deleted `backend/backend/`, compose's built-in default) were removed.
 
 **Why noted here:** A history rewrite does not un-leak a secret. Clones, forks and GitHub's cached PR refs (`refs/pull/1/head`) can still hold the old commits.
 

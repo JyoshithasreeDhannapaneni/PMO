@@ -6,7 +6,7 @@
 #   2. Set SERVER_IP to your server's public domain (e.g. neutarapm.cftools.live)
 #   3. Set DB_PASSWORD (required — compose refuses to start without it). On a server whose
 #      postgres volume already exists, it must match the password that volume was created
-#      with (the old default was pmo_password).
+#      with (if DB_PASSWORD was never set, that is the old built-in compose default).
 #   4. Run:  docker compose up -d --build
 #
 # The app will be available at https://SERVER_IP (via system nginx → port 8091)
