@@ -38,7 +38,11 @@ api.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401 && typeof window !== 'undefined') {
       localStorage.removeItem('token');
-      window.location.href = '/login';
+      // Never redirect from the signed-out pages themselves — that's a reload loop.
+      const signedOutPages = ['/login', '/forgot-password', '/reset-password', '/auth/callback'];
+      if (!signedOutPages.some((p) => window.location.pathname.startsWith(p))) {
+        window.location.href = '/login';
+      }
     }
     return Promise.reject(error);
   }
@@ -334,23 +338,6 @@ export const authApi = {
         success: false,
         data: { user: null, token: '' },
         error: { message: error.response?.data?.error?.message || 'Login failed' },
-      };
-    }
-  },
-
-  register: async (name: string, email: string, password: string): Promise<{
-    success: boolean;
-    data: { user: any; token: string };
-    error?: { message: string };
-  }> => {
-    try {
-      const { data } = await api.post('/auth/register', { name, email, password });
-      return data;
-    } catch (error: any) {
-      return {
-        success: false,
-        data: { user: null, token: '' },
-        error: { message: error.response?.data?.error?.message || 'Registration failed' },
       };
     }
   },

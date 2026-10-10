@@ -11,7 +11,7 @@ import { errorHandler } from './middleware/errorHandler';
 import { notFoundHandler } from './middleware/notFoundHandler';
 import { viewerReadOnly } from './middleware/viewerReadOnly';
 import { apiAuthGate } from './middleware/apiAuthGate';
-import { isActiveContentFile } from './utils/uploadSafety';
+import { isSafeInlineFile } from './utils/uploadSafety';
 import { query, execute, pool, isTransientDbConnectError } from './config/db';
 import { ACCOUNT_MANAGER_BASELINE } from './config/accountManagers';
 import { schema as dbSchema } from './db/init';
@@ -126,8 +126,9 @@ app.use(express.urlencoded({ extended: true, limit: '5mb' }));
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads'), {
   setHeaders: (res, filePath) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    // Uploads share the app's origin: never let one render as a page (stored XSS).
-    if (isActiveContentFile(filePath)) {
+    // Uploads share the app's origin: only allowlisted media/PDF/text render inline;
+    // everything else (HTML, SVG, any XML family, unknown types) downloads, sandboxed.
+    if (!isSafeInlineFile(filePath)) {
       res.setHeader('Content-Type', 'application/octet-stream');
       res.setHeader('Content-Disposition', 'attachment');
       res.setHeader('Content-Security-Policy', "sandbox; default-src 'none'");

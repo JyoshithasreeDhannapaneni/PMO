@@ -23,7 +23,7 @@ router.delete('/excel/clear',     jiraController.clearExcel);
 // OAuth 2.0 — connect/disconnect swap the org-wide Jira credentials, so admin only.
 // /oauth/callback is on the public list in middleware/apiAuthGate.ts (Atlassian redirects there).
 router.get('/oauth/status',       jiraController.oauthStatus);
-router.get('/oauth/connect',      requireRole('ADMIN'), jiraController.oauthConnect);
+router.get('/oauth/connect-url',  requireRole('ADMIN'), jiraController.oauthConnectUrl);
 router.get('/oauth/callback',     jiraController.oauthCallback);
 router.post('/oauth/disconnect',  requireRole('ADMIN'), jiraController.oauthDisconnect);
 

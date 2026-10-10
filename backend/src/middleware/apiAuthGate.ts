@@ -32,5 +32,11 @@ export async function apiAuthGate(req: Request, res: Response, next: NextFunctio
     next();
     return;
   }
-  await requireAuth(req, res, next);
+  // Express 4 doesn't catch a rejected middleware promise: without this, a DB error during
+  // the session lookup (pool timeout, Postgres restart) hangs the request or kills the process.
+  try {
+    await requireAuth(req, res, next);
+  } catch (err) {
+    next(err);
+  }
 }

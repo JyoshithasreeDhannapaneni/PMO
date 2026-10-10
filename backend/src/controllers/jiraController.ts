@@ -14,6 +14,7 @@ import {
   isOAuthConnected,
   loadTokens,
   getAuthorizationUrl,
+  consumeAuthorizationState,
   exchangeCodeForTokens,
   revokeTokens,
 } from '../services/jiraOAuthService';
@@ -216,18 +217,25 @@ export const jiraController = {
     });
   }),
 
-  oauthConnect: asyncHandler(async (_req: Request, res: Response): Promise<void> => {
+  // Returns the Atlassian consent URL as JSON (fetched with the admin's bearer token) instead
+  // of redirecting: a browser navigation can't carry the token the /api auth gate requires.
+  oauthConnectUrl: asyncHandler(async (_req: Request, res: Response): Promise<void> => {
     if (!isOAuthConfigured()) {
       res.status(400).json({ success: false, error: 'JIRA_OAUTH_CLIENT_ID and JIRA_OAUTH_CLIENT_SECRET must be set in .env' });
       return;
     }
-    const url = getAuthorizationUrl();
-    res.redirect(url);
+    res.json({ success: true, data: { url: getAuthorizationUrl() } });
   }),
 
   oauthCallback: asyncHandler(async (req: Request, res: Response): Promise<void> => {
-    const { code, error } = req.query as Record<string, string>;
+    const { code, error, state } = req.query as Record<string, string>;
     const frontendBase = process.env.FRONTEND_URL || 'http://localhost:3000';
+
+    if (!consumeAuthorizationState(state)) {
+      logger.warn('[Jira OAuth] Callback rejected: unknown, reused or expired state');
+      res.redirect(`${frontendBase}/manager-dashboard?jira_oauth=error&reason=invalid_state`);
+      return;
+    }
 
     if (error) {
       logger.error(`[Jira OAuth] Callback error: ${error}`);

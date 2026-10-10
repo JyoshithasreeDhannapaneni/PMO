@@ -25,14 +25,23 @@ describe('viewerReadOnly', () => {
   it('allows VIEWER self-service writes', () => {
     expect(run('VIEWER', 'POST', '/auth/logout').next).toHaveBeenCalled();
     expect(run('VIEWER', 'POST', '/auth/change-password').next).toHaveBeenCalled();
-    expect(run('VIEWER', 'PUT', '/notifications/abc/read').next).toHaveBeenCalled();
-    expect(run('VIEWER', 'PUT', '/notifications/mark-all-read').next).toHaveBeenCalled();
     expect(run('VIEWER', 'POST', '/feedback').next).toHaveBeenCalled();
+    expect(run('VIEWER', 'POST', '/feedback/').next).toHaveBeenCalled();
   });
 
-  it('does not let the self-service allowlist match neighbouring paths', () => {
-    expect(run('VIEWER', 'PUT', '/notifications/abc/read/extra').status).toHaveBeenCalledWith(403);
+  it('blocks VIEWERs from changing shared notification read-state', () => {
+    expect(run('VIEWER', 'PUT', '/notifications/abc/read').status).toHaveBeenCalledWith(403);
+    expect(run('VIEWER', 'PUT', '/notifications/mark-all-read').status).toHaveBeenCalledWith(403);
+  });
+
+  it('does not let the self-service allowlist match neighbouring paths or methods', () => {
     expect(run('VIEWER', 'DELETE', '/auth/logout').status).toHaveBeenCalledWith(403);
+    expect(run('VIEWER', 'POST', '/feedback/1/status').status).toHaveBeenCalledWith(403);
+    expect(run('VIEWER', 'PATCH', '/projects/1').status).toHaveBeenCalledWith(403);
+  });
+
+  it('leaves requests without a resolved user to the auth gate', () => {
+    expect(run(undefined, 'DELETE', '/projects/1').next).toHaveBeenCalled();
   });
 
   it('does not restrict other roles', () => {

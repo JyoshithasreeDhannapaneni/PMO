@@ -27,7 +27,7 @@ describe('apiAuthGate', () => {
 
     it('allows the Jira OAuth callback but not connect or disconnect', () => {
       expect(isPublicApiRoute('GET', '/jira/oauth/callback')).toBe(true);
-      expect(isPublicApiRoute('GET', '/jira/oauth/connect')).toBe(false);
+      expect(isPublicApiRoute('GET', '/jira/oauth/connect-url')).toBe(false);
       expect(isPublicApiRoute('POST', '/jira/oauth/disconnect')).toBe(false);
     });
 

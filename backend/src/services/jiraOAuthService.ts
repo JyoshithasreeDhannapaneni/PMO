@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import axios from 'axios';
@@ -50,6 +51,29 @@ export function isOAuthConnected(): boolean {
   return loadTokens() !== null;
 }
 
+// One-time OAuth `state` values handed out to admins starting a connect. The callback is a
+// public route (Atlassian redirects the browser there), so it must refuse any code that
+// didn't come from a connect an admin started — otherwise anyone could link their own
+// Atlassian account as the org-wide Jira connection. In-memory is enough: one backend
+// process, and a restart only means the admin clicks Connect again.
+const STATE_TTL_MS = 10 * 60 * 1000;
+const pendingStates = new Map<string, number>();
+
+function issueState(): string {
+  const now = Date.now();
+  for (const [s, expiresAt] of pendingStates) if (expiresAt <= now) pendingStates.delete(s);
+  const state = crypto.randomBytes(32).toString('hex');
+  pendingStates.set(state, now + STATE_TTL_MS);
+  return state;
+}
+
+export function consumeAuthorizationState(state: unknown): boolean {
+  if (typeof state !== 'string') return false;
+  const expiresAt = pendingStates.get(state);
+  pendingStates.delete(state);
+  return expiresAt !== undefined && expiresAt > Date.now();
+}
+
 export function getAuthorizationUrl(): string {
   const { clientId, redirectUri } = getOAuthConfig();
   const params = new URLSearchParams({
@@ -57,7 +81,7 @@ export function getAuthorizationUrl(): string {
     client_id:     clientId,
     scope:         'read:jira-work read:jira-user offline_access',
     redirect_uri:  redirectUri,
-    state:         'jira-oauth-connect',
+    state:         issueState(),
     response_type: 'code',
     prompt:        'consent',
   });

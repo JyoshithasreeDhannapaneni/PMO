@@ -1,5 +1,4 @@
 import { Request, Response } from 'express';
-import { authService } from '../services/authService';
 import { projectService, ProjectFilters, PaginationOptions } from '../services/projectService';
 import { auditService } from '../services/auditService';
 import { asyncHandler } from '../middleware/errorHandler';
@@ -16,7 +15,7 @@ interface ActingUser {
 function actingUserOf(req: Request, res: Response): ActingUser | null {
   const user = (req as any).user as ActingUser | undefined;
   if (!user) {
-    res.status(401).json({ success: false, error: { message: 'Authentication required' } });
+    res.status(401).json({ success: false, error: 'Authentication required' });
     return null;
   }
   return user;
@@ -198,16 +197,8 @@ getAll: asyncHandler(async (req: Request, res: Response): Promise<void> => {
    */
   deleteClient: asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const { clientName } = req.params;
-    const token = req.headers.authorization?.replace('Bearer ', '');
-    if (!token) {
-      res.status(401).json({ success: false, error: { message: 'Authentication required' } });
-      return;
-    }
-    let user: any;
-    try { user = await authService.getUserFromToken(token); } catch {
-      res.status(401).json({ success: false, error: { message: 'Invalid token' } });
-      return;
-    }
+    const user = actingUserOf(req, res);
+    if (!user) return;
     if (user.role !== 'ADMIN' && user.role !== 'PROJECT_MANAGER') {
       res.status(403).json({ success: false, error: { message: 'Only Admins and Project Managers can delete client projects' } });
       return;

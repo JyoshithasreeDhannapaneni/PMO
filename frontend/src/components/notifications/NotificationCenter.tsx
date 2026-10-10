@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Bell, X, Check, CheckCheck, AlertTriangle, Info, CheckCircle, Clock } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import Link from 'next/link';
+import { useAuth } from '@/context/AuthContext';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 const authHeaders = (): Record<string, string> => ({ Authorization: `Bearer ${localStorage.getItem('token') ?? ''}` });
@@ -36,6 +37,9 @@ const notificationColors: Record<string, string> = {
 };
 
 export function NotificationCenter() {
+  const { user } = useAuth();
+  // Read-state is shared across users, so the read-only VIEWER role can't change it.
+  const canMarkRead = user?.role !== 'VIEWER';
   const [isOpen, setIsOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -94,7 +98,7 @@ export function NotificationCenter() {
           <div className="flex items-center justify-between px-4 py-3 border-b border-blue-50 bg-gradient-to-r from-blue-50 to-indigo-50">
             <h3 className="font-semibold text-slate-800">Notifications</h3>
             <div className="flex items-center gap-2">
-              {unreadCount > 0 && (
+              {canMarkRead && unreadCount > 0 && (
                 <button onClick={markAllAsRead} className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 font-medium">
                   <CheckCheck size={14} /> Mark all read
                 </button>
@@ -132,7 +136,7 @@ export function NotificationCenter() {
                             <p className={`text-sm text-slate-800 ${isUnread ? 'font-semibold' : ''}`}>
                               {notification.title}
                             </p>
-                            {isUnread && (
+                            {canMarkRead && isUnread && (
                               <button onClick={() => markAsRead(notification.id)} className="text-slate-400 hover:text-blue-500 flex-shrink-0" title="Mark as read">
                                 <Check size={14} />
                               </button>

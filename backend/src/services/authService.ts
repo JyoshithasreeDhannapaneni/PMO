@@ -78,50 +78,6 @@ class AuthService {
     };
   }
 
-  async register(name: string, email: string, password: string, username?: string): Promise<AuthResult> {
-    const userUsername = username || email.split('@')[0].toLowerCase();
-
-    const existing = await query(
-      `SELECT id FROM users WHERE email = $1 OR username = $2 LIMIT 1`,
-      [email.toLowerCase(), userUsername.toLowerCase()]
-    );
-
-    if (existing.rows.length > 0) {
-      throw new AppError('Username or email already registered', 400);
-    }
-
-    const hashedPassword = this.hashPassword(password);
-    const userId = uuidv4();
-
-    await execute(
-      `INSERT INTO users (id, name, email, username, password, role) 
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [userId, name, email.toLowerCase(), userUsername.toLowerCase(), hashedPassword, 'VIEWER']
-    );
-
-    const result = await query(`SELECT * FROM users WHERE id = $1`, [userId]);
-    const user = result.rows[0];
-    const token = this.generateToken();
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-
-    await execute(
-      `INSERT INTO sessions (id, user_id, token, expires_at) VALUES ($1, $2, $3, $4)`,
-      [uuidv4(), user.id, token, expiresAt]
-    );
-
-    logger.info(`User registered: ${user.username}`);
-
-    return {
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role as UserRole,
-      },
-      token,
-    };
-  }
-
   async getUserFromToken(token: string): Promise<UserPayload | null> {
     const result = await query(
       `SELECT s.*, u.id as user_id, u.name, u.email, u.role 

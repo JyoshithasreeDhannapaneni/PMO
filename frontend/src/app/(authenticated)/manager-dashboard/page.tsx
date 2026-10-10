@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
-import { useManagerGoalsWithStats, useEscalatedProjects, useJiraExcelStatus, useEngineersByManager, useJiraEngineers, useEmailHygiene, useEmailHygieneLastMonth, useEmailHygieneWeeklyTrend, useEmailHygieneDailyTrend, useEmailHygieneRange, useTriggerEmailHygieneMonthFinalize, useEmailHygieneMonths, useEmailHygieneMonth, usePmoHygieneMonths, usePmoHygieneMonth, useActionItems, useCreateActionItem, useUpdateActionItem, useDeleteActionItem, useManagerDashboardLeaderboard } from '@/hooks/useProjects';
+import { useManagerGoalsWithStats, useEscalatedProjects, useJiraExcelStatus, useJiraOAuthStatus, useStartJiraOAuth, useEngineersByManager, useJiraEngineers, useEmailHygiene, useEmailHygieneLastMonth, useEmailHygieneWeeklyTrend, useEmailHygieneDailyTrend, useEmailHygieneRange, useTriggerEmailHygieneMonthFinalize, useEmailHygieneMonths, useEmailHygieneMonth, usePmoHygieneMonths, usePmoHygieneMonth, useActionItems, useCreateActionItem, useUpdateActionItem, useDeleteActionItem, useManagerDashboardLeaderboard } from '@/hooks/useProjects';
 import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import {
@@ -98,6 +98,28 @@ const DEFAULT_JIRA_BASE_URL = (process.env.NEXT_PUBLIC_JIRA_BASE_URL || 'https:/
 
 function ExcelUploadBanner() {
   const { data, isLoading, refetch } = useJiraExcelStatus();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'ADMIN';
+  const { data: oauthStatus } = useJiraOAuthStatus();
+  const startJiraOAuth = useStartJiraOAuth();
+  const [oauthNotice, setOauthNotice] = useState<string | null>(null);
+
+  // The Jira OAuth callback lands back here with ?jira_oauth=success|error&reason=...
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const result = params.get('jira_oauth');
+    if (!result) return;
+    const reason = params.get('reason');
+    setOauthNotice(result === 'success'
+      ? 'Jira connected.'
+      : reason === 'invalid_state'
+        ? 'Jira connection expired or was not started here — click Connect Jira again.'
+        : `Jira connection failed${reason ? `: ${reason}` : ''}.`);
+    params.delete('jira_oauth');
+    params.delete('reason');
+    const qs = params.toString();
+    window.history.replaceState(null, '', `${window.location.pathname}${qs ? `?${qs}` : ''}`);
+  }, []);
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -188,9 +210,28 @@ function ExcelUploadBanner() {
               </>
             )}
             {uploadError && <p className="text-xs text-red-600 mt-1 font-medium">{uploadError}</p>}
+            {isAdmin && oauthStatus?.configured && (
+              <p className="text-[11px] text-gray-600 mt-1">
+                Jira OAuth: {oauthStatus.connected ? `connected as ${oauthStatus.connectedAs ?? 'unknown'}` : 'not connected'}
+              </p>
+            )}
+            {oauthNotice && <p className="text-xs text-gray-700 mt-1 font-medium">{oauthNotice}</p>}
+            {startJiraOAuth.error && (
+              <p className="text-xs text-red-600 mt-1 font-medium">{(startJiraOAuth.error as Error).message}</p>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
+          {isAdmin && oauthStatus?.configured && (
+            <button
+              onClick={() => startJiraOAuth.mutate()}
+              disabled={startJiraOAuth.isPending}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-700 border border-gray-300 hover:bg-white rounded-lg transition disabled:opacity-60"
+            >
+              {startJiraOAuth.isPending ? <Loader2 size={13} className="animate-spin" /> : <ExternalLink size={13} />}
+              {oauthStatus.connected ? 'Reconnect Jira' : 'Connect Jira'}
+            </button>
+          )}
           {available && (
             <button onClick={handleClear} className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-red-600 hover:text-red-700 border border-red-200 hover:border-red-300 rounded-lg transition">
               <Trash2 size={13} /> Remove

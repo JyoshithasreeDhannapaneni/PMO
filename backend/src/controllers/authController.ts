@@ -38,29 +38,6 @@ export const authController = {
   }),
 
   /**
-   * POST /api/auth/register
-   * Register new user
-   */
-  register: asyncHandler(async (req: Request, res: Response): Promise<void> => {
-    const { name, email, password } = req.body;
-
-    if (!name || !email || !password) {
-      throw new AppError('Name, email, and password are required', 400);
-    }
-
-    if (password.length < 6) {
-      throw new AppError('Password must be at least 6 characters', 400);
-    }
-
-    const result = await authService.register(name, email, password);
-
-    res.status(201).json({
-      success: true,
-      data: result,
-    });
-  }),
-
-  /**
    * GET /api/auth/me
    * Get current user
    */

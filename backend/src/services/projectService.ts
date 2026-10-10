@@ -360,7 +360,10 @@ class ProjectService {
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
     // sortBy/sortOrder arrive straight from the query string and are spliced into ORDER BY
     // (identifiers can't be bound parameters), so only allowlisted values may reach SQL.
-    const sortColumn = PROJECT_SORT_COLUMNS[sortBy] ?? 'created_at';
+    // hasOwn, not a plain lookup: "constructor"/"__proto__" would return inherited members.
+    const sortColumn = Object.prototype.hasOwnProperty.call(PROJECT_SORT_COLUMNS, sortBy)
+      ? PROJECT_SORT_COLUMNS[sortBy]
+      : 'created_at';
     const sortDirection = String(sortOrder).toLowerCase() === 'asc' ? 'ASC' : 'DESC';
     // Capped high enough that "get everything for export" (frontend requests
     // 10000) actually returns everything, instead of being silently truncated.
