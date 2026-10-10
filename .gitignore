@@ -57,6 +57,17 @@ CLAUDE.local.md
 # Use .mcp.json with ${DATABASE_MCP_URL} instead.
 /mcp.json
 
+# User uploads (customer SOWs, screenshots) — runtime data, never source
+backend/uploads/
+uploads/
+
+# Keys, certificates and database dumps
+*.pem
+*.key
+*.p12
+*.pfx
+*.dump
+
 # Jira OAuth tokens (contains live access tokens)
 backend/.jira-oauth-tokens.json
 backend/.nta-state.json

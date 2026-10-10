@@ -10,7 +10,13 @@ const pool = new Pool({
   port: Number(process.env.DB_PORT) || 5432,
 });
 
-const hash = crypto.createHash('sha256').update('admin123').digest('hex');
+// No default: a hardcoded reset password ends up in git and works on every deployment.
+const newPassword = process.env.ADMIN_INITIAL_PASSWORD;
+if (!newPassword || newPassword.length < 12) {
+  console.error('❌ Set ADMIN_INITIAL_PASSWORD (12+ characters) for this run, e.g. ADMIN_INITIAL_PASSWORD=... node reset-admin.js');
+  process.exit(1);
+}
+const hash = crypto.createHash('sha256').update(newPassword).digest('hex');
 
 async function run() {
   const existing = await pool.query("SELECT id, username, role FROM users WHERE username = 'admin'");
@@ -21,10 +27,10 @@ async function run() {
       `INSERT INTO users (id, name, username, email, password, role) VALUES ($1, $2, $3, $4, $5, $6)`,
       [uuidv4(), 'Administrator', 'admin', 'admin@company.com', hash, 'ADMIN']
     );
-    console.log('✅ Admin user created — username: admin  password: admin123');
+    console.log('✅ Admin user created — username: admin (password from ADMIN_INITIAL_PASSWORD)');
   } else {
     await pool.query("UPDATE users SET password = $1 WHERE username = 'admin'", [hash]);
-    console.log('✅ Admin password reset — username: admin  password: admin123');
+    console.log('✅ Admin password reset — username: admin (password from ADMIN_INITIAL_PASSWORD)');
   }
 
   await pool.end();

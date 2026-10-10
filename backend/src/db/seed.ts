@@ -18,13 +18,18 @@ async function seed() {
     );
 
     if (adminCheck.rows.length === 0) {
+      // No default: a hardcoded seed password ends up in git and works on every deployment.
+      const initialPassword = process.env.ADMIN_INITIAL_PASSWORD;
+      if (!initialPassword || initialPassword.length < 12) {
+        throw new Error('Set ADMIN_INITIAL_PASSWORD (12+ characters) to seed the first admin user');
+      }
       const adminId = uuidv4();
       await execute(
-        `INSERT INTO users (id, name, username, email, password, role) 
+        `INSERT INTO users (id, name, username, email, password, role)
          VALUES (?, ?, ?, ?, ?, ?)`,
-        [adminId, 'Administrator', 'admin', 'admin@company.com', hashPassword('admin123'), 'ADMIN']
+        [adminId, 'Administrator', 'admin', 'admin@company.com', hashPassword(initialPassword), 'ADMIN']
       );
-      logger.info('✅ Default admin user created (admin / admin123)');
+      logger.info('✅ Admin user created (username: admin, password from ADMIN_INITIAL_PASSWORD)');
     } else {
       logger.info('Admin user already exists');
     }
