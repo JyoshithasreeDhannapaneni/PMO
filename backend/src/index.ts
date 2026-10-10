@@ -93,6 +93,13 @@ process.on('unhandledRejection', (reason) => {
     .finally(() => process.exit(1));
 });
 
+// No hardcoded fallback: without this check a missing DB_PASSWORD only shows up later as a
+// vague pg auth failure on the first query.
+if (!process.env.DB_PASSWORD) {
+  logger.error('[Startup] DB_PASSWORD is not set — add it to backend/.env (see backend/.env.example).');
+  process.exit(1);
+}
+
 const app = express();
 const PORT = process.env.PORT || 3001;
 // 2026-09-23: default changed from Express's implicit 0.0.0.0 to 127.0.0.1 -- a production

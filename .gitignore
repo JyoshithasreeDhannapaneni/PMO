@@ -7,14 +7,14 @@ node_modules/
 dist/
 build/
 .next/
+# OneDrive conflict copies of the build folder, e.g. ".next(1)/"
+.next*/
 out/
 
 # Environment files
 .env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env.*
+!.env.example
 
 # Logs
 logs/
@@ -32,6 +32,9 @@ yarn-error.log*
 # OS
 .DS_Store
 Thumbs.db
+# OneDrive sync-conflict copies, e.g. "page(1).tsx"
+*(1).*
+*(1)/
 
 # Testing
 coverage/

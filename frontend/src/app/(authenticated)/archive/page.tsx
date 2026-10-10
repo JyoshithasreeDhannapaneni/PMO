@@ -31,6 +31,7 @@ function authFetch(url: string, options?: RequestInit) {
 // can't read list attachments, but an admin's signed-in browser can; the saved page is
 // then uploaded via "Import SOW attachments".
 const SP_ATTACHMENTS_URL =
+  process.env.NEXT_PUBLIC_SHAREPOINT_ATTACHMENTS_URL ||
   "https://cloudfuzecom.sharepoint.com/sites/MigrationPractice/_api/web/lists/getbytitle('Migration%20Projects%20Tracker')/items?$select=Id&$expand=AttachmentFiles&$top=5000";
 
 const STATUS_COLORS: Record<string, string> = {
