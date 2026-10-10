@@ -50,6 +50,10 @@ CLAUDE.local.md
 .claude/.edit-log.txt
 .claude/worktrees/
 
+# Old root-level MCP config that hardcoded a DB password (purged from history 2026-10-10).
+# Use .mcp.json with ${DATABASE_MCP_URL} instead.
+/mcp.json
+
 # Jira OAuth tokens (contains live access tokens)
 backend/.jira-oauth-tokens.json
 backend/.nta-state.json
