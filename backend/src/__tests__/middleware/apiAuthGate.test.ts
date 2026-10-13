@@ -42,6 +42,16 @@ describe('apiAuthGate', () => {
       expect(isPublicApiRoute('POST', '/jira/excel/upload')).toBe(false);
     });
 
+    it('opens only GET and POST of a well-formed customer C-SAT link', () => {
+      const t = 'f'.repeat(64);
+      expect(isPublicApiRoute('GET', `/csat/${t}`)).toBe(true);
+      expect(isPublicApiRoute('POST', `/csat/${t}`)).toBe(true);
+      expect(isPublicApiRoute('PUT', `/csat/${t}`)).toBe(false);
+      expect(isPublicApiRoute('GET', '/csat/abc')).toBe(false);
+      expect(isPublicApiRoute('GET', `/csat/${t}/extra`)).toBe(false);
+      expect(isPublicApiRoute('POST', '/projects/p1/csat-requests')).toBe(false);
+    });
+
     it('ignores a trailing slash', () => {
       expect(isPublicApiRoute('POST', '/auth/login/')).toBe(true);
       expect(isPublicApiRoute('GET', '/settings/')).toBe(false);

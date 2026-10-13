@@ -111,6 +111,8 @@ ALERT_FROM_EMAIL / EXTERNAL_API_KEY
 SHAREPOINT_ORIGIN / SHAREPOINT_SITE_PATH / SHAREPOINT_LIST_NAME / ...   # Migration Projects Tracker sync; defaults in sharepointSyncService.ts
 EXTERNAL_PHASE_WEBHOOK_URL   # optional: other internal app's webhook endpoint; POSTed to (with EXTERNAL_API_KEY as X-API-Key) whenever a project's phase newly moves to DELTA. Unset = feature no-ops.
 SLA_BREACH_ALERT_TEST_RECIPIENT   # optional: while set, 45-minute SLA breach alerts go only to this address instead of the real manager+admins. Remove to go live.
+CSAT_DELTA_GATE   # optional: "off" disables the C-SAT-before-Delta gate (rollout kill switch). Unset = gate on.
+CSAT_INTERNAL_DOMAINS   # optional: extra comma-separated domains the C-SAT survey may not be sent to (cloudfuze.com and cloudfuze.onmicrosoft.com always blocked).
 ANTHROPIC_API_KEY / ANTHROPIC_MODEL   # self-heal incident triage + diagnosis
 SELF_HEAL_GITHUB_REPO / SELF_HEAL_GITHUB_TOKEN   # optional: "owner/repo" + fine-grained PAT (Contents: read & write, Pull requests: read) so code-bug incidents trigger the self-heal-fix workflow. Unset = no fix PRs; transient incidents still auto-resolve.
 SELF_HEAL_MAX_FIX_PRS_PER_DAY   # optional, default 3

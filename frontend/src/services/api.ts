@@ -39,7 +39,7 @@ api.interceptors.response.use(
     if (error.response?.status === 401 && typeof window !== 'undefined') {
       localStorage.removeItem('token');
       // Never redirect from the signed-out pages themselves — that's a reload loop.
-      const signedOutPages = ['/login', '/forgot-password', '/reset-password', '/auth/callback'];
+      const signedOutPages = ['/login', '/forgot-password', '/reset-password', '/auth/callback', '/csat'];
       if (!signedOutPages.some((p) => window.location.pathname.startsWith(p))) {
         window.location.href = '/login';
       }
@@ -49,6 +49,53 @@ api.interceptors.response.use(
 );
 
 // Projects API
+// C-SAT survey state for a project's move into Delta (backend csatService.CsatStatus).
+export interface CsatStatus {
+  state: 'none' | 'pending' | 'responded';
+  sentTo: string | null;
+  sentFrom: string | null;
+  sentAt: string | null;
+  respondedAt: string | null;
+  expired: boolean;
+  // Set when the answer came from another project of the same customer account.
+  viaProjectId: string | null;
+  viaProjectName: string | null;
+}
+
+// Mirrors backend csatService validation so the forms reject what the API would.
+export const CSAT_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+export const CSAT_MAX_MESSAGE_LENGTH = 2000;
+export const CSAT_MAX_COMMENT_LENGTH = 4000;
+export const CSAT_MAX_NAME_LENGTH = 100;
+export const CSAT_MAX_PROJECT_NAME_LENGTH = 150;
+
+// Rendered survey email for the PM to check before sending (backend csatService.previewRequest).
+export interface CsatEmailPreview {
+  subject: string;
+  html: string;
+  customerName: string;
+  projectName: string;
+  defaultCustomerName: string | null;
+  defaultProjectName: string;
+  defaultMessage: string;
+}
+
+// Fired by useUpdateProject when the backend refuses a move into Delta with CSAT_REQUIRED;
+// the CsatRequestModal mounted in the authenticated layout listens for it.
+export const CSAT_REQUIRED_EVENT = 'pmo:csat-required';
+
+export interface CsatRequiredDetail {
+  projectId: string;
+  csat: CsatStatus;
+}
+
+export function csatRequiredDetail(error: unknown, projectId: string): CsatRequiredDetail | null {
+  const res = (error as { response?: { status?: number; data?: { error?: { code?: string; details?: { csat?: CsatStatus } } } } })?.response;
+  const err = res?.data?.error;
+  if (res?.status !== 409 || err?.code !== 'CSAT_REQUIRED' || !err.details?.csat) return null;
+  return { projectId, csat: err.details.csat };
+}
+
 export const projectsApi = {
   getAll: async (params?: {
     page?: number;
@@ -81,6 +128,21 @@ export const projectsApi = {
 
   update: async (id: string, project: UpdateProjectInput): Promise<ApiResponse<Project>> => {
     const { data } = await api.put(`/projects/${id}`, project);
+    return data;
+  },
+
+  getCsatStatus: async (id: string): Promise<ApiResponse<CsatStatus>> => {
+    const { data } = await api.get(`/projects/${id}/csat-requests`);
+    return data;
+  },
+
+  sendCsatRequest: async (id: string, body: { recipientEmail: string; customerName?: string; projectName?: string; message?: string }): Promise<ApiResponse<CsatStatus>> => {
+    const { data } = await api.post(`/projects/${id}/csat-requests`, body);
+    return data;
+  },
+
+  previewCsatEmail: async (id: string, body: { customerName?: string; projectName?: string; message?: string }): Promise<ApiResponse<CsatEmailPreview>> => {
+    const { data } = await api.post(`/projects/${id}/csat-requests/preview`, body);
     return data;
   },
 

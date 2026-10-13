@@ -69,3 +69,22 @@ to be displayed, and since Call Hygiene is now a full replacement of the existin
 Volume/Cadence/Reliability dashboard (not an additive field), this is core scope for the
 same PR, not a follow-up. See the 2026-08-16 design doc revision for the specific UI
 changes to `audit-dashboard/page.tsx`.
+
+## C-SAT before Delta
+
+### Drop the duplicate error toast when the C-SAT popup opens (ISSUE-002)
+
+**What:** A blocked move into Delta opens the C-SAT popup and also shows an error toast
+("Failed to update phase" on project detail, "Update failed" on the edit form, "Failed to
+update" in the projects table). Callers should skip their toast when
+`csatRequiredDetail(error, id)` returns non-null.
+
+**Why:** The block is an expected, guided outcome; an error toast next to the popup reads
+like something broke. Found by /qa on feat/csat-on-delta, 2026-10-13
+(.gstack/qa-reports/run-20261013T144509Z/).
+
+**Context:** Deferred because plan decision D1 kept ProjectForm/ProjectsTable/ProjectDetail
+untouched. Repro: set a One-time project to Delta and save with no C-SAT response.
+
+**Effort:** S
+**Priority:** P2 (Medium, UX)

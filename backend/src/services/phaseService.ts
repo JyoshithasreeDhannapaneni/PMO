@@ -1,6 +1,8 @@
 import { query, execute } from '../config/database';
 import { AppError } from '../middleware/errorHandler';
 import { logger } from '../utils/logger';
+import { csatService, isEnteringDelta } from './csatService';
+import { phaseWebhookService } from './phaseWebhookService';
 
 type PhaseStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'SKIPPED';
 type ProjectPhase =
@@ -60,6 +62,18 @@ class PhaseService {
     }
 
     const existing = existingResult.rows[0];
+
+    // Completing a phase auto-advances the project; when that lands on Delta the C-SAT gate
+    // must pass BEFORE this phase row is marked complete, or a blocked advance would leave the
+    // phase "COMPLETED" while the project stays behind.
+    // Same condition as the advanceProjectPhase call below, so re-saving an already completed
+    // phase cannot write the row and then fail the gate inside the advance.
+    if (data.status === 'COMPLETED') {
+      const target = await this.nextPhaseAfter(existing.project_id, existing.id);
+      const current = (await query(`SELECT phase FROM projects WHERE id = $1`, [existing.project_id])).rows[0];
+      if (target && isEnteringDelta(current?.phase, target)) await csatService.assertCanEnterDelta(existing.project_id);
+    }
+
     const updates: string[] = [];
     const params: any[] = [];
     let paramIndex = 1;
@@ -103,20 +117,39 @@ class PhaseService {
     return phase;
   }
 
+  private async nextPhaseAfter(projectId: string, excludePhaseId?: string): Promise<string | null> {
+    const nextResult = await query(
+      `SELECT phase_name FROM project_phases
+       WHERE project_id = $1 AND status = 'PENDING' AND ($2::uuid IS NULL OR id <> $2::uuid)
+       ORDER BY order_index ASC LIMIT 1`,
+      [projectId, excludePhaseId ?? null]
+    );
+    return nextResult.rows[0]?.phase_name ?? null;
+  }
+
   // Data-driven phase advance: reads project_phases order from DB, no hardcoded list.
   private async advanceProjectPhase(projectId: string): Promise<void> {
     // Find the next phase that is still PENDING, ordered by order_index
-    const nextResult = await query(
-      `SELECT phase_name FROM project_phases
-       WHERE project_id = $1 AND status = 'PENDING'
-       ORDER BY order_index ASC LIMIT 1`,
-      [projectId]
-    );
+    const nextPhaseName = await this.nextPhaseAfter(projectId);
 
-    if (nextResult.rows.length > 0) {
-      const nextPhaseName: string = nextResult.rows[0].phase_name;
+    if (nextPhaseName) {
+      const current = (await query(`SELECT phase FROM projects WHERE id = $1`, [projectId])).rows[0];
+      const enteringDelta = isEnteringDelta(current?.phase, nextPhaseName);
+      // Defence in depth: update() already checked, but this is the raw write into Delta.
+      if (enteringDelta) await csatService.assertCanEnterDelta(projectId);
       // Advance the project's current phase column
-      await execute(`UPDATE projects SET phase = $1 WHERE id = $2`, [nextPhaseName, projectId]);
+      await execute(
+        `UPDATE projects SET phase = $1::text,
+           phase_changed_at = CASE WHEN UPPER(COALESCE(phase, '')) <> UPPER($1::text) THEN NOW() ELSE phase_changed_at END
+         WHERE id = $2`,
+        [nextPhaseName, projectId]
+      );
+      // This path used to skip the Delta webhook that projectService.update fires.
+      if (enteringDelta) {
+        phaseWebhookService.notifyDeltaPhase(projectId).catch((err: Error) =>
+          logger.warn(`Delta-phase webhook trigger failed for project ${projectId}: ${err?.message}`)
+        );
+      }
       // Mark the next phase as IN_PROGRESS
       await execute(
         `UPDATE project_phases

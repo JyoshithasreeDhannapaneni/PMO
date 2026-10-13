@@ -2,7 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect } from 'react';
-import { projectsApi, dashboardApi, statusReportsApi, managerGoalsApi, migrationTypeApi, pocProjectsApi, accountManagerApi, customerSuccessApi, hubspotApi, psEngagementsApi, kbArticlesApi, emailHygieneApi, callHygieneApi, callTranscriptsApi, auditApi, feedbackApi, actionItemsApi, slaBreachAlertsApi, archiveSharePointApi } from '@/services/api';
+import { CSAT_REQUIRED_EVENT, csatRequiredDetail, projectsApi, dashboardApi, statusReportsApi, managerGoalsApi, migrationTypeApi, pocProjectsApi, accountManagerApi, customerSuccessApi, hubspotApi, psEngagementsApi, kbArticlesApi, emailHygieneApi, callHygieneApi, callTranscriptsApi, auditApi, feedbackApi, actionItemsApi, slaBreachAlertsApi, archiveSharePointApi } from '@/services/api';
 import type { CreateProjectInput, UpdateProjectInput, ManagerDimension } from '@/types';
 
 export function useProjects(params?: {
@@ -76,6 +76,44 @@ export function useUpdateProject() {
       queryClient.invalidateQueries({ queryKey: ['statusReports', variables.id] });
       queryClient.invalidateQueries({ queryKey: ['archive'] });
     },
+    // Every screen that changes a phase saves through here, so the C-SAT popup is opened
+    // once for all of them (edit form, projects table cell, project detail).
+    onError: (error, variables) => {
+      const detail = csatRequiredDetail(error, variables.id);
+      if (detail && typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent(CSAT_REQUIRED_EVENT, { detail }));
+      }
+    },
+  });
+}
+
+export function useCsatStatus(projectId: string | null) {
+  return useQuery({
+    queryKey: ['csat-status', projectId],
+    queryFn: () => projectsApi.getCsatStatus(projectId as string),
+    enabled: !!projectId,
+  });
+}
+
+export function useSendCsatRequest() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ projectId, recipientEmail, customerName, projectName, message }: {
+      projectId: string; recipientEmail: string; customerName?: string; projectName?: string; message?: string;
+    }) => projectsApi.sendCsatRequest(projectId, { recipientEmail, customerName, projectName, message }),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['csat-status', variables.projectId] });
+    },
+  });
+}
+
+export function useCsatEmailPreview(projectId: string | null, fields: { customerName: string; projectName: string; message: string }) {
+  return useQuery({
+    queryKey: ['csat-preview', projectId, fields.customerName, fields.projectName, fields.message],
+    queryFn: () => projectsApi.previewCsatEmail(projectId as string, fields),
+    enabled: !!projectId,
+    placeholderData: (previous) => previous,
+    staleTime: 60_000,
   });
 }
 

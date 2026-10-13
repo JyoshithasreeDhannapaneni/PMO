@@ -21,9 +21,16 @@ const PUBLIC_ROUTES: { method: string; path: string }[] = [
 // Server-to-server integrations authenticate with X-API-Key (requireExternalApiKey).
 const PUBLIC_PREFIXES = ['/external/'];
 
+// Customer C-SAT form: the emailed one-time token in the path is the credential
+// (csatService checks it). Exact shape and methods only, so nothing else under /csat opens up.
+const PUBLIC_PATTERNS: { methods: string[]; pattern: RegExp }[] = [
+  { methods: ['GET', 'POST'], pattern: /^\/csat\/[0-9a-f]{64}$/ },
+];
+
 export function isPublicApiRoute(method: string, path: string): boolean {
   const normalized = path.length > 1 ? path.replace(/\/+$/, '') : path;
   if (PUBLIC_PREFIXES.some((prefix) => normalized.startsWith(prefix))) return true;
+  if (PUBLIC_PATTERNS.some((p) => p.methods.includes(method) && p.pattern.test(normalized))) return true;
   return PUBLIC_ROUTES.some((r) => r.method === method && r.path === normalized);
 }
 

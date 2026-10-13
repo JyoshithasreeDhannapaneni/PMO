@@ -6,6 +6,7 @@ import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { ToastProvider } from '@/context/ToastContext';
 import { ChatWidget } from '@/components/chat/ChatWidget';
 import { FeedbackWidget } from '@/components/feedback/FeedbackWidget';
+import { CsatRequestModal } from '@/components/projects/CsatRequestModal';
 
 export default function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -33,6 +34,7 @@ export default function AuthenticatedLayout({ children }: { children: React.Reac
 
           <ChatWidget />
           <FeedbackWidget />
+          <CsatRequestModal />
         </div>
       </ToastProvider>
     </ProtectedRoute>
