@@ -30,10 +30,14 @@ const QUESTIONS: { key: RatingKey; label: string; required?: boolean }[] = [
   { key: 'onboarding', label: 'Onboarding and kickoff experience' },
 ];
 
+// Same shape the API's public route accepts; anything else (e.g. a link cut off by an email
+// client) never reaches the survey and is answered 401 by the auth gate, not 404.
+const TOKEN_RE = /^[0-9a-f]{64}$/;
+
 function closedState(status: number, message?: string): PageState {
   if (status === 409) return { kind: 'closed', title: 'Already answered', message: 'This survey has already been answered. Thank you for your feedback!' };
   if (status === 410) return { kind: 'closed', title: 'Link no longer active', message: 'This survey link has expired or was replaced by a newer one. Please use the latest email from your project manager.' };
-  if (status === 404) return { kind: 'closed', title: 'Survey not found', message: 'This survey link is not valid. Please check that you opened the full link from the email.' };
+  if (status === 404 || status === 401) return { kind: 'closed', title: 'Survey not found', message: 'This survey link is not valid. Please check that you opened the full link from the email.' };
   return { kind: 'closed', title: 'Something went wrong', message: message || 'Please try again in a few minutes.' };
 }
 
@@ -75,6 +79,10 @@ export default function CsatSurveyPage() {
 
   useEffect(() => {
     let cancelled = false;
+    if (!TOKEN_RE.test(token)) {
+      setState(closedState(404));
+      return;
+    }
     (async () => {
       try {
         const res = await fetch(`${API_URL}/api/csat/${encodeURIComponent(token)}`);
