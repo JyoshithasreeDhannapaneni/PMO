@@ -1,8 +1,25 @@
 import { Request, Response } from 'express';
-import { authService } from '../services/authService';
 import { projectService, ProjectFilters, PaginationOptions } from '../services/projectService';
 import { auditService } from '../services/auditService';
 import { asyncHandler } from '../middleware/errorHandler';
+
+interface ActingUser {
+  id: string;
+  name: string;
+  role: string;
+}
+
+// Set by the /api auth gate (middleware/apiAuthGate.ts). Project writes must fail closed
+// without it — the old "check roles only if a token was sent" pattern let anonymous
+// requests skip every check.
+function actingUserOf(req: Request, res: Response): ActingUser | null {
+  const user = (req as any).user as ActingUser | undefined;
+  if (!user) {
+    res.status(401).json({ success: false, error: 'Authentication required' });
+    return null;
+  }
+  return user;
+}
 
 export const projectController = {
   /**
@@ -60,38 +77,30 @@ getAll: asyncHandler(async (req: Request, res: Response): Promise<void> => {
    * Create a new project
    */
   create: asyncHandler(async (req: Request, res: Response): Promise<void> => {
-    const token = req.headers.authorization?.replace('Bearer ', '');
-    let actingUser: { id: string; name: string; role: string } | null = null;
-    if (token) {
-      try {
-        const user = await authService.getUserFromToken(token);
-        actingUser = user;
-        if (user && user.role !== 'ADMIN' && user.role !== 'PROJECT_MANAGER' && user.role !== 'PRE_SALES') {
-          res.status(403).json({ success: false, error: { message: 'Only Admins and Project Managers can create projects' } });
-          return;
-        }
-        if (user && user.role === 'PROJECT_MANAGER') {
-          req.body.projectManager = user.name;
-        }
-        if (user && user.role === 'PRE_SALES') {
-          req.body.projectType = 'POC';
-          req.body.projectManager = req.body.projectManager || user.name;
-        }
-      } catch {}
+    const actingUser = actingUserOf(req, res);
+    if (!actingUser) return;
+    if (actingUser.role !== 'ADMIN' && actingUser.role !== 'PROJECT_MANAGER' && actingUser.role !== 'PRE_SALES') {
+      res.status(403).json({ success: false, error: { message: 'Only Admins and Project Managers can create projects' } });
+      return;
+    }
+    if (actingUser.role === 'PROJECT_MANAGER') {
+      req.body.projectManager = actingUser.name;
+    }
+    if (actingUser.role === 'PRE_SALES') {
+      req.body.projectType = 'POC';
+      req.body.projectManager = req.body.projectManager || actingUser.name;
     }
     const project = await projectService.create(req.body);
 
-    if (actingUser) {
-      await auditService.log({
-        userId: actingUser.id,
-        action: 'CREATE',
-        entityType: 'project',
-        entityId: project.id,
-        entityName: project.customerName || project.projectManager,
-        ipAddress: req.ip,
-        userAgent: req.headers['user-agent'],
-      });
-    }
+    await auditService.log({
+      userId: actingUser.id,
+      action: 'CREATE',
+      entityType: 'project',
+      entityId: project.id,
+      entityName: project.customerName || project.projectManager,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
 
     res.status(201).json({
       success: true,
@@ -106,55 +115,47 @@ getAll: asyncHandler(async (req: Request, res: Response): Promise<void> => {
    */
   update: asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const { id } = req.params;
-    const token = req.headers.authorization?.replace('Bearer ', '');
-    let actingUser: { id: string; name: string; role: string } | null = null;
-    let previousStatus: string | undefined;
-    if (token) {
-      try {
-        const user = await authService.getUserFromToken(token);
-        actingUser = user;
-        // Account Managers get one narrow exception: they can submit an
-        // update that touches ONLY archiveCsatStatus (the CSAT dropdown
-        // column in History Archive) — this is the one field they own
-        // post-completion. Any other field in the same request still
-        // requires ADMIN/PROJECT_MANAGER, so an Account Manager can't
-        // smuggle other edits in alongside it.
-        const bodyKeys = Object.keys(req.body || {});
-        const isCsatOnlyEdit = bodyKeys.length > 0 && bodyKeys.every((k) => k === 'archiveCsatStatus');
-        const isAccountManagerCsatEdit = user?.role === 'ACCOUNT_MANAGER' && isCsatOnlyEdit;
+    const actingUser = actingUserOf(req, res);
+    if (!actingUser) return;
 
-        if (user && user.role !== 'ADMIN' && user.role !== 'PROJECT_MANAGER' && !isAccountManagerCsatEdit) {
-          res.status(403).json({ success: false, error: { message: 'Only Admins and Project Managers can edit projects' } });
-          return;
-        }
-        const existing = await projectService.getById(id);
-        previousStatus = existing.status;
-        if (user && user.role === 'PROJECT_MANAGER' && existing.projectManager !== user.name) {
-          res.status(403).json({ success: false, error: { message: 'You can only edit projects assigned to you' } });
-          return;
-        }
-        if (user && user.role === 'ACCOUNT_MANAGER' && existing.accountManager !== user.name) {
-          res.status(403).json({ success: false, error: { message: 'You can only edit the CSAT status for projects you manage' } });
-          return;
-        }
-      } catch {}
+    // Account Managers get one narrow exception: they can submit an
+    // update that touches ONLY archiveCsatStatus (the CSAT dropdown
+    // column in History Archive) — this is the one field they own
+    // post-completion. Any other field in the same request still
+    // requires ADMIN/PROJECT_MANAGER, so an Account Manager can't
+    // smuggle other edits in alongside it.
+    const bodyKeys = Object.keys(req.body || {});
+    const isCsatOnlyEdit = bodyKeys.length > 0 && bodyKeys.every((k) => k === 'archiveCsatStatus');
+    const isAccountManagerCsatEdit = actingUser.role === 'ACCOUNT_MANAGER' && isCsatOnlyEdit;
+
+    if (actingUser.role !== 'ADMIN' && actingUser.role !== 'PROJECT_MANAGER' && !isAccountManagerCsatEdit) {
+      res.status(403).json({ success: false, error: { message: 'Only Admins and Project Managers can edit projects' } });
+      return;
+    }
+    const existing = await projectService.getById(id);
+    const previousStatus: string | undefined = existing.status;
+    if (actingUser.role === 'PROJECT_MANAGER' && existing.projectManager !== actingUser.name) {
+      res.status(403).json({ success: false, error: { message: 'You can only edit projects assigned to you' } });
+      return;
+    }
+    if (actingUser.role === 'ACCOUNT_MANAGER' && existing.accountManager !== actingUser.name) {
+      res.status(403).json({ success: false, error: { message: 'You can only edit the CSAT status for projects you manage' } });
+      return;
     }
     const project = await projectService.update(id, req.body);
 
-    if (actingUser) {
-      const isStatusChange = req.body.status && req.body.status !== previousStatus;
-      await auditService.log({
-        userId: actingUser.id,
-        action: isStatusChange ? 'STATUS_CHANGE' : 'UPDATE',
-        entityType: 'project',
-        entityId: project.id,
-        entityName: project.customerName || project.projectManager,
-        oldValues: isStatusChange ? { status: previousStatus } : undefined,
-        newValues: isStatusChange ? { status: req.body.status } : undefined,
-        ipAddress: req.ip,
-        userAgent: req.headers['user-agent'],
-      });
-    }
+    const isStatusChange = req.body.status && req.body.status !== previousStatus;
+    await auditService.log({
+      userId: actingUser.id,
+      action: isStatusChange ? 'STATUS_CHANGE' : 'UPDATE',
+      entityType: 'project',
+      entityId: project.id,
+      entityName: project.customerName || project.projectManager,
+      oldValues: isStatusChange ? { status: previousStatus } : undefined,
+      newValues: isStatusChange ? { status: req.body.status } : undefined,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
 
     res.json({
       success: true,
@@ -169,22 +170,18 @@ getAll: asyncHandler(async (req: Request, res: Response): Promise<void> => {
    */
   delete: asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const { id } = req.params;
-    const deleteToken = req.headers.authorization?.replace('Bearer ', '');
-    if (deleteToken) {
-      try {
-        const user = await authService.getUserFromToken(deleteToken);
-        if (user && user.role !== 'ADMIN' && user.role !== 'PROJECT_MANAGER') {
-          res.status(403).json({ success: false, error: { message: 'Only Admins and Project Managers can delete projects' } });
-          return;
-        }
-        if (user && user.role === 'PROJECT_MANAGER') {
-          const existing = await projectService.getById(id);
-          if (existing.projectManager !== user.name) {
-            res.status(403).json({ success: false, error: { message: 'You can only delete projects assigned to you' } });
-            return;
-          }
-        }
-      } catch {}
+    const user = actingUserOf(req, res);
+    if (!user) return;
+    if (user.role !== 'ADMIN' && user.role !== 'PROJECT_MANAGER') {
+      res.status(403).json({ success: false, error: { message: 'Only Admins and Project Managers can delete projects' } });
+      return;
+    }
+    if (user.role === 'PROJECT_MANAGER') {
+      const existing = await projectService.getById(id);
+      if (existing.projectManager !== user.name) {
+        res.status(403).json({ success: false, error: { message: 'You can only delete projects assigned to you' } });
+        return;
+      }
     }
     await projectService.delete(id);
 
@@ -200,16 +197,8 @@ getAll: asyncHandler(async (req: Request, res: Response): Promise<void> => {
    */
   deleteClient: asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const { clientName } = req.params;
-    const token = req.headers.authorization?.replace('Bearer ', '');
-    if (!token) {
-      res.status(401).json({ success: false, error: { message: 'Authentication required' } });
-      return;
-    }
-    let user: any;
-    try { user = await authService.getUserFromToken(token); } catch {
-      res.status(401).json({ success: false, error: { message: 'Invalid token' } });
-      return;
-    }
+    const user = actingUserOf(req, res);
+    if (!user) return;
     if (user.role !== 'ADMIN' && user.role !== 'PROJECT_MANAGER') {
       res.status(403).json({ success: false, error: { message: 'Only Admins and Project Managers can delete client projects' } });
       return;

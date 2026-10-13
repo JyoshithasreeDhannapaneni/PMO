@@ -45,7 +45,9 @@ export function CommentSection({ entityType, entityId }: CommentSectionProps) {
 
   const fetchComments = async () => {
     try {
-      const res = await fetch(`${API_URL}/api/comments/entity/${entityType}/${entityId}`);
+      const res = await fetch(`${API_URL}/api/comments/entity/${entityType}/${entityId}`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('token') ?? ''}` },
+      });
       const json = await res.json();
       if (json.success) {
         setComments(json.data);

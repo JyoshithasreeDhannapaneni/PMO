@@ -1,7 +1,13 @@
 import { Request, Response, NextFunction } from 'express';
+import crypto from 'crypto';
 import { authService } from '../services/authService';
 
 export async function requireAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
+  // The /api auth gate already resolved the session; skip a second DB lookup.
+  if ((req as any).user) {
+    next();
+    return;
+  }
   const header = req.headers.authorization;
   if (!header?.startsWith('Bearer ')) {
     res.status(401).json({ success: false, error: 'Authentication required' });
@@ -30,7 +36,10 @@ export function requireExternalApiKey(req: Request, res: Response, next: NextFun
     return;
   }
   const provided = req.headers['x-api-key'];
-  if (provided !== configured) {
+  const providedBuf = Buffer.from(typeof provided === 'string' ? provided : '');
+  const configuredBuf = Buffer.from(configured);
+  // Constant-time compare so response timing can't reveal the key byte by byte.
+  if (providedBuf.length !== configuredBuf.length || !crypto.timingSafeEqual(providedBuf, configuredBuf)) {
     res.status(401).json({ success: false, error: 'Invalid or missing API key' });
     return;
   }

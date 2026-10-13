@@ -399,6 +399,25 @@ export function useJiraOAuthStatus() {
   });
 }
 
+// Admin-only: asks the backend for a one-time Atlassian consent URL, then sends the browser
+// there. Atlassian redirects back to /api/jira/oauth/callback, which checks that one-time state.
+export function useStartJiraOAuth() {
+  return useMutation({
+    mutationFn: async (): Promise<string> => {
+      const json = await authFetch(`${API_BASE}/api/jira/oauth/connect-url`);
+      if (!json?.success || !json.data?.url) {
+        // Middleware errors are strings; errorHandler/AppError ones are { message }.
+        const message = typeof json?.error === 'string' ? json.error : json?.error?.message;
+        throw new Error(message || 'Could not start the Jira connection');
+      }
+      return json.data.url as string;
+    },
+    onSuccess: (url) => {
+      window.location.href = url;
+    },
+  });
+}
+
 export function useJiraSla(managerName: string | null) {
   return useQuery({
     queryKey: ['jira-sla', managerName],

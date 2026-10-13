@@ -319,6 +319,8 @@ export default function SettingsPage() {
   const { settings: ctxSettings, updateSettings } = useSettings();
   const { user: settingsUser } = useAuth();
   const isViewer = settingsUser?.role === 'VIEWER';
+  // Org-wide settings (SMTP, escalation routing, plan types) — only admins can save them.
+  const isAdmin = settingsUser?.role === 'ADMIN';
   const [activeTab, setActiveTab] = useState('migration');
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
@@ -477,8 +479,11 @@ export default function SettingsPage() {
   const toCode = (name: string) =>
     name.toUpperCase().replace(/\s+/g, '_').replace(/[^A-Z0-9_]/g, '');
 
-  // Live-sync ALL configurable options to context so ProjectForm dropdowns update instantly
+  // Live-sync ALL configurable options to context so ProjectForm dropdowns update instantly.
+  // updateSettings persists org-wide (POST /api/pmo-settings, admin-only), so only admins
+  // sync — for anyone else this would push their local copy over everyone's settings.
   useEffect(() => {
+    if (!isAdmin) return;
     updateSettings({
       sourcePlatforms: sourcePlatforms as any,
       targetPlatforms: targetPlatforms as any,
@@ -487,7 +492,7 @@ export default function SettingsPage() {
       phases: phases.map((p: any) => ({ ...p, code: p.code || toCode(p.name) })) as any,
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sourcePlatforms, targetPlatforms, migrationTypes, planTypes, phases]);
+  }, [isAdmin, sourcePlatforms, targetPlatforms, migrationTypes, planTypes, phases]);
 
   // Save all settings — single atomic write so no race between context and extras
   const handleSaveAll = async () => {
@@ -517,19 +522,19 @@ export default function SettingsPage() {
         customNotifTypes,
         escalationRouting,
       };
+      // Save to API so all users see the changes. Admin-only on the server; a rejected save
+      // must surface instead of looking like success, and must not update the local cache.
+      const apiToken = localStorage.getItem('token');
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+      if (apiToken) {
+        const saveRes = await fetch(`${apiUrl}/api/settings`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiToken}` },
+          body: JSON.stringify(fullData),
+        });
+        if (!saveRes.ok) throw new Error(`Settings save rejected (${saveRes.status})`);
+      }
       localStorage.setItem('pmoSettings', JSON.stringify(fullData));
-      // Save to API so all users see the changes
-      try {
-        const apiToken = localStorage.getItem('token');
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-        if (apiToken) {
-          await fetch(`${apiUrl}/api/settings`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiToken}` },
-            body: JSON.stringify(fullData),
-          });
-        }
-      } catch (e) { console.error('Failed to save settings to API', e); }
 
       // Update in-memory context so all consumers (ProjectForm, Header, Sidebar, Dashboard) reflect changes instantly
       updateSettings({
@@ -2268,7 +2273,7 @@ export default function SettingsPage() {
             <p className="text-gray-500">Configure system preferences and templates</p>
           </div>
         </div>
-        {!isViewer && (
+        {isAdmin && (
           <Button onClick={handleSaveAll} isLoading={isSaving}>
             <Save size={16} className="mr-2" />
             Save All Settings

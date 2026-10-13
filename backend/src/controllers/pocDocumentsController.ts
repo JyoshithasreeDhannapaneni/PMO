@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { asyncHandler } from '../middleware/errorHandler';
 import { query, execute } from '../config/database';
 import { v4 as uuidv4 } from 'uuid';
+import { isActiveContentFile } from '../utils/uploadSafety';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -30,6 +31,14 @@ export const pocDocumentsController = {
     const { projectId } = req.params;
     const { fileName, category, fileData, mimeType, fileSize, uploadedBy } = req.body;
 
+    if (!fileName || !fileData) {
+      res.status(400).json({ success: false, error: 'fileName and fileData are required' });
+      return;
+    }
+    if (isActiveContentFile(fileName)) {
+      res.status(400).json({ success: false, error: 'HTML, SVG, XML and script files cannot be uploaded' });
+      return;
+    }
     const uploadsDir = path.join(process.cwd(), 'uploads', 'poc-documents');
     fs.mkdirSync(uploadsDir, { recursive: true });
 

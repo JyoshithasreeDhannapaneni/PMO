@@ -1,6 +1,7 @@
 'use client';
 
-import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
+import { usePathname } from 'next/navigation';
 import { pmoSettingsApi } from '@/services/api';
 
 export interface MigrationType {
@@ -272,12 +273,22 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<PMOSettings>(defaultSettings);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Load from API on mount; fall back to localStorage if the API isn't reachable
+  // This provider also wraps /login and the password-reset pages, where there is no session:
+  // calling the API there gets a 401, the axios interceptor redirects to /login, and this
+  // provider remounts — an endless reload loop. So fetch only once a token exists, and
+  // re-check on navigation because logging in moves to the app without remounting us.
+  const pathname = usePathname();
+  const loadedFromApi = useRef(false);
+
+  // Load from API once signed in; fall back to localStorage if there's no session or the API isn't reachable
   useEffect(() => {
+    if (loadedFromApi.current) return;
     let cancelled = false;
     async function loadSettings() {
       try {
+        if (!localStorage.getItem('token')) throw new Error('No session yet');
         const response = await pmoSettingsApi.get();
+        loadedFromApi.current = true;
         if (cancelled) return;
         const remote = response?.data;
         if (remote && Object.keys(remote).length > 0) {
@@ -310,7 +321,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     }
     loadSettings();
     return () => { cancelled = true; };
-  }, []);
+  }, [pathname]);
 
   const updateSettings = useCallback((partial: Partial<PMOSettings>) => {
     setSettings((prev) => {
