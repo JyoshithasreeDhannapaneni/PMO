@@ -74,6 +74,21 @@ describe('projectController authorization (fails closed)', () => {
     expect(projectService.create).toHaveBeenCalledWith(expect.objectContaining({ projectManager: 'Alice' }));
   });
 
+  // Value: protects=PRE_SALES can only create POC projects (defaulting the manager to themselves) and cannot edit or delete;
+  //   fails_when=the PRE_SALES branch is lost/reordered in the fail-closed rewrite of create, or PRE_SALES slips into the edit/delete role check;
+  //   why_new=existing rows cover PM/VIEWER/AM only; seam=none
+  it('forces PRE_SALES creates to POC and keeps them out of edit and delete', async () => {
+    const ps = { id: 'u3', name: 'Priya', role: 'PRE_SALES' };
+    await call(projectController.create as Handler, ps, { projectType: 'MIGRATION' });
+    expect(projectService.create).toHaveBeenCalledWith(expect.objectContaining({ projectType: 'POC', projectManager: 'Priya' }));
+    await call(projectController.create as Handler, ps, { projectType: 'MIGRATION', projectManager: 'Alice' });
+    expect(jest.mocked(projectService.create).mock.calls[1][0]).toEqual(expect.objectContaining({ projectType: 'POC', projectManager: 'Alice' }));
+    expect((await call(projectController.update as Handler, ps, { status: 'DONE' })).status).toHaveBeenCalledWith(403);
+    expect((await call(projectController.delete as Handler, ps)).status).toHaveBeenCalledWith(403);
+    expect(projectService.update).not.toHaveBeenCalled();
+    expect(projectService.delete).not.toHaveBeenCalled();
+  });
+
   it('lets an ACCOUNT_MANAGER change only archiveCsatStatus on their own project', async () => {
     const am = { id: 'u2', name: 'Bob', role: 'ACCOUNT_MANAGER' };
     expect((await call(projectController.update as Handler, am, { archiveCsatStatus: 'X', status: 'DONE' })).status).toHaveBeenCalledWith(403);
