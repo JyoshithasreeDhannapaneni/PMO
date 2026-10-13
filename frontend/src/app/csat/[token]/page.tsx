@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
 import { Textarea } from '@/components/ui/Textarea';
+import { CSAT_MAX_COMMENT_LENGTH } from '@/services/api';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
@@ -20,6 +21,8 @@ type PageState =
 
 type RatingKey = 'overall' | 'migrationQuality' | 'support' | 'onboarding';
 
+const CHOICE_FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50';
+
 const QUESTIONS: { key: RatingKey; label: string; required?: boolean }[] = [
   { key: 'overall', label: 'Overall, how satisfied are you with the migration?', required: true },
   { key: 'migrationQuality', label: 'Quality of the migrated data' },
@@ -34,22 +37,28 @@ function closedState(status: number, message?: string): PageState {
   return { kind: 'closed', title: 'Something went wrong', message: message || 'Please try again in a few minutes.' };
 }
 
-function RatingRow({ value, onChange }: { value: number | null; onChange: (v: number) => void }) {
+function RatingRow({ labelId, value, onChange }: { labelId: string; value: number | null; onChange: (v: number) => void }) {
   return (
-    <div className="flex flex-wrap gap-1.5">
+    <div>
+    <div role="group" aria-labelledby={labelId} className="grid grid-cols-5 gap-2 sm:flex sm:flex-wrap sm:gap-1.5">
       {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
         <button
           key={n}
           type="button"
           onClick={() => onChange(n)}
           aria-pressed={value === n}
-          className={`h-9 w-9 rounded-lg border text-sm font-medium transition-colors ${
+          className={`h-11 w-full rounded-lg border text-base font-medium transition-colors sm:w-11 ${CHOICE_FOCUS} ${
             value === n ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-200 bg-white text-slate-700 hover:border-blue-300 hover:bg-blue-50'
           }`}
         >
           {n}
         </button>
       ))}
+    </div>
+    <div className="mt-1 flex justify-between text-xs text-slate-400 sm:w-[494px]">
+      <span>Very poor</span>
+      <span>Excellent</span>
+    </div>
     </div>
   );
 }
@@ -105,20 +114,24 @@ export default function CsatSurveyPage() {
 
   return (
     <div className="min-h-screen bg-slate-100 px-4 py-10">
+      <div className="mx-auto mb-4 w-full max-w-2xl text-center">
+        <p className="text-xl font-bold text-blue-600">CloudFuze</p>
+        <p className="text-sm text-slate-500">Sent by your CloudFuze project team</p>
+      </div>
       <div className="mx-auto w-full max-w-2xl rounded-2xl bg-white p-6 shadow-sm sm:p-8">
         {state.kind === 'loading' && <p className="text-center text-sm text-slate-500">Loading survey...</p>}
 
         {state.kind === 'closed' && (
           <div className="text-center">
             <h1 className="text-xl font-semibold text-slate-800">{state.title}</h1>
-            <p className="mt-2 text-sm text-slate-600">{state.message}</p>
+            <p className="mt-2 text-base text-slate-600">{state.message}</p>
           </div>
         )}
 
         {state.kind === 'done' && (
           <div className="text-center">
             <h1 className="text-xl font-semibold text-slate-800">Thank you!</h1>
-            <p className="mt-2 text-sm text-slate-600">Your feedback has been recorded and shared with your project manager.</p>
+            <p className="mt-2 text-base text-slate-600">Your feedback has been recorded and shared with your project manager.</p>
           </div>
         )}
 
@@ -130,31 +143,31 @@ export default function CsatSurveyPage() {
                 {state.info.customerName ? `${state.info.customerName} · ` : ''}
                 {state.info.projectName}
               </p>
-              <p className="mt-3 text-sm text-slate-600">Rate each item from 1 (very poor) to 10 (excellent). It takes about a minute.</p>
+              <p className="mt-3 text-base text-slate-600">Rate each item from 1 (very poor) to 10 (excellent). It takes about a minute.</p>
             </div>
 
             {QUESTIONS.map((q) => (
               <div key={q.key}>
-                <p className="mb-2 text-sm font-medium text-slate-700">
+                <p id={`q-${q.key}`} className="mb-2 text-base font-medium text-slate-700">
                   {q.label}
                   {q.required ? <span className="text-red-500"> *</span> : <span className="text-slate-400"> (optional)</span>}
                 </p>
-                <RatingRow value={ratings[q.key]} onChange={(v) => setRatings((r) => ({ ...r, [q.key]: v }))} />
+                <RatingRow labelId={`q-${q.key}`} value={ratings[q.key]} onChange={(v) => setRatings((r) => ({ ...r, [q.key]: v }))} />
               </div>
             ))}
 
             <div>
-              <p className="mb-2 text-sm font-medium text-slate-700">
+              <p id="q-went-well" className="mb-2 text-base font-medium text-slate-700">
                 Did the project go well overall?<span className="text-red-500"> *</span>
               </p>
-              <div className="flex gap-2">
+              <div role="group" aria-labelledby="q-went-well" className="flex gap-2">
                 {[{ v: true, label: 'Yes' }, { v: false, label: 'No' }].map((o) => (
                   <button
                     key={o.label}
                     type="button"
                     onClick={() => setWentWell(o.v)}
                     aria-pressed={wentWell === o.v}
-                    className={`rounded-lg border px-5 py-2 text-sm font-medium transition-colors ${
+                    className={`h-11 rounded-lg border px-6 text-base font-medium transition-colors ${CHOICE_FOCUS} ${
                       wentWell === o.v ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-200 bg-white text-slate-700 hover:bg-blue-50'
                     }`}
                   >
@@ -169,7 +182,7 @@ export default function CsatSurveyPage() {
               value={comments}
               onChange={(e) => setComments(e.target.value)}
               rows={4}
-              maxLength={4000}
+              maxLength={CSAT_MAX_COMMENT_LENGTH}
             />
 
             {formError && <p className="text-sm text-red-600">{formError}</p>}

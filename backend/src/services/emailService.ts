@@ -113,6 +113,12 @@ async function resolveTenantId(): Promise<string> {
   );
 }
 
+const GRAPH_TIMEOUT_MS = 30_000;
+
+export function defaultFromAddress(): string {
+  return process.env.ALERT_FROM_EMAIL || 'Bharath.Tummaganti@cloudfuze.com';
+}
+
 async function sendViaGraph(
   to: string,
   subject: string,
@@ -122,7 +128,7 @@ async function sendViaGraph(
 ): Promise<void> {
   const clientId = process.env.AZURE_CLIENT_ID || process.env.MICROSOFT_CLIENT_ID;
   const clientSecret = process.env.AZURE_CLIENT_SECRET || process.env.MICROSOFT_CLIENT_SECRET;
-  const fromEmail = opts.from || process.env.ALERT_FROM_EMAIL || 'Bharath.Tummaganti@cloudfuze.com';
+  const fromEmail = opts.from || defaultFromAddress();
 
   if (!clientId || !clientSecret) throw new Error('AZURE_CLIENT_ID and AZURE_CLIENT_SECRET must be set in .env');
 
@@ -148,6 +154,8 @@ async function sendViaGraph(
 
   const sendRes = await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(fromEmail)}/sendMail`, {
     method: 'POST',
+    // A hung call would otherwise hold the request (and a C-SAT send's pending row) indefinitely.
+    signal: AbortSignal.timeout(GRAPH_TIMEOUT_MS),
     headers: {
       Authorization: `Bearer ${tokenData.access_token}`,
       'Content-Type': 'application/json',
@@ -160,8 +168,8 @@ async function sendViaGraph(
         ...(cc && cc.length > 0 ? { ccRecipients: cc.map((addr) => ({ emailAddress: { address: addr } })) } : {}),
         ...(opts.replyTo ? { replyTo: [{ emailAddress: { address: opts.replyTo } }] } : {}),
       },
-      // Sent as a person (e.g. a PM's C-SAT survey): keep it in their Sent Items.
-      saveToSentItems: !!opts.from,
+      // Never keep a copy: a PM's C-SAT survey carries the customer's one-time link.
+      saveToSentItems: false,
     }),
   });
 

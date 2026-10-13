@@ -476,6 +476,10 @@ class ProjectService {
 
     // Phase is now dynamic (configured in Settings → Project Configuration)
     const safePhase = (data.phase || 'KICKOFF').toUpperCase();
+    // A new project has no C-SAT response, so it can never start past the Delta gate.
+    if (safePhase === 'DELTA') {
+      throw new AppError('A new project cannot start in Delta: the customer must first answer the C-SAT survey. Create it in an earlier phase.', 400);
+    }
     const safePlanType = ['BRONZE','SILVER','GOLD','PLATINUM'].includes((data.planType || '').toUpperCase())
       ? (data.planType || 'SILVER').toUpperCase()
       : 'SILVER';

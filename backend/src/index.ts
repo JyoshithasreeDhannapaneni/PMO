@@ -62,6 +62,7 @@ import callHygieneRoutes from './routes/callHygieneRoutes';
 import { ntaSyncService, isNtaConfigured } from './services/ntaSyncService';
 import callTranscriptRoutes from './routes/callTranscriptRoutes';
 import { logger } from './utils/logger';
+import { redactSecrets } from './utils/redact';
 import { authService } from './services/authService';
 import { templateService } from './services/templateService';
 import { projectService } from './services/projectService';
@@ -138,7 +139,7 @@ app.use('/uploads', express.static(path.join(process.cwd(), 'uploads'), {
 }));
 
 app.use(morgan('combined', {
-  stream: { write: (message) => logger.info(message.trim()) }
+  stream: { write: (message) => logger.info(redactSecrets(message.trim())) }
 }));
 
 app.get('/health', (req, res) => {
@@ -433,20 +434,22 @@ async function runMigrations() {
 
   // C-SAT survey requests (2026-10-13): a project may enter DELTA only once the customer has
   // answered the latest non-revoked request. token_hash is sha256 of the emailed link token.
-  await execute(`CREATE TABLE IF NOT EXISTS csat_requests (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    project_id      UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-    recipient_email VARCHAR(255) NOT NULL,
-    token_hash      CHAR(64) NOT NULL UNIQUE,
-    sent_by         UUID REFERENCES users(id) ON DELETE SET NULL,
-    sent_from       VARCHAR(255),
-    sent_at         TIMESTAMP NOT NULL DEFAULT NOW(),
-    expires_at      TIMESTAMP NOT NULL,
-    responded_at    TIMESTAMP,
-    went_well       BOOLEAN,
-    revoked_at      TIMESTAMP
-  )`);
-  await execute(`CREATE INDEX IF NOT EXISTS idx_csat_requests_project ON csat_requests (project_id, sent_at DESC)`);
+  try {
+    await execute(`CREATE TABLE IF NOT EXISTS csat_requests (
+      id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      project_id      UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      recipient_email VARCHAR(255) NOT NULL,
+      token_hash      CHAR(64) NOT NULL UNIQUE,
+      sent_by         UUID REFERENCES users(id) ON DELETE SET NULL,
+      sent_from       VARCHAR(255),
+      sent_at         TIMESTAMP NOT NULL DEFAULT NOW(),
+      expires_at      TIMESTAMP NOT NULL,
+      responded_at    TIMESTAMP,
+      went_well       BOOLEAN,
+      revoked_at      TIMESTAMP
+    )`);
+    await execute(`CREATE INDEX IF NOT EXISTS idx_csat_requests_project ON csat_requests (project_id, sent_at DESC)`);
+  } catch (e) { logger.error(`csat_requests migration failed: ${(e as Error).message}`); }
   try { await execute(`ALTER TABLE customer_success_entries ALTER COLUMN customer_name DROP NOT NULL`); } catch {}
 
   // Migration checklists table

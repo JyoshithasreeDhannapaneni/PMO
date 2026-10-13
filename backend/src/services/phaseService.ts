@@ -66,7 +66,9 @@ class PhaseService {
     // Completing a phase auto-advances the project; when that lands on Delta the C-SAT gate
     // must pass BEFORE this phase row is marked complete, or a blocked advance would leave the
     // phase "COMPLETED" while the project stays behind.
-    if (data.status === 'COMPLETED' && existing.status !== 'COMPLETED') {
+    // Same condition as the advanceProjectPhase call below, so re-saving an already completed
+    // phase cannot write the row and then fail the gate inside the advance.
+    if (data.status === 'COMPLETED') {
       const target = await this.nextPhaseAfter(existing.project_id, existing.id);
       const current = (await query(`SELECT phase FROM projects WHERE id = $1`, [existing.project_id])).rows[0];
       if (target && isEnteringDelta(current?.phase, target)) await csatService.assertCanEnterDelta(existing.project_id);
@@ -136,7 +138,12 @@ class PhaseService {
       // Defence in depth: update() already checked, but this is the raw write into Delta.
       if (enteringDelta) await csatService.assertCanEnterDelta(projectId);
       // Advance the project's current phase column
-      await execute(`UPDATE projects SET phase = $1 WHERE id = $2`, [nextPhaseName, projectId]);
+      await execute(
+        `UPDATE projects SET phase = $1::text,
+           phase_changed_at = CASE WHEN UPPER(COALESCE(phase, '')) <> UPPER($1::text) THEN NOW() ELSE phase_changed_at END
+         WHERE id = $2`,
+        [nextPhaseName, projectId]
+      );
       // This path used to skip the Delta webhook that projectService.update fires.
       if (enteringDelta) {
         phaseWebhookService.notifyDeltaPhase(projectId).catch((err: Error) =>

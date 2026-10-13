@@ -3,12 +3,10 @@ import { asyncHandler } from '../middleware/errorHandler';
 import { csatService, CsatActor } from '../services/csatService';
 
 export const csatController = {
-  /** GET /api/projects/:id/csat-requests — survey state for the project (signed in). */
   getStatus: asyncHandler(async (req: Request, res: Response): Promise<void> => {
     res.json({ success: true, data: await csatService.getStatus(req.params.id) });
   }),
 
-  /** POST /api/projects/:id/csat-requests — send (or resend) the survey email (signed in). */
   send: asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const actor = (req as any).user as CsatActor;
     const { recipientEmail, message } = req.body ?? {};
@@ -16,12 +14,12 @@ export const csatController = {
     res.status(201).json({ success: true, data, message: 'C-SAT survey sent' });
   }),
 
-  /** GET /api/csat/:token — public: what the customer's form shows. */
+  // GET /api/csat/:token — public: what the customer's form shows.
   getForm: asyncHandler(async (req: Request, res: Response): Promise<void> => {
     res.json({ success: true, data: await csatService.getPublicForm(req.params.token) });
   }),
 
-  /** POST /api/csat/:token — public: the customer's answers. */
+  // POST /api/csat/:token — public: the customer's answers.
   submit: asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const b = req.body ?? {};
     await csatService.submitResponse(req.params.token, {

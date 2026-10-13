@@ -10,7 +10,7 @@ import type { Project, ProjectPhaseRecord } from '@/types';
 import { useSettings } from '@/context/SettingsContext';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
-import { useUpdateProject, useEscalationDailyNotes, useAddEscalationDailyNote, useDeleteEscalationDailyNote } from '@/hooks/useProjects';
+import { useUpdateProject, useEscalationDailyNotes, useAddEscalationDailyNote, useDeleteEscalationDailyNote, useCsatStatus } from '@/hooks/useProjects';
 import { format } from 'date-fns';
 import {
   Calendar, User, Building2, DollarSign, Settings,
@@ -1346,6 +1346,8 @@ export function ProjectDetail({ project }: ProjectDetailProps) {
   const canEdit = user?.role === 'ADMIN' || user?.role === 'PROJECT_MANAGER';
 
   const updateProject = useUpdateProject();
+  const { data: csatRes } = useCsatStatus(canEdit ? project.id : null);
+  const csat = csatRes?.data;
   const [pendingPhase, setPendingPhase] = useState<string>(project.status === 'COMPLETED' ? 'COMPLETED' : project.phase);
   const [pendingPct, setPendingPct] = useState<number>(project.onetimeProgress ?? 0);
   const [savingPhase, setSavingPhase] = useState(false);
@@ -1570,6 +1572,20 @@ export function ProjectDetail({ project }: ProjectDetailProps) {
                 <span className="ml-1">({project.onetimeProgress}%)</span>
               )}
             </div>
+            {csat && (csat.state !== 'none' || (project.phase === 'ONETIME_MIGRATION' && project.status !== 'COMPLETED')) && (
+              <div className="w-full text-xs text-blue-600">
+                C-SAT:{' '}
+                {csat.state === 'responded' && csat.respondedAt && (
+                  <span className="font-medium text-green-700">answered on {formatDate(csat.respondedAt)}</span>
+                )}
+                {csat.state === 'pending' && (
+                  <span className={csat.expired ? 'font-medium text-red-600' : 'font-medium text-amber-700'}>
+                    sent to {csat.sentTo}{csat.sentAt ? ` on ${formatDate(csat.sentAt)}` : ''}{csat.expired ? ', link expired without a reply' : ', waiting for the customer'}
+                  </span>
+                )}
+                {csat.state === 'none' && <span>not sent yet (the customer must answer it before the project moves to Delta)</span>}
+              </div>
+            )}
           </div>
         )}
 

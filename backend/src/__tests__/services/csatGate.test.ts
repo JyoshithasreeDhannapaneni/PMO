@@ -142,3 +142,43 @@ describe('C-SAT gate on phaseService.update (phase auto-advance)', () => {
     expect(mockNotifyDelta).not.toHaveBeenCalled();
   });
 });
+
+describe('C-SAT gate edge paths', () => {
+  const phaseRow = { id: '00000000-0000-0000-0000-000000000004', project_id: 'p1', phase_name: 'ONETIME_MIGRATION', status: 'COMPLETED' };
+
+  it('re-saving an already completed phase is gated before anything is written', async () => {
+    mockProject = project('ONETIME_MIGRATION');
+    mockPhaseRow = phaseRow;
+    mockNextPhase = 'DELTA';
+    const err = await rejection(phaseService.update(phaseRow.id, { status: 'COMPLETED', notes: 'edit' } as never));
+    expect(err.code).toBe('CSAT_REQUIRED');
+    expect(mockExecute).not.toHaveBeenCalled();
+  });
+
+  it('the auto-advance records when the phase changed', async () => {
+    mockProject = project('ONETIME_MIGRATION');
+    mockPhaseRow = { ...phaseRow, status: 'IN_PROGRESS' };
+    mockNextPhase = 'DELTA';
+    mockCsatRows = [answered];
+    await phaseService.update(phaseRow.id, { status: 'COMPLETED' } as never);
+    const advance = mockExecute.mock.calls.find((c) => /UPDATE projects SET phase/.test(String(c[0])))!;
+    expect(String(advance[0])).toMatch(/phase_changed_at/);
+  });
+
+  it('a new project cannot be created directly in DELTA', async () => {
+    const err = await rejection(projectService.create({ name: 'New', phase: 'delta', plannedStart: '2026-01-01', plannedEnd: '2026-06-01' } as never));
+    expect(err.statusCode).toBe(400);
+    expect(mockExecute).not.toHaveBeenCalled();
+  });
+
+  it('CSAT_DELTA_GATE=off lets projects enter DELTA without a response', async () => {
+    process.env.CSAT_DELTA_GATE = 'off';
+    try {
+      mockProject = project('ONETIME_MIGRATION');
+      await projectService.update('p1', { phase: 'DELTA' } as never);
+      expect(projectUpdates()).toHaveLength(1);
+    } finally {
+      delete process.env.CSAT_DELTA_GATE;
+    }
+  });
+});

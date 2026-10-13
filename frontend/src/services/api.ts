@@ -56,7 +56,13 @@ export interface CsatStatus {
   sentFrom: string | null;
   sentAt: string | null;
   respondedAt: string | null;
+  expired: boolean;
 }
+
+// Mirrors backend csatService validation so the forms reject what the API would.
+export const CSAT_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+export const CSAT_MAX_MESSAGE_LENGTH = 2000;
+export const CSAT_MAX_COMMENT_LENGTH = 4000;
 
 // Fired by useUpdateProject when the backend refuses a move into Delta with CSAT_REQUIRED;
 // the CsatRequestModal mounted in the authenticated layout listens for it.
@@ -64,15 +70,14 @@ export const CSAT_REQUIRED_EVENT = 'pmo:csat-required';
 
 export interface CsatRequiredDetail {
   projectId: string;
-  message: string;
   csat: CsatStatus;
 }
 
 export function csatRequiredDetail(error: unknown, projectId: string): CsatRequiredDetail | null {
-  const res = (error as { response?: { status?: number; data?: { error?: { code?: string; message?: string; details?: { csat?: CsatStatus } } } } })?.response;
+  const res = (error as { response?: { status?: number; data?: { error?: { code?: string; details?: { csat?: CsatStatus } } } } })?.response;
   const err = res?.data?.error;
   if (res?.status !== 409 || err?.code !== 'CSAT_REQUIRED' || !err.details?.csat) return null;
-  return { projectId, message: err.message || '', csat: err.details.csat };
+  return { projectId, csat: err.details.csat };
 }
 
 export const projectsApi = {
