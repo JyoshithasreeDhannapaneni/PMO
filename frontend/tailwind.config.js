@@ -9,6 +9,12 @@ module.exports = {
   theme: {
     extend: {
       colors: {
+        // CloudFuze logo blue, for customer-facing pages (e.g. the C-SAT survey).
+        brand: {
+          DEFAULT: '#0129AC',
+          dark:    '#011E80',
+          light:   '#E8EDFA',
+        },
         primary: {
           50:  '#eff6ff',
           100: '#dbeafe',

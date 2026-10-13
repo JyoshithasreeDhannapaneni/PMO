@@ -1,5 +1,14 @@
 'use strict';
 import { logger } from '../utils/logger';
+import { CLOUDFUZE_LOGO_CID, CLOUDFUZE_LOGO_HEIGHT, CLOUDFUZE_LOGO_PNG_BASE64, CLOUDFUZE_LOGO_WIDTH } from '../assets/cloudfuzeLogo';
+
+// Image attached to the message and referenced from the HTML as src="cid:<contentId>".
+export interface InlineImage {
+  contentId: string;
+  name: string;
+  contentType: string;
+  contentBase64: string;
+}
 
 export interface EmailOptions {
   to: string | string[];
@@ -11,6 +20,7 @@ export interface EmailOptions {
   // Graph app's Mail.Send to cover that mailbox; a refusal surfaces as GraphSendError 403/404.
   from?: string;
   replyTo?: string;
+  inlineImages?: InlineImage[];
 }
 
 export class GraphSendError extends Error {
@@ -92,6 +102,59 @@ export function brandedEmail(title: string, body: string, accentColor = BRAND_CO
 </html>`;
 }
 
+// Primary blue of the CloudFuze logo (frontend/public/cloudfuze-logo.png).
+export const CLOUDFUZE_BLUE = '#0129AC';
+
+export function cloudfuzeLogoImage(): InlineImage {
+  return { contentId: CLOUDFUZE_LOGO_CID, name: 'cloudfuze-logo.png', contentType: 'image/png', contentBase64: CLOUDFUZE_LOGO_PNG_BASE64 };
+}
+
+// Shell for emails sent to customers: CloudFuze logo and brand blue instead of the internal
+// "PMO" notification header. Send with `inlineImages: [cloudfuzeLogoImage()]` so the logo renders.
+export function customerEmail(title: string, body: string): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${title}</title>
+</head>
+<body style="margin:0;padding:0;background:#f3f5fb;font-family:Arial,Helvetica,sans-serif;color:#1e293b;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f5fb;padding:32px 16px;">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;border-top:5px solid ${CLOUDFUZE_BLUE};box-shadow:0 4px 24px rgba(1,41,172,0.08);">
+        <tr>
+          <td align="center" style="padding:28px 32px 8px 32px;">
+            <img src="cid:${CLOUDFUZE_LOGO_CID}" width="${CLOUDFUZE_LOGO_WIDTH}" height="${CLOUDFUZE_LOGO_HEIGHT}" alt="CloudFuze"
+                 style="display:block;border:0;outline:none;text-decoration:none;width:${CLOUDFUZE_LOGO_WIDTH}px;height:auto;color:${CLOUDFUZE_BLUE};font-size:24px;font-weight:700;" />
+          </td>
+        </tr>
+        <tr>
+          <td align="center" style="padding:16px 32px 4px 32px;">
+            <h1 style="margin:0;font-size:22px;font-weight:700;color:${CLOUDFUZE_BLUE};">${title}</h1>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:20px 40px 28px 40px;font-size:15px;line-height:1.6;color:#334155;">
+            ${body}
+          </td>
+        </tr>
+        <tr>
+          <td style="background:#f6f8fd;padding:18px 32px;border-top:1px solid #e5e9f5;text-align:center;">
+            <p style="margin:0;font-size:12px;line-height:1.6;color:#64748b;">
+              <strong style="color:${CLOUDFUZE_BLUE};">CloudFuze</strong> &nbsp;·&nbsp;
+              <a href="https://www.cloudfuze.com" style="color:#64748b;text-decoration:underline;">cloudfuze.com</a><br/>
+              Questions? Reply to this email and it will reach your project manager.
+            </p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+}
+
 async function resolveTenantId(): Promise<string> {
   const configured = process.env.MICROSOFT_TENANT_ID;
   // 'common' does not work with client_credentials — must be a real tenant GUID or domain
@@ -124,7 +187,7 @@ async function sendViaGraph(
   subject: string,
   html: string,
   cc?: string[],
-  opts: { from?: string; replyTo?: string } = {}
+  opts: { from?: string; replyTo?: string; inlineImages?: InlineImage[] } = {}
 ): Promise<void> {
   const clientId = process.env.AZURE_CLIENT_ID || process.env.MICROSOFT_CLIENT_ID;
   const clientSecret = process.env.AZURE_CLIENT_SECRET || process.env.MICROSOFT_CLIENT_SECRET;
@@ -167,6 +230,18 @@ async function sendViaGraph(
         toRecipients: [{ emailAddress: { address: to } }],
         ...(cc && cc.length > 0 ? { ccRecipients: cc.map((addr) => ({ emailAddress: { address: addr } })) } : {}),
         ...(opts.replyTo ? { replyTo: [{ emailAddress: { address: opts.replyTo } }] } : {}),
+        ...(opts.inlineImages && opts.inlineImages.length > 0
+          ? {
+              attachments: opts.inlineImages.map((img) => ({
+                '@odata.type': '#microsoft.graph.fileAttachment',
+                name: img.name,
+                contentType: img.contentType,
+                contentBytes: img.contentBase64,
+                contentId: img.contentId,
+                isInline: true,
+              })),
+            }
+          : {}),
       },
       // Never keep a copy: a PM's C-SAT survey carries the customer's one-time link.
       saveToSentItems: false,
@@ -193,7 +268,11 @@ class EmailService {
 
     for (const to of recipients) {
       try {
-        await sendViaGraph(to, options.subject, options.html, cc, { from: options.from, replyTo: options.replyTo });
+        await sendViaGraph(to, options.subject, options.html, cc, {
+          from: options.from,
+          replyTo: options.replyTo,
+          inlineImages: options.inlineImages,
+        });
         logger.info(`Email sent → ${to}${cc?.length ? ` (cc: ${cc.join(', ')})` : ''} | Subject: ${options.subject}`);
       } catch (err: any) {
         logger.error(`Email failed → ${to} | ${err.message}`);

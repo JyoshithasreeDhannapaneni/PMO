@@ -4,7 +4,7 @@ import { describe, it, expect, jest, beforeEach } from '@jest/globals';
 
 jest.mock('../../utils/logger', () => ({ logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() } }));
 
-import { emailService, GraphSendError } from '../../services/emailService';
+import { cloudfuzeLogoImage, customerEmail, emailService, GraphSendError } from '../../services/emailService';
 
 type FetchCall = [string, { body?: string }];
 const mockFetch = jest.fn<(...args: unknown[]) => Promise<unknown>>();
@@ -34,5 +34,19 @@ describe('emailService Graph send', () => {
     const body = JSON.parse(init.body || '{}');
     expect(body.saveToSentItems).toBe(false);
     expect(body.message.replyTo[0].emailAddress.address).toBe('p.m+x@cloudfuze.com');
+    expect(body.message.attachments).toBeUndefined();
+  });
+
+  it('attaches inline images so cid: references render, e.g. the CloudFuze logo', async () => {
+    mockFetch.mockResolvedValueOnce({ ok: true, status: 202, text: async () => '' });
+    const logo = cloudfuzeLogoImage();
+    await emailService.sendEmail({ to: 'c@acme.com', subject: 's', html: customerEmail('Hi', '<p>x</p>'), inlineImages: [logo] });
+    const [, init] = mockFetch.mock.calls[mockFetch.mock.calls.length - 1] as FetchCall;
+    const body = JSON.parse(init.body || '{}');
+    expect(body.message.body.content).toContain(`cid:${logo.contentId}`);
+    expect(body.message.attachments).toEqual([
+      expect.objectContaining({ '@odata.type': '#microsoft.graph.fileAttachment', contentId: logo.contentId, isInline: true, contentType: 'image/png', contentBytes: logo.contentBase64 }),
+    ]);
+    expect(Buffer.from(logo.contentBase64, 'base64').subarray(1, 4).toString()).toBe('PNG');
   });
 });

@@ -44,6 +44,9 @@ jest.mock('../../services/emailService', () => {
   return {
     emailService: { sendEmail: mockSendEmail },
     brandedEmail: (_t: string, body: string) => body,
+    customerEmail: (_t: string, body: string) => `<img src="cid:cloudfuze-logo">${body}`,
+    cloudfuzeLogoImage: () => ({ contentId: 'cloudfuze-logo', name: 'cloudfuze-logo.png', contentType: 'image/png', contentBase64: 'AA==' }),
+    CLOUDFUZE_BLUE: '#0129AC',
     defaultFromAddress: () => 'alerts@cloudfuze.com',
     isBlockedRecipient: (email: string) => email === 'admin@company.com',
     GraphSendError,
@@ -142,6 +145,19 @@ describe('csatService.sendRequest', () => {
     expect(mail.to).toBe('c@acme.com');
     expect(mail.from).toBe('alice@cloudfuze.com');
     expect(mail.html).not.toContain('<b>hi</b>');
+  });
+
+  it('sends the customer a CloudFuze-branded email with the logo attached inline, on both send paths', async () => {
+    await csatService.sendRequest('p1', { recipientEmail: 'c@acme.com' }, alice);
+    mockSendEmail.mockRejectedValueOnce(new GraphSendError('denied', 403));
+    await csatService.sendRequest('p1', { recipientEmail: 'c@acme.com' }, alice);
+    const toCustomer = mockSendEmail.mock.calls.map((c) => c[0] as SentMail & { inlineImages?: { contentId: string }[] }).filter((m) => m.to === 'c@acme.com');
+    expect(toCustomer).toHaveLength(3);
+    for (const mail of toCustomer) {
+      expect(mail.html).toContain('cid:cloudfuze-logo');
+      expect(mail.html).toContain('#0129AC');
+      expect(mail.inlineImages?.map((i) => i.contentId)).toEqual(['cloudfuze-logo']);
+    }
   });
 
   it('gives the PM a confirmation that never contains the survey link', async () => {

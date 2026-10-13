@@ -2,7 +2,9 @@ import crypto from 'crypto';
 import { query, execute, transaction } from '../config/database';
 import { AppError } from '../middleware/errorHandler';
 import { logger } from '../utils/logger';
-import { emailService, brandedEmail, defaultFromAddress, GraphSendError, isBlockedRecipient } from './emailService';
+import {
+  emailService, brandedEmail, cloudfuzeLogoImage, CLOUDFUZE_BLUE, customerEmail, defaultFromAddress, GraphSendError, isBlockedRecipient,
+} from './emailService';
 import { notificationService } from './notificationService';
 
 // A project may enter DELTA only after the customer has answered the C-SAT survey sent by its
@@ -186,10 +188,15 @@ class CsatService {
       <p>Hi ${customer},</p>
       ${message ? `<p>${escapeHtml(message).replace(/\n/g, '<br>')}</p>` : `<p>Your migration project <strong>${escapeHtml(project.name)}</strong> has finished its one-time migration. Before we move on to the delta phase, we'd love to hear how it went.</p>`}
       <p>It takes about a minute:</p>
-      <p><a href="${link}" style="display:inline-block;padding:10px 18px;background:#2563eb;color:#ffffff;border-radius:6px;text-decoration:none;font-weight:600">Rate your migration</a></p>
-      <p style="color:#6b7280;font-size:12px">This link is personal to you and works once. It expires in ${TOKEN_TTL_DAYS} days.</p>
-      <p>Thank you,<br>${escapeHtml(actor.name)}<br>CloudFuze</p>`;
-    const html = brandedEmail('How did your migration go?', body);
+      <table role="presentation" cellpadding="0" cellspacing="0" align="center" style="margin:24px auto;">
+        <tr><td style="background:${CLOUDFUZE_BLUE};border-radius:8px;">
+          <a href="${link}" style="display:inline-block;padding:14px 32px;color:#ffffff;font-size:16px;font-weight:700;text-decoration:none;border-radius:8px;">Rate your migration</a>
+        </td></tr>
+      </table>
+      <p style="color:#64748b;font-size:12px;text-align:center;">This link is personal to you and works once. It expires in ${TOKEN_TTL_DAYS} days.</p>
+      <p>Thank you,<br><strong>${escapeHtml(actor.name)}</strong><br>CloudFuze</p>`;
+    const html = customerEmail('How did your migration go?', body);
+    const inlineImages = [cloudfuzeLogoImage()];
     const subject = `How did your CloudFuze migration go? — ${project.name}`;
 
     // Record first (revoking earlier unanswered links), then send; undo if the send fails so a
@@ -228,14 +235,14 @@ class CsatService {
     let sentFrom: string;
     try {
       try {
-        await emailService.sendEmail({ to: recipientEmail, subject, html, from: actor.email });
+        await emailService.sendEmail({ to: recipientEmail, subject, html, from: actor.email, inlineImages });
         sentFrom = actor.email;
       } catch (err) {
         // Graph can be restricted to specific mailboxes (Azure application access policy).
         if (!(err instanceof GraphSendError) || (err.status !== 403 && err.status !== 404)) throw err;
         logger.warn(`[CSAT] Graph refused to send as ${actor.email} (${err.status}); falling back to the shared mailbox`);
         // No CC: the PM must never hold a copy of the customer's link.
-        await emailService.sendEmail({ to: recipientEmail, replyTo: actor.email, subject, html });
+        await emailService.sendEmail({ to: recipientEmail, replyTo: actor.email, subject, html, inlineImages });
         sentFrom = defaultFromAddress();
       }
     } catch (err) {

@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Image from 'next/image';
 import { useParams } from 'next/navigation';
-import { Button } from '@/components/ui/Button';
 import { Textarea } from '@/components/ui/Textarea';
 import { CSAT_MAX_COMMENT_LENGTH } from '@/services/api';
 
@@ -21,7 +21,9 @@ type PageState =
 
 type RatingKey = 'overall' | 'migrationQuality' | 'support' | 'onboarding';
 
-const CHOICE_FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50';
+const CHOICE_FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:ring-offset-1';
+const CHOICE_ON = 'border-brand bg-brand text-white shadow-sm';
+const CHOICE_OFF = 'border-slate-200 bg-white text-slate-700 hover:border-brand/40 hover:bg-brand-light';
 
 const QUESTIONS: { key: RatingKey; label: string; required?: boolean }[] = [
   { key: 'overall', label: 'Overall, how satisfied are you with the migration?', required: true },
@@ -52,7 +54,7 @@ function RatingRow({ labelId, value, onChange }: { labelId: string; value: numbe
           onClick={() => onChange(n)}
           aria-pressed={value === n}
           className={`h-11 w-full rounded-lg border text-base font-medium transition-colors sm:w-11 ${CHOICE_FOCUS} ${
-            value === n ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-200 bg-white text-slate-700 hover:border-blue-300 hover:bg-blue-50'
+            value === n ? CHOICE_ON : CHOICE_OFF
           }`}
         >
           {n}
@@ -121,24 +123,24 @@ export default function CsatSurveyPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 px-4 py-10">
-      <div className="mx-auto mb-4 w-full max-w-2xl text-center">
-        <p className="text-xl font-bold text-blue-600">CloudFuze</p>
-        <p className="text-sm text-slate-500">Sent by your CloudFuze project team</p>
-      </div>
-      <div className="mx-auto w-full max-w-2xl rounded-2xl bg-white p-6 shadow-sm sm:p-8">
+    <div className="min-h-screen bg-slate-50 px-4 py-10">
+      <header className="mx-auto mb-6 flex w-full max-w-2xl flex-col items-center gap-2 text-center">
+        <Image src="/cloudfuze-logo.png" alt="CloudFuze" width={150} height={81} priority className="h-auto w-[150px]" />
+        <p className="text-sm text-slate-500">Customer satisfaction survey from your CloudFuze project team</p>
+      </header>
+      <main className="mx-auto w-full max-w-2xl rounded-2xl border-t-4 border-brand bg-white p-6 shadow-md shadow-brand/5 sm:p-8">
         {state.kind === 'loading' && <p className="text-center text-sm text-slate-500">Loading survey...</p>}
 
         {state.kind === 'closed' && (
           <div className="text-center">
-            <h1 className="text-xl font-semibold text-slate-800">{state.title}</h1>
+            <h1 className="text-xl font-semibold text-brand">{state.title}</h1>
             <p className="mt-2 text-base text-slate-600">{state.message}</p>
           </div>
         )}
 
         {state.kind === 'done' && (
           <div className="text-center">
-            <h1 className="text-xl font-semibold text-slate-800">Thank you!</h1>
+            <h1 className="text-2xl font-semibold text-brand">Thank you!</h1>
             <p className="mt-2 text-base text-slate-600">Your feedback has been recorded and shared with your project manager.</p>
           </div>
         )}
@@ -146,7 +148,7 @@ export default function CsatSurveyPage() {
         {state.kind === 'form' && (
           <form onSubmit={submit} className="space-y-6">
             <div>
-              <h1 className="text-xl font-semibold text-slate-800">How did your migration go?</h1>
+              <h1 className="text-2xl font-semibold text-brand">How did your migration go?</h1>
               <p className="mt-1 text-sm text-slate-500">
                 {state.info.customerName ? `${state.info.customerName} · ` : ''}
                 {state.info.projectName}
@@ -176,7 +178,7 @@ export default function CsatSurveyPage() {
                     onClick={() => setWentWell(o.v)}
                     aria-pressed={wentWell === o.v}
                     className={`h-11 rounded-lg border px-6 text-base font-medium transition-colors ${CHOICE_FOCUS} ${
-                      wentWell === o.v ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-200 bg-white text-slate-700 hover:bg-blue-50'
+                      wentWell === o.v ? CHOICE_ON : CHOICE_OFF
                     }`}
                   >
                     {o.label}
@@ -195,12 +197,20 @@ export default function CsatSurveyPage() {
 
             {formError && <p className="text-sm text-red-600">{formError}</p>}
 
-            <Button type="submit" isLoading={submitting} className="w-full">
-              Submit feedback
-            </Button>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="h-12 w-full rounded-xl bg-brand text-base font-semibold text-white shadow-md shadow-brand/20 transition-colors hover:bg-brand-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {submitting ? 'Submitting...' : 'Submit feedback'}
+            </button>
           </form>
         )}
-      </div>
+      </main>
+      <footer className="mx-auto mt-6 w-full max-w-2xl text-center text-xs text-slate-400">
+        <span className="font-semibold text-brand">CloudFuze</span> ·{' '}
+        <a href="https://www.cloudfuze.com" target="_blank" rel="noopener noreferrer" className="underline hover:text-slate-600">cloudfuze.com</a>
+      </footer>
     </div>
   );
 }
