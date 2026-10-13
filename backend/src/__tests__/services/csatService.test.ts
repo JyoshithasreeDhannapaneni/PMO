@@ -11,6 +11,7 @@ let mockTokenRow: Row | undefined;
 let mockClaimRowCount: number;
 let mockSendsToday: number;
 let mockAnsweredInTxn: boolean;
+let mockAccountAnswer: Row | undefined;
 
 const mockClientQuery = jest.fn(async (sql: string, _params?: unknown[]) => {
   if (/COUNT\(\*\)/.test(sql)) return { rows: [{ sends: mockSendsToday }], rowCount: 1 };
@@ -23,6 +24,7 @@ const mockClientQuery = jest.fn(async (sql: string, _params?: unknown[]) => {
 });
 const mockQuery = jest.fn(async (sql: string, _params?: unknown[]) => {
   if (/FROM users/.test(sql)) return { rows: [{ email: 'alice@cloudfuze.com' }], rowCount: 1 };
+  if (/JOIN projects p ON p.id = r.project_id/.test(sql)) return { rows: mockAccountAnswer ? [mockAccountAnswer] : [], rowCount: mockAccountAnswer ? 1 : 0 };
   if (/WHERE token_hash/.test(sql)) return { rows: mockTokenRow ? [mockTokenRow] : [], rowCount: mockTokenRow ? 1 : 0 };
   if (/FROM csat_requests\s+WHERE project_id/.test(sql)) return { rows: mockLatest, rowCount: mockLatest.length };
   if (/FROM projects/.test(sql)) return { rows: mockProject ? [mockProject] : [], rowCount: mockProject ? 1 : 0 };
@@ -80,6 +82,7 @@ beforeEach(() => {
   mockClaimRowCount = 1;
   mockSendsToday = 0;
   mockAnsweredInTxn = false;
+  mockAccountAnswer = undefined;
 });
 
 afterEach(() => {
@@ -257,6 +260,46 @@ describe('csatService.previewRequest', () => {
   it('is limited to an admin or the project’s own PM', async () => {
     expect((await rejection(csatService.previewRequest('p1', {}, { ...alice, role: 'VIEWER' }))).statusCode).toBe(403);
     expect((await rejection(csatService.previewRequest('p1', {}, { ...alice, name: 'Bob' }))).statusCode).toBe(403);
+  });
+});
+
+describe('C-SAT answered once per customer account', () => {
+  const siblingAnswer = () => ({
+    id: 'r9', project_id: 'p-email', recipient_email: 'c@acme.com', sent_from: 'alice@cloudfuze.com', sent_at: new Date(),
+    responded_at: new Date(), revoked_at: null, expired: false, via_project_name: 'acme — email migration',
+  });
+
+  it('lets every project of the account into Delta once any of its surveys is answered', async () => {
+    mockAccountAnswer = siblingAnswer();
+    const status = await csatService.getStatus('p1');
+    expect(status.state).toBe('responded');
+    expect(status.viaProjectId).toBe('p-email');
+    expect(status.viaProjectName).toBe('acme — email migration');
+    await expect(csatService.assertCanEnterDelta('p1')).resolves.toBeUndefined();
+  });
+
+  it('groups by client account (client_name, falling back to project name), not the contact name', async () => {
+    await rejection(csatService.assertCanEnterDelta('p1'));
+    const sql = String(mockQuery.mock.calls.find((c) => /JOIN projects p ON p.id = r.project_id/.test(String(c[0])))![0]);
+    expect(sql).toContain("COALESCE(NULLIF(TRIM(p.client_name), ''), p.name)");
+    expect(sql).not.toMatch(/customer_name/);
+    expect(sql).toContain('r.responded_at IS NOT NULL AND r.revoked_at IS NULL');
+  });
+
+  it('prefers the project’s own answer and does not mark it as coming from another project', async () => {
+    mockLatest = [{ ...liveRow(), responded_at: new Date(), recipient_email: 'c@acme.com', sent_at: new Date() }];
+    mockAccountAnswer = siblingAnswer();
+    expect((await csatService.getStatus('p1')).viaProjectId).toBeNull();
+  });
+
+  it('does not send another survey to an account that already answered', async () => {
+    mockAccountAnswer = siblingAnswer();
+    expect((await rejection(csatService.sendRequest('p1', { recipientEmail: 'c@acme.com' }, alice))).statusCode).toBe(409);
+    expect(mockSendEmail).not.toHaveBeenCalled();
+  });
+
+  it('still blocks when no project of the account has an answer', async () => {
+    expect((await rejection(csatService.assertCanEnterDelta('p1'))).code).toBe('CSAT_REQUIRED');
   });
 });
 

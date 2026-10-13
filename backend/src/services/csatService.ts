@@ -16,7 +16,7 @@ const MAX_MESSAGE_LENGTH = 2000;
 const MAX_NAME_LENGTH = 100;
 const MAX_COMMENT_LENGTH = 4000;
 const MAX_SENDS_PER_DAY = 5;
-const ALREADY_ANSWERED = 'The customer has already answered the C-SAT survey for this project';
+const ALREADY_ANSWERED = 'The customer has already answered the C-SAT survey for this account';
 
 // Recipients on these domains (or their subdomains) are colleagues, not customers.
 // Only CloudFuze's own M365 routing domain is internal; customers often use their own
@@ -50,6 +50,9 @@ export interface CsatStatus {
   respondedAt: string | null;
   // The latest unanswered link has passed its expiry: the customer can no longer answer it.
   expired: boolean;
+  // Set when the answer that satisfies the gate came from another project of the same account.
+  viaProjectId: string | null;
+  viaProjectName: string | null;
 }
 
 export interface CsatActor {
@@ -93,7 +96,7 @@ export function isEnteringDelta(fromPhase: string | null | undefined, toPhase: s
 }
 
 function toStatus(row: CsatRequestRow | undefined): CsatStatus {
-  if (!row) return { state: 'none', sentTo: null, sentFrom: null, sentAt: null, respondedAt: null, expired: false };
+  if (!row) return { state: 'none', sentTo: null, sentFrom: null, sentAt: null, respondedAt: null, expired: false, viaProjectId: null, viaProjectName: null };
   return {
     state: row.responded_at ? 'responded' : 'pending',
     sentTo: row.recipient_email,
@@ -101,8 +104,21 @@ function toStatus(row: CsatRequestRow | undefined): CsatStatus {
     sentAt: new Date(row.sent_at).toISOString(),
     respondedAt: row.responded_at ? new Date(row.responded_at).toISOString() : null,
     expired: !row.responded_at && !!row.expired,
+    viaProjectId: null,
+    viaProjectName: null,
   };
 }
+
+// A customer account is projects.client_name, falling back to the project name (the same key
+// All Projects groups by); customer_name is usually a contact person. One answered survey covers
+// every project of the account (e.g. its content, email and messaging migrations).
+const ACCOUNT_KEY = `LOWER(TRIM(COALESCE(NULLIF(TRIM(p.client_name), ''), p.name)))`;
+const ACCOUNT_ANSWER_SQL = `
+  SELECT r.*, FALSE AS expired, p.name AS via_project_name
+  FROM csat_requests r JOIN projects p ON p.id = r.project_id
+  WHERE r.responded_at IS NOT NULL AND r.revoked_at IS NULL
+    AND ${ACCOUNT_KEY} = (SELECT ${ACCOUNT_KEY} FROM projects p WHERE p.id = $1)
+  ORDER BY r.responded_at DESC LIMIT 1`;
 
 function validRating(value: unknown, field: string, required: boolean): number | null {
   if (value === undefined || value === null || value === '') {
@@ -170,8 +186,20 @@ class CsatService {
     return result.rows[0] as CsatRequestRow | undefined;
   }
 
+  private async accountAnswer(projectId: string): Promise<(CsatRequestRow & { via_project_name: string }) | undefined> {
+    const result = await query(ACCOUNT_ANSWER_SQL, [projectId]);
+    const row = result.rows[0] as (CsatRequestRow & { via_project_name: string }) | undefined;
+    return row?.responded_at ? row : undefined;
+  }
+
   async getStatus(projectId: string): Promise<CsatStatus> {
-    return toStatus(await this.latestRequest(projectId));
+    const own = await this.latestRequest(projectId);
+    if (own?.responded_at) return toStatus(own);
+    const answered = await this.accountAnswer(projectId);
+    if (answered) {
+      return { ...toStatus(answered), viaProjectId: answered.project_id, viaProjectName: answered.via_project_name };
+    }
+    return toStatus(own);
   }
 
   // The one gate for every path into DELTA (project edit and phase auto-advance).
@@ -249,8 +277,8 @@ class CsatService {
     if (message.length > MAX_MESSAGE_LENGTH) throw new AppError(`Message must be at most ${MAX_MESSAGE_LENGTH} characters`, 400);
     const customerName = validCustomerName(input.customerName, project.customer_name);
 
-    const current = await this.latestRequest(projectId);
-    if (current?.responded_at) throw new AppError(ALREADY_ANSWERED, 409);
+    const current = await this.getStatus(projectId);
+    if (current.state === 'responded') throw new AppError(ALREADY_ANSWERED, 409);
 
 
     const token = crypto.randomBytes(32).toString('hex');
@@ -279,7 +307,7 @@ class CsatService {
       // Re-checked after the revoke has locked the unanswered rows: a customer answer that
       // committed since the check above must not be buried under a new pending request.
       const answered = await client.query(
-        `SELECT id FROM csat_requests WHERE project_id = $1 AND responded_at IS NOT NULL AND revoked_at IS NULL LIMIT 1`,
+        ACCOUNT_ANSWER_SQL,
         [projectId]
       );
       if (answered.rows.length > 0) throw new AppError(ALREADY_ANSWERED, 409);

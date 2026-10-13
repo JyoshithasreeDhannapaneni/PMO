@@ -1576,7 +1576,10 @@ export function ProjectDetail({ project }: ProjectDetailProps) {
               <div className="w-full text-xs text-blue-600">
                 C-SAT:{' '}
                 {csat.state === 'responded' && csat.respondedAt && (
-                  <span className="font-medium text-green-700">answered on {formatDate(csat.respondedAt)}</span>
+                  <span className="font-medium text-green-700">
+                    answered on {formatDate(csat.respondedAt)}
+                    {csat.viaProjectName && <> for {csat.viaProjectName} (same customer account)</>}
+                  </span>
                 )}
                 {csat.state === 'pending' && (
                   <span className={csat.expired ? 'font-medium text-red-600' : 'font-medium text-amber-700'}>

@@ -57,6 +57,9 @@ export interface CsatStatus {
   sentAt: string | null;
   respondedAt: string | null;
   expired: boolean;
+  // Set when the answer came from another project of the same customer account.
+  viaProjectId: string | null;
+  viaProjectName: string | null;
 }
 
 // Mirrors backend csatService validation so the forms reject what the API would.

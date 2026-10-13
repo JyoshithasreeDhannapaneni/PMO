@@ -8,8 +8,10 @@ let mockProject: Row;
 let mockCsatRows: Row[];
 let mockPhaseRow: Row | undefined;
 let mockNextPhase: string | null;
+let mockAccountRows: Row[];
 
 const mockQuery = jest.fn(async (sql: string, _params?: unknown[]) => {
+  if (/JOIN projects p ON p.id = r.project_id/.test(sql)) return { rows: mockAccountRows, rowCount: mockAccountRows.length };
   if (/FROM csat_requests/.test(sql)) return { rows: mockCsatRows, rowCount: mockCsatRows.length };
   if (/FROM project_phases pp/.test(sql)) return { rows: mockPhaseRow ? [mockPhaseRow] : [], rowCount: mockPhaseRow ? 1 : 0 };
   if (/SELECT phase_name FROM project_phases/.test(sql)) return { rows: mockNextPhase ? [{ phase_name: mockNextPhase }] : [], rowCount: mockNextPhase ? 1 : 0 };
@@ -52,6 +54,7 @@ beforeEach(() => {
   mockCsatRows = [];
   mockPhaseRow = undefined;
   mockNextPhase = null;
+  mockAccountRows = [];
 });
 
 describe('C-SAT gate on projectService.update', () => {
@@ -140,6 +143,24 @@ describe('C-SAT gate on phaseService.update (phase auto-advance)', () => {
     await phaseService.update(phaseRow.id, { status: 'COMPLETED' } as never);
     expect(mockQuery.mock.calls.some((c) => /csat_requests/.test(String(c[0])))).toBe(false);
     expect(mockNotifyDelta).not.toHaveBeenCalled();
+  });
+});
+
+describe('C-SAT gate across a customer account', () => {
+  it('a sibling project answered: this project moves into DELTA without its own survey', async () => {
+    mockProject = project('ONETIME_MIGRATION');
+    mockAccountRows = [{ ...answered, project_id: 'p-content', via_project_name: 'acme content' }];
+    await projectService.update('p1', { phase: 'DELTA' } as never);
+    expect(projectUpdates()).toHaveLength(1);
+    expect(mockNotifyDelta).toHaveBeenCalledWith('p1');
+  });
+
+  it('a sibling only has a pending survey: still blocked', async () => {
+    mockProject = project('ONETIME_MIGRATION');
+    mockAccountRows = [{ ...pending, project_id: 'p-content' }];
+    const err = await rejection(projectService.update('p1', { phase: 'DELTA' } as never));
+    expect(err.code).toBe('CSAT_REQUIRED');
+    expect(projectUpdates()).toHaveLength(0);
   });
 });
 
