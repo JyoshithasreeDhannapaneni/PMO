@@ -451,6 +451,8 @@ async function runMigrations() {
     await execute(`CREATE INDEX IF NOT EXISTS idx_csat_requests_project ON csat_requests (project_id, sent_at DESC)`);
     // Name the PM addressed the survey to (greeting + survey page), 2026-10-14.
     await execute(`ALTER TABLE csat_requests ADD COLUMN IF NOT EXISTS recipient_name VARCHAR(255)`);
+    // Project name as the PM wrote it in the email (shown on the survey page), when edited.
+    await execute(`ALTER TABLE csat_requests ADD COLUMN IF NOT EXISTS project_label VARCHAR(255)`);
   } catch (e) { logger.error(`csat_requests migration failed: ${(e as Error).message}`); }
   try { await execute(`ALTER TABLE customer_success_entries ALTER COLUMN customer_name DROP NOT NULL`); } catch {}
 

@@ -98,18 +98,19 @@ export function useCsatStatus(projectId: string | null) {
 export function useSendCsatRequest() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ projectId, recipientEmail, customerName, message }: { projectId: string; recipientEmail: string; customerName?: string; message?: string }) =>
-      projectsApi.sendCsatRequest(projectId, { recipientEmail, customerName, message }),
+    mutationFn: ({ projectId, recipientEmail, customerName, projectName, message }: {
+      projectId: string; recipientEmail: string; customerName?: string; projectName?: string; message?: string;
+    }) => projectsApi.sendCsatRequest(projectId, { recipientEmail, customerName, projectName, message }),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['csat-status', variables.projectId] });
     },
   });
 }
 
-export function useCsatEmailPreview(projectId: string | null, customerName: string, message: string) {
+export function useCsatEmailPreview(projectId: string | null, fields: { customerName: string; projectName: string; message: string }) {
   return useQuery({
-    queryKey: ['csat-preview', projectId, customerName, message],
-    queryFn: () => projectsApi.previewCsatEmail(projectId as string, { customerName, message }),
+    queryKey: ['csat-preview', projectId, fields.customerName, fields.projectName, fields.message],
+    queryFn: () => projectsApi.previewCsatEmail(projectId as string, fields),
     enabled: !!projectId,
     placeholderData: (previous) => previous,
     staleTime: 60_000,

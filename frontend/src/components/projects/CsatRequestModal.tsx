@@ -8,7 +8,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { useCsatEmailPreview, useSendCsatRequest } from '@/hooks/useProjects';
 import {
-  CSAT_EMAIL_RE, CSAT_MAX_MESSAGE_LENGTH, CSAT_MAX_NAME_LENGTH, CSAT_REQUIRED_EVENT, CsatRequiredDetail,
+  CSAT_EMAIL_RE, CSAT_MAX_MESSAGE_LENGTH, CSAT_MAX_NAME_LENGTH, CSAT_MAX_PROJECT_NAME_LENGTH, CSAT_REQUIRED_EVENT, CsatRequiredDetail,
 } from '@/services/api';
 
 const PREVIEW_DEBOUNCE_MS = 400;
@@ -22,17 +22,20 @@ export function CsatRequestModal() {
   const [detail, setDetail] = useState<CsatRequiredDetail | null>(null);
   const [email, setEmail] = useState('');
   const [customerName, setCustomerName] = useState('');
-  const [nameTouched, setNameTouched] = useState(false);
+  const [projectName, setProjectName] = useState('');
   const [message, setMessage] = useState('');
+  // Fields are filled from the project's defaults once; afterwards they are the PM's edits.
+  const [defaultsLoaded, setDefaultsLoaded] = useState(false);
+  const [edited, setEdited] = useState(false);
   const [emailError, setEmailError] = useState('');
-  const [previewInput, setPreviewInput] = useState({ customerName: '', message: '' });
+  const [previewInput, setPreviewInput] = useState({ customerName: '', projectName: '', message: '' });
   const sendRequest = useSendCsatRequest();
   const { showToast } = useToast();
   const { user } = useAuth();
 
   // The backend also checks the PM is this project's own; other roles can only read why they are blocked.
   const canSend = user?.role === 'ADMIN' || user?.role === 'PROJECT_MANAGER';
-  const preview = useCsatEmailPreview(detail && canSend ? detail.projectId : null, previewInput.customerName, previewInput.message);
+  const preview = useCsatEmailPreview(detail && canSend ? detail.projectId : null, previewInput);
   const previewData = preview.data?.data;
 
   useEffect(() => {
@@ -41,10 +44,12 @@ export function CsatRequestModal() {
       setDetail(d);
       setEmail(d.csat.sentTo ?? '');
       setCustomerName('');
-      setNameTouched(false);
+      setProjectName('');
       setMessage('');
+      setDefaultsLoaded(false);
+      setEdited(false);
       setEmailError('');
-      setPreviewInput({ customerName: '', message: '' });
+      setPreviewInput({ customerName: '', projectName: '', message: '' });
       sendRequest.reset();
     };
     window.addEventListener(CSAT_REQUIRED_EVENT, onRequired);
@@ -52,25 +57,36 @@ export function CsatRequestModal() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Pre-fill the project's contact name once, until the PM types their own.
   useEffect(() => {
-    if (!nameTouched && previewData?.defaultCustomerName && customerName === '') setCustomerName(previewData.defaultCustomerName);
-  }, [previewData?.defaultCustomerName, nameTouched, customerName]);
+    if (defaultsLoaded || !previewData) return;
+    setCustomerName(previewData.defaultCustomerName ?? '');
+    setProjectName(previewData.defaultProjectName);
+    setMessage(previewData.defaultMessage);
+    setDefaultsLoaded(true);
+  }, [previewData, defaultsLoaded]);
 
   useEffect(() => {
-    const t = setTimeout(() => setPreviewInput({ customerName: customerName.trim(), message: message.trim() }), PREVIEW_DEBOUNCE_MS);
+    if (!defaultsLoaded) return;
+    const t = setTimeout(
+      () => setPreviewInput({ customerName: customerName.trim(), projectName: projectName.trim(), message: message.trim() }),
+      PREVIEW_DEBOUNCE_MS
+    );
     return () => clearTimeout(t);
-  }, [customerName, message]);
+  }, [customerName, projectName, message, defaultsLoaded]);
 
   // Backdrop click and Escape only dismiss an untouched form, so typed input is not lost.
-  const edited = !!detail && (message.trim() !== '' || nameTouched || email.trim() !== (detail.csat.sentTo ?? ''));
+  const dirty = edited || (!!detail && email.trim() !== (detail.csat.sentTo ?? ''));
+  const editField = (set: (v: string) => void) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    set(e.target.value);
+    setEdited(true);
+  };
 
   useEffect(() => {
     if (!detail) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !edited) setDetail(null); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !dirty) setDetail(null); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [detail, edited]);
+  }, [detail, dirty]);
 
   if (!detail) return null;
 
@@ -87,7 +103,14 @@ export function CsatRequestModal() {
     }
     setEmailError('');
     sendRequest.mutate(
-      { projectId: detail.projectId, recipientEmail, customerName: customerName.trim() || undefined, message: message.trim() || undefined },
+      {
+        projectId: detail.projectId,
+        recipientEmail,
+        customerName: customerName.trim() || undefined,
+        // Unchanged defaults are left to the backend, which renders the same text.
+        projectName: projectName.trim() && projectName.trim() !== previewData?.defaultProjectName ? projectName.trim() : undefined,
+        message: message.trim() && message.trim() !== previewData?.defaultMessage ? message.trim() : undefined,
+      },
       {
         onSuccess: (res) => {
           const sentFrom = res.data?.sentFrom;
@@ -108,7 +131,7 @@ export function CsatRequestModal() {
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
-      onClick={() => { if (!edited) close(); }}
+      onClick={() => { if (!dirty) close(); }}
     >
       <div
         role="dialog"
@@ -150,10 +173,18 @@ export function CsatRequestModal() {
               <Input
                 label="Customer name"
                 value={customerName}
-                onChange={(e) => { setCustomerName(e.target.value); setNameTouched(true); }}
+                onChange={editField(setCustomerName)}
                 maxLength={CSAT_MAX_NAME_LENGTH}
                 placeholder="e.g. Joseph Vinsky"
                 helperText="Used in the greeting: “Hi <name>,”"
+              />
+              <Input
+                label="Project name (as the customer sees it)"
+                value={projectName}
+                onChange={editField(setProjectName)}
+                maxLength={CSAT_MAX_PROJECT_NAME_LENGTH}
+                placeholder="e.g. Acme email migration"
+                helperText="Shown in the subject, the email and the survey page"
               />
               <Input
                 label="Customer email"
@@ -164,14 +195,25 @@ export function CsatRequestModal() {
                 error={emailError}
                 autoFocus
               />
-              <Textarea
-                label="Personal note (optional)"
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                rows={4}
-                maxLength={CSAT_MAX_MESSAGE_LENGTH}
-                placeholder="Replaces the default intro paragraph. E.g. thanks for working with us on this migration..."
-              />
+              <div>
+                <Textarea
+                  label="Email message"
+                  value={message}
+                  onChange={editField(setMessage)}
+                  rows={5}
+                  maxLength={CSAT_MAX_MESSAGE_LENGTH}
+                  placeholder="Write the message the customer will read above the project name"
+                />
+                {previewData && message.trim() !== previewData.defaultMessage && (
+                  <button
+                    type="button"
+                    onClick={() => { setMessage(previewData.defaultMessage); setEdited(true); }}
+                    className="mt-1 text-xs font-medium text-blue-600 hover:underline"
+                  >
+                    Reset to the default message
+                  </button>
+                )}
+              </div>
               {sendRequest.isError && (
                 <p className="text-sm text-red-600">{errorMessage(sendRequest.error, 'Could not send the survey. Please try again.')}</p>
               )}

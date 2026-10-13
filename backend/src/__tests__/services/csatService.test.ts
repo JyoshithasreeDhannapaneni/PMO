@@ -163,6 +163,23 @@ describe('csatService.sendRequest', () => {
     }
   });
 
+  it('uses the project name the PM edited in the subject and body, and stores it for the survey page', async () => {
+    await csatService.sendRequest('p1', { recipientEmail: 'c@acme.com', projectName: ' Acme <Email> Migration ' }, alice);
+    const mail = mockSendEmail.mock.calls.map((c) => c[0] as SentMail & { subject: string }).find((m) => m.to === 'c@acme.com')!;
+    expect(mail.subject).toContain('Acme <Email> Migration');
+    expect(mail.html).toContain('Acme &lt;Email&gt; Migration');
+    expect(mail.html).not.toContain('Acme migration');
+    const insert = mockClientQuery.mock.calls.find((c) => /INSERT INTO csat_requests/.test(String(c[0])))!;
+    expect((insert[1] as unknown[])[6]).toBe('Acme <Email> Migration');
+  });
+
+  it('keeps the internal project name, stored as no override, when the PM leaves it unchanged', async () => {
+    await csatService.sendRequest('p1', { recipientEmail: 'c@acme.com', projectName: 'Acme migration' }, alice);
+    const insert = mockClientQuery.mock.calls.find((c) => /INSERT INTO csat_requests/.test(String(c[0])))!;
+    expect((insert[1] as unknown[])[6]).toBeNull();
+    expect((await rejection(csatService.sendRequest('p1', { recipientEmail: 'c@acme.com', projectName: 'x'.repeat(151) }, alice))).statusCode).toBe(400);
+  });
+
   it('greets the customer by the name the PM entered and stores it on the request', async () => {
     await csatService.sendRequest('p1', { recipientEmail: 'c@acme.com', customerName: '  Joseph <Vinsky>  ' }, alice);
     const mail = customerSends()[0];
@@ -253,6 +270,13 @@ describe('csatService.previewRequest', () => {
     expect(preview.html).not.toContain('cid:cloudfuze-logo');
     expect(preview.html).not.toMatch(/\/csat\/[0-9a-f]{64}/);
     expect(preview.defaultCustomerName).toBe('Acme');
+    expect(preview.defaultProjectName).toBe('Acme migration');
+    expect(preview.defaultMessage).toMatch(/finished its one-time migration phase/);
+    const untouched = await csatService.previewRequest('p1', {}, alice);
+    expect(untouched.html).toContain(untouched.defaultMessage.slice(0, 40));
+    const renamed = await csatService.previewRequest('p1', { projectName: 'Email migration' }, alice);
+    expect(renamed.subject).toContain('Email migration');
+    expect(renamed.html).toContain('Email migration');
     expect(mockSendEmail).not.toHaveBeenCalled();
     expect(mockClientQuery).not.toHaveBeenCalled();
   });
@@ -345,6 +369,8 @@ describe('csatService public form', () => {
     expect(await csatService.getPublicForm(token)).toEqual({ projectName: 'Acme migration', customerName: 'Acme' });
     mockTokenRow = { ...liveRow(), recipient_name: 'Joseph Vinsky' };
     expect((await csatService.getPublicForm(token)).customerName).toBe('Joseph Vinsky');
+    mockTokenRow = { ...liveRow(), project_label: 'Acme Email Migration' };
+    expect((await csatService.getPublicForm(token)).projectName).toBe('Acme Email Migration');
   });
 
   it('validates the answers', async () => {
