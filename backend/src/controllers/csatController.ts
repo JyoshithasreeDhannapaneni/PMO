@@ -9,9 +9,15 @@ export const csatController = {
 
   send: asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const actor = (req as any).user as CsatActor;
-    const { recipientEmail, message } = req.body ?? {};
-    const data = await csatService.sendRequest(req.params.id, { recipientEmail, message }, actor);
+    const { recipientEmail, customerName, message } = req.body ?? {};
+    const data = await csatService.sendRequest(req.params.id, { recipientEmail, customerName, message }, actor);
     res.status(201).json({ success: true, data, message: 'C-SAT survey sent' });
+  }),
+
+  preview: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const actor = (req as any).user as CsatActor;
+    const { customerName, message } = req.body ?? {};
+    res.json({ success: true, data: await csatService.previewRequest(req.params.id, { customerName, message }, actor) });
   }),
 
   // GET /api/csat/:token — public: what the customer's form shows.

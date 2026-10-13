@@ -63,6 +63,15 @@ export interface CsatStatus {
 export const CSAT_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 export const CSAT_MAX_MESSAGE_LENGTH = 2000;
 export const CSAT_MAX_COMMENT_LENGTH = 4000;
+export const CSAT_MAX_NAME_LENGTH = 100;
+
+// Rendered survey email for the PM to check before sending (backend csatService.previewRequest).
+export interface CsatEmailPreview {
+  subject: string;
+  html: string;
+  customerName: string;
+  defaultCustomerName: string | null;
+}
 
 // Fired by useUpdateProject when the backend refuses a move into Delta with CSAT_REQUIRED;
 // the CsatRequestModal mounted in the authenticated layout listens for it.
@@ -120,8 +129,13 @@ export const projectsApi = {
     return data;
   },
 
-  sendCsatRequest: async (id: string, body: { recipientEmail: string; message?: string }): Promise<ApiResponse<CsatStatus>> => {
+  sendCsatRequest: async (id: string, body: { recipientEmail: string; customerName?: string; message?: string }): Promise<ApiResponse<CsatStatus>> => {
     const { data } = await api.post(`/projects/${id}/csat-requests`, body);
+    return data;
+  },
+
+  previewCsatEmail: async (id: string, body: { customerName?: string; message?: string }): Promise<ApiResponse<CsatEmailPreview>> => {
+    const { data } = await api.post(`/projects/${id}/csat-requests/preview`, body);
     return data;
   },
 

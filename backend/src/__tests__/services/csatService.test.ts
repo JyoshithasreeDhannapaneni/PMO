@@ -160,6 +160,20 @@ describe('csatService.sendRequest', () => {
     }
   });
 
+  it('greets the customer by the name the PM entered and stores it on the request', async () => {
+    await csatService.sendRequest('p1', { recipientEmail: 'c@acme.com', customerName: '  Joseph <Vinsky>  ' }, alice);
+    const mail = customerSends()[0];
+    expect(mail.html).toContain('Hi Joseph &lt;Vinsky&gt;,');
+    const insert = mockClientQuery.mock.calls.find((c) => /INSERT INTO csat_requests/.test(String(c[0])))!;
+    expect((insert[1] as unknown[])[5]).toBe('Joseph <Vinsky>');
+  });
+
+  it('falls back to the project contact name and rejects an over-long name', async () => {
+    await csatService.sendRequest('p1', { recipientEmail: 'c@acme.com' }, alice);
+    expect(customerSends()[0].html).toContain('Hi Acme,');
+    expect((await rejection(csatService.sendRequest('p1', { recipientEmail: 'c@acme.com', customerName: 'x'.repeat(101) }, alice))).statusCode).toBe(400);
+  });
+
   it('gives the PM a confirmation that never contains the survey link', async () => {
     await csatService.sendRequest('p1', { recipientEmail: 'c@acme.com' }, alice);
     const toPm = sends().filter((m) => m.to === alice.email);
@@ -226,6 +240,26 @@ describe('csatService.sendRequest', () => {
   });
 });
 
+describe('csatService.previewRequest', () => {
+  it('renders exactly the email the customer would get, with the logo inlined and no live link', async () => {
+    const preview = await csatService.previewRequest('p1', { customerName: 'Joseph', message: 'Thanks <team>' }, alice);
+    expect(preview.subject).toContain('Acme migration');
+    expect(preview.html).toContain('Hi Joseph,');
+    expect(preview.html).toContain('Thanks &lt;team&gt;');
+    expect(preview.html).toContain('data:image/png;base64,AA==');
+    expect(preview.html).not.toContain('cid:cloudfuze-logo');
+    expect(preview.html).not.toMatch(/\/csat\/[0-9a-f]{64}/);
+    expect(preview.defaultCustomerName).toBe('Acme');
+    expect(mockSendEmail).not.toHaveBeenCalled();
+    expect(mockClientQuery).not.toHaveBeenCalled();
+  });
+
+  it('is limited to an admin or the project’s own PM', async () => {
+    expect((await rejection(csatService.previewRequest('p1', {}, { ...alice, role: 'VIEWER' }))).statusCode).toBe(403);
+    expect((await rejection(csatService.previewRequest('p1', {}, { ...alice, name: 'Bob' }))).statusCode).toBe(403);
+  });
+});
+
 describe('csatService.assertCanEnterDelta', () => {
   it('tells the PM when the pending survey link has expired', async () => {
     mockLatest = [{ ...liveRow(), expired: true, recipient_email: 'c@acme.com', sent_at: new Date() }];
@@ -266,6 +300,8 @@ describe('csatService public form', () => {
   it('shows only the project and customer name for a live link', async () => {
     mockTokenRow = liveRow();
     expect(await csatService.getPublicForm(token)).toEqual({ projectName: 'Acme migration', customerName: 'Acme' });
+    mockTokenRow = { ...liveRow(), recipient_name: 'Joseph Vinsky' };
+    expect((await csatService.getPublicForm(token)).customerName).toBe('Joseph Vinsky');
   });
 
   it('validates the answers', async () => {

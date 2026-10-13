@@ -55,6 +55,7 @@ router.post('/:id/rca-doc', requireAuth, rcaUpload.single('file'), projectContro
 // C-SAT survey for the move into Delta (role checks live in csatService.sendRequest)
 router.get('/:id/csat-requests', validate(projectIdSchema), csatController.getStatus);
 router.post('/:id/csat-requests', validate(projectIdSchema), csatController.send);
+router.post('/:id/csat-requests/preview', validate(projectIdSchema), csatController.preview);
 
 // DELETE /api/projects/by-client/:clientName - Delete all projects for a client (must be before /:id)
 router.delete('/by-client/:clientName', projectController.deleteClient);

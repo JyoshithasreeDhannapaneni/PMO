@@ -13,6 +13,7 @@ import { notificationService } from './notificationService';
 const TOKEN_TTL_DAYS = 30;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const MAX_MESSAGE_LENGTH = 2000;
+const MAX_NAME_LENGTH = 100;
 const MAX_COMMENT_LENGTH = 4000;
 const MAX_SENDS_PER_DAY = 5;
 const ALREADY_ANSWERED = 'The customer has already answered the C-SAT survey for this project';
@@ -71,6 +72,7 @@ interface CsatRequestRow {
   id: string;
   project_id: string;
   recipient_email: string;
+  recipient_name: string | null;
   sent_from: string | null;
   sent_at: Date;
   expires_at: Date;
@@ -112,6 +114,49 @@ function validRating(value: unknown, field: string, required: boolean): number |
   return n;
 }
 
+interface SurveyEmailInput {
+  customerName: string;
+  projectName: string;
+  message: string;
+  senderName: string;
+  link: string;
+}
+
+// One builder for the real email and the PM's preview, so the preview is exactly what is sent.
+function buildSurveyEmail(input: SurveyEmailInput): { subject: string; html: string } {
+  const greetingName = input.customerName ? escapeHtml(input.customerName) : 'there';
+  const intro = input.message
+    ? `<p style="margin:0 0 16px 0;">${escapeHtml(input.message).replace(/\n/g, '<br>')}</p>`
+    : `<p style="margin:0 0 16px 0;">Your migration has finished its one-time migration phase. Before we move on to the delta phase, we'd love to hear how it went. Your feedback helps us make every CloudFuze migration better.</p>`;
+  const body = `
+      <p style="margin:0 0 16px 0;">Hi ${greetingName},</p>
+      ${intro}
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:8px 0 20px 0;background:#E8EDFA;border-left:4px solid ${CLOUDFUZE_BLUE};border-radius:6px;">
+        <tr><td style="padding:12px 16px;font-size:14px;color:#334155;">
+          <span style="display:block;font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:${CLOUDFUZE_BLUE};">Project</span>
+          <strong>${escapeHtml(input.projectName)}</strong>
+        </td></tr>
+      </table>
+      <p style="margin:0;">It takes about a minute: rate the migration from 1 to 10 and tell us if it went well.</p>
+      <table role="presentation" cellpadding="0" cellspacing="0" align="center" style="margin:24px auto;">
+        <tr><td style="background:${CLOUDFUZE_BLUE};border-radius:8px;">
+          <a href="${input.link}" style="display:inline-block;padding:14px 36px;color:#ffffff;font-size:16px;font-weight:700;text-decoration:none;border-radius:8px;">Rate your migration</a>
+        </td></tr>
+      </table>
+      <p style="margin:0 0 20px 0;color:#64748b;font-size:12px;text-align:center;">This link is personal to you and works once. It expires in ${TOKEN_TTL_DAYS} days.</p>
+      <p style="margin:0;">Thank you,<br><strong style="color:${CLOUDFUZE_BLUE};">${escapeHtml(input.senderName)}</strong><br>CloudFuze</p>`;
+  return {
+    subject: `How did your CloudFuze migration go? — ${input.projectName}`,
+    html: customerEmail('How did your migration go?', body),
+  };
+}
+
+function validCustomerName(value: unknown, fallback: string | null): string {
+  const name = typeof value === 'string' ? value.trim() : '';
+  if (name.length > MAX_NAME_LENGTH) throw new AppError(`Customer name must be at most ${MAX_NAME_LENGTH} characters`, 400);
+  return name || (fallback || '').trim();
+}
+
 class CsatService {
   private async latestRequest(projectId: string): Promise<CsatRequestRow | undefined> {
     const result = await query(
@@ -147,11 +192,7 @@ class CsatService {
     );
   }
 
-  async sendRequest(
-    projectId: string,
-    input: { recipientEmail: string; message?: string | null },
-    actor: CsatActor
-  ): Promise<CsatStatus> {
+  private async projectForSender(projectId: string, actor: CsatActor): Promise<{ id: string; name: string; customer_name: string | null; project_manager: string | null }> {
     const projectResult = await query(
       `SELECT id, name, customer_name, project_manager FROM projects WHERE id = $1`,
       [projectId]
@@ -165,6 +206,36 @@ class CsatService {
     if (actor.role !== 'ADMIN' && !isOwnPm) {
       throw new AppError('Only an admin or the project manager of this project can send its C-SAT survey', 403);
     }
+    return project;
+  }
+
+  // What the customer will receive, for the PM to check before sending. The logo is inlined as a
+  // data URI and the button goes nowhere: no token exists until the survey is actually sent.
+  async previewRequest(
+    projectId: string,
+    input: { customerName?: string | null; message?: string | null },
+    actor: CsatActor
+  ): Promise<{ subject: string; html: string; customerName: string; defaultCustomerName: string | null }> {
+    const project = await this.projectForSender(projectId, actor);
+    const message = typeof input.message === 'string' ? input.message.trim() : '';
+    if (message.length > MAX_MESSAGE_LENGTH) throw new AppError(`Message must be at most ${MAX_MESSAGE_LENGTH} characters`, 400);
+    const customerName = validCustomerName(input.customerName, project.customer_name);
+    const { subject, html } = buildSurveyEmail({ customerName, projectName: project.name, message, senderName: actor.name, link: '#' });
+    const logo = cloudfuzeLogoImage();
+    return {
+      subject,
+      html: html.split(`cid:${logo.contentId}`).join(`data:${logo.contentType};base64,${logo.contentBase64}`),
+      customerName,
+      defaultCustomerName: project.customer_name ?? null,
+    };
+  }
+
+  async sendRequest(
+    projectId: string,
+    input: { recipientEmail: string; customerName?: string | null; message?: string | null },
+    actor: CsatActor
+  ): Promise<CsatStatus> {
+    const project = await this.projectForSender(projectId, actor);
 
     const recipientEmail = typeof input.recipientEmail === 'string' ? input.recipientEmail.trim().toLowerCase() : '';
     if (!EMAIL_RE.test(recipientEmail)) throw new AppError('Enter a valid customer email address', 400);
@@ -176,6 +247,7 @@ class CsatService {
     }
     const message = typeof input.message === 'string' ? input.message.trim() : '';
     if (message.length > MAX_MESSAGE_LENGTH) throw new AppError(`Message must be at most ${MAX_MESSAGE_LENGTH} characters`, 400);
+    const customerName = validCustomerName(input.customerName, project.customer_name);
 
     const current = await this.latestRequest(projectId);
     if (current?.responded_at) throw new AppError(ALREADY_ANSWERED, 409);
@@ -183,21 +255,8 @@ class CsatService {
 
     const token = crypto.randomBytes(32).toString('hex');
     const link = `${(process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/+$/, '')}/csat/${token}`;
-    const customer = escapeHtml(project.customer_name || 'there');
-    const body = `
-      <p>Hi ${customer},</p>
-      ${message ? `<p>${escapeHtml(message).replace(/\n/g, '<br>')}</p>` : `<p>Your migration project <strong>${escapeHtml(project.name)}</strong> has finished its one-time migration. Before we move on to the delta phase, we'd love to hear how it went.</p>`}
-      <p>It takes about a minute:</p>
-      <table role="presentation" cellpadding="0" cellspacing="0" align="center" style="margin:24px auto;">
-        <tr><td style="background:${CLOUDFUZE_BLUE};border-radius:8px;">
-          <a href="${link}" style="display:inline-block;padding:14px 32px;color:#ffffff;font-size:16px;font-weight:700;text-decoration:none;border-radius:8px;">Rate your migration</a>
-        </td></tr>
-      </table>
-      <p style="color:#64748b;font-size:12px;text-align:center;">This link is personal to you and works once. It expires in ${TOKEN_TTL_DAYS} days.</p>
-      <p>Thank you,<br><strong>${escapeHtml(actor.name)}</strong><br>CloudFuze</p>`;
-    const html = customerEmail('How did your migration go?', body);
+    const { subject, html } = buildSurveyEmail({ customerName, projectName: project.name, message, senderName: actor.name, link });
     const inlineImages = [cloudfuzeLogoImage()];
-    const subject = `How did your CloudFuze migration go? — ${project.name}`;
 
     // Record first (revoking earlier unanswered links), then send; undo if the send fails so a
     // project never shows "waiting" for a survey the customer never received.
@@ -225,9 +284,9 @@ class CsatService {
       );
       if (answered.rows.length > 0) throw new AppError(ALREADY_ANSWERED, 409);
       const inserted = await client.query(
-        `INSERT INTO csat_requests (project_id, recipient_email, token_hash, sent_by, expires_at)
-         VALUES ($1, $2, $3, $4, NOW() + ($5 || ' days')::interval) RETURNING id`,
-        [projectId, recipientEmail, hashToken(token), actor.id, String(TOKEN_TTL_DAYS)]
+        `INSERT INTO csat_requests (project_id, recipient_email, token_hash, sent_by, expires_at, recipient_name)
+         VALUES ($1, $2, $3, $4, NOW() + ($5 || ' days')::interval, $6) RETURNING id`,
+        [projectId, recipientEmail, hashToken(token), actor.id, String(TOKEN_TTL_DAYS), customerName || null]
       );
       return { id: inserted.rows[0].id as string, revokedIds: revoked.rows.map((r: { id: string }) => r.id) };
     });
@@ -301,7 +360,7 @@ class CsatService {
     const result = await query(`SELECT name, customer_name FROM projects WHERE id = $1`, [row.project_id]);
     const project = result.rows[0];
     if (!project) throw new AppError('This survey link is not valid.', 404);
-    return { projectName: project.name, customerName: project.customer_name ?? null };
+    return { projectName: project.name, customerName: row.recipient_name || project.customer_name || null };
   }
 
   async submitResponse(token: string, answers: CsatAnswers): Promise<void> {
