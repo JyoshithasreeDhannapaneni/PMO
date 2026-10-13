@@ -5,6 +5,7 @@ import { calculateDelay } from '../utils/delayCalculator';
 import { taskService } from './taskService';
 import { caseStudyService } from './caseStudyService';
 import { phaseWebhookService } from './phaseWebhookService';
+import { csatService, isEnteringDelta } from './csatService';
 import { v4 as uuidv4 } from 'uuid';
 
 const AM_CANONICAL = [
@@ -744,6 +745,8 @@ class ProjectService {
     if (data.notes !== undefined) { updates.push(`notes = $${params.length + 1}`); params.push(data.notes); }
     if (data.phase !== undefined) {
       const newPhase = data.phase.toUpperCase();
+      // Runs before any write in this update: a blocked move into Delta changes nothing.
+      if (isEnteringDelta(existing.phase, newPhase)) await csatService.assertCanEnterDelta(id);
       updates.push(`phase = $${params.length + 1}`); params.push(newPhase);
       if (newPhase !== (existing.phase || '').toUpperCase()) {
         updates.push(`phase_changed_at = NOW()`);
@@ -894,7 +897,7 @@ class ProjectService {
 
     // Notify the other internal application when a project newly enters DELTA phase
     // (not on every edit, and not if it was already DELTA before this update).
-    if (data.phase && data.phase.toUpperCase() === 'DELTA' && (existing.phase || '').toUpperCase() !== 'DELTA') {
+    if (data.phase && isEnteringDelta(existing.phase, data.phase)) {
       phaseWebhookService.notifyDeltaPhase(id).catch((err: any) => {
         logger.warn(`Delta-phase webhook trigger failed for project ${id}: ${err?.message}`);
       });

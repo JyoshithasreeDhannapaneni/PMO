@@ -5,11 +5,17 @@ import { selfHealService } from '../services/selfHealService';
 export class AppError extends Error {
   statusCode: number;
   isOperational: boolean;
+  // Optional machine-readable code + payload for clients that branch on a specific error
+  // (e.g. CSAT_REQUIRED opens the C-SAT popup instead of a generic "update failed").
+  code?: string;
+  details?: Record<string, unknown>;
 
-  constructor(message: string, statusCode: number) {
+  constructor(message: string, statusCode: number, code?: string, details?: Record<string, unknown>) {
     super(message);
     this.statusCode = statusCode;
     this.isOperational = true;
+    this.code = code;
+    this.details = details;
 
     Error.captureStackTrace(this, this.constructor);
   }
@@ -56,6 +62,7 @@ export const errorHandler = (
     success: false,
     error: {
       message: err instanceof AppError ? message : isDatabaseError ? message : err.message || message,
+      ...(err instanceof AppError && err.code ? { code: err.code, details: err.details } : {}),
     },
   });
 };

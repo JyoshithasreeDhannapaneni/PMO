@@ -39,7 +39,7 @@ api.interceptors.response.use(
     if (error.response?.status === 401 && typeof window !== 'undefined') {
       localStorage.removeItem('token');
       // Never redirect from the signed-out pages themselves — that's a reload loop.
-      const signedOutPages = ['/login', '/forgot-password', '/reset-password', '/auth/callback'];
+      const signedOutPages = ['/login', '/forgot-password', '/reset-password', '/auth/callback', '/csat'];
       if (!signedOutPages.some((p) => window.location.pathname.startsWith(p))) {
         window.location.href = '/login';
       }
@@ -49,6 +49,32 @@ api.interceptors.response.use(
 );
 
 // Projects API
+// C-SAT survey state for a project's move into Delta (backend csatService.CsatStatus).
+export interface CsatStatus {
+  state: 'none' | 'pending' | 'responded';
+  sentTo: string | null;
+  sentFrom: string | null;
+  sentAt: string | null;
+  respondedAt: string | null;
+}
+
+// Fired by useUpdateProject when the backend refuses a move into Delta with CSAT_REQUIRED;
+// the CsatRequestModal mounted in the authenticated layout listens for it.
+export const CSAT_REQUIRED_EVENT = 'pmo:csat-required';
+
+export interface CsatRequiredDetail {
+  projectId: string;
+  message: string;
+  csat: CsatStatus;
+}
+
+export function csatRequiredDetail(error: unknown, projectId: string): CsatRequiredDetail | null {
+  const res = (error as { response?: { status?: number; data?: { error?: { code?: string; message?: string; details?: { csat?: CsatStatus } } } } })?.response;
+  const err = res?.data?.error;
+  if (res?.status !== 409 || err?.code !== 'CSAT_REQUIRED' || !err.details?.csat) return null;
+  return { projectId, message: err.message || '', csat: err.details.csat };
+}
+
 export const projectsApi = {
   getAll: async (params?: {
     page?: number;
@@ -81,6 +107,16 @@ export const projectsApi = {
 
   update: async (id: string, project: UpdateProjectInput): Promise<ApiResponse<Project>> => {
     const { data } = await api.put(`/projects/${id}`, project);
+    return data;
+  },
+
+  getCsatStatus: async (id: string): Promise<ApiResponse<CsatStatus>> => {
+    const { data } = await api.get(`/projects/${id}/csat-requests`);
+    return data;
+  },
+
+  sendCsatRequest: async (id: string, body: { recipientEmail: string; message?: string }): Promise<ApiResponse<CsatStatus>> => {
+    const { data } = await api.post(`/projects/${id}/csat-requests`, body);
     return data;
   },
 

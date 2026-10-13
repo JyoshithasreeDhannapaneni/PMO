@@ -7,6 +7,19 @@ export interface EmailOptions {
   subject: string;
   html: string;
   text?: string;
+  // Mailbox to send as (defaults to ALERT_FROM_EMAIL). Sending as another user needs the
+  // Graph app's Mail.Send to cover that mailbox; a refusal surfaces as GraphSendError 403/404.
+  from?: string;
+  replyTo?: string;
+}
+
+export class GraphSendError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
 }
 
 const BRAND_COLOR = '#2563eb';
@@ -100,10 +113,16 @@ async function resolveTenantId(): Promise<string> {
   );
 }
 
-async function sendViaGraph(to: string, subject: string, html: string, cc?: string[]): Promise<void> {
+async function sendViaGraph(
+  to: string,
+  subject: string,
+  html: string,
+  cc?: string[],
+  opts: { from?: string; replyTo?: string } = {}
+): Promise<void> {
   const clientId = process.env.AZURE_CLIENT_ID || process.env.MICROSOFT_CLIENT_ID;
   const clientSecret = process.env.AZURE_CLIENT_SECRET || process.env.MICROSOFT_CLIENT_SECRET;
-  const fromEmail = process.env.ALERT_FROM_EMAIL || 'Bharath.Tummaganti@cloudfuze.com';
+  const fromEmail = opts.from || process.env.ALERT_FROM_EMAIL || 'Bharath.Tummaganti@cloudfuze.com';
 
   if (!clientId || !clientSecret) throw new Error('AZURE_CLIENT_ID and AZURE_CLIENT_SECRET must be set in .env');
 
@@ -127,7 +146,7 @@ async function sendViaGraph(to: string, subject: string, html: string, cc?: stri
     throw new Error(`Microsoft token request failed: ${detail}`);
   }
 
-  const sendRes = await fetch(`https://graph.microsoft.com/v1.0/users/${fromEmail}/sendMail`, {
+  const sendRes = await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(fromEmail)}/sendMail`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${tokenData.access_token}`,
@@ -139,15 +158,17 @@ async function sendViaGraph(to: string, subject: string, html: string, cc?: stri
         body: { contentType: 'HTML', content: html },
         toRecipients: [{ emailAddress: { address: to } }],
         ...(cc && cc.length > 0 ? { ccRecipients: cc.map((addr) => ({ emailAddress: { address: addr } })) } : {}),
+        ...(opts.replyTo ? { replyTo: [{ emailAddress: { address: opts.replyTo } }] } : {}),
       },
-      saveToSentItems: false,
+      // Sent as a person (e.g. a PM's C-SAT survey): keep it in their Sent Items.
+      saveToSentItems: !!opts.from,
     }),
   });
 
   if (!sendRes.ok) {
     const errText = await sendRes.text();
     logger.error(`[Graph/Email] sendMail failed (HTTP ${sendRes.status}): ${errText}`);
-    throw new Error(`Graph API sendMail failed (${sendRes.status}): ${errText}`);
+    throw new GraphSendError(`Graph API sendMail failed (${sendRes.status}): ${errText}`, sendRes.status);
   }
 }
 
@@ -164,7 +185,7 @@ class EmailService {
 
     for (const to of recipients) {
       try {
-        await sendViaGraph(to, options.subject, options.html, cc);
+        await sendViaGraph(to, options.subject, options.html, cc, { from: options.from, replyTo: options.replyTo });
         logger.info(`Email sent → ${to}${cc?.length ? ` (cc: ${cc.join(', ')})` : ''} | Subject: ${options.subject}`);
       } catch (err: any) {
         logger.error(`Email failed → ${to} | ${err.message}`);
