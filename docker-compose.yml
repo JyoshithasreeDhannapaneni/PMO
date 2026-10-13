@@ -4,7 +4,9 @@
 # Before running:
 #   1. Copy .env.example to .env
 #   2. Set SERVER_IP to your server's public domain (e.g. neutarapm.cftools.live)
-#   3. Change DB_PASSWORD to a strong value
+#   3. Set DB_PASSWORD (required — compose refuses to start without it). On a server whose
+#      postgres volume already exists, it must match the password that volume was created
+#      with (if DB_PASSWORD was never set, that is the old built-in compose default).
 #   4. Run:  docker compose up -d --build
 #
 # The app will be available at https://SERVER_IP (via system nginx → port 8091)
@@ -18,7 +20,7 @@ services:
     container_name: pmo-postgres
     environment:
       POSTGRES_USER:     ${DB_USER:-pmo_user}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-pmo_password}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set in the root .env}
       POSTGRES_DB:       ${DB_NAME:-pmo_tracker}
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -49,7 +51,7 @@ services:
       DB_HOST:     postgres
       DB_PORT:     5432
       DB_USER:     ${DB_USER:-pmo_user}
-      DB_PASSWORD: ${DB_PASSWORD:-pmo_password}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set in the root .env}
       DB_NAME:     ${DB_NAME:-pmo_tracker}
       PORT:            3001
       # backend/src/index.ts now defaults its bind address to 127.0.0.1 (loopback-only,
@@ -89,6 +91,8 @@ services:
         # Baked into the browser bundle at build time — must be the public URL
         NEXT_PUBLIC_API_URL: https://${SERVER_IP:-localhost}
         NEXT_PUBLIC_HOTJAR_ID: ${NEXT_PUBLIC_HOTJAR_ID:-}
+        NEXT_PUBLIC_JIRA_BASE_URL: ${NEXT_PUBLIC_JIRA_BASE_URL:-}
+        NEXT_PUBLIC_SHAREPOINT_ATTACHMENTS_URL: ${NEXT_PUBLIC_SHAREPOINT_ATTACHMENTS_URL:-}
     container_name: pmo-frontend
     environment:
       # Used by Next.js server-side rewrites to reach backend on internal network

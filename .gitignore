@@ -7,14 +7,14 @@ node_modules/
 dist/
 build/
 .next/
+# OneDrive conflict copies of the build folder, e.g. ".next(1)/"
+.next*/
 out/
 
 # Environment files
 .env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env.*
+!.env.example
 
 # Logs
 logs/
@@ -32,6 +32,9 @@ yarn-error.log*
 # OS
 .DS_Store
 Thumbs.db
+# OneDrive sync-conflict copies, e.g. "page(1).tsx"
+*(1).*
+*(1)/
 
 # Testing
 coverage/
@@ -53,6 +56,17 @@ CLAUDE.local.md
 # Old root-level MCP config that hardcoded a DB password (purged from history 2026-10-10).
 # Use .mcp.json with ${DATABASE_MCP_URL} instead.
 /mcp.json
+
+# User uploads (customer SOWs, screenshots) — runtime data, never source
+backend/uploads/
+uploads/
+
+# Keys, certificates and database dumps
+*.pem
+*.key
+*.p12
+*.pfx
+*.dump
 
 # Jira OAuth tokens (contains live access tokens)
 backend/.jira-oauth-tokens.json

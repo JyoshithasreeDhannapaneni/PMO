@@ -38,8 +38,8 @@ metadata:
 
 ## Known Issues
 - lucide-react build errors (os error 426) when OneDrive hasn't synced icon files locally. Fix: use only already-imported icons.
-- Root `mcp.json` (tracked in git) hardcodes a live-looking DB password — needs rotation; superseded by `.mcp.json`.
-- No CI/CD and no test infrastructure exist yet (see `.claude/memory/repository-map.md`).
+- Root `mcp.json` and `.claude/settings.local.json` were purged from git history on 2026-10-10, but the exposed DB password still needs rotating (and GitHub's cached PR #1 ref purged by Support).
+- No CI/CD yet. Backend has jest tests (`backend/src/__tests__/`); the frontend has none.
 - `formatDate()` timezone fix only applied to the shared `frontend/src/lib/utils.ts` copy — ~10 other pages have their own duplicated `fmtDate` with the same bug, not yet fixed.
 - Call/Email Hygiene's per-user error-swallowing bug was fixed, but the underlying `Calendars.Read` Graph permission gap it was masking may still need Azure admin action to fully resolve.
 

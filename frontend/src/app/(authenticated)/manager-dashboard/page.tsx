@@ -94,6 +94,7 @@ function sumStats(stats: ManagerStat[]) {
 // ─── Jira Excel upload banner ────────────────────────────────────────────────
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+const DEFAULT_JIRA_BASE_URL = (process.env.NEXT_PUBLIC_JIRA_BASE_URL || 'https://cf2020.atlassian.net').replace(/\/+$/, '');
 
 function ExcelUploadBanner() {
   const { data, isLoading, refetch } = useJiraExcelStatus();
@@ -2086,7 +2087,7 @@ export default function ManagerDashboardPage() {
   const { data: jiraEngineersData } = useJiraEngineers();
   const allJiraEngineers: any[] = jiraEngineersData?.data?.engineers ?? [];
   const jiraAvailable: boolean = allJiraEngineers.length > 0;
-  const jiraBaseUrl: string = jiraEngineersData?.jiraBaseUrl ?? 'https://cf2020.atlassian.net';
+  const jiraBaseUrl: string = jiraEngineersData?.jiraBaseUrl ?? DEFAULT_JIRA_BASE_URL;
 
   const { data: emailHygieneData } = useEmailHygiene();
   const allHygieneMetrics: any[] = emailHygieneData?.data?.metrics ?? [];
@@ -2271,7 +2272,7 @@ export default function ManagerDashboardPage() {
 
 // ─── Observations tab ─────────────────────────────────────────────────────────
 
-const JIRA_BASE = 'https://cf2020.atlassian.net/browse';
+const JIRA_BASE = `${DEFAULT_JIRA_BASE_URL}/browse`;
 
 interface ObservedPattern {
   id: number;
