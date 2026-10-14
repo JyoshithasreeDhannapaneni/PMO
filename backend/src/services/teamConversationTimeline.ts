@@ -32,6 +32,7 @@
 
 import axios, { type AxiosInstance } from 'axios';
 import { logger } from '../utils/logger';
+import { parseEmailChain } from './emailChainParser';
 
 const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
 const CF_DOMAIN = 'cloudfuze.com';
@@ -157,7 +158,7 @@ export function isMeetingMessage(m: RawGraphMessage): boolean {
   return !!m.meetingMessageType && m.meetingMessageType !== 'none';
 }
 
-async function fetchAll(client: AxiosInstance, url: string, cap = 200): Promise<RawGraphMessage[]> {
+async function fetchAll(client: AxiosInstance, url: string, cap = MAILBOX_LIST_CAP): Promise<RawGraphMessage[]> {
   const msgs: RawGraphMessage[] = [];
   let next: string | null = url;
   while (next && msgs.length < cap) {
@@ -177,7 +178,63 @@ async function fetchAll(client: AxiosInstance, url: string, cap = 200): Promise<
 // collection -- it comes back populated on actual eventMessage items and simply absent
 // (undefined) on everything else, which isMeetingMessage() above already treats as "not a
 // meeting message". Verified live: this form returns 200 where the plain field 400s.
-const SELECT_FIELDS = 'id,internetMessageId,conversationId,subject,bodyPreview,body,from,toRecipients,receivedDateTime,sentDateTime,microsoft.graph.eventMessage/meetingMessageType';
+// Mailboxes hold ~1,000-2,000+ messages (mostly internal) in a scoring window plus its
+// customer lookback. Listing used to fetch full bodies and stop at 200 messages, which Graph
+// returned oldest-first, so the scoring week's own customer mail was never seen (2026-10-14:
+// 720 customer emails missed in 12 mailboxes for one week; Speed/Resolution fell to their
+// defaults for everyone). Now: list light fields newest-first with a high cap, then fetch
+// bodies only for the customer-facing messages.
+const LIST_FIELDS = 'id,internetMessageId,conversationId,subject,bodyPreview,from,toRecipients,receivedDateTime,sentDateTime,microsoft.graph.eventMessage/meetingMessageType';
+const MAILBOX_LIST_CAP = 6000;
+const BODY_BATCH_SIZE = 20; // Graph JSON batching limit
+const BODY_BATCH_PARALLEL = 4;
+const BODY_FETCH_ATTEMPTS = 4;
+
+// Fills in `body` for messages listed without it, via Graph $batch (20 per request). A
+// message whose body cannot be fetched keeps its 255-character bodyPreview.
+async function fetchBodies(client: AxiosInstance, userPath: string, msgs: RawGraphMessage[]): Promise<void> {
+  const missing = msgs.filter((m) => !m.body);
+  const chunks: RawGraphMessage[][] = [];
+  for (let i = 0; i < missing.length; i += BODY_BATCH_SIZE) chunks.push(missing.slice(i, i + BODY_BATCH_SIZE));
+  const fetchChunk = async (chunk: RawGraphMessage[]) => {
+    // Graph throttles inside a batch per item (429/503 with Retry-After), so those items are
+    // retried a few times instead of silently falling back to the 255-character preview.
+    let pending = chunk;
+    for (let attempt = 0; attempt < BODY_FETCH_ATTEMPTS && pending.length > 0; attempt++) {
+      let waitSeconds = 0;
+      const retry: RawGraphMessage[] = [];
+      try {
+        const res: any = await client.post('/$batch', {
+          requests: pending.map((m, idx) => ({
+            id: String(idx),
+            method: 'GET',
+            url: `/users/${userPath}/messages/${encodeURIComponent(m.id)}?$select=body`,
+          })),
+        });
+        for (const r of res.data?.responses ?? []) {
+          const target = pending[Number(r.id)];
+          if (!target) continue;
+          if (r.status === 200 && r.body?.body) target.body = r.body.body;
+          else if (r.status === 429 || r.status === 503 || r.status === 504) {
+            retry.push(target);
+            waitSeconds = Math.max(waitSeconds, Number(r.headers?.['Retry-After'] ?? r.headers?.['retry-after']) || 2);
+          }
+        }
+      } catch (err: any) {
+        logger.warn(`[TeamTimeline] Body batch failed for ${decodeURIComponent(userPath)}: ${err?.message}`);
+        retry.push(...pending);
+        waitSeconds = 2;
+      }
+      pending = retry;
+      if (pending.length > 0 && attempt < BODY_FETCH_ATTEMPTS - 1) await new Promise((r) => setTimeout(r, Math.min(waitSeconds, 30) * 1000));
+    }
+  };
+  for (let i = 0; i < chunks.length; i += BODY_BATCH_PARALLEL) {
+    await Promise.all(chunks.slice(i, i + BODY_BATCH_PARALLEL).map(fetchChunk));
+  }
+  const failed = missing.filter((m) => !m.body).length;
+  if (failed > 0) logger.warn(`[TeamTimeline] ${failed}/${missing.length} message bodies unavailable for ${decodeURIComponent(userPath)}; using previews`);
+}
 
 export interface TimelineEntry {
   messageId: string;
@@ -199,6 +256,9 @@ export interface TimelineEntry {
   teamMemberEmail?: string;   // kind === 'team'
   teamMemberName?: string;    // kind === 'team'
   isAcknowledgment?: boolean; // kind === 'customer' -- precomputed, free heuristic only
+  // Only what this message newly says: the quoted reply chain below it removed. `text` keeps
+  // the whole body (existing scoring and alerts read it unchanged).
+  newText?: string;
 }
 
 export interface ConversationTimeline {
@@ -219,6 +279,14 @@ export function messageText(m: RawGraphMessage): string {
   return m.body?.content ? stripHtml(m.body.content) : (m.bodyPreview ?? '');
 }
 
+// The newest message in a reply chain (everything above the first quoted "From:/Sent:" block
+// or "On <date>, <name> wrote:" line), whitespace-collapsed like messageText.
+export function newestMessageText(m: RawGraphMessage): string {
+  if (!m.body?.content) return m.bodyPreview ?? '';
+  const newest = parseEmailChain(m.body.content, { name: null, email: null, timestamp: null })[0]?.body ?? '';
+  return newest.replace(/\s+/g, ' ').trim();
+}
+
 /**
  * Fetches every tracked member's external sent + received mail in [since, until] and
  * merges it into one timeline per conversationId, deduping the customer's own message
@@ -232,7 +300,7 @@ export async function buildTeamTimelines(
   members: { email: string; name: string }[],
   since: string,
   until?: string,
-  batchSize = 3,
+  batchSize = 6,
   // How much further back than `since` to reach when fetching the CUSTOMER side of the
   // conversation only. 0 (default, used by the SLA breach checker's narrow recent-only
   // window) means "same as since" -- unchanged behavior. A hygiene scoring window that
@@ -256,38 +324,84 @@ export async function buildTeamTimelines(
     : since;
 
   const seenCustomerKeys = new Map<string, TimelineEntry>(); // dedup key -> the entry already kept
-  const timelines = new Map<string, ConversationTimeline>();
+  const entries: TimelineEntry[] = [];
+
+  // Graph's conversationId is per mailbox: the same thread has a different id in each
+  // member's mailbox. A customer email that lands in two mailboxes links those two ids, so
+  // they are merged into one thread (the first-seen id wins). Without this, a colleague's
+  // reply sent from their own mailbox never met the customer email it answered: every such
+  // exchange looked unanswered and Speed/Resolution fell back to defaults for everyone.
+  const threadParent = new Map<string, string>();
+  const threadRoot = (id: string): string => {
+    let root = id;
+    while (threadParent.get(root) !== undefined && threadParent.get(root) !== root) root = threadParent.get(root)!;
+    threadParent.set(id, root);
+    return root;
+  };
+  const linkThreads = (keep: string, other: string) => {
+    const a = threadRoot(keep);
+    const b = threadRoot(other);
+    if (a !== b) threadParent.set(b, a);
+  };
 
   function addEntry(entry: TimelineEntry) {
-    let tl = timelines.get(entry.conversationId);
-    if (!tl) { tl = { conversationId: entry.conversationId, entries: [] }; timelines.set(entry.conversationId, tl); }
-    tl.entries.push(entry);
+    entries.push(entry);
   }
 
+  const customerKey = (m: RawGraphMessage) => m.internetMessageId
+    ? `imid:${m.internetMessageId}`
+    : `heur:${m.conversationId}:${m.subject ?? ''}:${Math.round(new Date(m.receivedDateTime!).getTime() / 60000)}`;
+
+  // 1. List every mailbox (light fields, `batchSize` mailboxes at a time).
+  type Listed = { member: { email: string; name: string }; userPath: string; sentRaw: RawGraphMessage[]; recvRaw: RawGraphMessage[] };
+  const listed: Listed[] = [];
   for (let i = 0; i < members.length; i += batchSize) {
     const batch = members.slice(i, i + batchSize);
-    const settled = await Promise.allSettled(batch.map(async (m) => {
+    const settled = await Promise.allSettled(batch.map(async (m): Promise<Listed> => {
       const userPath = encodeURIComponent(m.email);
-      const [sentRaw, recvRaw] = await Promise.all([
-        fetchAll(client, `/users/${userPath}/mailFolders/SentItems/messages?$filter=sentDateTime ge ${since}${untilSent}&$select=${SELECT_FIELDS}&$top=100`),
-        fetchAll(client, `/users/${userPath}/messages?$filter=receivedDateTime ge ${customerSince}${untilRecv}&$select=${SELECT_FIELDS}&$top=100`),
+      const [sentListed, recvListed] = await Promise.all([
+        fetchAll(client, `/users/${userPath}/mailFolders/SentItems/messages?$filter=sentDateTime ge ${since}${untilSent}&$orderby=sentDateTime desc&$select=${LIST_FIELDS}&$top=1000`),
+        fetchAll(client, `/users/${userPath}/messages?$filter=receivedDateTime ge ${customerSince}${untilRecv}&$orderby=receivedDateTime desc&$select=${LIST_FIELDS}&$top=1000`),
       ]);
-      return { member: m, sentRaw, recvRaw };
+      return {
+        member: m,
+        userPath,
+        sentRaw: sentListed.filter((x) => !isMeetingMessage(x) && !!x.sentDateTime && !!x.toRecipients?.some((rec) => isExternal(rec.emailAddress.address))),
+        recvRaw: recvListed.filter((x) => !isMeetingMessage(x) && !!x.receivedDateTime && !!x.from?.emailAddress?.address && isExternal(x.from.emailAddress.address)),
+      };
     }));
-
     for (const r of settled) {
       if (r.status === 'rejected') { logger.warn(`[TeamTimeline] Skipped a member: ${r.reason?.message}`); continue; }
-      const { member, sentRaw, recvRaw } = r.value;
+      listed.push(r.value);
+    }
+  }
 
+  // 2. Fetch bodies once per message actually used: every sent reply, and each customer email
+  // only from the first mailbox that has it (the other copies just add recipients).
+  const bodyOwner = new Set<string>();
+  const needBodies = listed.map((l) => {
+    const recv = l.recvRaw.filter((m) => {
+      const key = customerKey(m);
+      if (bodyOwner.has(key)) return false;
+      bodyOwner.add(key);
+      return true;
+    });
+    return { userPath: l.userPath, msgs: [...l.sentRaw, ...recv] };
+  });
+  for (let i = 0; i < needBodies.length; i += batchSize) {
+    await Promise.all(needBodies.slice(i, i + batchSize).map((n) => fetchBodies(client, n.userPath, n.msgs)));
+  }
+
+  // 3. Build entries in roster order (the first mailbox holding a customer email keeps it).
+  for (const { member, sentRaw, recvRaw } of listed) {
       for (const m of sentRaw) {
-        if (isMeetingMessage(m)) continue;
-        if (!m.toRecipients?.some((rec) => isExternal(rec.emailAddress.address)) || !m.sentDateTime) continue;
         addEntry({
           messageId: m.id,
           conversationId: m.conversationId,
-          time: new Date(m.sentDateTime).getTime(),
+          time: new Date(m.sentDateTime!).getTime(),
           kind: 'team',
           text: messageText(m),
+          newText: newestMessageText(m),
           subject: m.subject ?? '',
           teamMemberEmail: member.email,
           teamMemberName: member.name,
@@ -295,18 +409,15 @@ export async function buildTeamTimelines(
       }
 
       for (const m of recvRaw) {
-        if (isMeetingMessage(m)) continue;
-        const fromAddr = m.from?.emailAddress?.address;
-        if (!fromAddr || !isExternal(fromAddr) || !m.receivedDateTime) continue;
-        const time = new Date(m.receivedDateTime).getTime();
+        const fromAddr = m.from!.emailAddress!.address;
+        const time = new Date(m.receivedDateTime!).getTime();
         // Dedup: same internetMessageId (or, if missing, same conversation+subject+minute)
         // means this is another recipient's copy of a message already recorded -- merge
         // this member into its recipient list instead of creating a second entry.
-        const dedupKey = m.internetMessageId
-          ? `imid:${m.internetMessageId}`
-          : `heur:${m.conversationId}:${m.subject ?? ''}:${Math.round(time / 60000)}`;
+        const dedupKey = customerKey(m);
         const existing = seenCustomerKeys.get(dedupKey);
         if (existing) {
+          if (m.conversationId) linkThreads(existing.conversationId, m.conversationId);
           if (!existing.recipients!.some((r) => r.email === member.email)) {
             existing.recipients!.push({ email: member.email, name: member.name });
           }
@@ -321,6 +432,7 @@ export async function buildTeamTimelines(
           time,
           kind: 'customer',
           text,
+          newText: newestMessageText(m),
           subject: m.subject ?? '',
           customerEmail: fromAddr,
           recipients: [{ email: member.email, name: member.name }],
@@ -329,9 +441,15 @@ export async function buildTeamTimelines(
         seenCustomerKeys.set(dedupKey, entry);
         addEntry(entry);
       }
-    }
   }
 
+  const timelines = new Map<string, ConversationTimeline>();
+  for (const entry of entries) {
+    const id = threadRoot(entry.conversationId);
+    let tl = timelines.get(id);
+    if (!tl) { tl = { conversationId: id, entries: [] }; timelines.set(id, tl); }
+    tl.entries.push(entry);
+  }
   for (const tl of timelines.values()) tl.entries.sort((a, b) => a.time - b.time);
   return timelines;
 }

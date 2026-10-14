@@ -242,6 +242,20 @@ export const emailHygieneController = {
     res.json({ success: true, data: emailHygieneService.getMonthFinalizeState() });
   }),
 
+  // POST /api/email-hygiene/rescore-current-month (ADMIN): re-scores this month's stored
+  // weeks and days with the current scoring; earlier months are not touched.
+  triggerRescoreCurrentMonth: asyncHandler(async (_req: Request, res: Response): Promise<void> => {
+    const result = emailHygieneService.triggerRescoreCurrentMonth();
+    res.status(result.alreadyRunning ? 200 : 202).json({
+      success: true,
+      data: { alreadyRunning: result.alreadyRunning, ...emailHygieneService.getRescoreState() },
+    });
+  }),
+
+  getRescoreStatus: asyncHandler(async (_req: Request, res: Response): Promise<void> => {
+    res.json({ success: true, data: emailHygieneService.getRescoreState() });
+  }),
+
   exportExcel: asyncHandler(async (_req: Request, res: Response): Promise<void> => {
     const { metrics, teamHygiene, segmentHeads } = await emailHygieneService.getHygieneMetrics(false);
     sendWorkbook(

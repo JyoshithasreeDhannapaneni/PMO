@@ -253,6 +253,25 @@ export function computeSegmentHeads(teamHygiene: TeamHygieneRow[]): Record<'ENT'
 // below without reintroducing a live sync from a plain page load.
 const CACHE_TTL_MS = 90 * 60 * 1000;
 
+export interface HygieneScoringRules {
+  // Score only what the person newly wrote, not the quoted chain under it (quoted greetings,
+  // thanks and sentences otherwise inflate Tone, Completeness, Relevancy and Accuracy).
+  newestTextOnly: boolean;
+  // A follow-up in an active thread (the same person wrote in this conversation within
+  // FOLLOW_UP_WINDOW_MS) is not expected to open with "Hi ...".
+  followUpGreetingOptional: boolean;
+  // Both rules apply only to messages sent at or after this instant (epoch ms), so earlier
+  // months always score exactly as they did when they were recorded.
+  effectiveFrom: number;
+}
+// Product decision 2026-10-14: the new rules start with October 2026 (IST); September and
+// earlier stay on the original rules even if those windows are ever recomputed.
+export const SCORING_RULES_EFFECTIVE_FROM = Date.parse('2026-09-30T18:30:00.000Z'); // 1 Oct 2026 00:00 IST
+export const ORIGINAL_SCORING_RULES: HygieneScoringRules = { newestTextOnly: false, followUpGreetingOptional: false, effectiveFrom: Infinity };
+export const ACTIVE_SCORING_RULES: HygieneScoringRules = { newestTextOnly: true, followUpGreetingOptional: true, effectiveFrom: SCORING_RULES_EFFECTIVE_FROM };
+const FOLLOW_UP_WINDOW_MS = 48 * 3600 * 1000;
+const GREETING_RE = /\b(hi|hello|dear|good morning|good afternoon|greetings)\b/i;
+
 // 2026-10-05: removed from email hygiene only (product decision). Kept out here rather than
 // via email_hygiene_members.is_active because that table also drives call hygiene and SLA
 // breach alerts, which should still include them.
@@ -321,7 +340,8 @@ const STOP_WORDS = new Set([
 
 function scoreRelevancy(
   customerText: string,
-  cfReplyText: string
+  cfReplyText: string,
+  greetingOptional = false
 ): { score: number; reason: string } {
   const custWords = customerText.toLowerCase().split(/\W+/).filter(w => w.length > 3 && !STOP_WORDS.has(w));
   const replyLower = cfReplyText.toLowerCase();
@@ -343,7 +363,7 @@ function scoreRelevancy(
 
   // 3. Structural quality (0-25 pts): greeting, sign-off, sentence count
   let structScore = 0;
-  if (/\b(hi|hello|dear|good morning|good afternoon|greetings)\b/i.test(cfReplyText)) structScore += 5;
+  if (greetingOptional || GREETING_RE.test(cfReplyText)) structScore += 5;
   if (/\b(best|regards|sincerely|thanks|thank you|cheers|warm regards)\b/i.test(cfReplyText)) structScore += 5;
   const sentences = cfReplyText.split(/[.!?]+/).filter(s => s.trim().length > 5).length;
   structScore += Math.min(15, sentences * 3);
@@ -370,11 +390,11 @@ function scoreRelevancy(
   return { score: total, reason };
 }
 
-function scoreTone(cfReplyText: string): number {
+function scoreTone(cfReplyText: string, greetingOptional = false): number {
   if (!cfReplyText || cfReplyText.trim().length < 5) return 0;
   if (/^(automatic|out of office|auto.?reply)/i.test(cfReplyText.trimStart().slice(0, 60))) return 15;
   let score = 0;
-  if (/\b(hi|hello|dear|good morning|good afternoon|greetings)\b/i.test(cfReplyText)) score += 20;
+  if (greetingOptional || GREETING_RE.test(cfReplyText)) score += 20;
   if (/\b(best|regards|sincerely|thanks|thank you|cheers|warm regards)\b/i.test(cfReplyText)) score += 20;
   if (/\b(please|kindly|appreciate|certainly|absolutely|happy to|glad to)\b/i.test(cfReplyText)) score += 15;
   if (/\b(understand|apologize|sorry|acknowledge|concern|empathize)\b/i.test(cfReplyText)) score += 15;
@@ -599,7 +619,18 @@ function proofExamples<T extends { customer: string; when: number; body: string 
 // Pure aggregation + the scoring formula -- unchanged from the original design, just fed
 // by team-aware, correctly-paired inputs instead of one person's isolated, first-message-
 // anchored view of their own mailbox.
-function deriveUserMetrics(userEmail: string, userName: string, judgments: ExchangeJudgment[], orphanMessages: TimelineEntry[] = []): UserEmailHygiene {
+function deriveUserMetrics(
+  userEmail: string,
+  userName: string,
+  judgments: ExchangeJudgment[],
+  orphanMessages: TimelineEntry[] = [],
+  rules: HygieneScoringRules = ACTIVE_SCORING_RULES,
+  followUpIds: Set<string> = new Set()
+): UserEmailHygiene {
+  const newRulesFor = (e: TimelineEntry) => e.time >= rules.effectiveFrom;
+  const textOf = (e: TimelineEntry) => (rules.newestTextOnly && newRulesFor(e) ? e.newText ?? e.text : e.text);
+  const greetingOptionalFor = (e: TimelineEntry) =>
+    rules.followUpGreetingOptional && newRulesFor(e) && followUpIds.has(e.messageId);
   // "Threads" for volume purposes: any conversation where I received a copy of the
   // customer's message, or personally sent a reply into it.
   const myConvIds = new Set<string>();
@@ -702,29 +733,31 @@ function deriveUserMetrics(userEmail: string, userName: string, judgments: Excha
   for (const j of myFirstResponses) {
     const reply = j.firstResponder!;
     const isAuto = /^(automatic reply|out of office|auto.?reply)/i.test(reply.subject ?? '');
-    const ok = !isAuto && reply.text.length > 100;
+    const replyText = textOf(reply);
+    const ok = !isAuto && replyText.length > 100;
     if (ok) accurateReplies++;
     accuracyCandidates.push({
       customer: j.exchange.customerMessage.customerEmail || 'Unknown customer',
       when: j.exchange.customerMessage.time,
       subject: j.exchange.customerMessage.subject || '(no subject)',
       ok,
-      reason: isAuto ? 'auto-reply, not a real answer' : ok ? 'a real, substantive reply' : `only ${reply.text.length} characters`,
-      body: reply.text,
+      reason: isAuto ? 'auto-reply, not a real answer' : ok ? 'a real, substantive reply' : `only ${replyText.length} characters`,
+      body: replyText,
     });
     accuracyDenominator++;
   }
   for (const m of myOrphanMessages) {
     const isAuto = /^(automatic reply|out of office|auto.?reply)/i.test(m.subject ?? '');
-    const ok = !isAuto && m.text.length > 100;
+    const outText = textOf(m);
+    const ok = !isAuto && outText.length > 100;
     if (ok) accurateReplies++;
     accuracyCandidates.push({
       customer: 'Outbound message',
       when: m.time,
       subject: m.subject || '(no subject)',
       ok,
-      reason: isAuto ? 'auto-reply, not a real answer' : ok ? 'a real, substantive reply' : `only ${m.text.length} characters`,
-      body: m.text,
+      reason: isAuto ? 'auto-reply, not a real answer' : ok ? 'a real, substantive reply' : `only ${outText.length} characters`,
+      body: outText,
     });
     accuracyDenominator++;
   }
@@ -746,14 +779,15 @@ function deriveUserMetrics(userEmail: string, userName: string, judgments: Excha
   // actually answering, not always message #1. Proactive/outbound messages are mixed in
   // (isOutbound: true) so a person who mostly reaches out to customers rather than
   // answering them still gets a fair sample, not crowded out by exchange-based replies.
-  const myReplySamples: { customerText: string; replyText: string; isOutbound: boolean; customer: string; when: number; subject: string }[] = [];
+  const myReplySamples: { customerText: string; replyText: string; isOutbound: boolean; greetingOptional: boolean; customer: string; when: number; subject: string }[] = [];
   for (const j of judgments) {
     for (const reply of j.exchange.teamReplies) {
       if (reply.teamMemberEmail === userEmail) {
         myReplySamples.push({
-          customerText: j.exchange.customerMessage.text,
-          replyText: reply.text,
+          customerText: textOf(j.exchange.customerMessage),
+          replyText: textOf(reply),
           isOutbound: false,
+          greetingOptional: greetingOptionalFor(reply),
           customer: j.exchange.customerMessage.customerEmail || 'Unknown customer',
           when: j.exchange.customerMessage.time,
           subject: j.exchange.customerMessage.subject || '(no subject)',
@@ -762,7 +796,7 @@ function deriveUserMetrics(userEmail: string, userName: string, judgments: Excha
     }
   }
   for (const m of myOrphanMessages) {
-    myReplySamples.push({ customerText: '', replyText: m.text, isOutbound: true, customer: 'Outbound message', when: m.time, subject: m.subject || '(no subject)' });
+    myReplySamples.push({ customerText: '', replyText: textOf(m), isOutbound: true, greetingOptional: greetingOptionalFor(m), customer: 'Outbound message', when: m.time, subject: m.subject || '(no subject)' });
   }
   const sample = myReplySamples.slice(0, 8);
 
@@ -770,7 +804,7 @@ function deriveUserMetrics(userEmail: string, userName: string, judgments: Excha
   const completenessScores: number[] = [];
   const rawToneScores: number[] = [];
   let lastReason = '';
-  let worstToneEntry: { cfText: string; raw: number } | null = null;
+  let worstToneEntry: { cfText: string; raw: number; greetingOptional: boolean } | null = null;
   let worstComplEntry: { custText: string; cfText: string; score: number } | null = null;
   let bestQuality: HygieneExample | null = null;
   let bestQualityScore = -1;
@@ -785,13 +819,13 @@ function deriveUserMetrics(userEmail: string, userName: string, judgments: Excha
   const completenessCandidates: { score: number; customer: string; when: number; subject: string; body: string }[] = [];
   const toneCandidates: { score: number; customer: string; when: number; subject: string; body: string }[] = [];
 
-  for (const { customerText, replyText, isOutbound, customer, when, subject } of sample) {
+  for (const { customerText, replyText, isOutbound, greetingOptional, customer, when, subject } of sample) {
     // Relevancy measures "did this answer what the customer actually asked" -- meaningless
     // (and unfairly punishing, since there's no question to match keywords against) for a
     // proactive/outbound message with no customer question behind it. Completeness and
     // tone both degrade gracefully with an empty customerText, so those still apply.
     if (!isOutbound) {
-      const rel = scoreRelevancy(customerText, replyText);
+      const rel = scoreRelevancy(customerText, replyText, greetingOptional);
       relevancyScores.push(rel.score);
       lastReason = rel.reason;
       if (rel.score > bestQualityScore) { bestQualityScore = rel.score; bestQuality = { customerText, replyText, label: `${rel.score}/100 relevancy` }; }
@@ -802,10 +836,10 @@ function deriveUserMetrics(userEmail: string, userName: string, judgments: Excha
     completenessScores.push(cs);
     completenessCandidates.push({ score: cs, customer, when, subject, body: replyText });
     const localizationIssues = detectLocalizationIssues(replyText);
-    const ts = applyLocalizationPenalty(scoreTone(replyText), localizationIssues);
+    const ts = applyLocalizationPenalty(scoreTone(replyText, greetingOptional), localizationIssues);
     rawToneScores.push(ts);
     toneCandidates.push({ score: ts, customer, when, subject, body: replyText });
-    if (worstToneEntry === null || ts < worstToneEntry.raw) worstToneEntry = { cfText: replyText, raw: ts };
+    if (worstToneEntry === null || ts < worstToneEntry.raw) worstToneEntry = { cfText: replyText, raw: ts, greetingOptional };
     if (worstComplEntry === null || cs < worstComplEntry.score) worstComplEntry = { custText: customerText, cfText: replyText, score: cs };
     if (localizationIssues.length > 0 && worstLocalizationEntry === null) {
       worstLocalizationEntry = { cfText: replyText, issues: localizationIssues };
@@ -1011,7 +1045,7 @@ function deriveUserMetrics(userEmail: string, userName: string, judgments: Excha
 
   if (toneScore < 12 && worstToneEntry) {
     const snippet = worstToneEntry.cfText.replace(/\s+/g, ' ').slice(0, 250).trim();
-    const hasGreeting = /\b(hi|hello|dear|good morning|good afternoon|greetings)\b/i.test(snippet);
+    const hasGreeting = worstToneEntry.greetingOptional || GREETING_RE.test(snippet);
     const hasSignOff = /\b(best|regards|sincerely|thanks|thank you|cheers|warm regards)\b/i.test(snippet);
     const missing = [...(!hasGreeting ? ['greeting'] : []), ...(!hasSignOff ? ['professional sign-off'] : [])];
     insights.push({
@@ -1125,6 +1159,61 @@ let _syncState: SyncState = { running: false, startedAt: null, completedAt: null
 // frontend poll getMonthFinalizeState() instead of holding a multi-minute request open.
 type MonthFinalizeState = { running: boolean; startedAt: string | null; completedAt: string | null; error: string | null; monthStart: string | null };
 let _monthFinalizeState: MonthFinalizeState = { running: false, startedAt: null, completedAt: null, error: null, monthStart: null };
+
+type RescoreState = {
+  running: boolean; startedAt: string | null; completedAt: string | null; error: string | null;
+  monthStart: string | null; total: number; done: string[];
+};
+let _rescoreState: RescoreState = { running: false, startedAt: null, completedAt: null, error: null, monthStart: null, total: 0, done: [] };
+
+// Re-scores the stored weekly and daily rows that make up the CURRENT IST month (its finished
+// weeks, including week 1 when it starts in the previous month, and its finished days) with
+// today's scoring code. Rows of earlier months are never read or written, and the monthly
+// snapshots table is untouched. Each row is replaced atomically, so a failure leaves the old
+// row in place.
+async function rescoreCurrentMonth(): Promise<void> {
+  const { monthStart } = getIstMonthBounds(0);
+  const monthWeeks = new Set(weeksInCurrentIstMonth());
+  const currentWeek = istDateStr(getIstWeekBounds(0).weekStart);
+  const jobs: { kind: 'week' | 'day'; key: string; start: Date; end: Date }[] = [];
+  for (let k = 1; k <= 6; k++) {
+    const { weekStart, weekEnd } = getIstWeekBounds(k);
+    const key = istDateStr(weekStart);
+    if (monthWeeks.has(key) && key !== currentWeek) jobs.push({ kind: 'week', key, start: weekStart, end: weekEnd });
+  }
+  for (let k = 1; k <= 31; k++) {
+    const { dayStart, dayEnd } = getIstDayBounds(k);
+    if (dayStart < monthStart) break;
+    jobs.push({ kind: 'day', key: istDateStr(dayStart), start: dayStart, end: dayEnd });
+  }
+  _rescoreState.total = jobs.length;
+
+  for (const job of jobs) {
+    const client = graphClient(await getAccessToken()); // fresh token: the whole run can outlast one
+    const { metrics, teamHygiene } = await computeMetricsForWindow(client, job.start.toISOString(), job.end.toISOString());
+    const params = [job.key, istDateStr(job.end), JSON.stringify(metrics), JSON.stringify(teamHygiene)];
+    if (job.kind === 'week') {
+      await execute(
+        `INSERT INTO email_hygiene_weekly (week_start, week_end, metrics, team_hygiene) VALUES ($1, $2, $3, $4)
+         ON CONFLICT (week_start) DO UPDATE SET week_end = EXCLUDED.week_end, metrics = EXCLUDED.metrics,
+           team_hygiene = EXCLUDED.team_hygiene, computed_at = NOW()`,
+        params
+      );
+    } else {
+      await execute(
+        `INSERT INTO email_hygiene_daily (day_start, day_end, metrics, team_hygiene) VALUES ($1, $2, $3, $4)
+         ON CONFLICT (day_start) DO UPDATE SET day_end = EXCLUDED.day_end, metrics = EXCLUDED.metrics,
+           team_hygiene = EXCLUDED.team_hygiene, computed_at = NOW()`,
+        params
+      );
+    }
+    _rescoreState.done.push(`${job.kind} ${job.key}`);
+    logger.info(`[EmailHygiene] Re-scored ${job.kind} ${job.key} (${_rescoreState.done.length}/${jobs.length})`);
+  }
+  _liveWeekCache.clear();
+  _liveDayCache.clear();
+  _liveRangeCache.clear();
+}
 
 // Short-lived in-memory cache, keyed by week-start date, for any week's trend point that
 // has to be computed live via Graph rather than read from a finalized DB row — this is a
@@ -1260,11 +1349,50 @@ const CUSTOMER_CONTEXT_LOOKBACK_MS = 10 * 24 * 3600 * 1000;
 // (getWeeklyMetrics/finalizeWeek below) — discovers users, filters to valid mailboxes,
 // and analyzes them for an arbitrary [since, until) window. `until` omitted means
 // "through now" (used for the rolling view and the current in-progress week).
+interface WindowAnalysis {
+  validUsers: Array<{ email: string; name: string }>;
+  judgments: ExchangeJudgment[];
+  orphanTeamMessages: TimelineEntry[];
+  followUpIds: Set<string>;
+}
+
+// Team messages sent by someone who already wrote in the same conversation within
+// FOLLOW_UP_WINDOW_MS (only messages inside the fetched window are visible).
+function findFollowUpMessageIds(timelines: Iterable<{ entries: TimelineEntry[] }>): Set<string> {
+  const ids = new Set<string>();
+  for (const tl of timelines) {
+    const lastByMember = new Map<string, number>();
+    for (const e of tl.entries) {
+      if (e.kind !== 'team' || !e.teamMemberEmail) continue;
+      const last = lastByMember.get(e.teamMemberEmail);
+      if (last !== undefined && e.time - last <= FOLLOW_UP_WINDOW_MS) ids.add(e.messageId);
+      lastByMember.set(e.teamMemberEmail, e.time);
+    }
+  }
+  return ids;
+}
+
+function deriveWindowMetrics(
+  analysis: WindowAnalysis,
+  rules: HygieneScoringRules
+): { metrics: UserEmailHygiene[]; teamHygiene: TeamHygieneRow[] } {
+  const results = analysis.validUsers.map((u) =>
+    deriveUserMetrics(u.email, u.name, analysis.judgments, analysis.orphanTeamMessages, rules, analysis.followUpIds)
+  );
+  const sorted = results.sort((a, b) => b.emailHygieneScore - a.emailHygieneScore);
+  return { metrics: sorted, teamHygiene: computeTeamHygiene(sorted) };
+}
+
 async function computeMetricsForWindow(
   client: AxiosInstance,
   since: string,
-  until?: string
+  until?: string,
+  rules: HygieneScoringRules = ACTIVE_SCORING_RULES
 ): Promise<{ metrics: UserEmailHygiene[]; teamHygiene: TeamHygieneRow[] }> {
+  return deriveWindowMetrics(await analyzeWindow(client, since, until), rules);
+}
+
+async function analyzeWindow(client: AxiosInstance, since: string, until?: string): Promise<WindowAnalysis> {
   const allUsers = await getCFUsers();
   logger.info(`Email hygiene: discovered ${allUsers.length} candidate CF users`);
 
@@ -1290,7 +1418,7 @@ async function computeMetricsForWindow(
   // fix) lets a reply sent inside [since, until) still find and pair with the customer
   // message it's actually answering even when that message arrived before `since` -- see
   // the comment on buildTeamTimelines() itself for why that pairing would otherwise fail.
-  const timelines = await buildTeamTimelines(client, validUsers, since, until, 3, CUSTOMER_CONTEXT_LOOKBACK_MS);
+  const timelines = await buildTeamTimelines(client, validUsers, since, until, 6, CUSTOMER_CONTEXT_LOOKBACK_MS);
   const allExchanges: Exchange[] = [];
   // Proactive/outbound customer messages (status updates, meeting bookings, kickoff decks)
   // that don't answer any customer message in this timeline -- see findOrphanTeamMessages()
@@ -1305,11 +1433,22 @@ async function computeMetricsForWindow(
   logger.info(`Email hygiene: built ${timelines.size} conversation timelines, ${allExchanges.length} exchanges, ${orphanTeamMessages.length} proactive/outbound messages`);
 
   const judgments = await judgeAllExchanges(allExchanges);
+  return { validUsers, judgments, orphanTeamMessages, followUpIds: findFollowUpMessageIds(timelines.values()) };
+}
 
-  const results: UserEmailHygiene[] = validUsers.map((u) => deriveUserMetrics(u.email, u.name, judgments, orphanTeamMessages));
-
-  const sorted = results.sort((a, b) => b.emailHygieneScore - a.emailHygieneScore);
-  return { metrics: sorted, teamHygiene: computeTeamHygiene(sorted) };
+// Dry run for a scoring-rules change: one shared mailbox fetch and judgment pass, scored
+// under both rule sets. Nothing is stored or cached.
+export async function compareScoringRules(
+  since: Date,
+  until: Date,
+  proposed: HygieneScoringRules = ACTIVE_SCORING_RULES
+): Promise<{ current: UserEmailHygiene[]; proposed: UserEmailHygiene[] }> {
+  const client = graphClient(await getAccessToken());
+  const analysis = await analyzeWindow(client, since.toISOString(), until.toISOString());
+  return {
+    current: deriveWindowMetrics(analysis, ORIGINAL_SCORING_RULES).metrics,
+    proposed: deriveWindowMetrics(analysis, proposed).metrics,
+  };
 }
 
 export const emailHygieneService = {
@@ -1715,6 +1854,27 @@ export const emailHygieneService = {
         const msg = err?.message ?? 'Unknown error';
         _monthFinalizeState = { ..._monthFinalizeState, running: false, completedAt: new Date().toISOString(), error: msg };
         logger.error('[EmailHygiene] Month finalize failed:', msg);
+      });
+    return { alreadyRunning: false };
+  },
+
+  getRescoreState(): RescoreState {
+    return { ..._rescoreState, done: [..._rescoreState.done] };
+  },
+
+  // Background run of rescoreCurrentMonth() (several minutes per stored week/day).
+  triggerRescoreCurrentMonth(): { alreadyRunning: boolean } {
+    if (_rescoreState.running) return { alreadyRunning: true };
+    if (!isGraphConfigured()) throw new Error('Microsoft Graph is not configured');
+    _rescoreState = {
+      running: true, startedAt: new Date().toISOString(), completedAt: null, error: null,
+      monthStart: istDateStr(getIstMonthBounds(0).monthStart), total: 0, done: [],
+    };
+    rescoreCurrentMonth()
+      .then(() => { _rescoreState = { ..._rescoreState, running: false, completedAt: new Date().toISOString() }; })
+      .catch((err: Error) => {
+        _rescoreState = { ..._rescoreState, running: false, completedAt: new Date().toISOString(), error: err?.message ?? 'Unknown error' };
+        logger.error('[EmailHygiene] Current-month re-score failed:', err?.message);
       });
     return { alreadyRunning: false };
   },

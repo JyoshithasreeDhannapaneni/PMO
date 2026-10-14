@@ -17,5 +17,7 @@ router.get('/months', requireAuth, emailHygieneController.listMonths);
 router.get('/month', requireAuth, emailHygieneController.getMonth);
 router.post('/finalize-month', requireRole('ADMIN'), emailHygieneController.triggerMonthFinalize);
 router.get('/finalize-month-status', requireAuth, emailHygieneController.getMonthFinalizeStatus);
+router.post('/rescore-current-month', requireRole('ADMIN'), emailHygieneController.triggerRescoreCurrentMonth);
+router.get('/rescore-current-month-status', requireRole('ADMIN'), emailHygieneController.getRescoreStatus);
 
 export default router;
