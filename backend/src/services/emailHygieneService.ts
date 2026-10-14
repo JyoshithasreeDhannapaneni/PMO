@@ -177,10 +177,51 @@ const SEGMENT_HEADS: Record<'ENT' | 'SMB', { email: string; name: string }> = {
   SMB: { email: 'ajay.singh@cloudfuze.com', name: 'Ajay Singh' },
 };
 
+// Each team DL is scored as its own sender, like a person (product decision 2026-10-15:
+// teams are moving to emailing customers from these). A DL has no mailbox, so its mail is
+// read from the members' mailboxes: replies a member sent as (or on behalf of) the DL, and
+// customer emails addressed to it. The DL numbers do not follow TEAM_ROSTER's team ids (mapping
+// confirmed 2026-10-15); Meghana's and Neelima's teams share Team 5 since they work with the
+// same engineers. cfmigrationsupport_team3 is not assigned to any team, so it is not scored.
+export const TEAM_DLS: { email: string; name: string; teamIds: string[] }[] = [
+  { email: 'cfmigrationsupport_team1@cloudfuze.com', name: 'CF Migration Support Team 1 (DL)', teamIds: ['team1'] },
+  { email: 'cfmigrationsupport_team2@cloudfuze.com', name: 'CF Migration Support Team 2 (DL)', teamIds: ['team2'] },
+  { email: 'cfmigrationsupport_team4@cloudfuze.com', name: 'CF Migration Support Team 4 (DL)', teamIds: ['team4'] },
+  { email: 'cfmigrationsupport_team5@cloudfuze.com', name: 'CF Migration Support Team 5 (DL)', teamIds: ['team3', 'team6'] },
+  { email: 'cfmigrationsupport_team6@cloudfuze.com', name: 'CF Migration Support Team 6 (DL)', teamIds: ['team5'] },
+];
+
+// Moves DL mail off the individuals and onto the DL, in place, before exchanges are built.
+// A reply sent from a DL address belongs to the DL, not the member who clicked send. A
+// customer email sent to a DL belongs to the DL; a member keeps it only when the customer
+// also addressed them directly (otherwise they only got the DL's copy).
+export function attributeDlMail(timelines: Iterable<{ entries: TimelineEntry[] }>): void {
+  const dlByEmail = new Map(TEAM_DLS.map((d) => [d.email, d]));
+  for (const tl of timelines) {
+    for (const e of tl.entries) {
+      if (e.kind === 'team') {
+        const dl = e.fromAddress ? dlByEmail.get(e.fromAddress) : undefined;
+        if (dl) { e.teamMemberEmail = dl.email; e.teamMemberName = dl.name; }
+        continue;
+      }
+      const to = e.addressedTo ?? [];
+      const dls = TEAM_DLS.filter((d) => to.includes(d.email));
+      if (dls.length === 0) continue;
+      e.recipients = [
+        ...(e.recipients ?? []).filter((r) => to.includes(r.email.toLowerCase())),
+        ...dls.map((d) => ({ email: d.email, name: d.name })),
+      ];
+    }
+  }
+}
+
 export function computeTeamHygiene(results: UserEmailHygiene[]): TeamHygieneRow[] {
   const byEmail = new Map(results.map(r => [r.userEmail.toLowerCase(), r]));
   return TEAM_ROSTER.map(team => {
-    const members: TeamHygieneMember[] = team.memberEmails.map(email => {
+    // The DL counts like a member, but only in windows where it had mail of its own.
+    const dls = TEAM_DLS.filter((d) => d.teamIds.includes(team.teamId) && byEmail.has(d.email)).map((d) => d.email);
+    const emails = [...team.memberEmails, ...dls];
+    const members: TeamHygieneMember[] = emails.map(email => {
       const r = byEmail.get(email.toLowerCase());
       return { email, name: r?.userName ?? email, score: r?.emailHygieneScore ?? null };
     });
@@ -272,35 +313,41 @@ export const ACTIVE_SCORING_RULES: HygieneScoringRules = { newestTextOnly: true,
 const FOLLOW_UP_WINDOW_MS = 48 * 3600 * 1000;
 const GREETING_RE = /\b(hi|hello|dear|good morning|good afternoon|greetings)\b/i;
 
-// 2026-10-05: removed from email hygiene only (product decision). Kept out here rather than
-// via email_hygiene_members.is_active because that table also drives call hygiene and SLA
-// breach alerts, which should still include them.
-const REMOVED_FROM_EMAIL_HYGIENE = new Set([
-  'pallavi.kosuvaripalli@cloudfuze.com',
-  'sravan.kesaram@cloudfuze.com',
-  'raghu.yellani@cloudfuze.com',
-  'saikumar.kustapuram@cloudfuze.com',
-  'abhishikth.yenugula@cloudfuze.com',
+// Removed from email hygiene only (product decisions). Kept out here rather than via
+// email_hygiene_members.is_active because that table also drives call hygiene and SLA breach
+// alerts, which should still include them. Value: first IST day (YYYY-MM-DD) a period must
+// reach for the person to be left out; '' means every period. 2026-10-05: the first five,
+// everywhere. 2026-10-15: Harshith from October onward, so earlier months still show him.
+const REMOVED_FROM_EMAIL_HYGIENE = new Map<string, string>([
+  ['pallavi.kosuvaripalli@cloudfuze.com', ''],
+  ['sravan.kesaram@cloudfuze.com', ''],
+  ['raghu.yellani@cloudfuze.com', ''],
+  ['saikumar.kustapuram@cloudfuze.com', ''],
+  ['abhishikth.yenugula@cloudfuze.com', ''],
+  ['harshith.kaduluri@cloudfuze.com', '2026-10-01'],
 ]);
 
-function isRemovedFromEmailHygiene(email: string | null | undefined): boolean {
-  return !!email && REMOVED_FROM_EMAIL_HYGIENE.has(email.toLowerCase());
+// `periodLastDay` is the last IST day (YYYY-MM-DD) of the period being shown or computed.
+export function isRemovedFromEmailHygiene(email: string | null | undefined, periodLastDay = istDateStr(new Date())): boolean {
+  if (!email) return false;
+  const from = REMOVED_FROM_EMAIL_HYGIENE.get(email.toLowerCase());
+  return from !== undefined && periodLastDay >= from;
 }
 
 // Saved snapshots (cache, daily/weekly/monthly tables) were written before the removal, so
 // every read path strips these users too, not just new computations.
-function withoutRemovedUsers(metrics: UserEmailHygiene[]): UserEmailHygiene[] {
-  return metrics.filter((m) => !isRemovedFromEmailHygiene(m.userEmail));
+function withoutRemovedUsers(metrics: UserEmailHygiene[], periodLastDay?: string): UserEmailHygiene[] {
+  return metrics.filter((m) => !isRemovedFromEmailHygiene(m.userEmail, periodLastDay));
 }
 
 // Older snapshots also hold whole teams these people managed (pre-2026-09-23 roster), and
 // those team scores feed the ENT/SMB segment heads — drop their teams, remove them from the
 // rest, and recompute each team's score from who's left.
-function withoutRemovedTeams(teams: TeamHygieneRow[]): TeamHygieneRow[] {
+function withoutRemovedTeams(teams: TeamHygieneRow[], periodLastDay?: string): TeamHygieneRow[] {
   return teams
-    .filter((t) => !isRemovedFromEmailHygiene(t.managerEmail))
+    .filter((t) => !isRemovedFromEmailHygiene(t.managerEmail, periodLastDay))
     .map((t) => {
-      const members = (t.members ?? []).filter((m) => !isRemovedFromEmailHygiene(m.email));
+      const members = (t.members ?? []).filter((m) => !isRemovedFromEmailHygiene(m.email, periodLastDay));
       const scored = members.filter((m) => m.score !== null);
       return {
         ...t,
@@ -312,11 +359,11 @@ function withoutRemovedTeams(teams: TeamHygieneRow[]): TeamHygieneRow[] {
     });
 }
 
-async function getCFUsers(): Promise<Array<{ email: string; name: string }>> {
+async function getCFUsers(periodLastDay?: string): Promise<Array<{ email: string; name: string }>> {
   const result = await query(
     `SELECT email, display_name AS name FROM email_hygiene_members WHERE is_active = true ORDER BY display_name`
   );
-  return (result.rows as Array<{ email: string; name: string }>).filter((u) => !isRemovedFromEmailHygiene(u.email));
+  return (result.rows as Array<{ email: string; name: string }>).filter((u) => !isRemovedFromEmailHygiene(u.email, periodLastDay));
 }
 
 async function userMailboxExists(client: AxiosInstance, userPath: string): Promise<boolean> {
@@ -499,7 +546,7 @@ function applyLocalizationPenalty(rawToneScore: number, issues: LocalizationIssu
 // message paired with whichever team reply(ies) actually follow it, from ANYONE), judge
 // every exchange ONCE, then attribute credit per person from that shared judgment.
 
-interface ExchangeJudgment {
+export interface ExchangeJudgment {
   exchange: Exchange;
   firstResponder: TimelineEntry | null;     // chronologically first team reply -- gets Speed credit
   substantiveReplier: TimelineEntry | null; // chronologically last team reply -- gets Resolution/reopened attribution
@@ -1376,10 +1423,11 @@ function deriveWindowMetrics(
   analysis: WindowAnalysis,
   rules: HygieneScoringRules
 ): { metrics: UserEmailHygiene[]; teamHygiene: TeamHygieneRow[] } {
-  const results = analysis.validUsers.map((u) =>
-    deriveUserMetrics(u.email, u.name, analysis.judgments, analysis.orphanTeamMessages, rules, analysis.followUpIds)
-  );
-  const sorted = results.sort((a, b) => b.emailHygieneScore - a.emailHygieneScore);
+  const score = (u: { email: string; name: string }) =>
+    deriveUserMetrics(u.email, u.name, analysis.judgments, analysis.orphanTeamMessages, rules, analysis.followUpIds);
+  // A DL with no mail in the window is left out rather than given default scores.
+  const dls = TEAM_DLS.map(score).filter((m) => m.uniqueCustomerThreads > 0);
+  const sorted = [...analysis.validUsers.map(score), ...dls].sort((a, b) => b.emailHygieneScore - a.emailHygieneScore);
   return { metrics: sorted, teamHygiene: computeTeamHygiene(sorted) };
 }
 
@@ -1393,7 +1441,7 @@ async function computeMetricsForWindow(
 }
 
 async function analyzeWindow(client: AxiosInstance, since: string, until?: string): Promise<WindowAnalysis> {
-  const allUsers = await getCFUsers();
+  const allUsers = await getCFUsers(istDateStr(until ? new Date(until) : new Date()));
   logger.info(`Email hygiene: discovered ${allUsers.length} candidate CF users`);
 
   const validUsers: Array<{ email: string; name: string }> = [];
@@ -1419,6 +1467,7 @@ async function analyzeWindow(client: AxiosInstance, since: string, until?: strin
   // message it's actually answering even when that message arrived before `since` -- see
   // the comment on buildTeamTimelines() itself for why that pairing would otherwise fail.
   const timelines = await buildTeamTimelines(client, validUsers, since, until, 6, CUSTOMER_CONTEXT_LOOKBACK_MS);
+  attributeDlMail(timelines.values());
   const allExchanges: Exchange[] = [];
   // Proactive/outbound customer messages (status updates, meeting bookings, kickoff decks)
   // that don't answer any customer message in this timeline -- see findOrphanTeamMessages()
@@ -1665,8 +1714,8 @@ export const emailHygieneService = {
             label,
             isCurrent: false,
             hasData: true,
-            metrics: withoutRemovedUsers(r.metrics as UserEmailHygiene[]),
-            teamHygiene: withoutRemovedTeams((r.team_hygiene ?? []) as TeamHygieneRow[]),
+            metrics: withoutRemovedUsers(r.metrics as UserEmailHygiene[], istDateStr(new Date(r.day_end))),
+            teamHygiene: withoutRemovedTeams((r.team_hygiene ?? []) as TeamHygieneRow[], istDateStr(new Date(r.day_end))),
           };
         }
       }
@@ -1674,7 +1723,7 @@ export const emailHygieneService = {
       const { dayStart, dayEnd } = getIstDayBounds(daysAgo);
       const cached = getCachedLiveDay(dayStartDate);
       if (cached) {
-        return { dayStart: dayStartDate, dayEnd: istDateStr(dayEnd), label, isCurrent, hasData: true, metrics: withoutRemovedUsers(cached.metrics), teamHygiene: withoutRemovedTeams(cached.teamHygiene) };
+        return { dayStart: dayStartDate, dayEnd: istDateStr(dayEnd), label, isCurrent, hasData: true, metrics: withoutRemovedUsers(cached.metrics, istDateStr(dayEnd)), teamHygiene: withoutRemovedTeams(cached.teamHygiene, istDateStr(dayEnd)) };
       }
       // Only auto-trigger a live fetch for the couple of days actually likely to still be
       // missing due to cron timing (today, and a 1-2 day cushion around the daily 7:20 AM
@@ -1716,14 +1765,14 @@ export const emailHygieneService = {
       const finalized = await query(`SELECT metrics, team_hygiene FROM email_hygiene_daily WHERE day_start = $1`, [startDate]);
       if (finalized.rows.length > 0) {
         const r: any = finalized.rows[0];
-        return { startDate, endDate, hasData: true, metrics: withoutRemovedUsers(r.metrics as UserEmailHygiene[]), teamHygiene: withoutRemovedTeams((r.team_hygiene ?? []) as TeamHygieneRow[]), isConfigured: true };
+        return { startDate, endDate, hasData: true, metrics: withoutRemovedUsers(r.metrics as UserEmailHygiene[], endDate), teamHygiene: withoutRemovedTeams((r.team_hygiene ?? []) as TeamHygieneRow[], endDate), isConfigured: true };
       }
     }
 
     const key = `${startDate}_${endDate}`;
     const cached = getCachedLiveRange(key);
     if (cached) {
-      return { startDate, endDate, hasData: true, metrics: withoutRemovedUsers(cached.metrics), teamHygiene: withoutRemovedTeams(cached.teamHygiene), isConfigured: true };
+      return { startDate, endDate, hasData: true, metrics: withoutRemovedUsers(cached.metrics, endDate), teamHygiene: withoutRemovedTeams(cached.teamHygiene, endDate), isConfigured: true };
     }
     triggerBackgroundLiveRangeFetch(key, since, until);
     return { startDate, endDate, hasData: false, metrics: [], teamHygiene: [], isConfigured: true };
@@ -1771,15 +1820,15 @@ export const emailHygieneService = {
           weekEnd: istDateStr(new Date(r.week_end)),
           isCurrent: false,
           hasData: true,
-          metrics: withoutRemovedUsers(r.metrics as UserEmailHygiene[]),
-          teamHygiene: withoutRemovedTeams((r.team_hygiene ?? []) as TeamHygieneRow[]),
+          metrics: withoutRemovedUsers(r.metrics as UserEmailHygiene[], istDateStr(new Date(r.week_end))),
+          teamHygiene: withoutRemovedTeams((r.team_hygiene ?? []) as TeamHygieneRow[], istDateStr(new Date(r.week_end))),
         };
       }
       const weekStart = new Date(`${weekStartDate}T00:00:00.000+05:30`);
       const weekEnd = new Date(weekStart.getTime() + 7 * 86400000 - 1);
       const cached = getCachedLiveWeek(weekStartDate);
       if (cached) {
-        return { weekStart: weekStartDate, weekEnd: istDateStr(weekEnd), isCurrent: false, hasData: true, metrics: withoutRemovedUsers(cached.metrics), teamHygiene: withoutRemovedTeams(cached.teamHygiene) };
+        return { weekStart: weekStartDate, weekEnd: istDateStr(weekEnd), isCurrent: false, hasData: true, metrics: withoutRemovedUsers(cached.metrics, istDateStr(weekEnd)), teamHygiene: withoutRemovedTeams(cached.teamHygiene, istDateStr(weekEnd)) };
       }
       triggerBackgroundLiveWeekFetch(weekStartDate, weekStart, weekEnd);
       return { weekStart: weekStartDate, weekEnd: istDateStr(weekEnd), isCurrent: false, hasData: false, metrics: [], teamHygiene: [] };
@@ -1794,8 +1843,8 @@ export const emailHygieneService = {
         weekEnd: currentWeekEnd,
         isCurrent: true,
         hasData: true,
-        metrics: withoutRemovedUsers(cachedCurrent.metrics),
-        teamHygiene: withoutRemovedTeams(cachedCurrent.teamHygiene),
+        metrics: withoutRemovedUsers(cachedCurrent.metrics, currentWeekEnd),
+        teamHygiene: withoutRemovedTeams(cachedCurrent.teamHygiene, currentWeekEnd),
       });
     } else {
       triggerBackgroundLiveWeekFetch(currentWeekStartDate, currentWeekStart);
@@ -1923,9 +1972,10 @@ export const emailHygieneService = {
       };
     }
 
-    const teamHygiene = withoutRemovedTeams((row.team_hygiene ?? []) as TeamHygieneRow[]);
+    const monthLastDay = istDateStr(new Date(monthEnd.getTime() - 1));
+    const teamHygiene = withoutRemovedTeams((row.team_hygiene ?? []) as TeamHygieneRow[], monthLastDay);
     return {
-      metrics: withoutRemovedUsers(row.metrics as UserEmailHygiene[]),
+      metrics: withoutRemovedUsers(row.metrics as UserEmailHygiene[], monthLastDay),
       teamHygiene,
       segmentHeads: computeSegmentHeads(teamHygiene),
       monthStart: istDateStr(new Date(row.month_start)),

@@ -15,7 +15,7 @@ import {
   Plus, Pencil, Check,
 } from 'lucide-react';
 import api, { emailHygieneApi, type PmoHygieneMonthRow } from '@/services/api';
-import { SEGMENT_CONFIG, SEGMENT_HIERARCHY, MANAGER_QUERY_NAMES, ENGINEER_ASSIGNMENTS, LMS_SCORES, MEETING_ATTENDANCE, AUDIO_PERCENTAGES, segmentOfManager, isNamedManager, managerNameMatches, type Segment } from '@/lib/segments';
+import { SEGMENT_CONFIG, SEGMENT_HIERARCHY, MANAGER_QUERY_NAMES, ENGINEER_ASSIGNMENTS, EMAIL_HYGIENE_REMOVED, EMAIL_HYGIENE_DLS, LMS_SCORES, MEETING_ATTENDANCE, AUDIO_PERCENTAGES, segmentOfManager, isNamedManager, managerNameMatches, type Segment } from '@/lib/segments';
 import { ScoreBreakdownPanel } from '@/components/EmailHygieneBreakdown';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -1214,15 +1214,29 @@ function EmailHygieneRow({
 // ENGINEER_ASSIGNMENTS from lib/segments) instead of the backend's separate 6-team roster,
 // so "who's listed here" always matches what managers already see in those tabs. Pure, so
 // the month comparison can run it once per month and line the two results up by position.
-function buildEmailHygieneRollups(metrics: any[]) {
+// periodLastDay (IST YYYY-MM-DD) drops anyone in EMAIL_HYGIENE_REMOVED from that day on.
+// shownDls: team DLs to list (each counts like an engineer). The month comparison passes the
+// same set for both months so the rows stay index-aligned.
+function buildEmailHygieneRollups(metrics: any[], periodLastDay: string, shownDls: Set<string>) {
+  const removed = new Set(EMAIL_HYGIENE_REMOVED.filter((r) => periodLastDay >= r.from).map((r) => r.name));
+  const byEmail = new Map(metrics.map((m: any) => [String(m.userEmail).toLowerCase(), m]));
+  // DL rows are found by exact email, and kept out of the fuzzy name search used for people.
+  const dlEmails = new Set(Object.values(EMAIL_HYGIENE_DLS).flat().map((d) => d.email));
+  const people = metrics.filter((m: any) => !dlEmails.has(String(m.userEmail).toLowerCase()));
   // Applied uniformly to the lead too, since a lead can have direct reports of their own
   // in ENGINEER_ASSIGNMENTS alongside the sub-managers underneath them.
   const buildBlock = (person: string) => {
-    const personMetric = getEngineerHygieneData(metrics, person);
-    const engineers = (ENGINEER_ASSIGNMENTS[person] ?? []).map((name) => ({
-      name,
-      metric: getEngineerHygieneData(metrics, name),
-    }));
+    const personMetric = getEngineerHygieneData(people, person);
+    const engineers = [
+      ...(ENGINEER_ASSIGNMENTS[person] ?? []).filter((name) => !removed.has(name)).map((name) => ({
+        name,
+        metric: getEngineerHygieneData(people, name),
+      })),
+      ...(EMAIL_HYGIENE_DLS[person] ?? []).filter((dl) => shownDls.has(dl.email)).map((dl) => ({
+        name: `${dl.label} (${dl.email})`,
+        metric: byEmail.get(dl.email) ?? null,
+      })),
+    ];
     const scored = [personMetric, ...engineers.map((e) => e.metric)].filter(Boolean) as any[];
     const teamScore = scored.length > 0
       ? Math.round(scored.reduce((sum, m) => sum + m.emailHygieneScore, 0) / scored.length)
@@ -1360,16 +1374,29 @@ function EmailHygieneLastMonthCard() {
     viewMode === 'custom' ? (rangeStart === rangeEnd ? rangeStart : `${rangeStart} → ${rangeEnd}`) :
     (monthLabel || 'Last Month');
 
+  // Last IST day of the shown period. The month comparison builds both months with this
+  // same day, so the two rosters stay index-aligned.
+  const periodLastDay: string =
+    viewMode === 'weekly' ? (activeWeek?.weekEnd ?? todayStr) :
+    viewMode === 'daily' ? (activeDay?.dayEnd ?? todayStr) :
+    viewMode === 'custom' ? rangeEnd :
+    (result?.monthStart ? lastDayOfMonth(result.monthStart) : todayStr);
+
   // Hygiene scores are matched onto the roster by name via the same fuzzy
   // getEngineerHygieneData() the Engineers tab popup already uses.
-  const segmentRollups = useMemo(() => buildEmailHygieneRollups(metrics), [metrics]);
+  // A DL only appears in periods where it had mail of its own.
+  const shownDls = useMemo(() => {
+    const emails = new Set(metrics.map((m: any) => String(m.userEmail).toLowerCase()));
+    return new Set(Object.values(EMAIL_HYGIENE_DLS).flat().map((d) => d.email).filter((e) => emails.has(e)));
+  }, [metrics]);
+  const segmentRollups = useMemo(() => buildEmailHygieneRollups(metrics, periodLastDay, shownDls), [metrics, periodLastDay, shownDls]);
 
   const compareResult = compareMonthData?.data;
   const compare = viewMode === 'monthly' && !!compareResult?.finalized;
   // Same roster and order as segmentRollups, so blocks/engineers line up by index.
   const prevRollups = useMemo(
-    () => (compare ? buildEmailHygieneRollups(compareResult?.metrics ?? []) : null),
-    [compare, compareResult]
+    () => (compare ? buildEmailHygieneRollups(compareResult?.metrics ?? [], periodLastDay, shownDls) : null),
+    [compare, compareResult, periodLastDay, shownDls]
   );
   const compareLabels = useMemo(
     () => (compare ? { prevLabel: compareResult?.monthLabel ?? '', currLabel: monthLabel } : null),
@@ -1638,6 +1665,11 @@ function EmailHygieneLastMonthCard() {
       )}
     </div>
   );
+}
+
+function lastDayOfMonth(monthStart: string): string {
+  const [y, m] = monthStart.split('-').map(Number);
+  return `${monthStart.slice(0, 8)}${String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, '0')}`;
 }
 
 const PMO_SUB_SCORES: { key: keyof PmoHygieneMonthRow; label: string; weight: string }[] = [

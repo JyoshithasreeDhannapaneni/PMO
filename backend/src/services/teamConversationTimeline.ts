@@ -142,6 +142,7 @@ export interface RawGraphMessage {
   body?: { contentType: string; content: string };
   from?: { emailAddress?: { name?: string; address: string } };
   toRecipients?: { emailAddress: { name?: string; address: string } }[];
+  ccRecipients?: { emailAddress: { name?: string; address: string } }[];
   receivedDateTime?: string;
   sentDateTime?: string;
   // Populated only on the eventMessage subtype Graph uses for meeting invites/updates/
@@ -184,7 +185,7 @@ async function fetchAll(client: AxiosInstance, url: string, cap = MAILBOX_LIST_C
 // 720 customer emails missed in 12 mailboxes for one week; Speed/Resolution fell to their
 // defaults for everyone). Now: list light fields newest-first with a high cap, then fetch
 // bodies only for the customer-facing messages.
-const LIST_FIELDS = 'id,internetMessageId,conversationId,subject,bodyPreview,from,toRecipients,receivedDateTime,sentDateTime,microsoft.graph.eventMessage/meetingMessageType';
+const LIST_FIELDS = 'id,internetMessageId,conversationId,subject,bodyPreview,from,toRecipients,ccRecipients,receivedDateTime,sentDateTime,microsoft.graph.eventMessage/meetingMessageType';
 const MAILBOX_LIST_CAP = 6000;
 const BODY_BATCH_SIZE = 20; // Graph JSON batching limit
 const BODY_BATCH_PARALLEL = 4;
@@ -253,7 +254,9 @@ export interface TimelineEntry {
   subject: string;
   customerEmail?: string;     // kind === 'customer'
   recipients?: { email: string; name: string }[]; // kind === 'customer' -- every tracked member who got a copy
+  addressedTo?: string[];     // kind === 'customer' -- every To/Cc address, lowercased (e.g. a team DL)
   teamMemberEmail?: string;   // kind === 'team'
+  fromAddress?: string;       // kind === 'team' -- the From address, lowercased (a team DL when sent as one)
   teamMemberName?: string;    // kind === 'team'
   isAcknowledgment?: boolean; // kind === 'customer' -- precomputed, free heuristic only
   // Only what this message newly says: the quoted reply chain below it removed. `text` keeps
@@ -405,6 +408,7 @@ export async function buildTeamTimelines(
           subject: m.subject ?? '',
           teamMemberEmail: member.email,
           teamMemberName: member.name,
+          fromAddress: m.from?.emailAddress?.address?.toLowerCase(),
         });
       }
 
@@ -436,6 +440,9 @@ export async function buildTeamTimelines(
           subject: m.subject ?? '',
           customerEmail: fromAddr,
           recipients: [{ email: member.email, name: member.name }],
+          addressedTo: [...(m.toRecipients ?? []), ...(m.ccRecipients ?? [])]
+            .map((r) => r.emailAddress?.address?.toLowerCase())
+            .filter((a): a is string => !!a),
           isAcknowledgment: isLikelyAcknowledgment(text),
         };
         seenCustomerKeys.set(dedupKey, entry);

@@ -43,6 +43,23 @@ export const ENGINEER_ASSIGNMENTS: Record<string, string[]> = {
   'Sriram':           ['Dathu', 'Ramana', 'Vineetha', 'Sanjana'],
 };
 
+// Left out of the Email Hygiene card for periods ending on or after `from` (IST YYYY-MM-DD),
+// matching REMOVED_FROM_EMAIL_HYGIENE in the backend. Earlier periods still list them.
+export const EMAIL_HYGIENE_REMOVED: { name: string; from: string }[] = [
+  { name: 'Harshith', from: '2026-10-01' }, // 2026-10-15, product decision
+];
+
+// Team DLs, scored as their own senders in Email Hygiene (backend TEAM_DLS). Listed under the
+// manager whose team owns them (mapping confirmed 2026-10-15). Team 5 is shared by Meghana
+// and Neelima, who sits under Meghana here; Team 3 is not assigned to anyone.
+export const EMAIL_HYGIENE_DLS: Record<string, { label: string; email: string }[]> = {
+  'Harika':           [{ label: 'Team 1 DL', email: 'cfmigrationsupport_team1@cloudfuze.com' }],
+  'Sriram':           [{ label: 'Team 2 DL', email: 'cfmigrationsupport_team2@cloudfuze.com' }],
+  'Lakshmi Prasanna': [{ label: 'Team 4 DL', email: 'cfmigrationsupport_team4@cloudfuze.com' }],
+  'Meghana Chowdada': [{ label: 'Team 5 DL', email: 'cfmigrationsupport_team5@cloudfuze.com' }],
+  'Pranavi':          [{ label: 'Team 6 DL', email: 'cfmigrationsupport_team6@cloudfuze.com' }],
+};
+
 export const LMS_SCORES: { name: string; score: number; max: number }[] = [
   { name: 'Ambika Patil',                     score: 9,  max: 9  },
   { name: 'Meghana Chowdada',                 score: 6,  max: 6  },
