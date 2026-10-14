@@ -43,8 +43,8 @@ describe('emailHygieneService.attributeDlMail', () => {
     expect(msg.recipients!.map((r) => r.email)).toEqual([HARIKA.email, TEAM1_DL]);
   });
 
-  it('credits every DL a customer email was sent to', () => {
-    const msg = customer([TEAM1_DL, TEAM4_DL]);
+  it('credits every DL a customer email was sent to, and ignores the unassigned Team 3 DL', () => {
+    const msg = customer([TEAM1_DL, TEAM4_DL, 'cfmigrationsupport_team3@cloudfuze.com']);
     attributeDlMail([{ entries: [msg] }]);
     expect(msg.recipients!.map((r) => r.email)).toEqual([TEAM1_DL, TEAM4_DL]);
   });
@@ -61,8 +61,26 @@ function fakeUser(email: string, score: number): UserEmailHygiene {
 }
 
 describe('emailHygieneService team DLs in team scores', () => {
-  it('has one DL per team', () => {
-    expect(TEAM_DLS.map((d) => d.email)).toEqual([1, 2, 3, 6, 4, 5].map((n) => `cfmigrationsupport_team${n}@cloudfuze.com`));
+  it('maps each DL to the confirmed teams (Team 5 shared by Meghana and Neelima, Team 3 unassigned)', () => {
+    expect(Object.fromEntries(TEAM_DLS.map((d) => [d.email.split('@')[0], d.teamIds]))).toEqual({
+      cfmigrationsupport_team1: ['team1'],
+      cfmigrationsupport_team2: ['team2'],
+      cfmigrationsupport_team4: ['team4'],
+      cfmigrationsupport_team5: ['team3', 'team6'],
+      cfmigrationsupport_team6: ['team5'],
+    });
+  });
+
+  it('counts the shared Team 5 DL in both Meghana\'s and Neelima\'s teams, and Team 6 in Pranavi\'s', () => {
+    const rows = computeTeamHygiene([
+      fakeUser('cfmigrationsupport_team5@cloudfuze.com', 50),
+      fakeUser('cfmigrationsupport_team6@cloudfuze.com', 50),
+    ]);
+    const has = (teamId: string, dl: string) => rows.find((r) => r.teamId === teamId)!.members.some((m) => m.email === dl);
+    expect(has('team3', 'cfmigrationsupport_team5@cloudfuze.com')).toBe(true);
+    expect(has('team6', 'cfmigrationsupport_team5@cloudfuze.com')).toBe(true);
+    expect(has('team5', 'cfmigrationsupport_team6@cloudfuze.com')).toBe(true);
+    expect(has('team5', 'cfmigrationsupport_team5@cloudfuze.com')).toBe(false);
   });
 
   it('counts a DL with mail as a team member, and leaves it out otherwise', () => {

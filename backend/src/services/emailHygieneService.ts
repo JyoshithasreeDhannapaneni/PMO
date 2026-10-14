@@ -127,7 +127,6 @@ export interface TeamHygieneRow {
 // own individual emailHygieneScore (manager included) — needs no extra Graph permission.
 interface TeamRosterEntry {
   teamId: string;
-  dlEmail: string; // the team's cfmigrationsupport distribution list
   managerEmail: string;
   memberEmails: string[]; // includes the manager
   segment: 'ENT' | 'SMB';
@@ -144,30 +143,30 @@ interface TeamRosterEntry {
 // no shared source of truth between frontend and backend for this yet.
 const TEAM_ROSTER: TeamRosterEntry[] = [
   {
-    teamId: 'team1', dlEmail: 'cfmigrationsupport_team1@cloudfuze.com', segment: 'SMB', managerEmail: 'Harika.Velidi@cloudfuze.com',
+    teamId: 'team1', segment: 'SMB', managerEmail: 'Harika.Velidi@cloudfuze.com',
     memberEmails: ['Harika.Velidi@cloudfuze.com', 'Siva.Kota@cloudfuze.com', 'Ravi.Hemanth@cloudfuze.com', 'Meena.Lakshmi@cloudfuze.com', 'Ambika.Patil@cloudfuze.com'],
   },
   {
-    teamId: 'team2', dlEmail: 'cfmigrationsupport_team2@cloudfuze.com', segment: 'SMB', managerEmail: 'sriram.ramakrishnan@cloudfuze.com',
+    teamId: 'team2', segment: 'SMB', managerEmail: 'sriram.ramakrishnan@cloudfuze.com',
     memberEmails: ['sriram.ramakrishnan@cloudfuze.com', 'Dathu.Kaluvala@cloudfuze.com', 'Ramana.Reddy@cloudfuze.com', 'Vineetha.Yenti@cloudfuze.com', 'Sanjana.Nerella@cloudfuze.com'],
   },
   {
-    teamId: 'team3', dlEmail: 'cfmigrationsupport_team3@cloudfuze.com', segment: 'SMB', managerEmail: 'meghana.chowdada@cloudfuze.com',
+    teamId: 'team3', segment: 'SMB', managerEmail: 'meghana.chowdada@cloudfuze.com',
     memberEmails: ['meghana.chowdada@cloudfuze.com', 'neelima.krotta@cloudfuze.com'],
   },
   // 2026-09-24: Neelima promoted to SMB Project Manager for email hygiene only (product
   // decision) -- Meghana's engineers moved to her; she also stays a member of team3.
   // segments.ts (Manager Dashboard) was intentionally NOT changed with this.
   {
-    teamId: 'team6', dlEmail: 'cfmigrationsupport_team6@cloudfuze.com', segment: 'SMB', managerEmail: 'neelima.krotta@cloudfuze.com',
+    teamId: 'team6', segment: 'SMB', managerEmail: 'neelima.krotta@cloudfuze.com',
     memberEmails: ['neelima.krotta@cloudfuze.com', 'Amulya.Anapuram@cloudfuze.com', 'Ranadeep.Muddam@cloudfuze.com', 'Vijendar.Burgula@cloudfuze.com', 'Habeebunnisa.Begum@cloudfuze.com'],
   },
   {
-    teamId: 'team4', dlEmail: 'cfmigrationsupport_team4@cloudfuze.com', segment: 'ENT', managerEmail: 'Lakshmi.Prasanna@cloudfuze.com',
+    teamId: 'team4', segment: 'ENT', managerEmail: 'Lakshmi.Prasanna@cloudfuze.com',
     memberEmails: ['Lakshmi.Prasanna@cloudfuze.com', 'Chaitanya.Gupta@cloudfuze.com', 'Davidraj.Dumpala@cloudfuze.com', 'harshith.kaduluri@cloudfuze.com', 'LakshmaReddy@cloudfuze.com', 'Ganesh.Kondameedi@cloudfuze.com'],
   },
   {
-    teamId: 'team5', dlEmail: 'cfmigrationsupport_team5@cloudfuze.com', segment: 'ENT', managerEmail: 'Pranavi@cloudfuze.com',
+    teamId: 'team5', segment: 'ENT', managerEmail: 'Pranavi@cloudfuze.com',
     memberEmails: ['Pranavi@cloudfuze.com', 'chandra.mouli@cloudfuze.com', 'Arun@cloudfuze.com', 'Manoj.Bathula@cloudfuze.com', 'Vainateya.Rasala@cloudfuze.com', 'Tanmai.Arangi@cloudfuze.com', 'swaroop@cloudfuze.com'],
   },
 ];
@@ -181,12 +180,16 @@ const SEGMENT_HEADS: Record<'ENT' | 'SMB', { email: string; name: string }> = {
 // Each team DL is scored as its own sender, like a person (product decision 2026-10-15:
 // teams are moving to emailing customers from these). A DL has no mailbox, so its mail is
 // read from the members' mailboxes: replies a member sent as (or on behalf of) the DL, and
-// customer emails addressed to it.
-export const TEAM_DLS: { email: string; name: string; teamId: string }[] = TEAM_ROSTER.map((t) => ({
-  email: t.dlEmail.toLowerCase(),
-  name: `CF Migration Support Team ${t.teamId.replace('team', '')} (DL)`,
-  teamId: t.teamId,
-}));
+// customer emails addressed to it. The DL numbers do not follow TEAM_ROSTER's team ids (mapping
+// confirmed 2026-10-15); Meghana's and Neelima's teams share Team 5 since they work with the
+// same engineers. cfmigrationsupport_team3 is not assigned to any team, so it is not scored.
+export const TEAM_DLS: { email: string; name: string; teamIds: string[] }[] = [
+  { email: 'cfmigrationsupport_team1@cloudfuze.com', name: 'CF Migration Support Team 1 (DL)', teamIds: ['team1'] },
+  { email: 'cfmigrationsupport_team2@cloudfuze.com', name: 'CF Migration Support Team 2 (DL)', teamIds: ['team2'] },
+  { email: 'cfmigrationsupport_team4@cloudfuze.com', name: 'CF Migration Support Team 4 (DL)', teamIds: ['team4'] },
+  { email: 'cfmigrationsupport_team5@cloudfuze.com', name: 'CF Migration Support Team 5 (DL)', teamIds: ['team3', 'team6'] },
+  { email: 'cfmigrationsupport_team6@cloudfuze.com', name: 'CF Migration Support Team 6 (DL)', teamIds: ['team5'] },
+];
 
 // Moves DL mail off the individuals and onto the DL, in place, before exchanges are built.
 // A reply sent from a DL address belongs to the DL, not the member who clicked send. A
@@ -216,7 +219,8 @@ export function computeTeamHygiene(results: UserEmailHygiene[]): TeamHygieneRow[
   const byEmail = new Map(results.map(r => [r.userEmail.toLowerCase(), r]));
   return TEAM_ROSTER.map(team => {
     // The DL counts like a member, but only in windows where it had mail of its own.
-    const emails = byEmail.has(team.dlEmail.toLowerCase()) ? [...team.memberEmails, team.dlEmail] : team.memberEmails;
+    const dls = TEAM_DLS.filter((d) => d.teamIds.includes(team.teamId) && byEmail.has(d.email)).map((d) => d.email);
+    const emails = [...team.memberEmails, ...dls];
     const members: TeamHygieneMember[] = emails.map(email => {
       const r = byEmail.get(email.toLowerCase());
       return { email, name: r?.userName ?? email, score: r?.emailHygieneScore ?? null };
