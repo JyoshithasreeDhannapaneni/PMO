@@ -12,6 +12,17 @@ import { getIstMonthBounds, istDateStr } from '../utils/weekBounds';
  * Jobs run on a schedule to automate system maintenance tasks
  */
 export function initializeCronJobs(): void {
+  // HubSpot: deals changed in the last 15 minutes, plus a full re-read at 2:30 AM IST that also
+  // removes deals deleted in HubSpot. Pages read only from the stored rows.
+  cron.schedule('*/15 * * * *', async () => {
+    const { isHubspotConfigured, syncHubspot } = require('../services/hubspotService');
+    if (isHubspotConfigured()) await syncHubspot();
+  });
+  cron.schedule('30 2 * * *', async () => {
+    const { isHubspotConfigured, syncHubspot } = require('../services/hubspotService');
+    if (isHubspotConfigured()) await syncHubspot(true);
+  }, { timezone: 'Asia/Kolkata' });
+
   // Daily delay check - runs at 6:00 AM every day
   cron.schedule('0 6 * * *', async () => {
     logger.info('Running daily delay check job...');
