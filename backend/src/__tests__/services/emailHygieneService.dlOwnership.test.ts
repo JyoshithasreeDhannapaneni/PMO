@@ -1,79 +1,78 @@
 import { describe, it, expect } from '@jest/globals';
-import { computeDlStats, computeTeamHygiene, isRemovedFromEmailHygiene, type ExchangeJudgment } from '../../services/emailHygieneService';
+import { attributeDlMail, computeTeamHygiene, isRemovedFromEmailHygiene, TEAM_DLS, type UserEmailHygiene } from '../../services/emailHygieneService';
 import type { TimelineEntry } from '../../services/teamConversationTimeline';
-
-const SINCE = Date.parse('2026-10-01T00:00:00+05:30');
-const HOUR = 3_600_000;
-
-function customer(time: number, addressedTo: string[], extra: Partial<TimelineEntry> = {}): TimelineEntry {
-  return {
-    messageId: `c${time}`, conversationId: `conv${time}`, time, kind: 'customer', text: 'Need help',
-    subject: 'Migration question', customerEmail: 'it@customer.com', addressedTo, ...extra,
-  };
-}
-
-function reply(time: number): TimelineEntry {
-  return {
-    messageId: `t${time}`, conversationId: 'x', time, kind: 'team', text: 'On it',
-    subject: 'RE: Migration question', teamMemberEmail: 'someone@cloudfuze.com', teamMemberName: 'Someone',
-  };
-}
-
-function judged(msg: TimelineEntry, replyAfterHours: number | null): ExchangeJudgment {
-  const r = replyAfterHours === null ? null : reply(msg.time + replyAfterHours * HOUR);
-  return {
-    exchange: { conversationId: msg.conversationId, customerMessage: msg, teamReplies: r ? [r] : [], nextCustomerMessage: null },
-    firstResponder: r, substantiveReplier: r, firstResponseHours: replyAfterHours, fullResolutionHours: replyAfterHours, wasReopened: false,
-  };
-}
 
 const TEAM1_DL = 'cfmigrationsupport_team1@cloudfuze.com';
 const TEAM4_DL = 'cfmigrationsupport_team4@cloudfuze.com';
+const HARIKA = { email: 'Harika.Velidi@cloudfuze.com', name: 'Harika' };
+const SIVA = { email: 'Siva.Kota@cloudfuze.com', name: 'Siva' };
 
-describe('emailHygieneService.computeDlStats', () => {
-  it('counts DL emails as answered by any reply, or unanswered against the team', () => {
-    const stats = computeDlStats([
-      judged(customer(SINCE + 1 * HOUR, [TEAM1_DL]), 2),
-      judged(customer(SINCE + 2 * HOUR, [TEAM1_DL, 'other@customer.com']), 10),
-      judged(customer(SINCE + 3 * HOUR, [TEAM1_DL]), null),
-    ], SINCE);
-    const t1 = stats.get('team1')!;
-    expect(t1).toMatchObject({ dlEmail: TEAM1_DL, received: 3, answered: 2, unanswered: 1, answeredWithin4h: 1, avgFirstReplyHours: 6 });
-    expect(t1.unansweredExamples).toHaveLength(1);
-    expect(t1.unansweredExamples[0]).toMatchObject({ subject: 'Migration question', customer: 'it@customer.com' });
-    expect(stats.get('team4')!.received).toBe(0);
+function customer(addressedTo: string[], recipients = [HARIKA, SIVA]): TimelineEntry {
+  return {
+    messageId: 'c1', conversationId: 'conv', time: 1, kind: 'customer', text: 'Need help', subject: 'Migration',
+    customerEmail: 'it@customer.com', recipients: recipients.map((r) => ({ ...r })), addressedTo,
+  };
+}
+
+function teamReply(fromAddress: string | undefined): TimelineEntry {
+  return {
+    messageId: 't1', conversationId: 'conv', time: 2, kind: 'team', text: 'On it', subject: 'RE: Migration',
+    teamMemberEmail: SIVA.email, teamMemberName: SIVA.name, fromAddress,
+  };
+}
+
+describe('emailHygieneService.attributeDlMail', () => {
+  it('gives a reply sent from a DL address to the DL, not the member who sent it', () => {
+    const reply = teamReply(TEAM1_DL);
+    attributeDlMail([{ entries: [reply] }]);
+    expect(reply.teamMemberEmail).toBe(TEAM1_DL);
+    expect(reply.teamMemberName).toBe('CF Migration Support Team 1 (DL)');
   });
 
-  it('ignores messages before the window, acknowledgments, and mail not sent to a DL', () => {
-    const stats = computeDlStats([
-      judged(customer(SINCE - HOUR, [TEAM1_DL]), null),
-      judged(customer(SINCE + HOUR, [TEAM1_DL], { isAcknowledgment: true }), null),
-      judged(customer(SINCE + HOUR, ['harika.velidi@cloudfuze.com']), null),
-      judged(customer(SINCE + HOUR, []), null),
-    ], SINCE);
-    expect(stats.get('team1')!.received).toBe(0);
+  it('leaves replies sent from a personal address with that person', () => {
+    const reply = teamReply(SIVA.email.toLowerCase());
+    const noFrom = teamReply(undefined);
+    attributeDlMail([{ entries: [reply, noFrom] }]);
+    expect(reply.teamMemberEmail).toBe(SIVA.email);
+    expect(noFrom.teamMemberEmail).toBe(SIVA.email);
   });
 
-  it('credits every DL a message was addressed to', () => {
-    const stats = computeDlStats([judged(customer(SINCE + HOUR, [TEAM1_DL, TEAM4_DL]), 1)], SINCE);
-    expect(stats.get('team1')!.answered).toBe(1);
-    expect(stats.get('team4')!.answered).toBe(1);
+  it('gives a customer email sent to a DL to the DL; members keep it only when addressed directly', () => {
+    const msg = customer([TEAM1_DL, 'harika.velidi@cloudfuze.com']);
+    attributeDlMail([{ entries: [msg] }]);
+    expect(msg.recipients!.map((r) => r.email)).toEqual([HARIKA.email, TEAM1_DL]);
   });
 
-  it('keeps at most the 5 newest unanswered examples', () => {
-    const stats = computeDlStats(
-      Array.from({ length: 7 }, (_, i) => judged(customer(SINCE + i * HOUR, [TEAM1_DL]), null)),
-      SINCE,
-    );
-    const ex = stats.get('team1')!.unansweredExamples;
-    expect(ex).toHaveLength(5);
-    expect(ex[0].receivedAt).toBe(new Date(SINCE + 6 * HOUR).toISOString());
+  it('credits every DL a customer email was sent to', () => {
+    const msg = customer([TEAM1_DL, TEAM4_DL]);
+    attributeDlMail([{ entries: [msg] }]);
+    expect(msg.recipients!.map((r) => r.email)).toEqual([TEAM1_DL, TEAM4_DL]);
   });
 
-  it('attaches DL stats to the matching team row', () => {
-    const rows = computeTeamHygiene([], computeDlStats([judged(customer(SINCE + HOUR, [TEAM1_DL]), 1)], SINCE));
-    expect(rows.find((r) => r.teamId === 'team1')!.dl).toMatchObject({ received: 1, answered: 1 });
-    expect(computeTeamHygiene([]).every((r) => r.dl === undefined)).toBe(true);
+  it('leaves customer emails not sent to a DL unchanged', () => {
+    const msg = customer(['harika.velidi@cloudfuze.com', 'siva.kota@cloudfuze.com']);
+    attributeDlMail([{ entries: [msg] }]);
+    expect(msg.recipients!.map((r) => r.email)).toEqual([HARIKA.email, SIVA.email]);
+  });
+});
+
+function fakeUser(email: string, score: number): UserEmailHygiene {
+  return { userEmail: email, userName: email.split('@')[0], emailHygieneScore: score } as UserEmailHygiene;
+}
+
+describe('emailHygieneService team DLs in team scores', () => {
+  it('has one DL per team', () => {
+    expect(TEAM_DLS.map((d) => d.email)).toEqual([1, 2, 3, 6, 4, 5].map((n) => `cfmigrationsupport_team${n}@cloudfuze.com`));
+  });
+
+  it('counts a DL with mail as a team member, and leaves it out otherwise', () => {
+    const rows = computeTeamHygiene([fakeUser(HARIKA.email, 80), fakeUser(TEAM1_DL, 60)]);
+    const team1 = rows.find((r) => r.teamId === 'team1')!;
+    expect(team1.members.map((m) => m.email)).toContain('cfmigrationsupport_team1@cloudfuze.com');
+    expect(team1.teamScore).toBe(70);
+    expect(team1.scoredMemberCount).toBe(2);
+    const team2 = rows.find((r) => r.teamId === 'team2')!;
+    expect(team2.members.some((m) => m.email.startsWith('cfmigrationsupport'))).toBe(false);
   });
 });
 

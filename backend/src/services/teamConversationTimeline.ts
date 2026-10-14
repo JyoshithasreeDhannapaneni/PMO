@@ -256,6 +256,7 @@ export interface TimelineEntry {
   recipients?: { email: string; name: string }[]; // kind === 'customer' -- every tracked member who got a copy
   addressedTo?: string[];     // kind === 'customer' -- every To/Cc address, lowercased (e.g. a team DL)
   teamMemberEmail?: string;   // kind === 'team'
+  fromAddress?: string;       // kind === 'team' -- the From address, lowercased (a team DL when sent as one)
   teamMemberName?: string;    // kind === 'team'
   isAcknowledgment?: boolean; // kind === 'customer' -- precomputed, free heuristic only
   // Only what this message newly says: the quoted reply chain below it removed. `text` keeps
@@ -407,6 +408,7 @@ export async function buildTeamTimelines(
           subject: m.subject ?? '',
           teamMemberEmail: member.email,
           teamMemberName: member.name,
+          fromAddress: m.from?.emailAddress?.address?.toLowerCase(),
         });
       }
 

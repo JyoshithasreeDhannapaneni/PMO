@@ -49,6 +49,19 @@ export const EMAIL_HYGIENE_REMOVED: { name: string; from: string }[] = [
   { name: 'Harshith', from: '2026-10-01' }, // 2026-10-15, product decision
 ];
 
+// Team DLs, scored as their own senders in Email Hygiene (backend TEAM_DLS). Listed under the
+// manager whose team owns them; Neelima's team6 sits under Meghana Chowdada here.
+export const EMAIL_HYGIENE_DLS: Record<string, { label: string; email: string }[]> = {
+  'Harika':           [{ label: 'Team 1 DL', email: 'cfmigrationsupport_team1@cloudfuze.com' }],
+  'Sriram':           [{ label: 'Team 2 DL', email: 'cfmigrationsupport_team2@cloudfuze.com' }],
+  'Meghana Chowdada': [
+    { label: 'Team 3 DL', email: 'cfmigrationsupport_team3@cloudfuze.com' },
+    { label: 'Team 6 DL', email: 'cfmigrationsupport_team6@cloudfuze.com' },
+  ],
+  'Lakshmi Prasanna': [{ label: 'Team 4 DL', email: 'cfmigrationsupport_team4@cloudfuze.com' }],
+  'Pranavi':          [{ label: 'Team 5 DL', email: 'cfmigrationsupport_team5@cloudfuze.com' }],
+};
+
 export const LMS_SCORES: { name: string; score: number; max: number }[] = [
   { name: 'Ambika Patil',                     score: 9,  max: 9  },
   { name: 'Meghana Chowdada',                 score: 6,  max: 6  },

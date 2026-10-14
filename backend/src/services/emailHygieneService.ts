@@ -116,20 +116,6 @@ export interface TeamHygieneRow {
   memberCount: number;            // total roster size for this team
   scoredMemberCount: number;      // how many of those actually have a computed score
   members: TeamHygieneMember[];
-  dl?: TeamDlStats;               // customer emails sent to this team's distribution list
-}
-
-// Customer emails addressed (To/Cc) to a team's distribution list in the window. The DL has
-// no mailbox, but every member gets a copy, so these are owned by the team: a reply from
-// anyone at CloudFuze answers it, and one nobody answered is counted against the team.
-export interface TeamDlStats {
-  dlEmail: string;
-  received: number;
-  answered: number;
-  unanswered: number;
-  answeredWithin4h: number;
-  avgFirstReplyHours: number | null;
-  unansweredExamples: { subject: string; customer: string; receivedAt: string }[];
 }
 
 // Team rosters — explicit membership (not a Distribution List lookup). The original
@@ -192,10 +178,46 @@ const SEGMENT_HEADS: Record<'ENT' | 'SMB', { email: string; name: string }> = {
   SMB: { email: 'ajay.singh@cloudfuze.com', name: 'Ajay Singh' },
 };
 
-export function computeTeamHygiene(results: UserEmailHygiene[], dlStats?: Map<string, TeamDlStats>): TeamHygieneRow[] {
+// Each team DL is scored as its own sender, like a person (product decision 2026-10-15:
+// teams are moving to emailing customers from these). A DL has no mailbox, so its mail is
+// read from the members' mailboxes: replies a member sent as (or on behalf of) the DL, and
+// customer emails addressed to it.
+export const TEAM_DLS: { email: string; name: string; teamId: string }[] = TEAM_ROSTER.map((t) => ({
+  email: t.dlEmail.toLowerCase(),
+  name: `CF Migration Support Team ${t.teamId.replace('team', '')} (DL)`,
+  teamId: t.teamId,
+}));
+
+// Moves DL mail off the individuals and onto the DL, in place, before exchanges are built.
+// A reply sent from a DL address belongs to the DL, not the member who clicked send. A
+// customer email sent to a DL belongs to the DL; a member keeps it only when the customer
+// also addressed them directly (otherwise they only got the DL's copy).
+export function attributeDlMail(timelines: Iterable<{ entries: TimelineEntry[] }>): void {
+  const dlByEmail = new Map(TEAM_DLS.map((d) => [d.email, d]));
+  for (const tl of timelines) {
+    for (const e of tl.entries) {
+      if (e.kind === 'team') {
+        const dl = e.fromAddress ? dlByEmail.get(e.fromAddress) : undefined;
+        if (dl) { e.teamMemberEmail = dl.email; e.teamMemberName = dl.name; }
+        continue;
+      }
+      const to = e.addressedTo ?? [];
+      const dls = TEAM_DLS.filter((d) => to.includes(d.email));
+      if (dls.length === 0) continue;
+      e.recipients = [
+        ...(e.recipients ?? []).filter((r) => to.includes(r.email.toLowerCase())),
+        ...dls.map((d) => ({ email: d.email, name: d.name })),
+      ];
+    }
+  }
+}
+
+export function computeTeamHygiene(results: UserEmailHygiene[]): TeamHygieneRow[] {
   const byEmail = new Map(results.map(r => [r.userEmail.toLowerCase(), r]));
   return TEAM_ROSTER.map(team => {
-    const members: TeamHygieneMember[] = team.memberEmails.map(email => {
+    // The DL counts like a member, but only in windows where it had mail of its own.
+    const emails = byEmail.has(team.dlEmail.toLowerCase()) ? [...team.memberEmails, team.dlEmail] : team.memberEmails;
+    const members: TeamHygieneMember[] = emails.map(email => {
       const r = byEmail.get(email.toLowerCase());
       return { email, name: r?.userName ?? email, score: r?.emailHygieneScore ?? null };
     });
@@ -213,43 +235,8 @@ export function computeTeamHygiene(results: UserEmailHygiene[], dlStats?: Map<st
       memberCount: members.length,
       scoredMemberCount: scored.length,
       members,
-      ...(dlStats?.get(team.teamId) ? { dl: dlStats.get(team.teamId) } : {}),
     };
   });
-}
-
-// DL ownership stats per team, from the window's judged exchanges. Only customer emails that
-// arrived inside the window count (the timeline also holds older ones for reply context), and
-// closing "thanks" messages are not treated as needing a reply.
-export function computeDlStats(judgments: ExchangeJudgment[], sinceMs: number): Map<string, TeamDlStats> {
-  const stats = new Map<string, TeamDlStats & { hours: number[] }>();
-  for (const team of TEAM_ROSTER) {
-    stats.set(team.teamId, { dlEmail: team.dlEmail, received: 0, answered: 0, unanswered: 0, answeredWithin4h: 0, avgFirstReplyHours: null, unansweredExamples: [], hours: [] });
-  }
-  for (const j of judgments) {
-    const msg = j.exchange.customerMessage;
-    if (msg.time < sinceMs || msg.isAcknowledgment || !msg.addressedTo?.length) continue;
-    for (const team of TEAM_ROSTER) {
-      if (!msg.addressedTo.includes(team.dlEmail.toLowerCase())) continue;
-      const s = stats.get(team.teamId)!;
-      s.received++;
-      if (j.firstResponder && j.firstResponseHours !== null) {
-        s.answered++;
-        s.hours.push(j.firstResponseHours);
-        if (j.firstResponseHours <= 4) s.answeredWithin4h++;
-      } else {
-        s.unanswered++;
-        s.unansweredExamples.push({ subject: msg.subject || '(no subject)', customer: msg.customerEmail || 'Unknown', receivedAt: new Date(msg.time).toISOString() });
-      }
-    }
-  }
-  const out = new Map<string, TeamDlStats>();
-  for (const [teamId, { hours, ...s }] of stats) {
-    s.avgFirstReplyHours = hours.length ? Math.round((hours.reduce((a, b) => a + b, 0) / hours.length) * 10) / 10 : null;
-    s.unansweredExamples = s.unansweredExamples.sort((a, b) => b.receivedAt.localeCompare(a.receivedAt)).slice(0, 5);
-    out.set(teamId, s);
-  }
-  return out;
 }
 
 export interface SegmentHead {
@@ -1406,7 +1393,6 @@ const CUSTOMER_CONTEXT_LOOKBACK_MS = 10 * 24 * 3600 * 1000;
 // and analyzes them for an arbitrary [since, until) window. `until` omitted means
 // "through now" (used for the rolling view and the current in-progress week).
 interface WindowAnalysis {
-  sinceMs: number;
   validUsers: Array<{ email: string; name: string }>;
   judgments: ExchangeJudgment[];
   orphanTeamMessages: TimelineEntry[];
@@ -1433,11 +1419,12 @@ function deriveWindowMetrics(
   analysis: WindowAnalysis,
   rules: HygieneScoringRules
 ): { metrics: UserEmailHygiene[]; teamHygiene: TeamHygieneRow[] } {
-  const results = analysis.validUsers.map((u) =>
-    deriveUserMetrics(u.email, u.name, analysis.judgments, analysis.orphanTeamMessages, rules, analysis.followUpIds)
-  );
-  const sorted = results.sort((a, b) => b.emailHygieneScore - a.emailHygieneScore);
-  return { metrics: sorted, teamHygiene: computeTeamHygiene(sorted, computeDlStats(analysis.judgments, analysis.sinceMs)) };
+  const score = (u: { email: string; name: string }) =>
+    deriveUserMetrics(u.email, u.name, analysis.judgments, analysis.orphanTeamMessages, rules, analysis.followUpIds);
+  // A DL with no mail in the window is left out rather than given default scores.
+  const dls = TEAM_DLS.map(score).filter((m) => m.uniqueCustomerThreads > 0);
+  const sorted = [...analysis.validUsers.map(score), ...dls].sort((a, b) => b.emailHygieneScore - a.emailHygieneScore);
+  return { metrics: sorted, teamHygiene: computeTeamHygiene(sorted) };
 }
 
 async function computeMetricsForWindow(
@@ -1476,6 +1463,7 @@ async function analyzeWindow(client: AxiosInstance, since: string, until?: strin
   // message it's actually answering even when that message arrived before `since` -- see
   // the comment on buildTeamTimelines() itself for why that pairing would otherwise fail.
   const timelines = await buildTeamTimelines(client, validUsers, since, until, 6, CUSTOMER_CONTEXT_LOOKBACK_MS);
+  attributeDlMail(timelines.values());
   const allExchanges: Exchange[] = [];
   // Proactive/outbound customer messages (status updates, meeting bookings, kickoff decks)
   // that don't answer any customer message in this timeline -- see findOrphanTeamMessages()
@@ -1490,7 +1478,7 @@ async function analyzeWindow(client: AxiosInstance, since: string, until?: strin
   logger.info(`Email hygiene: built ${timelines.size} conversation timelines, ${allExchanges.length} exchanges, ${orphanTeamMessages.length} proactive/outbound messages`);
 
   const judgments = await judgeAllExchanges(allExchanges);
-  return { sinceMs: Date.parse(since), validUsers, judgments, orphanTeamMessages, followUpIds: findFollowUpMessageIds(timelines.values()) };
+  return { validUsers, judgments, orphanTeamMessages, followUpIds: findFollowUpMessageIds(timelines.values()) };
 }
 
 // Dry run for a scoring-rules change: one shared mailbox fetch and judgment pass, scored
