@@ -15,7 +15,7 @@ import {
   Plus, Pencil, Check,
 } from 'lucide-react';
 import api, { emailHygieneApi, type PmoHygieneMonthRow } from '@/services/api';
-import { SEGMENT_CONFIG, SEGMENT_HIERARCHY, MANAGER_QUERY_NAMES, ENGINEER_ASSIGNMENTS, LMS_SCORES, MEETING_ATTENDANCE, AUDIO_PERCENTAGES, segmentOfManager, isNamedManager, managerNameMatches, type Segment } from '@/lib/segments';
+import { SEGMENT_CONFIG, SEGMENT_HIERARCHY, MANAGER_QUERY_NAMES, ENGINEER_ASSIGNMENTS, EMAIL_HYGIENE_REMOVED, LMS_SCORES, MEETING_ATTENDANCE, AUDIO_PERCENTAGES, segmentOfManager, isNamedManager, managerNameMatches, type Segment } from '@/lib/segments';
 import { ScoreBreakdownPanel } from '@/components/EmailHygieneBreakdown';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -1214,12 +1214,14 @@ function EmailHygieneRow({
 // ENGINEER_ASSIGNMENTS from lib/segments) instead of the backend's separate 6-team roster,
 // so "who's listed here" always matches what managers already see in those tabs. Pure, so
 // the month comparison can run it once per month and line the two results up by position.
-function buildEmailHygieneRollups(metrics: any[]) {
+// periodLastDay (IST YYYY-MM-DD) drops anyone in EMAIL_HYGIENE_REMOVED from that day on.
+function buildEmailHygieneRollups(metrics: any[], periodLastDay: string) {
+  const removed = new Set(EMAIL_HYGIENE_REMOVED.filter((r) => periodLastDay >= r.from).map((r) => r.name));
   // Applied uniformly to the lead too, since a lead can have direct reports of their own
   // in ENGINEER_ASSIGNMENTS alongside the sub-managers underneath them.
   const buildBlock = (person: string) => {
     const personMetric = getEngineerHygieneData(metrics, person);
-    const engineers = (ENGINEER_ASSIGNMENTS[person] ?? []).map((name) => ({
+    const engineers = (ENGINEER_ASSIGNMENTS[person] ?? []).filter((name) => !removed.has(name)).map((name) => ({
       name,
       metric: getEngineerHygieneData(metrics, name),
     }));
@@ -1360,16 +1362,30 @@ function EmailHygieneLastMonthCard() {
     viewMode === 'custom' ? (rangeStart === rangeEnd ? rangeStart : `${rangeStart} → ${rangeEnd}`) :
     (monthLabel || 'Last Month');
 
+  const periodTeamHygiene: any[] =
+    viewMode === 'weekly' ? (activeWeek?.teamHygiene ?? []) :
+    viewMode === 'daily' ? (activeDay?.teamHygiene ?? []) :
+    viewMode === 'custom' ? (rangeResult?.teamHygiene ?? []) :
+    (result?.teamHygiene ?? []);
+  const dlRows = periodTeamHygiene.filter((t: any) => t.dl);
+  // Last IST day of the shown period. The month comparison builds both months with this
+  // same day, so the two rosters stay index-aligned.
+  const periodLastDay: string =
+    viewMode === 'weekly' ? (activeWeek?.weekEnd ?? todayStr) :
+    viewMode === 'daily' ? (activeDay?.dayEnd ?? todayStr) :
+    viewMode === 'custom' ? rangeEnd :
+    (result?.monthStart ? lastDayOfMonth(result.monthStart) : todayStr);
+
   // Hygiene scores are matched onto the roster by name via the same fuzzy
   // getEngineerHygieneData() the Engineers tab popup already uses.
-  const segmentRollups = useMemo(() => buildEmailHygieneRollups(metrics), [metrics]);
+  const segmentRollups = useMemo(() => buildEmailHygieneRollups(metrics, periodLastDay), [metrics, periodLastDay]);
 
   const compareResult = compareMonthData?.data;
   const compare = viewMode === 'monthly' && !!compareResult?.finalized;
   // Same roster and order as segmentRollups, so blocks/engineers line up by index.
   const prevRollups = useMemo(
-    () => (compare ? buildEmailHygieneRollups(compareResult?.metrics ?? []) : null),
-    [compare, compareResult]
+    () => (compare ? buildEmailHygieneRollups(compareResult?.metrics ?? [], periodLastDay) : null),
+    [compare, compareResult, periodLastDay]
   );
   const compareLabels = useMemo(
     () => (compare ? { prevLabel: compareResult?.monthLabel ?? '', currLabel: monthLabel } : null),
@@ -1632,10 +1648,60 @@ function EmailHygieneLastMonthCard() {
                 </div>
                 );
               })}
+              {dlRows.length > 0 && <TeamDlTable rows={dlRows} />}
             </div>
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function lastDayOfMonth(monthStart: string): string {
+  const [y, m] = monthStart.split('-').map(Number);
+  return `${monthStart.slice(0, 8)}${String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, '0')}`;
+}
+
+// Customer emails sent to each team's cfmigrationsupport DL. A DL has no mailbox, so these
+// are team-owned: a reply from anyone at CloudFuze answers it, and nobody's personal score
+// takes the hit for one left unanswered -- it shows here, against the team.
+function TeamDlTable({ rows }: { rows: any[] }) {
+  return (
+    <div>
+      <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wide mb-1.5">Team DLs</p>
+      <div className="bg-white rounded-xl border border-gray-100 overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-left text-gray-500 border-b border-gray-100">
+              <th className="px-3 py-2 font-semibold">Team</th>
+              <th className="px-3 py-2 font-semibold">DL</th>
+              <th className="px-3 py-2 font-semibold text-right">Received</th>
+              <th className="px-3 py-2 font-semibold text-right">Answered</th>
+              <th className="px-3 py-2 font-semibold text-right">Within 4h</th>
+              <th className="px-3 py-2 font-semibold text-right">Avg first reply</th>
+              <th className="px-3 py-2 font-semibold text-right">Unanswered</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-50">
+            {rows.map((t: any) => (
+              <tr key={t.teamId}>
+                <td className="px-3 py-2 font-medium text-gray-700 whitespace-nowrap">{t.managerName} <span className="text-gray-400">({t.segment})</span></td>
+                <td className="px-3 py-2 text-gray-500">{t.dl.dlEmail}</td>
+                <td className="px-3 py-2 text-right text-gray-700">{t.dl.received}</td>
+                <td className="px-3 py-2 text-right text-gray-700">{t.dl.answered}</td>
+                <td className="px-3 py-2 text-right text-gray-700">{t.dl.answeredWithin4h}</td>
+                <td className="px-3 py-2 text-right text-gray-700">{t.dl.avgFirstReplyHours != null ? `${t.dl.avgFirstReplyHours}h` : '—'}</td>
+                <td
+                  className={`px-3 py-2 text-right font-semibold ${t.dl.unanswered > 0 ? 'text-red-600' : 'text-gray-400'}`}
+                  title={(t.dl.unansweredExamples ?? []).map((e: any) => `${e.receivedAt.slice(0, 10)}  ${e.customer}  ${e.subject}`).join('\n') || undefined}
+                >
+                  {t.dl.unanswered}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

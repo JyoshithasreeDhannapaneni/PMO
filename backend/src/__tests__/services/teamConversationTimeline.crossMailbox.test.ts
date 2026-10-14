@@ -100,6 +100,20 @@ describe('buildTeamTimelines across mailboxes', () => {
     expect(entry.text).toBe('When will the delta start?');
   });
 
+  it('records every To/Cc address on a customer email, so mail sent to a team DL can be found', async () => {
+    const client = fakeClient((url) => {
+      if (url.includes('/SentItems/') || !url.includes(encodeURIComponent(A.email))) return [];
+      return [{
+        ...customerCopy('conv-A', 'a1'),
+        toRecipients: [{ emailAddress: { address: 'CFMigrationSupport_Team1@cloudfuze.com' } }],
+        ccRecipients: [{ emailAddress: { address: 'boss@example.com' } }],
+      }];
+    });
+    const timelines = await buildTeamTimelines(client, [A], '2026-10-05T00:00:00Z', '2026-10-12T00:00:00Z', 1);
+    const [entry] = [...timelines.values()].flatMap((t) => t.entries);
+    expect(entry.addressedTo).toEqual(['cfmigrationsupport_team1@cloudfuze.com', 'boss@example.com']);
+  });
+
   it('keeps unrelated threads separate', async () => {
     const client = fakeClient((url) => {
       if (url.includes('/SentItems/')) return [];

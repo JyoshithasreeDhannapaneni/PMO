@@ -43,6 +43,12 @@ export const ENGINEER_ASSIGNMENTS: Record<string, string[]> = {
   'Sriram':           ['Dathu', 'Ramana', 'Vineetha', 'Sanjana'],
 };
 
+// Left out of the Email Hygiene card for periods ending on or after `from` (IST YYYY-MM-DD),
+// matching REMOVED_FROM_EMAIL_HYGIENE in the backend. Earlier periods still list them.
+export const EMAIL_HYGIENE_REMOVED: { name: string; from: string }[] = [
+  { name: 'Harshith', from: '2026-10-01' }, // 2026-10-15, product decision
+];
+
 export const LMS_SCORES: { name: string; score: number; max: number }[] = [
   { name: 'Ambika Patil',                     score: 9,  max: 9  },
   { name: 'Meghana Chowdada',                 score: 6,  max: 6  },
