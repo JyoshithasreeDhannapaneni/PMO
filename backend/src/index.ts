@@ -58,6 +58,8 @@ import jiraRoutes from './routes/jiraRoutes';
 import emailHygieneRoutes from './routes/emailHygieneRoutes';
 import slaBreachAlertRoutes from './routes/slaBreachAlertRoutes';
 import csatRoutes from './routes/csatRoutes';
+import hubspotRoutes from './routes/hubspotRoutes';
+import { isHubspotConfigured, triggerHubspotSync } from './services/hubspotService';
 import callHygieneRoutes from './routes/callHygieneRoutes';
 import { ntaSyncService, isNtaConfigured } from './services/ntaSyncService';
 import callTranscriptRoutes from './routes/callTranscriptRoutes';
@@ -196,6 +198,7 @@ app.use('/api/external', externalApiRoutes);
 app.use('/api/self-heal', selfHealRoutes);
 app.use('/api/sla-breach-alerts', slaBreachAlertRoutes);
 app.use('/api/csat', csatRoutes);
+app.use('/api/hubspot', hubspotRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
@@ -836,6 +839,46 @@ async function runMigrations() {
     await execute(`CREATE INDEX IF NOT EXISTS idx_deal_desk_emails_msg ON deal_desk_emails(message_id)`);
   } catch {}
 
+  // HubSpot companies and deals (2026-10-14): one row each, kept current by hubspotService's
+  // background sync; the Customer Success page reads only from these tables.
+  try {
+    await execute(`CREATE TABLE IF NOT EXISTS hubspot_companies (
+      company_id      TEXT PRIMARY KEY,
+      name            TEXT NOT NULL,
+      normalized_name TEXT NOT NULL,
+      updated_at      TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    await execute(`CREATE INDEX IF NOT EXISTS idx_hubspot_companies_norm ON hubspot_companies (normalized_name)`);
+    await execute(`CREATE TABLE IF NOT EXISTS hubspot_deals (
+      deal_id            TEXT PRIMARY KEY,
+      company_id         TEXT,
+      company_name       TEXT NOT NULL,
+      normalized_company TEXT NOT NULL,
+      name               TEXT NOT NULL,
+      amount             NUMERIC,
+      stage              TEXT,
+      pipeline           TEXT,
+      deal_type          TEXT,
+      close_date         TIMESTAMPTZ,
+      is_open            BOOLEAN NOT NULL,
+      is_won             BOOLEAN NOT NULL,
+      is_lost            BOOLEAN NOT NULL,
+      category           VARCHAR(20) NOT NULL,
+      cf_product         VARCHAR(30) NOT NULL,
+      hs_last_modified   TIMESTAMPTZ,
+      synced_at          TIMESTAMPTZ DEFAULT NOW()
+    )`);
+    await execute(`CREATE INDEX IF NOT EXISTS idx_hubspot_deals_company ON hubspot_deals (normalized_company)`);
+    await execute(`CREATE TABLE IF NOT EXISTS hubspot_sync_state (
+      singleton                BOOLEAN PRIMARY KEY DEFAULT TRUE,
+      last_full_sync_at        TIMESTAMPTZ,
+      last_incremental_sync_at TIMESTAMPTZ,
+      modified_cursor          TIMESTAMPTZ,
+      last_error               TEXT,
+      updated_at               TIMESTAMPTZ DEFAULT NOW()
+    )`);
+  } catch (e) { logger.error(`hubspot tables migration failed: ${(e as Error).message}`); }
+
   // HubSpot snapshot cache — singleton row; survives backend restarts
   await execute(`CREATE TABLE IF NOT EXISTS hubspot_cache (
     singleton   BOOLEAN PRIMARY KEY DEFAULT TRUE,
@@ -1140,6 +1183,9 @@ const server = app.listen(Number(PORT), HOST, async () => {
   } catch (error) {
     logger.warn('Startup delay recalculation failed (non-fatal):', error);
   }
+
+  // Bring HubSpot rows up to date in the background (full sync if the last one is over a day old).
+  if (isHubspotConfigured()) triggerHubspotSync();
 
   if (process.env.ENABLE_CRON_JOBS === 'true') {
     initializeCronJobs();
