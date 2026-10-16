@@ -11,6 +11,11 @@ import type {
   ProjectPhaseRecord,
   ManagerDimension,
 } from '@/types';
+import type {
+  TrackerMe, TrackerStatus, TrackerMetrics, StatList, CompanyRow, FilterOptions as TrackerFilterOptions,
+  CompanyDetail, ActivityFeed, ContactRow, DealQueryParams, DealsPage, Top20, TrackerInsights, TrackerOwner,
+  TrackerUserLink,
+} from '@/types/accountTracker';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
@@ -1110,6 +1115,50 @@ export const archiveSharePointApi = {
       headers: { 'Content-Type': undefined },
     });
     return data as { success: boolean; data: { itemsWithFiles: number; files: number; unmatchedItemIds: string[] } };
+  },
+};
+
+// Customer Success → Account Tracker (HubSpot books of business). `owner` = the HubSpot owner an admin is
+// viewing; omit it for your own book.
+const trackerGet = async <T,>(path: string, owner: string | null, params?: Record<string, unknown>): Promise<T> => {
+  const { data } = await api.get(`/customer-success/accounts${path}`, {
+    params: { ...(params ?? {}), ...(owner ? { owner } : {}) },
+    paramsSerializer: { indexes: null },
+  });
+  return (data as { data: T }).data;
+};
+
+export const accountTrackerApi = {
+  me: () => trackerGet<TrackerMe>('/me', null),
+  status: (owner: string | null) => trackerGet<TrackerStatus>('/status', owner),
+  sync: async (owner: string | null): Promise<TrackerStatus> => {
+    try {
+      const { data } = await api.post('/customer-success/accounts/sync', {}, { params: owner ? { owner } : undefined });
+      return (data as { data: TrackerStatus }).data;
+    } catch (e) {
+      // 409 = a sync of this book is already running (another tab or person): follow that one instead
+      if ((e as { response?: { status?: number } }).response?.status === 409) return accountTrackerApi.status(owner);
+      throw e;
+    }
+  },
+  metrics: (owner: string | null) => trackerGet<TrackerMetrics>('/metrics', owner),
+  stat: (owner: string | null, key: string) => trackerGet<StatList>(`/stats/${encodeURIComponent(key)}`, owner),
+  companies: (owner: string | null, params: Record<string, unknown>) => trackerGet<CompanyRow[]>('/companies', owner, params),
+  filterOptions: (owner: string | null) => trackerGet<TrackerFilterOptions>('/companies/filter-options', owner),
+  priority: (owner: string | null) => trackerGet<CompanyRow[]>('/companies/priority', owner),
+  lookup: (owner: string | null, name: string) => trackerGet<{ id: number }>('/companies/lookup', owner, { name }),
+  company: (owner: string | null, id: string) => trackerGet<CompanyDetail>(`/companies/${encodeURIComponent(id)}`, owner),
+  activity: (owner: string | null, id: string, refresh: boolean) =>
+    trackerGet<ActivityFeed>(`/companies/${encodeURIComponent(id)}/activity`, owner, refresh ? { refresh: 'true' } : undefined),
+  contacts: (owner: string | null) => trackerGet<ContactRow[]>('/contacts', owner),
+  deals: (owner: string | null, params: DealQueryParams) => trackerGet<DealsPage>('/deals', owner, params as Record<string, unknown>),
+  top20: (owner: string | null, type: 'companies' | 'msps') => trackerGet<Top20>('/top20', owner, { type }),
+  insights: (owner: string | null) => trackerGet<TrackerInsights>('/insights', owner),
+  owners: () => trackerGet<TrackerOwner[]>('/owners', null),
+  links: () => trackerGet<TrackerUserLink[]>('/links', null),
+  setLink: async (userId: string, ownerId: string) => {
+    const { data } = await api.put(`/customer-success/accounts/links/${encodeURIComponent(userId)}`, { ownerId });
+    return (data as { data: TrackerUserLink }).data;
   },
 };
 

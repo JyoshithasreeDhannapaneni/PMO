@@ -37,7 +37,13 @@ const allNavigation = [
   },
   { name: 'Pre-sales',            href: '/poc-projects',           icon: Target,          color: '#db2777', adminOnly: false },
   { name: 'Account Manager View', href: '/account-manager',        icon: CircleUserRound, color: '#4f46e5', roles: ['ADMIN', 'ACCOUNT_MANAGER'] },
-  { name: 'Customer Success',     href: '/customer-success',       icon: Handshake,       color: '#16a34a', adminOnly: false },
+  {
+    name: 'Customer Success', href: '/customer-success', icon: Handshake, color: '#16a34a', adminOnly: false,
+    children: [
+      { name: 'Overview',        href: '/customer-success' },
+      { name: 'Account Tracker', href: '/customer-success/accounts' },
+    ],
+  },
   { name: 'History Archive',      href: '/archive',                icon: Archive,         color: '#78716c', adminOnly: false },
   // Server Notifications and Deal Desk temporarily disabled 2026-09-30 (explicit request) --
   // their pages now show placeholders too (see server-alerts/page.tsx, deal-desk/page.tsx).
