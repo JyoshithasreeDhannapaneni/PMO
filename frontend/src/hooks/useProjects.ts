@@ -2,8 +2,9 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect } from 'react';
-import { CSAT_REQUIRED_EVENT, csatRequiredDetail, projectsApi, dashboardApi, statusReportsApi, managerGoalsApi, migrationTypeApi, pocProjectsApi, accountManagerApi, customerSuccessApi, hubspotApi, psEngagementsApi, kbArticlesApi, emailHygieneApi, callHygieneApi, callTranscriptsApi, auditApi, feedbackApi, actionItemsApi, slaBreachAlertsApi, archiveSharePointApi } from '@/services/api';
+import { CSAT_REQUIRED_EVENT, csatRequiredDetail, projectsApi, dashboardApi, statusReportsApi, managerGoalsApi, migrationTypeApi, pocProjectsApi, accountManagerApi, customerSuccessApi, hubspotApi, psEngagementsApi, kbArticlesApi, emailHygieneApi, callHygieneApi, callTranscriptsApi, auditApi, feedbackApi, actionItemsApi, slaBreachAlertsApi, archiveSharePointApi, accountTrackerApi } from '@/services/api';
 import type { CreateProjectInput, UpdateProjectInput, ManagerDimension } from '@/types';
+import type { DealQueryParams } from '@/types/accountTracker';
 
 export function useProjects(params?: {
   page?: number;
@@ -1261,5 +1262,150 @@ export function useSharePointImport() {
   return useMutation({
     mutationFn: (file: File) => archiveSharePointApi.importFile(file),
     onSettled: () => invalidateSharePointArchive(qc),
+  });
+}
+
+// ── Customer Success → Account Tracker ─────────────────────────────────────
+// `owner` is the HubSpot owner an admin is viewing (null = your own book). Tracker data only changes when that
+// book is synced, so queries stay fresh until useInvalidateTracker() runs after a sync.
+
+const TRACKER_STALE = 5 * 60_000;
+const trackerKey = (owner: string | null, ...rest: unknown[]) => ['cs-tracker', owner ?? 'me', ...rest];
+
+export function useTrackerMe() {
+  return useQuery({ queryKey: ['cs-tracker-me'], queryFn: () => accountTrackerApi.me(), staleTime: TRACKER_STALE, retry: 1 });
+}
+
+export function useTrackerStatus(owner: string | null, enabled: boolean, watch: boolean) {
+  return useQuery({
+    queryKey: trackerKey(owner, 'status'),
+    queryFn: () => accountTrackerApi.status(owner),
+    enabled,
+    retry: false,
+    refetchOnWindowFocus: false,
+    // fast while a sync runs, slower while the AI works through the book, otherwise not at all
+    refetchInterval: (query) => (watch || query.state.data?.syncing ? 1500 : query.state.data?.ai?.running ? 5000 : false),
+  });
+}
+
+export function useTrackerSync() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (owner: string | null) => accountTrackerApi.sync(owner),
+    onSuccess: (status, owner) => qc.setQueryData(trackerKey(owner, 'status'), status),
+  });
+}
+
+export function useInvalidateTracker() {
+  const qc = useQueryClient();
+  return (owner: string | null) => qc.invalidateQueries({
+    predicate: (q) => q.queryKey[0] === 'cs-tracker' && q.queryKey[1] === (owner ?? 'me') && q.queryKey[2] !== 'status',
+  });
+}
+
+const trackerQuery = { staleTime: TRACKER_STALE, refetchOnWindowFocus: false, retry: 1 } as const;
+
+export function useTrackerMetrics(owner: string | null) {
+  return useQuery({ queryKey: trackerKey(owner, 'metrics'), queryFn: () => accountTrackerApi.metrics(owner), ...trackerQuery });
+}
+
+export function useTrackerStat(owner: string | null, key: string | null) {
+  return useQuery({
+    queryKey: trackerKey(owner, 'stat', key),
+    queryFn: () => accountTrackerApi.stat(owner, key as string),
+    enabled: !!key,
+    ...trackerQuery,
+  });
+}
+
+export function useTrackerCompanies(owner: string | null, params: Record<string, unknown>, enabled = true) {
+  return useQuery({
+    queryKey: trackerKey(owner, 'companies', params),
+    queryFn: () => accountTrackerApi.companies(owner, params),
+    enabled,
+    placeholderData: (previous) => previous,
+    ...trackerQuery,
+  });
+}
+
+export function useTrackerFilterOptions(owner: string | null) {
+  return useQuery({ queryKey: trackerKey(owner, 'filter-options'), queryFn: () => accountTrackerApi.filterOptions(owner), ...trackerQuery });
+}
+
+export function useTrackerPriority(owner: string | null) {
+  return useQuery({ queryKey: trackerKey(owner, 'priority'), queryFn: () => accountTrackerApi.priority(owner), ...trackerQuery });
+}
+
+export function useTrackerCompany(owner: string | null, id: string) {
+  return useQuery({
+    queryKey: trackerKey(owner, 'company', id),
+    queryFn: () => accountTrackerApi.company(owner, id),
+    enabled: !!id,
+    ...trackerQuery,
+    retry: false,
+  });
+}
+
+/** Live HubSpot activity for a company; each `nonce` bump reads HubSpot again (bypassing the server's 2-minute cache). */
+export function useTrackerActivity(owner: string | null, id: string, nonce: number) {
+  return useQuery({
+    queryKey: trackerKey(owner, 'activity', id, nonce),
+    queryFn: () => accountTrackerApi.activity(owner, id, nonce > 0),
+    enabled: !!id,
+    staleTime: 2 * 60_000,
+    refetchOnWindowFocus: false,
+    retry: false,
+    placeholderData: (previous) => previous,
+  });
+}
+
+export function useTrackerContacts(owner: string | null) {
+  return useQuery({ queryKey: trackerKey(owner, 'contacts'), queryFn: () => accountTrackerApi.contacts(owner), ...trackerQuery });
+}
+
+export function useTrackerDeals(owner: string | null, params: DealQueryParams) {
+  return useQuery({
+    queryKey: trackerKey(owner, 'deals', params),
+    queryFn: () => accountTrackerApi.deals(owner, params),
+    placeholderData: (previous) => previous,
+    ...trackerQuery,
+  });
+}
+
+export function useTrackerTop20(owner: string | null, type: 'companies' | 'msps', enabled = true) {
+  return useQuery({
+    queryKey: trackerKey(owner, 'top20', type),
+    queryFn: () => accountTrackerApi.top20(owner, type),
+    enabled,
+    ...trackerQuery,
+  });
+}
+
+export function useTrackerInsights(owner: string | null) {
+  return useQuery({ queryKey: trackerKey(owner, 'insights'), queryFn: () => accountTrackerApi.insights(owner), ...trackerQuery });
+}
+
+export function useTrackerOwners(enabled: boolean) {
+  return useQuery({
+    queryKey: ['cs-tracker-owners'],
+    queryFn: () => accountTrackerApi.owners(),
+    enabled,
+    staleTime: 10 * 60_000,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useTrackerLinks() {
+  return useQuery({ queryKey: ['cs-tracker-links'], queryFn: () => accountTrackerApi.links(), refetchOnWindowFocus: false });
+}
+
+export function useSetTrackerLink() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, ownerId }: { userId: string; ownerId: string }) => accountTrackerApi.setLink(userId, ownerId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['cs-tracker-links'] });
+      qc.invalidateQueries({ queryKey: ['cs-tracker-me'] });
+    },
   });
 }

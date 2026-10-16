@@ -22,6 +22,11 @@ export function initializeCronJobs(): void {
     const { isHubspotConfigured, syncHubspot } = require('../services/hubspotService');
     if (isHubspotConfigured()) await syncHubspot(true);
   }, { timezone: 'Asia/Kolkata' });
+  // Customer Success → Account Tracker: same cadence, re-syncs every person's book that has been loaded once.
+  cron.schedule('*/15 * * * *', async () => {
+    const { syncAllLoaded } = require('../services/accountTrackerSync');
+    await syncAllLoaded();
+  });
 
   // Daily delay check - runs at 6:00 AM every day
   cron.schedule('0 6 * * *', async () => {
