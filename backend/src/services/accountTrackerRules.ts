@@ -249,6 +249,32 @@ put(COUNTRY_ZONES, 'America/Santiago', 'chile');
 put(COUNTRY_ZONES, 'America/Bogota', 'colombia');
 put(COUNTRY_ZONES, 'America/Lima', 'peru');
 put(COUNTRY_ZONES, 'America/Puerto_Rico', 'puerto rico');
+put(COUNTRY_ZONES, 'Asia/Nicosia', 'cyprus', 'cy');
+put(COUNTRY_ZONES, 'Europe/Malta', 'malta');
+put(COUNTRY_ZONES, 'Atlantic/Reykjavik', 'iceland');
+put(COUNTRY_ZONES, 'Europe/Sofia', 'bulgaria');
+put(COUNTRY_ZONES, 'Europe/Tallinn', 'estonia');
+put(COUNTRY_ZONES, 'Europe/Riga', 'latvia');
+put(COUNTRY_ZONES, 'Europe/Vilnius', 'lithuania');
+put(COUNTRY_ZONES, 'Europe/Belgrade', 'serbia', 'croatia', 'slovenia', 'slovakia');
+
+// International dialling codes → country, used only when HubSpot has no country. +1 is left out (US or Canada).
+const PHONE_COUNTRIES: [string, string][] = [
+  ['+44', 'united kingdom'], ['+91', 'india'], ['+86', 'china'], ['+966', 'saudi arabia'], ['+971', 'united arab emirates'],
+  ['+49', 'germany'], ['+33', 'france'], ['+34', 'spain'], ['+39', 'italy'], ['+31', 'netherlands'], ['+32', 'belgium'],
+  ['+41', 'switzerland'], ['+43', 'austria'], ['+45', 'denmark'], ['+46', 'sweden'], ['+47', 'norway'], ['+48', 'poland'],
+  ['+353', 'ireland'], ['+357', 'cyprus'], ['+351', 'portugal'], ['+972', 'israel'], ['+27', 'south africa'],
+  ['+61', 'australia'], ['+64', 'new zealand'], ['+65', 'singapore'], ['+60', 'malaysia'], ['+63', 'philippines'],
+  ['+62', 'indonesia'], ['+852', 'hong kong'], ['+81', 'japan'], ['+82', 'south korea'], ['+55', 'brazil'],
+  ['+52', 'mexico'],
+].sort((a, b) => b[0].length - a[0].length) as [string, string][];
+
+/** Country from an international phone number ("+966…" → Saudi Arabia); null for +1 or no number. */
+export function countryFromPhone(phone: string | null | undefined): string | null {
+  const p = (phone ?? '').replace(/[\s().-]/g, '');
+  if (!p.startsWith('+')) return null;
+  return PHONE_COUNTRIES.find(([code]) => p.startsWith(code))?.[1] ?? null;
+}
 
 put(US_STATE_ZONES, 'America/New_York',
   'connecticut', 'ct', 'delaware', 'de', 'district of columbia', 'dc', 'washington dc', 'florida', 'fl', 'georgia', 'ga',
@@ -282,6 +308,54 @@ put(AU_STATE_ZONES, 'Australia/Brisbane', 'queensland', 'qld');
 put(AU_STATE_ZONES, 'Australia/Adelaide', 'south australia', 'sa');
 put(AU_STATE_ZONES, 'Australia/Darwin', 'northern territory', 'nt');
 put(AU_STATE_ZONES, 'Australia/Perth', 'western australia', 'wa');
+
+const US_NAMES = ['united states', 'usa', 'us', 'united states of america', 'u.s.', 'u.s.a.'];
+// US state codes that are also state codes in these countries (Goa, Manipur, Tamil Nadu; Western Australia).
+const SHARED_CODES: Record<string, string[]> = { india: ['ga', 'mn', 'tn'], in: ['ga', 'mn', 'tn'], australia: ['wa'], au: ['wa'] };
+
+export interface CleanPlace {
+  city: string | null;
+  state: string | null;
+  country: string | null;
+  /** true when the HubSpot address contradicted itself and was corrected. */
+  corrected: boolean;
+}
+
+/**
+ * HubSpot addresses are sometimes typed into the wrong fields, e.g. city "NC", state "Indian Trail", country "India"
+ * for a company in Indian Trail, North Carolina. A US state in the city or state field outweighs a different country,
+ * unless the phone number says otherwise (a non-+1 country code) or the code is also a region of that country.
+ */
+export function cleanPlace(p: { city: string | null; state: string | null; country: string | null; phone?: string | null }): CleanPlace {
+  let city = trim(p.city);
+  let state = trim(p.state);
+  let country = trim(p.country);
+  const isUsState = (s: string | null) => s != null && US_STATE_ZONES[lower(s)] != null;
+  // in the city field only a two-letter code counts: "Washington" or "Georgia" can be real places elsewhere
+  const cityIsCode = city != null && /^[A-Za-z]{2}$/.test(city) && isUsState(city);
+  const usState = isUsState(state) ? state : cityIsCode ? city : null;
+  const c = lower(country);
+  if (!usState || c === lower(usState)) return { city, state, country, corrected: false };
+
+  const isUs = c === '' || US_NAMES.includes(c);
+  if (!isUs) {
+    const phone = (p.phone ?? '').replace(/[\s().-]/g, '');
+    const foreignPhone = phone.startsWith('+') && !phone.startsWith('+1');
+    const ownRegion = CA_PROVINCE_ZONES[lower(usState)] != null && c === 'canada'
+      || (SHARED_CODES[c] ?? []).includes(lower(usState));
+    if (foreignPhone || ownRegion) return { city, state, country, corrected: false };
+  }
+  let corrected = false;
+  if (usState === city && !isUsState(state)) {
+    [city, state] = [state, city];
+    corrected = true;
+  }
+  if (!US_NAMES.includes(c)) {
+    country = 'United States';
+    corrected = true;
+  }
+  return { city, state, country, corrected };
+}
 
 /** IANA zone for a country (and state/province for US, Canada, Australia); null when unknown. */
 export function zoneFor(country: string | null | undefined, state: string | null | undefined): string | null {

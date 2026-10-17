@@ -6,7 +6,7 @@ import OpenAI from 'openai';
 import { query } from '../config/database';
 import { logger } from '../utils/logger';
 import { ActivityItem, activityForCompany } from './accountTrackerHubspot';
-import { htmlToText, lower, todayIst, trim } from './accountTrackerRules';
+import { cleanPlace, htmlToText, lower, todayIst, trim } from './accountTrackerRules';
 import {
   AiKind, AiRecord, CompanyRecord, DealRecord, addAiSpend, aiRecords, aiSpend, companiesOf, dealsOf, saveAiFailure,
   saveAiResult,
@@ -667,7 +667,10 @@ async function website(c: CompanyRecord): Promise<string | null> {
 
 const hash = (v: unknown): string => crypto.createHash('sha256').update(JSON.stringify(v)).digest('hex').slice(0, 32);
 
-function companyFacts(c: CompanyRecord): Record<string, unknown> {
+function companyFacts(raw: CompanyRecord): Record<string, unknown> {
+  // only a corrected address changes the input (and so the fingerprint); everything else is sent exactly as stored
+  const place = cleanPlace(raw);
+  const c = place.corrected ? { ...raw, city: place.city, state: place.state, country: place.country } : raw;
   return {
     name: c.company, domain: c.domain, website: c.website, industry: c.industry, industryGroup: c.industryGroup,
     city: c.city, state: c.state, country: c.country, employees: c.employees, annualRevenue: c.annualRevenue,

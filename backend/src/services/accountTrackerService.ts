@@ -4,7 +4,7 @@ import {
   aiConfigured, aiCoverage, aiForCompanies, aiModel, aiSignals, dealInsightsFor, monthlyBudget, onAiChanged,
 } from './accountTrackerAi';
 import {
-  bestConnectWindow, connectProbability, daysBetween, daysSince, domain, eq, isBlank, isNo, isYes, location, lower,
+  bestConnectWindow, cleanPlace, connectProbability, countryFromPhone, daysBetween, daysSince, domain, eq, isBlank, isNo, isYes, location, lower,
   offsetHours, overview, probability, relationshipHealth, suggestedCallTime, tierOf, todayIst, trim, zoneFor,
 } from './accountTrackerRules';
 import {
@@ -91,6 +91,8 @@ type Basis = 'hubspot' | 'ai' | 'activity' | 'timezone';
 
 export interface CompanyView extends CompanyRecord {
   id: number;
+  /** HubSpot's address contradicted itself (e.g. a US state with country India) and was corrected for display. */
+  placeCorrected: boolean;
   tier: string | null;
   /** null until the AI has classified the company (unless HubSpot has an MSP property configured). */
   msp: boolean | null;
@@ -107,8 +109,11 @@ export interface CompanyView extends CompanyRecord {
 
 type Signals = { msp: boolean | null; connect: string | null } | undefined;
 
-function derive(c: CompanyRecord, today: string, offsets: Map<string, number | null>, cfg: TrackerConfig, ai: Signals): CompanyView {
-  const zone = zoneFor(c.country, c.state);
+function derive(raw: CompanyRecord, today: string, offsets: Map<string, number | null>, cfg: TrackerConfig, ai: Signals): CompanyView {
+  const { corrected: placeCorrected, ...place } = cleanPlace(raw);
+  const c = { ...raw, ...place };
+  // no country in HubSpot: an international phone number is the next best clue for the time zone
+  const zone = zoneFor(c.country, c.state) ?? (c.country ? null : zoneFor(countryFromPhone(c.phone), null));
   let utcOffset: number | null = null;
   if (zone != null) {
     if (!offsets.has(zone)) offsets.set(zone, offsetHours(zone));
@@ -133,6 +138,7 @@ function derive(c: CompanyRecord, today: string, offsets: Map<string, number | n
   return {
     ...c,
     id: Number(c.id),
+    placeCorrected,
     tier: tierOf(c.employeeSizeTier, c.employees),
     msp,
     mspBasis: fromHubspot ? 'hubspot' : ai?.msp != null ? 'ai' : null,

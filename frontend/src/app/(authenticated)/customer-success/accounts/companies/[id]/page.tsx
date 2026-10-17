@@ -396,17 +396,38 @@ const HEALTH: Record<string, { bar: string; text: string }> = {
   Unknown: { bar: 'bg-gray-300', text: 'text-gray-500' },
 };
 
-function LiveClock({ offset }: { offset: number | null }) {
+/** The customer's current time. Ticks on each new second (so seconds never repeat or skip) and follows the time
+ *  zone itself, so a daylight-saving change shows without reloading. */
+function LiveClock({ zone, offset }: { zone: string | null; offset: number | null }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
+    let timer: ReturnType<typeof setTimeout>;
+    const tick = () => {
+      setNow(Date.now());
+      timer = setTimeout(tick, 1000 - (Date.now() % 1000));
+    };
+    timer = setTimeout(tick, 1000 - (Date.now() % 1000));
+    return () => clearTimeout(timer);
   }, []);
-  if (offset == null) return <span className="text-gray-400">Not on file</span>;
-  const local = new Date(now + offset * 3_600_000);
-  const p = (n: number) => String(n).padStart(2, '0');
-  return <span className="font-mono text-3xl font-bold tabular-nums text-gray-900">{p(local.getUTCHours())}:{p(local.getUTCMinutes())}:{p(local.getUTCSeconds())}</span>;
+  if (zone == null && offset == null) return <span className="text-gray-400">Not on file</span>;
+  const opts: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true };
+  const time = zone
+    ? new Intl.DateTimeFormat('en-US', { ...opts, timeZone: zone }).format(now)
+    : new Intl.DateTimeFormat('en-US', { ...opts, timeZone: 'UTC' }).format(now + (offset ?? 0) * 3_600_000);
+  const day = zone
+    ? new Intl.DateTimeFormat('en-US', { weekday: 'short', day: 'numeric', month: 'short', timeZone: zone }).format(now)
+    : null;
+  return (
+    <span className="flex flex-col">
+      <span className="whitespace-nowrap font-mono text-2xl font-bold tabular-nums text-gray-900 xl:text-3xl">{time}</span>
+      {day && <span className="text-xs font-medium text-gray-500">{day}</span>}
+    </span>
+  );
 }
+
+/** "Indian Trail, NC" — the place whose clock is shown. */
+const placeName = (c: { city: string | null; state: string | null; country: string | null }): string | null =>
+  (c.city && c.state ? `${c.city}, ${c.state}` : c.city ?? c.state ?? c.country) || null;
 
 function Engagement({ d, ai, activityHref }: { d: CompanyDetail; ai: AiState; activityHref: string }) {
   const c = d.company;
@@ -471,8 +492,11 @@ function Engagement({ d, ai, activityHref }: { d: CompanyDetail; ai: AiState; ac
       <Section title="Time zone & best time to call">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="flex flex-col gap-1 rounded-xl bg-gray-50 p-4">
-            <span className="inline-flex items-center gap-1"><Clock className="h-3.5 w-3.5 text-gray-400" /><FieldLabel>Their local time</FieldLabel></span>
-            <LiveClock offset={c.utcOffset} />
+            <span className="inline-flex items-center gap-1">
+              <Clock className="h-3.5 w-3.5 text-gray-400" />
+              <FieldLabel>{placeName(c) ? `Local time in ${placeName(c)}` : `${c.company} local time`}</FieldLabel>
+            </span>
+            <LiveClock zone={c.timeZone} offset={c.utcOffset} />
             <span className="text-xs text-gray-400">{utcOffsetLabel(c.utcOffset)}{c.timeZone ? ` · ${c.timeZone}` : ''}</span>
           </div>
           <div className="flex flex-col gap-3">

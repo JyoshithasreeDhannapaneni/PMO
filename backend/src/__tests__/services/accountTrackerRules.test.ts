@@ -3,11 +3,41 @@
 //   fails_when=a rule drifts from the Java original (e.g. DST ignored, whole-word title match lost, notes leak markup); why_new=new module; seam=none
 import { describe, it, expect } from '@jest/globals';
 import {
-  bestConnectWindow, choosePrimary, connectProbability, daysSince, htmlToText, isYes, offsetHours, outreachStage,
+  bestConnectWindow, choosePrimary, cleanPlace, connectProbability, countryFromPhone, daysSince, htmlToText, isYes, offsetHours, outreachStage,
   parseHubSpotDate, parseNumber, relationshipHealth, revenueDisplay, suggestedCallTime, tierOf, titleCaseEnum, truthy, zoneFor,
 } from '../../services/accountTrackerRules';
 
 describe('accountTrackerRules', () => {
+  it('corrects a HubSpot address where a US state contradicts the country', () => {
+    // 10MSG: city and state swapped, country wrong — Indian Trail is a town in North Carolina
+    expect(cleanPlace({ city: 'NC', state: 'Indian Trail', country: 'India' }))
+      .toEqual({ city: 'Indian Trail', state: 'NC', country: 'United States', corrected: true });
+    expect(cleanPlace({ city: 'Charlotte', state: 'North Carolina', country: null }))
+      .toEqual({ city: 'Charlotte', state: 'North Carolina', country: 'United States', corrected: true });
+    expect(zoneFor('United States', 'NC')).toBe('America/New_York');
+  });
+
+  it('reads the country from an international phone number, never from +1', () => {
+    expect(countryFromPhone('+966533486092')).toBe('saudi arabia');
+    expect(countryFromPhone('+357 22 123456')).toBe('cyprus'); // longest code wins over +35x
+    expect(countryFromPhone('+611300966656')).toBe('australia');
+    expect(countryFromPhone('+14085102303')).toBeNull();
+    expect(countryFromPhone('020 7946 0000')).toBeNull();
+    expect(zoneFor('Cyprus', null)).toBe('Asia/Nicosia');
+  });
+
+  it('leaves real non-US addresses alone', () => {
+    const same = (p: { city: string | null; state: string | null; country: string | null; phone?: string }) =>
+      expect(cleanPlace(p)).toEqual({ city: p.city, state: p.state, country: p.country, corrected: false });
+    same({ city: 'Navi Mumbai', state: 'Maharashtra', country: 'India', phone: '+912267919595' });
+    same({ city: 'Chennai', state: 'TN', country: 'India' }); // Tamil Nadu, not Tennessee
+    same({ city: 'Perth', state: 'WA', country: 'Australia' }); // Western Australia, not Washington
+    same({ city: 'Washington', state: 'Tyne and Wear', country: 'United Kingdom' }); // a full name in the city field never counts
+    same({ city: 'Tbilisi', state: 'Georgia', country: 'Georgia' });
+    same({ city: 'Pune', state: 'NC', country: 'India', phone: '+91 20 1234 5678' }); // the phone says India
+    same({ city: 'Austin', state: 'TX', country: 'United States' });
+  });
+
   it('parses HubSpot number formats', () => {
     expect(parseNumber('1,200')).toBe(1200);
     expect(parseNumber('$12.5M')).toBe(12_500_000);
