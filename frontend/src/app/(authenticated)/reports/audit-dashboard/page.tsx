@@ -1836,7 +1836,7 @@ export default function AuditDashboardPage() {
                       : sendNowStatus === 'error' ? 'bg-red-600 text-white'
                       : 'bg-emerald-600 text-white hover:bg-emerald-700'
                   )}
-                  title={sendNowStatus === 'error' ? sendNowError : 'Emails the PMO Hygiene & Score Card to all active managers right now'}
+                  title={sendNowStatus === 'error' ? sendNowError : 'Emails the PMO Hygiene & Score Card to the configured daily recipients right now (not the managers). Use Schedule Send to pick other recipients.'}
                 >
                   {sendNowStatus === 'sending' ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
                   {sendNowStatus === 'sending' ? 'Sending…' : sendNowStatus === 'sent' ? 'Sent!' : sendNowStatus === 'error' ? 'Failed' : 'Send Now'}

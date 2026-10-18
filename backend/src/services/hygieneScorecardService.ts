@@ -64,11 +64,14 @@ class HygieneScorecardService {
     );
   }
 
-  private async getRecipients(): Promise<string[]> {
-    const result = await query(
-      `SELECT email FROM users WHERE role IN ('PROJECT_MANAGER', 'ADMIN') AND is_active = true AND email IS NOT NULL AND email <> ''`
-    );
-    return result.rows.map((r: any) => r.email);
+  // The daily send goes only to the addresses configured here, never to the PM/admin list:
+  // unset means the daily job sends nothing. Wider distribution is a deliberate per-send
+  // choice through scheduled sends (createSchedule), which carry their own recipients.
+  private getRecipients(): string[] {
+    return (process.env.HYGIENE_SCORECARD_RECIPIENTS || '')
+      .split(',')
+      .map((e) => e.trim())
+      .filter(Boolean);
   }
 
   async buildScorecardRows(): Promise<any[]> {
@@ -154,9 +157,9 @@ class HygieneScorecardService {
       return { sent: false, recipientCount: 0, skippedReason: 'Already sent today' };
     }
 
-    const recipients = await this.getRecipients();
+    const recipients = this.getRecipients();
     if (recipients.length === 0) {
-      return { sent: false, recipientCount: 0, skippedReason: 'No manager recipients found' };
+      return { sent: false, recipientCount: 0, skippedReason: 'HYGIENE_SCORECARD_RECIPIENTS not set' };
     }
 
     try {
@@ -166,7 +169,7 @@ class HygieneScorecardService {
     }
 
     await this.markSent(recipients.length);
-    logger.info(`Hygiene scorecard sent to ${recipients.length} manager(s)`);
+    logger.info(`Hygiene scorecard sent to ${recipients.length} recipient(s)`);
     return { sent: true, recipientCount: recipients.length };
   }
 
