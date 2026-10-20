@@ -131,7 +131,7 @@ class CaseStudyService {
     const result = await query(
       `SELECT cs.*, p.id as p_id, p.name as p_name, p.customer_name, p.project_manager,
               p.account_manager, p.planned_start, p.planned_end, p.actual_start, p.actual_end,
-              p.source_platform, p.target_platform, p.migration_types
+              p.source_platform, p.target_platform, p.migration_types, p.project_memory
        FROM case_studies cs
        JOIN projects p ON cs.project_id = p.id
        WHERE cs.id = $1`,
@@ -158,6 +158,7 @@ class CaseStudyService {
         sourcePlatform: row.source_platform,
         targetPlatform: row.target_platform,
         migrationTypes: row.migration_types,
+        projectMemory: row.project_memory ?? null,
       },
     };
   }

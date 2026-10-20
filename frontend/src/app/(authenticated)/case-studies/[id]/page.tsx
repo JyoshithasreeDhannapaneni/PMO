@@ -14,6 +14,7 @@ import { exportToPDF, exportToWord } from '@/utils/exportCaseStudy';
 import { useExtractKbArticles, useBulkSaveKbArticles } from '@/hooks/useProjects';
 import { useCaseStudyTemplate } from '@/hooks/useCaseStudyTemplate';
 import { useAuth } from '@/context/AuthContext';
+import { snapshotHtml, isBlankSection } from '@/lib/caseStudySnapshot';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -261,6 +262,7 @@ interface CaseStudy {
     sourcePlatform: string;
     targetPlatform: string;
     migrationTypes: string | null;
+    projectMemory: string | null;
   };
 }
 
@@ -344,13 +346,19 @@ export default function CaseStudyEditorPage() {
       if (data.success && data.data) {
         setCaseStudy(data.data);
         setTitle(data.data.title || data.data.project?.name || '');
+        let content: SectionContent = {};
         if (data.data.content) {
           try {
-            setSectionContent(JSON.parse(data.data.content));
+            content = JSON.parse(data.data.content);
           } catch {
-            setSectionContent({ executive_summary: data.data.content });
+            content = { executive_summary: data.data.content };
           }
         }
+        const prefill = data.data.project ? snapshotHtml(data.data.project) : null;
+        if (prefill && isBlankSection(content.project_snapshot)) {
+          content = { ...content, project_snapshot: prefill };
+        }
+        setSectionContent(content);
       }
     } catch (err) {
       console.error('Failed to fetch case study:', err);
