@@ -9,8 +9,8 @@ export const csatController = {
 
   send: asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const actor = (req as any).user as CsatActor;
-    const { recipientEmail, customerName, projectName, message } = req.body ?? {};
-    const data = await csatService.sendRequest(req.params.id, { recipientEmail, customerName, projectName, message }, actor);
+    const { recipientEmail, customerName, projectName, message, cc } = req.body ?? {};
+    const data = await csatService.sendRequest(req.params.id, { recipientEmail, customerName, projectName, message, cc }, actor);
     res.status(201).json({ success: true, data, message: 'C-SAT survey sent' });
   }),
 

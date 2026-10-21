@@ -99,9 +99,9 @@ export function useCsatStatus(projectId: string | null) {
 export function useSendCsatRequest() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ projectId, recipientEmail, customerName, projectName, message }: {
-      projectId: string; recipientEmail: string; customerName?: string; projectName?: string; message?: string;
-    }) => projectsApi.sendCsatRequest(projectId, { recipientEmail, customerName, projectName, message }),
+    mutationFn: ({ projectId, recipientEmail, customerName, projectName, message, cc }: {
+      projectId: string; recipientEmail: string; customerName?: string; projectName?: string; message?: string; cc?: string[];
+    }) => projectsApi.sendCsatRequest(projectId, { recipientEmail, customerName, projectName, message, cc }),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['csat-status', variables.projectId] });
     },

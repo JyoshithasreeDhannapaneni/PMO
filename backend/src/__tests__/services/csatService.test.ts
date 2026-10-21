@@ -183,14 +183,14 @@ describe('csatService.sendRequest', () => {
   it('greets the customer by the name the PM entered and stores it on the request', async () => {
     await csatService.sendRequest('p1', { recipientEmail: 'c@acme.com', customerName: '  Joseph <Vinsky>  ' }, alice);
     const mail = customerSends()[0];
-    expect(mail.html).toContain('Hi Joseph &lt;Vinsky&gt;,');
+    expect(mail.html).toContain('Dear Joseph &lt;Vinsky&gt;,');
     const insert = mockClientQuery.mock.calls.find((c) => /INSERT INTO csat_requests/.test(String(c[0])))!;
     expect((insert[1] as unknown[])[5]).toBe('Joseph <Vinsky>');
   });
 
   it('falls back to the project contact name and rejects an over-long name', async () => {
     await csatService.sendRequest('p1', { recipientEmail: 'c@acme.com' }, alice);
-    expect(customerSends()[0].html).toContain('Hi Acme,');
+    expect(customerSends()[0].html).toContain('Dear Acme,');
     expect((await rejection(csatService.sendRequest('p1', { recipientEmail: 'c@acme.com', customerName: 'x'.repeat(101) }, alice))).statusCode).toBe(400);
   });
 
@@ -260,18 +260,69 @@ describe('csatService.sendRequest', () => {
   });
 });
 
+describe('csatService.sendRequest CC', () => {
+  const ccInput = (cc: unknown) => ({ recipientEmail: 'c@acme.com', cc });
+  const mailTo = (to: string) => sends().find((m) => m.to === to) as (SentMail & { subject: string; cc?: string[] }) | undefined;
+
+  it('keeps colleagues off the customer email and sends them one link-free internal copy', async () => {
+    await csatService.sendRequest('p1', ccInput([' Bob@CloudFuze.com', 'carol@cloudfuze.com', 'bob@cloudfuze.com']), alice);
+    const customer = mailTo('c@acme.com')!;
+    expect(customer.cc).toBeUndefined();
+    expect(rawToken(customer.html)).toMatch(/^[0-9a-f]{64}$/);
+
+    const copy = mailTo('bob@cloudfuze.com')!;
+    expect(copy.cc).toEqual(['carol@cloudfuze.com']);
+    expect(copy.subject).toMatch(/^\[Internal copy\] /);
+    expect(copy.html).toContain('Internal copy.');
+    expect(copy.html).toContain('c@acme.com');
+    expect(copy.html).not.toMatch(/\/csat\//);
+    expect(copy.from).toBe(alice.email);
+  });
+
+  it('tells the PM who got the internal copy', async () => {
+    await csatService.sendRequest('p1', ccInput(['bob@cloudfuze.com']), alice);
+    for (let i = 0; i < 5 && !mailTo(alice.email); i++) await new Promise((r) => setImmediate(r));
+    expect(mailTo(alice.email)!.html).toContain('An internal copy without the survey link was sent to bob@cloudfuze.com');
+  });
+
+  it('keeps the customer send when the internal copy fails, and says so to the PM', async () => {
+    mockSendEmail.mockImplementation(async (opts) => { if (opts.to === 'bob@cloudfuze.com') throw new Error('mailbox full'); });
+    await csatService.sendRequest('p1', ccInput(['bob@cloudfuze.com']), alice);
+    expect(mockExecute.mock.calls.some((c) => /DELETE FROM csat_requests/.test(String(c[0])))).toBe(false);
+    for (let i = 0; i < 5 && !mailTo(alice.email); i++) await new Promise((r) => setImmediate(r));
+    expect(mailTo(alice.email)!.html).toContain('could not be sent');
+    mockSendEmail.mockImplementation(async () => undefined);
+  });
+
+  it('accepts only internal, valid, deliverable addresses, at most 10', async () => {
+    expect((await rejection(csatService.sendRequest('p1', ccInput(['someone@acme.com']), alice))).statusCode).toBe(400);
+    expect((await rejection(csatService.sendRequest('p1', ccInput(['not an email']), alice))).statusCode).toBe(400);
+    expect((await rejection(csatService.sendRequest('p1', ccInput('bob@cloudfuze.com'), alice))).statusCode).toBe(400);
+    expect((await rejection(csatService.sendRequest('p1', ccInput([42]), alice))).statusCode).toBe(400);
+    const eleven = Array.from({ length: 11 }, (_, i) => `p${i}@cloudfuze.com`);
+    expect((await rejection(csatService.sendRequest('p1', ccInput(eleven), alice))).statusCode).toBe(400);
+    expect(mockSendEmail).not.toHaveBeenCalled();
+  });
+
+  it('sends no internal copy when CC is empty or only repeats the customer', async () => {
+    await csatService.sendRequest('p1', ccInput(['', 'C@acme.com']), alice);
+    await csatService.sendRequest('p1', ccInput([]), alice);
+    expect(sends().filter((m) => m.to !== alice.email).map((m) => m.to)).toEqual(['c@acme.com', 'c@acme.com']);
+  });
+});
+
 describe('csatService.previewRequest', () => {
   it('renders exactly the email the customer would get, with the logo inlined and no live link', async () => {
     const preview = await csatService.previewRequest('p1', { customerName: 'Joseph', message: 'Thanks <team>' }, alice);
     expect(preview.subject).toContain('Acme migration');
-    expect(preview.html).toContain('Hi Joseph,');
+    expect(preview.html).toContain('Dear Joseph,');
     expect(preview.html).toContain('Thanks &lt;team&gt;');
     expect(preview.html).toContain('data:image/png;base64,AA==');
     expect(preview.html).not.toContain('cid:cloudfuze-logo');
     expect(preview.html).not.toMatch(/\/csat\/[0-9a-f]{64}/);
     expect(preview.defaultCustomerName).toBe('Acme');
     expect(preview.defaultProjectName).toBe('Acme migration');
-    expect(preview.defaultMessage).toMatch(/finished its one-time migration phase/);
+    expect(preview.defaultMessage).toMatch(/one-time migration phase of your project has been completed/);
     const untouched = await csatService.previewRequest('p1', {}, alice);
     expect(untouched.html).toContain(untouched.defaultMessage.slice(0, 40));
     const renamed = await csatService.previewRequest('p1', { projectName: 'Email migration' }, alice);
@@ -353,6 +404,8 @@ describe('csatService.assertCanEnterDelta', () => {
 });
 
 describe('csatService public form', () => {
+  const fullAnswers = { overall: 9, migrationQuality: 8, support: 10, onboarding: 7, wentWell: true, comments: 'Great' };
+
   it('rejects malformed, unknown, answered, replaced and expired links', async () => {
     expect((await rejection(csatService.getPublicForm('not-a-token'))).statusCode).toBe(404);
     expect((await rejection(csatService.getPublicForm(token))).statusCode).toBe(404);
@@ -375,26 +428,41 @@ describe('csatService public form', () => {
 
   it('validates the answers', async () => {
     mockTokenRow = liveRow();
-    expect((await rejection(csatService.submitResponse(token, { overall: 11, wentWell: true }))).statusCode).toBe(400);
-    expect((await rejection(csatService.submitResponse(token, { overall: 2.5, wentWell: true }))).statusCode).toBe(400);
-    expect((await rejection(csatService.submitResponse(token, { overall: 8 } as never))).statusCode).toBe(400);
-    expect((await rejection(csatService.submitResponse(token, { overall: 8, wentWell: 'true' } as never))).statusCode).toBe(400);
-    expect((await rejection(csatService.submitResponse(token, { overall: 8, wentWell: true, comments: 'x'.repeat(4001) }))).statusCode).toBe(400);
+    expect((await rejection(csatService.submitResponse(token, { ...fullAnswers, overall: 11 }))).statusCode).toBe(400);
+    expect((await rejection(csatService.submitResponse(token, { ...fullAnswers, overall: 2.5 }))).statusCode).toBe(400);
+    expect((await rejection(csatService.submitResponse(token, { ...fullAnswers, wentWell: undefined } as never))).statusCode).toBe(400);
+    expect((await rejection(csatService.submitResponse(token, { ...fullAnswers, wentWell: 'true' } as never))).statusCode).toBe(400);
+    expect((await rejection(csatService.submitResponse(token, { ...fullAnswers, comments: 'x'.repeat(4001) }))).statusCode).toBe(400);
+    expect(mockClientQuery).not.toHaveBeenCalled();
+  });
+
+  it('requires every rating and a comment', async () => {
+    mockTokenRow = liveRow();
+    for (const key of ['overall', 'migrationQuality', 'support', 'onboarding'] as const) {
+      const err = await rejection(csatService.submitResponse(token, { ...fullAnswers, [key]: null } as never));
+      expect(err.statusCode).toBe(400);
+      expect(err.message).toMatch(/is required/);
+    }
+    for (const comments of [undefined, null, '', '   ']) {
+      const err = await rejection(csatService.submitResponse(token, { ...fullAnswers, comments } as never));
+      expect(err.statusCode).toBe(400);
+      expect(err.message).toMatch(/comments/);
+    }
     expect(mockClientQuery).not.toHaveBeenCalled();
   });
 
   it('records a valid answer into the C-SAT fields and notifies the PM', async () => {
     mockTokenRow = liveRow();
-    await csatService.submitResponse(token, { overall: 9, migrationQuality: 8, support: 10, onboarding: 7, wentWell: true, comments: 'Great' });
+    await csatService.submitResponse(token, fullAnswers);
     const upsert = mockClientQuery.mock.calls.find((c) => /INSERT INTO customer_success_entries/.test(String(c[0])))!;
     expect(upsert[1]).toEqual(['p1', 'Acme', 9, 8, 10, 7, 'Great']);
     for (let i = 0; i < 5 && mockCreateNotification.mock.calls.length === 0; i++) await new Promise((r) => setImmediate(r));
     expect(mockCreateNotification).toHaveBeenCalledWith('GENERAL', expect.stringContaining('C-SAT received'), expect.any(String), ['alice@cloudfuze.com'], 'p1');
   });
 
-  it('keeps existing C-SAT values the customer skipped, and inherits the customer’s legacy entry', async () => {
+  it('keeps the COALESCE guards and inherits the customer’s legacy entry', async () => {
     mockTokenRow = liveRow();
-    await csatService.submitResponse(token, { overall: 9, wentWell: true });
+    await csatService.submitResponse(token, fullAnswers);
     const sql = String(mockClientQuery.mock.calls.find((c) => /INSERT INTO customer_success_entries/.test(String(c[0])))![0]);
     expect(sql).toMatch(/csat_migration_quality\s*=\s*COALESCE\(\$4::numeric, customer_success_entries\.csat_migration_quality\)/);
     expect(sql).toMatch(/csat_verbatim\s*=\s*COALESCE\(\$7::text, customer_success_entries\.csat_verbatim\)/);
@@ -404,7 +472,7 @@ describe('csatService public form', () => {
   it('accepts only one answer when two submits race', async () => {
     mockTokenRow = liveRow();
     mockClaimRowCount = 0;
-    expect((await rejection(csatService.submitResponse(token, { overall: 9, wentWell: true }))).statusCode).toBe(409);
+    expect((await rejection(csatService.submitResponse(token, fullAnswers))).statusCode).toBe(409);
     expect(mockClientQuery.mock.calls.some((c) => /customer_success_entries/.test(String(c[0])))).toBe(false);
   });
 });

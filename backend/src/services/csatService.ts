@@ -16,9 +16,10 @@ const MAX_MESSAGE_LENGTH = 2000;
 const MAX_NAME_LENGTH = 100;
 const MAX_PROJECT_LABEL_LENGTH = 150;
 const DEFAULT_INTRO =
-  "Your migration has finished its one-time migration phase. Before we move on to the delta phase, we'd love to hear how it went. Your feedback helps us make every CloudFuze migration better.";
+  'We are pleased to inform you that the one-time migration phase of your project has been completed. Before we proceed with the delta migration, we would be grateful if you could take a few minutes to share your feedback on your experience so far. Your input is valuable to us and helps us maintain the standard of service you expect from CloudFuze.';
 const MAX_COMMENT_LENGTH = 4000;
 const MAX_SENDS_PER_DAY = 5;
+const MAX_CC = 10;
 const ALREADY_ANSWERED = 'The customer has already answered the C-SAT survey for this account';
 
 // Recipients on these domains (or their subdomains) are colleagues, not customers.
@@ -67,11 +68,11 @@ export interface CsatActor {
 
 export interface CsatAnswers {
   overall: number;
-  migrationQuality?: number | null;
-  support?: number | null;
-  onboarding?: number | null;
+  migrationQuality: number;
+  support: number;
+  onboarding: number;
   wentWell: boolean;
-  comments?: string | null;
+  comments: string;
 }
 
 interface CsatRequestRow {
@@ -124,11 +125,8 @@ const ACCOUNT_ANSWER_SQL = `
     AND ${ACCOUNT_KEY} = (SELECT ${ACCOUNT_KEY} FROM projects p WHERE p.id = $1)
   ORDER BY r.responded_at DESC LIMIT 1`;
 
-function validRating(value: unknown, field: string, required: boolean): number | null {
-  if (value === undefined || value === null || value === '') {
-    if (required) throw new AppError(`${field} is required`, 400);
-    return null;
-  }
+function validRating(value: unknown, field: string): number {
+  if (value === undefined || value === null || value === '') throw new AppError(`${field} is required`, 400);
   const n = Number(value);
   if (!Number.isInteger(n) || n < 1 || n > 10) throw new AppError(`${field} must be a whole number from 1 to 10`, 400);
   return n;
@@ -140,14 +138,34 @@ interface SurveyEmailInput {
   message: string;
   senderName: string;
   link: string;
+  // Set for the copy CC'd colleagues get: the customer's address, and no live link in the email.
+  internalCopyFor?: string;
 }
 
-// One builder for the real email and the PM's preview, so the preview is exactly what is sent.
+// One builder for the real email, the PM's preview and the internal copy, so all three match.
 function buildSurveyEmail(input: SurveyEmailInput): { subject: string; html: string } {
-  const greetingName = input.customerName ? escapeHtml(input.customerName) : 'there';
+  const greeting = input.customerName ? `Dear ${escapeHtml(input.customerName)},` : 'Hello,';
+  const internal = input.internalCopyFor;
+  const banner = internal
+    ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 20px 0;background:#FEF3C7;border-left:4px solid #D97706;border-radius:6px;">
+        <tr><td style="padding:12px 16px;font-size:13px;color:#78350F;">
+          <strong>Internal copy.</strong> This survey was sent to <strong>${escapeHtml(internal)}</strong> by ${escapeHtml(input.senderName)}.
+          The survey link has been removed from this copy: only the customer can answer.
+        </td></tr>
+      </table>`
+    : '';
+  const action = internal
+    ? `<p style="margin:24px 0;padding:14px;border:1px dashed #cbd5e1;border-radius:8px;color:#64748b;font-size:13px;text-align:center;">The customer's &ldquo;Share your feedback&rdquo; button appears here.</p>`
+    : `<table role="presentation" cellpadding="0" cellspacing="0" align="center" style="margin:24px auto;">
+        <tr><td style="background:${CLOUDFUZE_BLUE};border-radius:8px;">
+          <a href="${input.link}" style="display:inline-block;padding:14px 36px;color:#ffffff;font-size:16px;font-weight:700;text-decoration:none;border-radius:8px;">Share your feedback</a>
+        </td></tr>
+      </table>
+      <p style="margin:0 0 20px 0;color:#64748b;font-size:12px;text-align:center;">This link is unique to you and can be used once. It expires in ${TOKEN_TTL_DAYS} days.</p>`;
   const intro = `<p style="margin:0 0 16px 0;">${escapeHtml(input.message || DEFAULT_INTRO).replace(/\n/g, '<br>')}</p>`;
   const body = `
-      <p style="margin:0 0 16px 0;">Hi ${greetingName},</p>
+      ${banner}
+      <p style="margin:0 0 16px 0;">${greeting}</p>
       ${intro}
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:8px 0 20px 0;background:#E8EDFA;border-left:4px solid ${CLOUDFUZE_BLUE};border-radius:6px;">
         <tr><td style="padding:12px 16px;font-size:14px;color:#334155;">
@@ -155,18 +173,40 @@ function buildSurveyEmail(input: SurveyEmailInput): { subject: string; html: str
           <strong>${escapeHtml(input.projectName)}</strong>
         </td></tr>
       </table>
-      <p style="margin:0;">It takes about a minute: rate the migration from 1 to 10 and tell us if it went well.</p>
-      <table role="presentation" cellpadding="0" cellspacing="0" align="center" style="margin:24px auto;">
-        <tr><td style="background:${CLOUDFUZE_BLUE};border-radius:8px;">
-          <a href="${input.link}" style="display:inline-block;padding:14px 36px;color:#ffffff;font-size:16px;font-weight:700;text-decoration:none;border-radius:8px;">Rate your migration</a>
-        </td></tr>
-      </table>
-      <p style="margin:0 0 20px 0;color:#64748b;font-size:12px;text-align:center;">This link is personal to you and works once. It expires in ${TOKEN_TTL_DAYS} days.</p>
-      <p style="margin:0;">Thank you,<br><strong style="color:${CLOUDFUZE_BLUE};">${escapeHtml(input.senderName)}</strong><br>CloudFuze</p>`;
+      <p style="margin:0 0 8px 0;">The survey takes approximately two minutes and covers the following:</p>
+      <ul style="margin:0 0 4px 0;padding-left:20px;">
+        <li>Your overall satisfaction with the migration</li>
+        <li>The quality of the migrated data</li>
+        <li>Support and communication from our team</li>
+        <li>The onboarding and kickoff experience</li>
+        <li>A short comment on your experience</li>
+      </ul>
+      ${action}
+      <p style="margin:0 0 16px 0;">Thank you for your time and for your continued trust in CloudFuze. We look forward to completing your migration successfully.</p>
+      <p style="margin:0;">Kind regards,<br><strong style="color:${CLOUDFUZE_BLUE};">${escapeHtml(input.senderName)}</strong><br>CloudFuze</p>`;
   return {
-    subject: `How did your CloudFuze migration go? — ${input.projectName}`,
-    html: customerEmail('How did your migration go?', body),
+    subject: `${internal ? '[Internal copy] ' : ''}Your feedback on ${input.projectName} | CloudFuze`,
+    html: customerEmail('We value your feedback', body),
   };
+}
+
+// CC is for colleagues only: they get a copy without the link (see buildSurveyEmail), and an
+// external address must not receive the customer's survey email at all.
+function validCcList(value: unknown, recipientEmail: string, actorEmail: string | undefined): string[] {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) throw new AppError('CC must be a list of email addresses', 400);
+  const cc = new Set<string>();
+  for (const raw of value) {
+    if (typeof raw !== 'string') throw new AppError('CC must be a list of email addresses', 400);
+    const addr = raw.trim().toLowerCase();
+    if (!addr || addr === recipientEmail) continue;
+    if (!EMAIL_RE.test(addr)) throw new AppError(`CC address "${addr}" is not a valid email address`, 400);
+    if (isBlockedRecipient(addr)) throw new AppError(`CC address ${addr} cannot receive emails from the tracker`, 400);
+    if (!isInternalRecipient(addr, actorEmail)) throw new AppError(`CC is for internal CloudFuze people only: ${addr}`, 400);
+    cc.add(addr);
+  }
+  if (cc.size > MAX_CC) throw new AppError(`CC at most ${MAX_CC} people`, 400);
+  return [...cc];
 }
 
 function validCustomerName(value: unknown, fallback: string | null): string {
@@ -276,7 +316,7 @@ class CsatService {
 
   async sendRequest(
     projectId: string,
-    input: { recipientEmail: string; customerName?: string | null; projectName?: string | null; message?: string | null },
+    input: { recipientEmail: string; customerName?: string | null; projectName?: string | null; message?: string | null; cc?: unknown },
     actor: CsatActor
   ): Promise<CsatStatus> {
     const project = await this.projectForSender(projectId, actor);
@@ -293,6 +333,7 @@ class CsatService {
     if (message.length > MAX_MESSAGE_LENGTH) throw new AppError(`Message must be at most ${MAX_MESSAGE_LENGTH} characters`, 400);
     const customerName = validCustomerName(input.customerName, project.customer_name);
     const projectName = validProjectLabel(input.projectName, project.name);
+    const cc = validCcList(input.cc, recipientEmail, actor.email);
 
     const current = await this.getStatus(projectId);
     if (current.state === 'responded') throw new AppError(ALREADY_ANSWERED, 409);
@@ -368,19 +409,45 @@ class CsatService {
 
     await execute(`UPDATE csat_requests SET sent_from = $1 WHERE id = $2`, [sentFrom, newId.id]);
     logger.info(`[CSAT] Survey sent for project ${projectId} to ${recipientEmail} from ${sentFrom}`);
-    this.confirmToPm(actor, project.name, recipientEmail, sentFrom).catch((err: Error) =>
+
+    // A separate email, so CC'd colleagues never hold the customer's one-time link. The survey
+    // already went out, so a failure here is reported to the PM rather than undoing the send.
+    let ccSent = false;
+    if (cc.length > 0) {
+      try {
+        const copy = buildSurveyEmail({ customerName, projectName, message, senderName: actor.name, link: '#', internalCopyFor: recipientEmail });
+        await emailService.sendEmail({
+          to: cc[0], cc: cc.slice(1), subject: copy.subject, html: copy.html, inlineImages,
+          ...(sentFrom === actor.email ? { from: actor.email } : { replyTo: actor.email }),
+        });
+        ccSent = true;
+        logger.info(`[CSAT] Internal copy for project ${projectId} sent to ${cc.join(', ')}`);
+      } catch (err) {
+        logger.warn(`[CSAT] Internal copy for project ${projectId} failed: ${(err as Error).message}`);
+      }
+    }
+
+    this.confirmToPm(actor, project.name, recipientEmail, sentFrom, cc, ccSent).catch((err: Error) =>
       logger.warn(`[CSAT] PM confirmation for project ${projectId} failed: ${err.message}`)
     );
     return this.getStatus(projectId);
   }
 
   // Link-free receipt for the PM, since the survey email itself is kept out of their mailbox.
-  private async confirmToPm(actor: CsatActor, projectName: string, recipientEmail: string, sentFrom: string): Promise<void> {
+  private async confirmToPm(
+    actor: CsatActor, projectName: string, recipientEmail: string, sentFrom: string, cc: string[], ccSent: boolean
+  ): Promise<void> {
     if (!actor.email) return;
+    const ccList = cc.map(escapeHtml).join(', ');
+    const ccLine = cc.length === 0 ? ''
+      : ccSent
+      ? `<p>An internal copy without the survey link was sent to ${ccList}.</p>`
+      : `<p>The internal copy to ${ccList} could not be sent. The customer's survey was not affected.</p>`;
     const html = brandedEmail(
       'C-SAT survey sent',
       `<p>The C-SAT survey for <strong>${escapeHtml(projectName)}</strong> was sent to <strong>${escapeHtml(recipientEmail)}</strong>
        from ${escapeHtml(sentFrom)}. Customer replies to the email come to you.</p>
+       ${ccLine}
        <p>You will be notified when the customer answers; the project can then move to Delta.</p>`
     );
     await emailService.sendEmail({ to: actor.email, subject: `C-SAT survey sent: ${projectName}`, html });
@@ -411,12 +478,13 @@ class CsatService {
 
   async submitResponse(token: string, answers: CsatAnswers): Promise<void> {
     const row = await this.requestForToken(token);
-    const overall = validRating(answers.overall, 'Overall rating', true);
-    const migrationQuality = validRating(answers.migrationQuality, 'Migration quality rating', false);
-    const support = validRating(answers.support, 'Support rating', false);
-    const onboarding = validRating(answers.onboarding, 'Onboarding rating', false);
+    const overall = validRating(answers.overall, 'Overall rating');
+    const migrationQuality = validRating(answers.migrationQuality, 'Migration quality rating');
+    const support = validRating(answers.support, 'Support rating');
+    const onboarding = validRating(answers.onboarding, 'Onboarding rating');
     if (typeof answers.wentWell !== 'boolean') throw new AppError('Please tell us whether the project went well', 400);
-    const comments = (answers.comments || '').trim();
+    const comments = typeof answers.comments === 'string' ? answers.comments.trim() : '';
+    if (!comments) throw new AppError('Please share your feedback in the comments', 400);
     if (comments.length > MAX_COMMENT_LENGTH) throw new AppError(`Comments must be at most ${MAX_COMMENT_LENGTH} characters`, 400);
 
     const projectName = await transaction(async (client) => {
@@ -429,9 +497,10 @@ class CsatService {
       if (claimed.rowCount === 0) throw new AppError('Thank you, this survey has already been answered.', 409);
 
       const project = (await client.query(`SELECT name, customer_name FROM projects WHERE id = $1`, [row.project_id])).rows[0];
-      // Answers the customer skipped keep this project's values already on file. A first
-      // project-keyed row inherits only the legacy (customer_name-keyed) entry's upsell/cross-sell
-      // signals, so it does not hide them; old ratings are never presented as this survey's.
+      // Every answer is required since 2026-10-21, so the COALESCEs below only matter for a null
+      // that cannot occur today. A first project-keyed row inherits only the legacy
+      // (customer_name-keyed) entry's upsell/cross-sell signals, so it does not hide them; old
+      // ratings are never presented as this survey's.
       await client.query(
         `INSERT INTO customer_success_entries
            (project_id, customer_name, csat_score, csat_migration_quality, csat_support_experience,

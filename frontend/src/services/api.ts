@@ -73,6 +73,7 @@ export const CSAT_MAX_MESSAGE_LENGTH = 2000;
 export const CSAT_MAX_COMMENT_LENGTH = 4000;
 export const CSAT_MAX_NAME_LENGTH = 100;
 export const CSAT_MAX_PROJECT_NAME_LENGTH = 150;
+export const CSAT_MAX_CC = 10;
 
 // Rendered survey email for the PM to check before sending (backend csatService.previewRequest).
 export interface CsatEmailPreview {
@@ -141,7 +142,7 @@ export const projectsApi = {
     return data;
   },
 
-  sendCsatRequest: async (id: string, body: { recipientEmail: string; customerName?: string; projectName?: string; message?: string }): Promise<ApiResponse<CsatStatus>> => {
+  sendCsatRequest: async (id: string, body: { recipientEmail: string; customerName?: string; projectName?: string; message?: string; cc?: string[] }): Promise<ApiResponse<CsatStatus>> => {
     const { data } = await api.post(`/projects/${id}/csat-requests`, body);
     return data;
   },

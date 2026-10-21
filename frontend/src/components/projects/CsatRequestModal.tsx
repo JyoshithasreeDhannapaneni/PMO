@@ -8,7 +8,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { useCsatEmailPreview, useSendCsatRequest } from '@/hooks/useProjects';
 import {
-  CSAT_EMAIL_RE, CSAT_MAX_MESSAGE_LENGTH, CSAT_MAX_NAME_LENGTH, CSAT_MAX_PROJECT_NAME_LENGTH, CSAT_REQUIRED_EVENT, CsatRequiredDetail,
+  CSAT_EMAIL_RE, CSAT_MAX_CC, CSAT_MAX_MESSAGE_LENGTH, CSAT_MAX_NAME_LENGTH, CSAT_MAX_PROJECT_NAME_LENGTH, CSAT_REQUIRED_EVENT, CsatRequiredDetail,
 } from '@/services/api';
 
 const PREVIEW_DEBOUNCE_MS = 400;
@@ -28,6 +28,9 @@ export function CsatRequestModal() {
   const [defaultsLoaded, setDefaultsLoaded] = useState(false);
   const [edited, setEdited] = useState(false);
   const [emailError, setEmailError] = useState('');
+  const [ccList, setCcList] = useState<string[]>([]);
+  const [ccDraft, setCcDraft] = useState('');
+  const [ccError, setCcError] = useState('');
   const [previewInput, setPreviewInput] = useState({ customerName: '', projectName: '', message: '' });
   const sendRequest = useSendCsatRequest();
   const { showToast } = useToast();
@@ -49,6 +52,9 @@ export function CsatRequestModal() {
       setDefaultsLoaded(false);
       setEdited(false);
       setEmailError('');
+      setCcList([]);
+      setCcDraft('');
+      setCcError('');
       setPreviewInput({ customerName: '', projectName: '', message: '' });
       sendRequest.reset();
     };
@@ -75,7 +81,37 @@ export function CsatRequestModal() {
   }, [customerName, projectName, message, defaultsLoaded]);
 
   // Backdrop click and Escape only dismiss an untouched form, so typed input is not lost.
-  const dirty = edited || (!!detail && email.trim() !== (detail.csat.sentTo ?? ''));
+  const dirty = edited || ccList.length > 0 || !!ccDraft.trim() || (!!detail && email.trim() !== (detail.csat.sentTo ?? ''));
+
+  // Adds the typed or pasted addresses (comma, semicolon or space separated). Returns the full
+  // list, or null when something typed is invalid so the caller can stop.
+  const commitCc = (): string[] | null => {
+    const parts = ccDraft.split(/[\s,;]+/).map((p) => p.trim().toLowerCase()).filter(Boolean);
+    if (parts.length === 0) return ccList;
+    const invalid = parts.find((p) => !CSAT_EMAIL_RE.test(p));
+    if (invalid) {
+      setCcError(`"${invalid}" is not a valid email address`);
+      return null;
+    }
+    const next = Array.from(new Set([...ccList, ...parts]));
+    if (next.length > CSAT_MAX_CC) {
+      setCcError(`You can CC at most ${CSAT_MAX_CC} people`);
+      return null;
+    }
+    setCcList(next);
+    setCcDraft('');
+    setCcError('');
+    return next;
+  };
+
+  const onCcKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' || e.key === ',' || e.key === ';') {
+      e.preventDefault();
+      commitCc();
+    } else if (e.key === 'Backspace' && !ccDraft && ccList.length > 0) {
+      setCcList(ccList.slice(0, -1));
+    }
+  };
   const editField = (set: (v: string) => void) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     set(e.target.value);
     setEdited(true);
@@ -102,10 +138,13 @@ export function CsatRequestModal() {
       return;
     }
     setEmailError('');
+    const cc = commitCc();
+    if (cc === null) return;
     sendRequest.mutate(
       {
         projectId: detail.projectId,
         recipientEmail,
+        cc: cc.length > 0 ? cc : undefined,
         customerName: customerName.trim() || undefined,
         // Unchanged defaults are left to the backend, which renders the same text.
         projectName: projectName.trim() && projectName.trim() !== previewData?.defaultProjectName ? projectName.trim() : undefined,
@@ -122,6 +161,9 @@ export function CsatRequestModal() {
               ? `Sent to ${recipientEmail} from ${sentFrom} (your mailbox could not be used); replies come to you.`
               : `Sent to ${recipientEmail}. The phase can move to Delta once the customer responds.`
           );
+          if (cc.length > 0) {
+            showToast('info', 'Internal copy', `A copy without the survey link went to ${cc.length} CC recipient${cc.length === 1 ? '' : 's'}. Your confirmation email says if it failed.`);
+          }
           close();
         },
       }
@@ -176,7 +218,7 @@ export function CsatRequestModal() {
                 onChange={editField(setCustomerName)}
                 maxLength={CSAT_MAX_NAME_LENGTH}
                 placeholder="e.g. Joseph Vinsky"
-                helperText="Used in the greeting: “Hi <name>,”"
+                helperText="Used in the greeting: “Dear <name>,”"
               />
               <Input
                 label="Project name (as the customer sees it)"
@@ -195,6 +237,43 @@ export function CsatRequestModal() {
                 error={emailError}
                 autoFocus
               />
+              <div>
+                <label htmlFor="csat-cc" className="mb-1 block text-sm font-medium text-slate-700">
+                  CC <span className="font-normal text-slate-400">(internal CloudFuze people, optional)</span>
+                </label>
+                <div
+                  className={`flex min-h-[42px] flex-wrap items-center gap-1.5 rounded-lg border bg-white px-2 py-1.5 shadow-sm transition-all focus-within:ring-2 ${
+                    ccError ? 'border-red-300 focus-within:ring-red-100' : 'border-blue-200 hover:border-blue-300 focus-within:border-blue-400 focus-within:ring-blue-100'
+                  }`}
+                >
+                  {ccList.map((addr) => (
+                    <span key={addr} className="flex items-center gap-1 rounded-md bg-blue-50 py-0.5 pl-2 pr-1 text-xs text-blue-800">
+                      {addr}
+                      <button
+                        type="button"
+                        onClick={() => setCcList(ccList.filter((a) => a !== addr))}
+                        className="rounded px-1 leading-none text-blue-500 hover:bg-blue-100 hover:text-blue-700"
+                        aria-label={`Remove ${addr}`}
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                  <input
+                    id="csat-cc"
+                    type="text"
+                    value={ccDraft}
+                    onChange={(e) => { setCcDraft(e.target.value); setCcError(''); }}
+                    onKeyDown={onCcKeyDown}
+                    onBlur={() => { commitCc(); }}
+                    placeholder={ccList.length === 0 ? 'name@cloudfuze.com, another@cloudfuze.com' : ''}
+                    className="min-w-[160px] flex-1 border-0 bg-transparent px-1 py-1 text-sm text-slate-800 outline-none placeholder:text-slate-400"
+                  />
+                </div>
+                {ccError
+                  ? <p className="mt-1 text-sm text-red-500">{ccError}</p>
+                  : <p className="mt-1 text-sm text-slate-500">They get a separate copy without the survey link, so only the customer can answer.</p>}
+              </div>
               <div>
                 <Textarea
                   label="Email message"
@@ -235,6 +314,11 @@ export function CsatRequestModal() {
               <div className="overflow-hidden rounded-xl border border-slate-200">
                 <div className="space-y-0.5 border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
                   <p className="truncate"><span className="font-medium text-slate-500">To:</span> {email.trim() || 'customer@company.com'}</p>
+                  {ccList.length > 0 && (
+                    <p className="truncate" title={ccList.join(', ')}>
+                      <span className="font-medium text-slate-500">Internal copy (no link):</span> {ccList.join(', ')}
+                    </p>
+                  )}
                   <p className="truncate"><span className="font-medium text-slate-500">Subject:</span> {previewData?.subject ?? '...'}</p>
                 </div>
                 {preview.isError && !previewData ? (

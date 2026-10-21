@@ -25,11 +25,11 @@ const CHOICE_FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visi
 const CHOICE_ON = 'border-brand bg-brand text-white shadow-sm';
 const CHOICE_OFF = 'border-slate-200 bg-white text-slate-700 hover:border-brand/40 hover:bg-brand-light';
 
-const QUESTIONS: { key: RatingKey; label: string; required?: boolean }[] = [
-  { key: 'overall', label: 'Overall, how satisfied are you with the migration?', required: true },
-  { key: 'migrationQuality', label: 'Quality of the migrated data' },
-  { key: 'support', label: 'Support and communication from our team' },
-  { key: 'onboarding', label: 'Onboarding and kickoff experience' },
+const QUESTIONS: { key: RatingKey; label: string; missing: string }[] = [
+  { key: 'overall', label: 'Overall, how satisfied are you with the migration?', missing: 'Please give an overall rating.' },
+  { key: 'migrationQuality', label: 'Quality of the migrated data', missing: 'Please rate the quality of the migrated data.' },
+  { key: 'support', label: 'Support and communication from our team', missing: 'Please rate support and communication from our team.' },
+  { key: 'onboarding', label: 'Onboarding and kickoff experience', missing: 'Please rate the onboarding and kickoff experience.' },
 ];
 
 // Same shape the API's public route accepts; anything else (e.g. a link cut off by an email
@@ -101,15 +101,17 @@ export default function CsatSurveyPage() {
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (ratings.overall === null) return setFormError('Please give an overall rating.');
+    const unanswered = QUESTIONS.find((q) => ratings[q.key] === null);
+    if (unanswered) return setFormError(unanswered.missing);
     if (wentWell === null) return setFormError('Please tell us whether the project went well.');
+    if (!comments.trim()) return setFormError('Please share your feedback in the comments.');
     setFormError('');
     setSubmitting(true);
     try {
       const res = await fetch(`${API_URL}/api/csat/${encodeURIComponent(token)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...ratings, wentWell, comments: comments.trim() || null }),
+        body: JSON.stringify({ ...ratings, wentWell, comments: comments.trim() }),
       });
       const body = await res.json().catch(() => ({}));
       if (res.ok) setState({ kind: 'done' });
@@ -153,14 +155,13 @@ export default function CsatSurveyPage() {
                 {state.info.customerName ? `${state.info.customerName} · ` : ''}
                 {state.info.projectName}
               </p>
-              <p className="mt-3 text-base text-slate-600">Rate each item from 1 (very poor) to 10 (excellent). It takes about a minute.</p>
+              <p className="mt-3 text-base text-slate-600">Rate each item from 1 (very poor) to 10 (excellent). All questions are required and take about two minutes.</p>
             </div>
 
             {QUESTIONS.map((q) => (
               <div key={q.key}>
                 <p id={`q-${q.key}`} className="mb-2 text-base font-medium text-slate-700">
-                  {q.label}
-                  {q.required ? <span className="text-red-500"> *</span> : <span className="text-slate-400"> (optional)</span>}
+                  {q.label}<span className="text-red-500"> *</span>
                 </p>
                 <RatingRow labelId={`q-${q.key}`} value={ratings[q.key]} onChange={(v) => setRatings((r) => ({ ...r, [q.key]: v }))} />
               </div>
@@ -187,13 +188,20 @@ export default function CsatSurveyPage() {
               </div>
             </div>
 
-            <Textarea
-              label="Anything you'd like to tell us? (optional)"
-              value={comments}
-              onChange={(e) => setComments(e.target.value)}
-              rows={4}
-              maxLength={CSAT_MAX_COMMENT_LENGTH}
-            />
+            <div>
+              <p id="q-comments" className="mb-2 text-base font-medium text-slate-700">
+                Please share any comments about your migration experience<span className="text-red-500"> *</span>
+              </p>
+              <Textarea
+                aria-labelledby="q-comments"
+                value={comments}
+                onChange={(e) => setComments(e.target.value)}
+                rows={4}
+                aria-required="true"
+                maxLength={CSAT_MAX_COMMENT_LENGTH}
+                placeholder="What went well, and what could we improve?"
+              />
+            </div>
 
             {formError && <p className="text-sm text-red-600">{formError}</p>}
 
