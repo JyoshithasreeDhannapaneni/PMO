@@ -1,9 +1,9 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Loader2, AlertCircle, X, ExternalLink } from 'lucide-react';
-import { useProjects, useManagerStats, useHubspotSignals } from '@/hooks/useProjects';
+import { useProjects, useManagerStats, useHubspotSignals, useAllArchivedProjects } from '@/hooks/useProjects';
 import { useSettings } from '@/context/SettingsContext';
 import { segmentOfManager } from '@/lib/segments';
 import type { Project, HubspotSignalsData } from '@/types';
@@ -38,6 +38,34 @@ interface AmRow {
   completionPct: number;
   volumeScore: number;
   compositeScore: number;
+}
+
+// The Performance table's columns; in date-range mode they are recomputed per range.
+type PerfRow = Pick<AmRow, 'manager' | 'customers' | 'total' | 'active' | 'completed' | 'delayed' | 'escalated' | 'overaged' | 'completionPct'>;
+
+type ArchivedProject = Project & { archivedAt?: string | null };
+
+function toTime(d: string | null | undefined): number | null {
+  if (!d) return null;
+  const t = new Date(d.length === 10 ? `${d}T00:00:00` : d).getTime();
+  return Number.isNaN(t) ? null : t;
+}
+
+function isoDay(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function rangePresets(): { label: string; from: string; to: string }[] {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = now.getMonth();
+  const q = Math.floor(m / 3) * 3;
+  return [
+    { label: 'This month', from: isoDay(new Date(y, m, 1)), to: isoDay(now) },
+    { label: 'Last month', from: isoDay(new Date(y, m - 1, 1)), to: isoDay(new Date(y, m, 0)) },
+    { label: 'This quarter', from: isoDay(new Date(y, q, 1)), to: isoDay(now) },
+    { label: 'Year to date', from: isoDay(new Date(y, 0, 1)), to: isoDay(now) },
+  ];
 }
 
 function accountLabel(p: Project): string {
@@ -87,10 +115,24 @@ function SectionCard({ title, subtitle, children, right }: { title: string; subt
   );
 }
 
-function ProjectTable({ projects, columns, empty }: {
+const STATUS_BADGE: Record<string, string> = {
+  ACTIVE: 'bg-green-100 text-green-700',
+  ON_HOLD: 'bg-amber-100 text-amber-700',
+  COMPLETED: 'bg-blue-100 text-blue-700',
+  CANCELLED: 'bg-gray-100 text-gray-500',
+};
+const DELAY_BADGE: Record<string, string> = {
+  DELAYED: 'bg-red-100 text-red-700',
+  AT_RISK: 'bg-amber-100 text-amber-700',
+  EXTENDED: 'bg-purple-100 text-purple-700',
+};
+const STATUS_ORDER = ['ACTIVE', 'ON_HOLD', 'COMPLETED', 'CANCELLED'];
+
+function ProjectTable({ projects, columns, empty, hideAm }: {
   projects: Project[];
   columns: { label: string; render: (p: Project) => React.ReactNode; align?: 'right' }[];
   empty: string;
+  hideAm?: boolean;
 }) {
   if (projects.length === 0) return <p className="text-sm text-gray-400 py-4 text-center">{empty}</p>;
   return (
@@ -100,7 +142,7 @@ function ProjectTable({ projects, columns, empty }: {
           <tr className="text-xs text-gray-500 border-b border-gray-100">
             <th className="text-left font-medium py-2 pr-3">Project</th>
             <th className="text-left font-medium py-2 pr-3">Account</th>
-            <th className="text-left font-medium py-2 pr-3">Account Manager</th>
+            {!hideAm && <th className="text-left font-medium py-2 pr-3">Account Manager</th>}
             {columns.map((c) => (
               <th key={c.label} className={`font-medium py-2 pr-3 whitespace-nowrap ${c.align === 'right' ? 'text-right' : 'text-left'}`}>{c.label}</th>
             ))}
@@ -115,7 +157,7 @@ function ProjectTable({ projects, columns, empty }: {
                 </Link>
               </td>
               <td className="py-2 pr-3 text-gray-700">{accountLabel(p)}</td>
-              <td className="py-2 pr-3 text-gray-600">{p.accountManager || '—'}</td>
+              {!hideAm && <td className="py-2 pr-3 text-gray-600">{p.accountManager || '—'}</td>}
               {columns.map((c) => (
                 <td key={c.label} className={`py-2 pr-3 ${c.align === 'right' ? 'text-right tabular-nums' : ''}`}>{c.render(p)}</td>
               ))}
@@ -201,8 +243,81 @@ export default function AccountManagerDashboard({ fixedAm }: { fixedAm?: string 
   const amRows = rows.filter((r) => r.manager !== UNASSIGNED && (!fixedAm || r.manager === fixedAm));
   const unassignedRow = rows.find((r) => r.manager === UNASSIGNED);
 
+  // Performance date range. A project counts when it was running at any point in the range:
+  // started on/before the range end, and still open or finished on/after the range start.
+  // Archived projects are included, since finished work is archived out of the live list.
+  const [rangeFrom, setRangeFrom] = useState('');
+  const [rangeTo, setRangeTo] = useState('');
+  const rangeActive = !!rangeFrom || !!rangeTo;
+  const { data: archivedData, isLoading: archivedLoading } = useAllArchivedProjects(rangeActive);
+
+  const rangeRows: PerfRow[] | null = useMemo(() => {
+    if (!rangeActive) return null;
+    const fromT = toTime(rangeFrom) ?? -Infinity;
+    const toT = rangeTo ? (toTime(rangeTo) as number) + 86400000 - 1 : Infinity;
+    const liveIds = new Set(allProjects.map((p) => p.id));
+    const archived = ((archivedData?.projects ?? []) as ArchivedProject[])
+      .filter((p) => p.projectType !== 'POC' && !liveIds.has(p.id))
+      .map((p) => ({ ...p, accountManager: p.accountManager && amNames.has(p.accountManager) ? p.accountManager : UNASSIGNED }));
+
+    const byAm = new Map<string, { p: ArchivedProject; completedInRange: boolean }[]>();
+    for (const p of [...allProjects, ...archived] as ArchivedProject[]) {
+      if (p.accountManager === UNASSIGNED || (fixedAm && p.accountManager !== fixedAm)) continue;
+      const start = toTime(p.actualStart) ?? toTime(p.plannedStart) ?? toTime(p.createdAt);
+      if (start === null || start > toT) continue;
+      const open = OPEN_STATUSES.has(p.status);
+      const finish = open ? null : (toTime(p.actualEnd) ?? toTime(p.archivedAt) ?? toTime(p.plannedEnd) ?? start);
+      if (finish !== null && finish < fromT) continue;
+      const completedInRange = p.status === 'COMPLETED' && finish !== null && finish <= toT;
+      if (!byAm.has(p.accountManager)) byAm.set(p.accountManager, []);
+      byAm.get(p.accountManager)!.push({ p, completedInRange });
+    }
+
+    return amRows.map((r) => {
+      const items = byAm.get(r.manager) ?? [];
+      const ps = items.map((i) => i.p);
+      const total = ps.length;
+      const completed = items.filter((i) => i.completedInRange).length;
+      return {
+        manager: r.manager,
+        customers: new Set(ps.map((p) => accountLabel(p).toLowerCase())).size,
+        total,
+        active: ps.filter((p) => p.status === 'ACTIVE').length,
+        completed,
+        delayed: ps.filter((p) => p.delayStatus === 'DELAYED' && OPEN_STATUSES.has(p.status)).length,
+        escalated: ps.filter((p) => p.isEscalated).length,
+        overaged: ps.filter((p) => p.isOveraged).length,
+        completionPct: total > 0 ? Math.round((completed / total) * 100) : 0,
+      };
+    }).sort((a, b) => b.total - a.total);
+  }, [rangeActive, rangeFrom, rangeTo, archivedData, allProjects, amNames, amRows, fixedAm]);
+
+  const perfRows: PerfRow[] = rangeRows ?? amRows;
+  const perfLoading = rangeActive && archivedLoading;
+  const fmtDay = (d: string) => (d ? fmtDate(`${d}T00:00:00`) : '');
+  const rangeLabel = rangeFrom && rangeTo ? `${fmtDay(rangeFrom)} – ${fmtDay(rangeTo)}`
+    : rangeFrom ? `from ${fmtDay(rangeFrom)}` : `up to ${fmtDay(rangeTo)}`;
+
   const scoped = selectedAm ? allProjects.filter((p) => p.accountManager === selectedAm) : allProjects;
   const openScoped = scoped.filter((p) => OPEN_STATUSES.has(p.status));
+
+  // Every project of the selected AM: open ones first, then by account and project name.
+  const [amStatusFilter, setAmStatusFilter] = useState<'ALL' | 'OPEN' | 'COMPLETED'>('ALL');
+  const amProjects = selectedAm
+    ? scoped.slice().sort((a, b) => {
+        const s = STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status);
+        return s !== 0 ? s : accountLabel(a).localeCompare(accountLabel(b)) || (a.name || '').localeCompare(b.name || '');
+      })
+    : [];
+  const amProjectsShown = amProjects.filter((p) =>
+    amStatusFilter === 'ALL' || (amStatusFilter === 'OPEN' ? OPEN_STATUSES.has(p.status) : p.status === 'COMPLETED'));
+
+  // Clicking a name (card or performance row) brings that AM's project list into view.
+  const amProjectsRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    setAmStatusFilter('ALL');
+    if (pickedAm) amProjectsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [pickedAm]);
 
   const escalations = scoped.filter((p) => p.isEscalated);
   const overages = scoped.filter((p) => p.isOveraged);
@@ -293,7 +408,7 @@ export default function AccountManagerDashboard({ fixedAm }: { fixedAm?: string 
       {/* AM overview cards */}
       <SectionCard
         title={fixedAm ? 'My Accounts' : 'Account Managers'}
-        subtitle={fixedAm ? `Projects where ${fixedAm} is the Account Manager. Open = Active + On Hold.` : 'Click a card to focus every section on that account manager. Open = Active + On Hold.'}
+        subtitle={fixedAm ? `Projects where ${fixedAm} is the Account Manager. Open = Active + On Hold.` : 'Click a card to see all of that account manager\'s projects and focus every section on them. Open = Active + On Hold.'}
       >
         {amRows.length === 0 ? (
           <p className="text-sm text-gray-400 py-4 text-center">
@@ -342,7 +457,52 @@ export default function AccountManagerDashboard({ fixedAm }: { fixedAm?: string 
       </SectionCard>
 
       {/* Manager performance */}
-      <SectionCard title="Account Manager Performance" subtitle="Total and completion include finished/archived projects (same as the main dashboard); delayed, escalated and overaged count current projects.">
+      <SectionCard
+        title="Account Manager Performance"
+        subtitle={rangeActive
+          ? `Projects running ${rangeLabel}, including archived ones. Completed = finished in this range; completion = completed ÷ total. Delayed, escalated and overaged show each project's current state.`
+          : 'All time. Total and completion include finished/archived projects (same as the main dashboard); delayed, escalated and overaged count current projects. Pick a date range to narrow it.'}
+      >
+        <div className="flex flex-wrap items-end gap-2 mb-3">
+          <label className="text-xs text-gray-500">
+            <span className="block mb-0.5">From</span>
+            <input
+              type="date"
+              value={rangeFrom}
+              max={rangeTo || undefined}
+              onChange={(e) => setRangeFrom(e.target.value)}
+              className="h-8 rounded-lg border border-gray-200 px-2 text-sm text-gray-800 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+            />
+          </label>
+          <label className="text-xs text-gray-500">
+            <span className="block mb-0.5">To</span>
+            <input
+              type="date"
+              value={rangeTo}
+              min={rangeFrom || undefined}
+              onChange={(e) => setRangeTo(e.target.value)}
+              className="h-8 rounded-lg border border-gray-200 px-2 text-sm text-gray-800 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+            />
+          </label>
+          <div className="flex flex-wrap items-center gap-1">
+            {rangePresets().map((p) => (
+              <button key={p.label} onClick={() => { setRangeFrom(p.from); setRangeTo(p.to); }}
+                className={`h-8 text-xs px-2.5 rounded-full font-medium ${rangeFrom === p.from && rangeTo === p.to ? 'bg-primary-600 text-white' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-100'}`}>
+                {p.label}
+              </button>
+            ))}
+            {rangeActive && (
+              <button onClick={() => { setRangeFrom(''); setRangeTo(''); }} className="h-8 inline-flex items-center gap-1 text-xs px-2.5 rounded-full font-medium text-gray-600 hover:bg-gray-100">
+                <X size={12} /> All time
+              </button>
+            )}
+          </div>
+        </div>
+        {perfLoading ? (
+          <div className="flex items-center justify-center gap-2 py-8 text-sm text-gray-500">
+            <Loader2 className="w-4 h-4 animate-spin" /> Loading archived projects for this range...
+          </div>
+        ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -353,7 +513,7 @@ export default function AccountManagerDashboard({ fixedAm }: { fixedAm?: string 
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {amRows.map((r) => (
+              {perfRows.map((r) => (
                 <tr key={r.manager} className={`hover:bg-gray-50 ${selectedAm === r.manager ? 'bg-indigo-50/50' : ''}`}>
                   <td className="py-2 pr-3 font-medium text-gray-800">
                     <button onClick={() => setSelectedAm(selectedAm === r.manager ? null : r.manager)} className="hover:underline text-left">{r.manager}</button>
@@ -375,7 +535,63 @@ export default function AccountManagerDashboard({ fixedAm }: { fixedAm?: string 
             </tbody>
           </table>
         </div>
+        )}
       </SectionCard>
+
+      {/* All projects of the selected AM */}
+      {selectedAm && (
+        <div ref={amProjectsRef} className="scroll-mt-4">
+          <SectionCard
+            title={`${selectedAm}'s Projects`}
+            subtitle={`${amProjects.length} current project${amProjects.length === 1 ? '' : 's'} (${amProjects.filter((p) => OPEN_STATUSES.has(p.status)).length} open, ${amProjects.filter((p) => p.status === 'COMPLETED').length} completed). Archived projects are in History Archive.`}
+            right={
+              <div className="flex items-center gap-1">
+                {([['ALL', 'All'], ['OPEN', 'Open'], ['COMPLETED', 'Completed']] as const).map(([key, label]) => (
+                  <button key={key} onClick={() => setAmStatusFilter(key)}
+                    className={`text-xs px-2.5 py-1 rounded-full font-medium ${amStatusFilter === key ? 'bg-primary-600 text-white' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-100'}`}>
+                    {label}
+                  </button>
+                ))}
+                {!fixedAm && (
+                  <button onClick={() => setSelectedAm(null)} className="ml-1 p-1 rounded-md text-gray-400 hover:bg-gray-100 hover:text-gray-600" aria-label="Close project list">
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+            }
+          >
+            <div className="max-h-[480px] overflow-y-auto">
+              <ProjectTable
+                projects={amProjectsShown}
+                hideAm
+                empty={amProjects.length === 0 ? `${selectedAm} has no current projects.` : 'No projects match this filter.'}
+                columns={[
+                  { label: 'Project Manager', render: (p) => <span className="text-xs text-gray-700">{p.projectManager || '—'}</span> },
+                  { label: 'Segment', render: (p) => <span className="text-xs text-gray-600">{segmentOf(p) ?? '—'}</span> },
+                  { label: 'Phase', render: (p) => <span className="text-xs text-gray-600">{p.phase || '—'}</span> },
+                  { label: 'Status', render: (p) => <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${STATUS_BADGE[p.status] ?? 'bg-gray-100 text-gray-600'}`}>{p.status}</span> },
+                  {
+                    label: 'Delay',
+                    render: (p) => DELAY_BADGE[p.delayStatus]
+                      ? <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${DELAY_BADGE[p.delayStatus]}`}>{p.delayStatus === 'AT_RISK' ? 'At risk' : `${p.delayDays || 0}d ${p.delayStatus === 'EXTENDED' ? 'extended' : 'late'}`}</span>
+                      : <span className="text-xs text-gray-400">On time</span>,
+                  },
+                  { label: 'Ends', render: (p) => <span className="text-xs text-gray-600">{fmtDate(effectiveEnd(p))}</span> },
+                  {
+                    label: 'Flags',
+                    render: (p) => (
+                      <span className="flex gap-1">
+                        {p.isEscalated && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-orange-100 text-orange-700">Escalated</span>}
+                        {p.isOveraged && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-purple-100 text-purple-700">Overaged</span>}
+                      </span>
+                    ),
+                  },
+                ]}
+              />
+            </div>
+          </SectionCard>
+        </div>
+      )}
 
       {/* Leaderboard */}
       {!fixedAm && (

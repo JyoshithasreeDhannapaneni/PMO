@@ -413,6 +413,17 @@ const dashboardQuery = (manager: string | undefined, by: ManagerDimension): stri
   return qs ? `?${qs}` : '';
 };
 
+// Every archived (finished/cancelled) project, for date-range views that must count work
+// finished in the past; the live project list leaves archived projects out.
+export function useAllArchivedProjects(enabled = true) {
+  return useQuery({
+    queryKey: ['archived-projects-all'],
+    queryFn: () => authFetch(`${API_BASE}/api/archive?limit=100000&sortBy=archived_at&sortOrder=desc`),
+    enabled,
+    staleTime: 5 * 60_000,
+  });
+}
+
 export function useAllUsers() {
   return useQuery({
     queryKey: ['all-users'],

@@ -111,7 +111,7 @@ class ArchiveService {
               estimated_cost, actual_cost, delay_days, delay_status,
               is_escalated, is_overaged, overage_amount, csat_score, archive_csat_status,
               archived_at, archive_reason, archived_by, restore_count,
-              created_at, updated_at
+              project_type, segment, created_at, updated_at
        FROM projects ${where}
        ORDER BY ${safeSort} ${safeOrder}
        LIMIT ? OFFSET ?`,
@@ -265,6 +265,7 @@ class ArchiveService {
       archiveCsatStatus: r.archive_csat_status ?? null,
       archivedAt: r.archived_at, archiveReason: r.archive_reason,
       archivedBy: r.archived_by, restoreCount: r.restore_count || 0,
+      projectType: r.project_type ?? null, segment: r.segment ?? null,
       createdAt: r.created_at, updatedAt: r.updated_at,
     };
   }
