@@ -775,7 +775,7 @@ export default function AuditDashboardPage() {
   });
   const pendingSchedules: any[] = (schedulesData?.data ?? []).filter((s: any) => s.status === 'PENDING');
 
-  const { data: pmoWeeklyTrendData } = usePmoHygieneWeeklyTrend(hygieneTab === 'project' && isAdmin);
+  const { data: pmoWeeklyTrendData } = usePmoHygieneWeeklyTrend(hygieneTab === 'project');
   const pmoWeeklyTrend: any[] = pmoWeeklyTrendData?.data?.weeks ?? [];
   const { data: emailWeeklyTrendData } = useEmailHygieneWeeklyTrend(hygieneTab === 'email');
   const emailWeeklyTrend: any[] = emailWeeklyTrendData?.data?.weeks ?? [];
@@ -2051,18 +2051,16 @@ export default function AuditDashboardPage() {
         })()}
 
         {/* Weekly trend */}
-        {isAdmin && (
-          <Card>
-            <div className="flex items-center gap-2 text-sm font-semibold text-gray-800 mb-3">
-              <TrendingUp size={14} className="text-indigo-600" /> Weekly Trend — PMO Hygiene
-              <span className="text-xs font-normal text-gray-400">this month, Mon–Sun</span>
-            </div>
-            <WeeklyTrendChart
-              weeks={pmoWeeklyTrend}
-              scoreFn={(metrics) => metrics.length ? Math.round(metrics.reduce((s: number, pm: any) => s + pm.hygieneScore, 0) / metrics.length) : null}
-            />
-          </Card>
-        )}
+        <Card>
+          <div className="flex items-center gap-2 text-sm font-semibold text-gray-800 mb-3">
+            <TrendingUp size={14} className="text-indigo-600" /> Weekly Trend — PMO Hygiene
+            <span className="text-xs font-normal text-gray-400">this month, Mon–Sun</span>
+          </div>
+          <WeeklyTrendChart
+            weeks={pmoWeeklyTrend}
+            scoreFn={(metrics) => metrics.length ? Math.round(metrics.reduce((s: number, pm: any) => s + pm.hygieneScore, 0) / metrics.length) : null}
+          />
+        </Card>
 
         {/* Scheduled scorecard sends */}
         {isAdmin && pendingSchedules.length > 0 && (

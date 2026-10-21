@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { auditController } from '../controllers/auditController';
-import { requireRole } from '../middleware/auth';
+import { requireAuth, requireRole } from '../middleware/auth';
 
 const router = Router();
 
@@ -14,12 +14,15 @@ router.get('/activity-summary', requireRole('ADMIN'), auditController.getActivit
 router.get('/manager-leaderboard', requireRole('ADMIN'), auditController.getManagerLeaderboard);
 router.get('/manager-dashboard-leaderboard', requireRole('ADMIN'), auditController.getManagerDashboardLeaderboard);
 router.get('/weekly-trend', requireRole('ADMIN'), auditController.getWeeklyTrend);
-router.get('/hygiene-board', requireRole('ADMIN'), auditController.getHygieneBoard);
-router.get('/hygiene-board/weekly-trend', requireRole('ADMIN'), auditController.getHygieneWeeklyTrend);
+// PMO hygiene board is readable by every logged-in role (Audit Dashboard's Project
+// Hygiene tab), like email hygiene. It carries scores and last-login timestamps but no
+// audit_logs IP data, so the ADMIN-only rule above does not apply to it.
+router.get('/hygiene-board', requireAuth, auditController.getHygieneBoard);
+router.get('/hygiene-board/weekly-trend', requireAuth, auditController.getHygieneWeeklyTrend);
 router.get('/hygiene-board/months', requireRole('ADMIN'), auditController.listHygieneMonths);
 router.get('/hygiene-board/month', requireRole('ADMIN'), auditController.getHygieneMonth);
 router.post('/hygiene-board/finalize-month', requireRole('ADMIN'), auditController.finalizeHygieneMonth);
-router.get('/export/hygiene-board', requireRole('ADMIN'), auditController.exportHygieneExcel);
+router.get('/export/hygiene-board', requireAuth, auditController.exportHygieneExcel);
 // Manual test trigger for the daily 6PM IST hygiene scorecard email — role check is inline (ADMIN only), see controller.
 router.post('/hygiene-scorecard/run-now', requireRole('ADMIN'), auditController.runHygieneScorecardNow);
 // Ad-hoc scheduled sends with a custom recipient list — role check is inline (ADMIN only), see controller.
