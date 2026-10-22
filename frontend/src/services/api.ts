@@ -102,6 +102,16 @@ export function csatRequiredDetail(error: unknown, projectId: string): CsatRequi
   return { projectId, csat: err.details.csat };
 }
 
+// Fired by useUpdateProject when a save moves a project into COMPLETED and it has no case
+// study yet (backend caseStudyDue); the CaseStudyPromptModal in the authenticated layout listens.
+export const CASE_STUDY_DUE_EVENT = 'pmo:case-study-due';
+
+export interface CaseStudyDueDetail {
+  projectId: string;
+  projectName: string;
+  customerName: string | null;
+}
+
 export const projectsApi = {
   getAll: async (params?: {
     page?: number;
@@ -132,7 +142,7 @@ export const projectsApi = {
     return data;
   },
 
-  update: async (id: string, project: UpdateProjectInput): Promise<ApiResponse<Project>> => {
+  update: async (id: string, project: UpdateProjectInput): Promise<ApiResponse<Project> & { caseStudyDue?: boolean }> => {
     const { data } = await api.put(`/projects/${id}`, project);
     return data;
   },

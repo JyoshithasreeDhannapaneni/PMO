@@ -88,14 +88,13 @@ export default function NewCaseStudyPage() {
   const fetchProjects = async () => {
     try {
       setIsLoading(true);
-      const response = await fetch(`${API_URL}/api/projects?status=COMPLETED`, { headers: authHeaders() });
+      // Completed projects without a case study. The awaiting list includes archived ones:
+      // a project is archived as soon as it is completed, so /api/projects never lists it.
+      const response = await fetch(`${API_URL}/api/case-studies/awaiting`, { headers: authHeaders() });
       const data = await response.json();
-      
+
       if (data.success) {
-        // Filter out projects that already have case studies
-        const projectsWithoutCS = (data.data || []).filter(
-          (p: any) => !p.caseStudy
-        );
+        const projectsWithoutCS: Project[] = data.data || [];
         setProjects(projectsWithoutCS);
         
         // If projectId was passed and exists, select it

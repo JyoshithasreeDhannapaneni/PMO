@@ -2,8 +2,9 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect } from 'react';
-import { CSAT_REQUIRED_EVENT, csatRequiredDetail, projectsApi, dashboardApi, statusReportsApi, managerGoalsApi, migrationTypeApi, pocProjectsApi, accountManagerApi, customerSuccessApi, hubspotApi, psEngagementsApi, kbArticlesApi, emailHygieneApi, callHygieneApi, callTranscriptsApi, auditApi, feedbackApi, actionItemsApi, slaBreachAlertsApi, archiveSharePointApi, accountTrackerApi } from '@/services/api';
+import { CASE_STUDY_DUE_EVENT, CSAT_REQUIRED_EVENT, csatRequiredDetail, projectsApi, dashboardApi, statusReportsApi, managerGoalsApi, migrationTypeApi, pocProjectsApi, accountManagerApi, customerSuccessApi, hubspotApi, psEngagementsApi, kbArticlesApi, emailHygieneApi, callHygieneApi, callTranscriptsApi, auditApi, feedbackApi, actionItemsApi, slaBreachAlertsApi, archiveSharePointApi, accountTrackerApi } from '@/services/api';
 import type { CreateProjectInput, UpdateProjectInput, ManagerDimension } from '@/types';
+import type { CaseStudyDueDetail } from '@/services/api';
 import type { DealQueryParams } from '@/types/accountTracker';
 
 export function useProjects(params?: {
@@ -70,12 +71,21 @@ export function useUpdateProject() {
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: UpdateProjectInput }) =>
       projectsApi.update(id, data),
-    onSuccess: (_, variables) => {
+    onSuccess: (res, variables) => {
       queryClient.invalidateQueries({ queryKey: ['projects'] });
       queryClient.invalidateQueries({ queryKey: ['project', variables.id] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['statusReports', variables.id] });
       queryClient.invalidateQueries({ queryKey: ['archive'] });
+      // Same single choke point as the C-SAT popup: ask for the case study on completion.
+      if (res?.caseStudyDue && typeof window !== 'undefined') {
+        const detail: CaseStudyDueDetail = {
+          projectId: variables.id,
+          projectName: res.data?.name ?? 'This project',
+          customerName: res.data?.customerName ?? null,
+        };
+        window.dispatchEvent(new CustomEvent(CASE_STUDY_DUE_EVENT, { detail }));
+      }
     },
     // Every screen that changes a phase saves through here, so the C-SAT popup is opened
     // once for all of them (edit form, projects table cell, project detail).

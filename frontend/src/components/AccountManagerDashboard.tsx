@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Loader2, AlertCircle, X, ExternalLink } from 'lucide-react';
 import { useProjects, useManagerStats, useHubspotSignals, useAllArchivedProjects } from '@/hooks/useProjects';
@@ -118,6 +118,7 @@ function SectionCard({ title, subtitle, children, right }: { title: string; subt
 const STATUS_BADGE: Record<string, string> = {
   ACTIVE: 'bg-green-100 text-green-700',
   ON_HOLD: 'bg-amber-100 text-amber-700',
+  INACTIVE: 'bg-slate-100 text-slate-600',
   COMPLETED: 'bg-blue-100 text-blue-700',
   CANCELLED: 'bg-gray-100 text-gray-500',
 };
@@ -127,12 +128,40 @@ const DELAY_BADGE: Record<string, string> = {
   EXTENDED: 'bg-purple-100 text-purple-700',
 };
 const STATUS_ORDER = ['ACTIVE', 'ON_HOLD', 'COMPLETED', 'CANCELLED'];
+// Which delay an account row shows when its projects differ: the most serious one.
+const DELAY_RANK: Record<string, number> = { DELAYED: 3, EXTENDED: 2, AT_RISK: 1 };
 
-function ProjectTable({ projects, columns, empty, hideAm }: {
+interface AccountGroup {
+  key: string;
+  label: string;
+  projects: (Project & { archivedAt?: string | null })[];
+  types: string[];
+  pms: string[];
+  segments: string[];
+  phases: string[];
+  open: number;
+  completed: number;
+  worst: Project | null;
+  liveCount: number;
+  end: string | null;
+  escalated: boolean;
+  overaged: boolean;
+}
+
+function delayBadge(p: Project): React.ReactNode {
+  return DELAY_BADGE[p.delayStatus]
+    ? <span className={`text-xs font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${DELAY_BADGE[p.delayStatus]}`}>{p.delayStatus === 'AT_RISK' ? 'At risk' : `${p.delayDays || 0}d ${p.delayStatus === 'EXTENDED' ? 'extended' : 'late'}`}</span>
+    : <span className="text-xs text-gray-400">On time</span>;
+}
+
+function statusBadge(status: string): React.ReactNode {
+  return <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${STATUS_BADGE[status] ?? 'bg-gray-100 text-gray-600'}`}>{status}</span>;
+}
+
+function ProjectTable({ projects, columns, empty }: {
   projects: Project[];
   columns: { label: string; render: (p: Project) => React.ReactNode; align?: 'right' }[];
   empty: string;
-  hideAm?: boolean;
 }) {
   if (projects.length === 0) return <p className="text-sm text-gray-400 py-4 text-center">{empty}</p>;
   return (
@@ -142,7 +171,7 @@ function ProjectTable({ projects, columns, empty, hideAm }: {
           <tr className="text-xs text-gray-500 border-b border-gray-100">
             <th className="text-left font-medium py-2 pr-3">Project</th>
             <th className="text-left font-medium py-2 pr-3">Account</th>
-            {!hideAm && <th className="text-left font-medium py-2 pr-3">Account Manager</th>}
+            <th className="text-left font-medium py-2 pr-3">Account Manager</th>
             {columns.map((c) => (
               <th key={c.label} className={`font-medium py-2 pr-3 whitespace-nowrap ${c.align === 'right' ? 'text-right' : 'text-left'}`}>{c.label}</th>
             ))}
@@ -157,7 +186,7 @@ function ProjectTable({ projects, columns, empty, hideAm }: {
                 </Link>
               </td>
               <td className="py-2 pr-3 text-gray-700">{accountLabel(p)}</td>
-              {!hideAm && <td className="py-2 pr-3 text-gray-600">{p.accountManager || '—'}</td>}
+              <td className="py-2 pr-3 text-gray-600">{p.accountManager || '—'}</td>
               {columns.map((c) => (
                 <td key={c.label} className={`py-2 pr-3 ${c.align === 'right' ? 'text-right tabular-nums' : ''}`}>{c.render(p)}</td>
               ))}
@@ -249,16 +278,21 @@ export default function AccountManagerDashboard({ fixedAm }: { fixedAm?: string 
   const [rangeFrom, setRangeFrom] = useState('');
   const [rangeTo, setRangeTo] = useState('');
   const rangeActive = !!rangeFrom || !!rangeTo;
-  const { data: archivedData, isLoading: archivedLoading } = useAllArchivedProjects(rangeActive);
+  // Also loaded while an AM's project list is open: completed projects are archived the
+  // moment they finish, so without these the list's Completed filter is always empty.
+  const { data: archivedData, isLoading: archivedLoading } = useAllArchivedProjects(rangeActive || !!selectedAm);
+  const archivedProjects: ArchivedProject[] = useMemo(() => {
+    const liveIds = new Set(allProjects.map((p) => p.id));
+    return ((archivedData?.projects ?? []) as ArchivedProject[])
+      .filter((p) => p.projectType !== 'POC' && !liveIds.has(p.id))
+      .map((p) => ({ ...p, accountManager: p.accountManager && amNames.has(p.accountManager) ? p.accountManager : UNASSIGNED }));
+  }, [archivedData, allProjects, amNames]);
 
   const rangeRows: PerfRow[] | null = useMemo(() => {
     if (!rangeActive) return null;
     const fromT = toTime(rangeFrom) ?? -Infinity;
     const toT = rangeTo ? (toTime(rangeTo) as number) + 86400000 - 1 : Infinity;
-    const liveIds = new Set(allProjects.map((p) => p.id));
-    const archived = ((archivedData?.projects ?? []) as ArchivedProject[])
-      .filter((p) => p.projectType !== 'POC' && !liveIds.has(p.id))
-      .map((p) => ({ ...p, accountManager: p.accountManager && amNames.has(p.accountManager) ? p.accountManager : UNASSIGNED }));
+    const archived = archivedProjects;
 
     const byAm = new Map<string, { p: ArchivedProject; completedInRange: boolean }[]>();
     for (const p of [...allProjects, ...archived] as ArchivedProject[]) {
@@ -290,7 +324,7 @@ export default function AccountManagerDashboard({ fixedAm }: { fixedAm?: string 
         completionPct: total > 0 ? Math.round((completed / total) * 100) : 0,
       };
     }).sort((a, b) => b.total - a.total);
-  }, [rangeActive, rangeFrom, rangeTo, archivedData, allProjects, amNames, amRows, fixedAm]);
+  }, [rangeActive, rangeFrom, rangeTo, archivedProjects, allProjects, amRows, fixedAm]);
 
   const perfRows: PerfRow[] = rangeRows ?? amRows;
   const perfLoading = rangeActive && archivedLoading;
@@ -301,14 +335,23 @@ export default function AccountManagerDashboard({ fixedAm }: { fixedAm?: string 
   const scoped = selectedAm ? allProjects.filter((p) => p.accountManager === selectedAm) : allProjects;
   const openScoped = scoped.filter((p) => OPEN_STATUSES.has(p.status));
 
-  // Every project of the selected AM: open ones first, then by account and project name.
+  // Every project of the selected AM, archived (finished) ones included: open first, then
+  // completed (most recent first), then the rest; within a group by account and project name.
   const [amStatusFilter, setAmStatusFilter] = useState<'ALL' | 'OPEN' | 'COMPLETED'>('ALL');
-  const amProjects = selectedAm
-    ? scoped.slice().sort((a, b) => {
-        const s = STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status);
-        return s !== 0 ? s : accountLabel(a).localeCompare(accountLabel(b)) || (a.name || '').localeCompare(b.name || '');
+  const statusRank = (s: string) => { const i = STATUS_ORDER.indexOf(s); return i === -1 ? STATUS_ORDER.length : i; };
+  const amProjects: ArchivedProject[] = selectedAm
+    ? ([...scoped, ...archivedProjects.filter((p) => p.accountManager === selectedAm)] as ArchivedProject[]).sort((a, b) => {
+        const s = statusRank(a.status) - statusRank(b.status);
+        if (s !== 0) return s;
+        if (a.status === 'COMPLETED') {
+          const byEnd = (toTime(b.actualEnd) ?? toTime(b.archivedAt) ?? 0) - (toTime(a.actualEnd) ?? toTime(a.archivedAt) ?? 0);
+          if (byEnd !== 0) return byEnd;
+        }
+        return accountLabel(a).localeCompare(accountLabel(b)) || (a.name || '').localeCompare(b.name || '');
       })
     : [];
+  const amOpenCount = amProjects.filter((p) => OPEN_STATUSES.has(p.status)).length;
+  const amCompletedCount = amProjects.filter((p) => p.status === 'COMPLETED').length;
   const amProjectsShown = amProjects.filter((p) =>
     amStatusFilter === 'ALL' || (amStatusFilter === 'OPEN' ? OPEN_STATUSES.has(p.status) : p.status === 'COMPLETED'));
 
@@ -316,6 +359,7 @@ export default function AccountManagerDashboard({ fixedAm }: { fixedAm?: string 
   const amProjectsRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     setAmStatusFilter('ALL');
+    setExpandedAccounts(new Set());
     if (pickedAm) amProjectsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, [pickedAm]);
 
@@ -328,13 +372,13 @@ export default function AccountManagerDashboard({ fixedAm }: { fixedAm?: string 
     .filter((p) => { const e = effectiveEnd(p); return !!e && new Date(e) >= today && new Date(e) <= horizon; })
     .sort((a, b) => (effectiveEnd(a) ?? '').localeCompare(effectiveEnd(b) ?? ''));
 
-  const categoryStats = useMemo(() => {
+  // Same categorisation as the main dashboard's Migration Type Overview.
+  const getCategory = useMemo(() => {
     const nameToCategory: Record<string, string> = {};
     (settings.migrationTypes ?? []).forEach((t: { name?: string; category?: string }) => {
       if (t.name && t.category) nameToCategory[t.name.toLowerCase()] = t.category;
     });
-    // Same categorisation as the main dashboard's Migration Type Overview.
-    const getCategory = (migTypes: string): string => {
+    return (migTypes: string): string => {
       if (!migTypes) return 'Content Migration';
       for (const part of migTypes.split(',').map((s) => s.trim())) {
         const cat = nameToCategory[part.toLowerCase()];
@@ -345,6 +389,46 @@ export default function AccountManagerDashboard({ fixedAm }: { fixedAm?: string 
       if (['GMAIL', 'OUTLOOK', 'EXCHANGE', 'OFFICE365', 'GOOGLE WORKSPACE', 'LOTUS', 'ZIMBRA'].some((k) => u.includes(k))) return 'Email';
       return 'Content Migration';
     };
+  }, [settings.migrationTypes]);
+
+  // The AM's list grouped by customer account (client_name, falling back to the project
+  // name: the same key All Projects groups by), one row per account with its projects inside.
+  const [expandedAccounts, setExpandedAccounts] = useState<Set<string>>(new Set());
+  const amAccounts: AccountGroup[] = useMemo(() => {
+    const groups = new Map<string, ArchivedProject[]>();
+    for (const p of amProjectsShown) {
+      const key = accountLabel(p).toLowerCase();
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(p);
+    }
+    const uniq = (xs: (string | null | undefined)[]) => [...new Set(xs.filter((x): x is string => !!x))];
+    return [...groups.entries()].map(([key, ps]) => {
+      const live = ps.filter((p) => OPEN_STATUSES.has(p.status) || p.status === 'INACTIVE');
+      const worst = live.filter((p) => DELAY_BADGE[p.delayStatus]).sort((a, b) =>
+        DELAY_RANK[b.delayStatus] - DELAY_RANK[a.delayStatus] || (b.delayDays || 0) - (a.delayDays || 0))[0] ?? null;
+      const completed = ps.filter((p) => p.status === 'COMPLETED');
+      const latest = (dates: (string | null | undefined)[]) =>
+        dates.filter((d): d is string => !!d).sort((a, b) => (toTime(b) ?? 0) - (toTime(a) ?? 0))[0] ?? null;
+      return {
+        key,
+        label: accountLabel(ps[0]),
+        projects: ps,
+        types: uniq(ps.map((p) => getCategory(p.migrationTypes || '').replace(' Migration', ''))),
+        pms: uniq(ps.map((p) => p.projectManager)),
+        segments: uniq(ps.map((p) => segmentOf(p))),
+        phases: uniq(live.map((p) => p.phase)),
+        open: ps.filter((p) => OPEN_STATUSES.has(p.status)).length,
+        completed: completed.length,
+        worst,
+        liveCount: live.length,
+        end: live.length > 0 ? latest(live.map((p) => effectiveEnd(p))) : latest(completed.map((p) => p.actualEnd ?? p.archivedAt)),
+        escalated: ps.some((p) => p.isEscalated),
+        overaged: ps.some((p) => p.isOveraged),
+      };
+    }).sort((a, b) => (b.open > 0 ? 1 : 0) - (a.open > 0 ? 1 : 0) || a.label.localeCompare(b.label));
+  }, [amProjectsShown, getCategory]);
+
+  const categoryStats = useMemo(() => {
     return [
       { key: 'Content Migration', icon: '📁', cls: 'bg-blue-50 border-blue-200', text: 'text-blue-700' },
       { key: 'Messaging', icon: '💬', cls: 'bg-green-50 border-green-200', text: 'text-green-700' },
@@ -360,7 +444,7 @@ export default function AccountManagerDashboard({ fixedAm }: { fixedAm?: string 
         overaged: ps.filter((p) => p.isOveraged).length,
       };
     });
-  }, [scoped, settings.migrationTypes]);
+  }, [scoped, getCategory]);
 
   // HubSpot upsell/cross-sell for the accounts in scope — only when the HubSpot service
   // answers (its backend route is currently not mounted, so this usually stays hidden).
@@ -543,7 +627,9 @@ export default function AccountManagerDashboard({ fixedAm }: { fixedAm?: string 
         <div ref={amProjectsRef} className="scroll-mt-4">
           <SectionCard
             title={`${selectedAm}'s Projects`}
-            subtitle={`${amProjects.length} current project${amProjects.length === 1 ? '' : 's'} (${amProjects.filter((p) => OPEN_STATUSES.has(p.status)).length} open, ${amProjects.filter((p) => p.status === 'COMPLETED').length} completed). Archived projects are in History Archive.`}
+            subtitle={archivedLoading
+              ? 'Loading projects, including completed and archived ones...'
+              : `${new Set(amProjects.map((p) => accountLabel(p).toLowerCase())).size} accounts, ${amProjects.length} project${amProjects.length === 1 ? '' : 's'}: ${amOpenCount} open, ${amCompletedCount} completed${amProjects.length - amOpenCount - amCompletedCount > 0 ? `, ${amProjects.length - amOpenCount - amCompletedCount} other (inactive or cancelled)` : ''}. Completed include archived. Click an account to see its projects.`}
             right={
               <div className="flex items-center gap-1">
                 {([['ALL', 'All'], ['OPEN', 'Open'], ['COMPLETED', 'Completed']] as const).map(([key, label]) => (
@@ -560,34 +646,91 @@ export default function AccountManagerDashboard({ fixedAm }: { fixedAm?: string 
               </div>
             }
           >
-            <div className="max-h-[480px] overflow-y-auto">
-              <ProjectTable
-                projects={amProjectsShown}
-                hideAm
-                empty={amProjects.length === 0 ? `${selectedAm} has no current projects.` : 'No projects match this filter.'}
-                columns={[
-                  { label: 'Project Manager', render: (p) => <span className="text-xs text-gray-700">{p.projectManager || '—'}</span> },
-                  { label: 'Segment', render: (p) => <span className="text-xs text-gray-600">{segmentOf(p) ?? '—'}</span> },
-                  { label: 'Phase', render: (p) => <span className="text-xs text-gray-600">{p.phase || '—'}</span> },
-                  { label: 'Status', render: (p) => <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${STATUS_BADGE[p.status] ?? 'bg-gray-100 text-gray-600'}`}>{p.status}</span> },
-                  {
-                    label: 'Delay',
-                    render: (p) => DELAY_BADGE[p.delayStatus]
-                      ? <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${DELAY_BADGE[p.delayStatus]}`}>{p.delayStatus === 'AT_RISK' ? 'At risk' : `${p.delayDays || 0}d ${p.delayStatus === 'EXTENDED' ? 'extended' : 'late'}`}</span>
-                      : <span className="text-xs text-gray-400">On time</span>,
-                  },
-                  { label: 'Ends', render: (p) => <span className="text-xs text-gray-600">{fmtDate(effectiveEnd(p))}</span> },
-                  {
-                    label: 'Flags',
-                    render: (p) => (
-                      <span className="flex gap-1">
-                        {p.isEscalated && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-orange-100 text-orange-700">Escalated</span>}
-                        {p.isOveraged && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-purple-100 text-purple-700">Overaged</span>}
-                      </span>
-                    ),
-                  },
-                ]}
-              />
+            <div className="max-h-[520px] overflow-y-auto">
+              {amAccounts.length === 0 ? (
+                <p className="text-sm text-gray-400 py-4 text-center">
+                  {amProjects.length === 0 ? `${selectedAm} has no projects.` : 'No accounts match this filter.'}
+                </p>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 bg-white">
+                    <tr className="text-xs text-gray-500 border-b border-gray-100">
+                      {['Account', 'Projects', 'Project Manager', 'Segment', 'Phase', 'Status', 'Delay', 'Ends', 'Flags'].map((h) => (
+                        <th key={h} className="text-left font-medium py-2 pr-3 whitespace-nowrap">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {amAccounts.map((a) => {
+                      const open = expandedAccounts.has(a.key);
+                      const toggle = () => setExpandedAccounts((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(a.key)) next.delete(a.key); else next.add(a.key);
+                        return next;
+                      });
+                      return (
+                        <Fragment key={a.key}>
+                          <tr className="border-t border-gray-100 hover:bg-gray-50 cursor-pointer" onClick={toggle}>
+                            <td className="py-2 pr-3">
+                              <button type="button" className="flex items-center gap-1.5 text-left font-medium text-gray-900" aria-expanded={open}>
+                                <span className={`inline-block w-3 text-gray-400 transition-transform ${open ? 'rotate-90' : ''}`}>▸</span>
+                                {a.label}
+                              </button>
+                            </td>
+                            <td className="py-2 pr-3 text-xs text-gray-700 whitespace-nowrap">
+                              {a.projects.length} · {a.types.join(', ')}
+                            </td>
+                            <td className="py-2 pr-3 text-xs text-gray-700">{a.pms.join(', ') || '—'}</td>
+                            <td className="py-2 pr-3 text-xs text-gray-600">{a.segments.join(', ') || '—'}</td>
+                            <td className="py-2 pr-3 text-xs text-gray-600">{a.phases.join(', ') || '—'}</td>
+                            <td className="py-2 pr-3 whitespace-nowrap">
+                              {a.open > 0 ? <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700">{a.open} open</span> : null}
+                              {a.open > 0 && a.completed > 0 ? ' ' : null}
+                              {a.completed > 0 ? <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">{a.completed} completed</span> : null}
+                              {a.open === 0 && a.completed === 0 ? statusBadge(a.projects[0].status) : null}
+                            </td>
+                            <td className="py-2 pr-3">{a.liveCount === 0 ? <span className="text-xs text-gray-400">—</span> : a.worst ? delayBadge(a.worst) : <span className="text-xs text-gray-400">On time</span>}</td>
+                            <td className="py-2 pr-3 text-xs text-gray-600 whitespace-nowrap">{a.liveCount === 0 && a.end ? `Completed ${fmtDate(a.end)}` : fmtDate(a.end)}</td>
+                            <td className="py-2 pr-3">
+                              <span className="flex gap-1">
+                                {a.escalated && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-orange-100 text-orange-700">Escalated</span>}
+                                {a.overaged && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-purple-100 text-purple-700">Overaged</span>}
+                              </span>
+                            </td>
+                          </tr>
+                          {open && a.projects.map((p) => {
+                            const live = OPEN_STATUSES.has(p.status) || p.status === 'INACTIVE';
+                            return (
+                              <tr key={p.id} className="bg-slate-50/70 text-xs">
+                                <td className="py-1.5 pr-3 pl-6">
+                                  <Link href={`/projects/${p.id}`} className="text-primary-700 hover:underline inline-flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                                    {p.name} <ExternalLink size={11} />
+                                  </Link>
+                                </td>
+                                <td className="py-1.5 pr-3 text-gray-600">{getCategory(p.migrationTypes || '').replace(' Migration', '')}</td>
+                                <td className="py-1.5 pr-3 text-gray-700">{p.projectManager || '—'}</td>
+                                <td className="py-1.5 pr-3 text-gray-600">{segmentOf(p) ?? '—'}</td>
+                                <td className="py-1.5 pr-3 text-gray-600">{p.phase || '—'}</td>
+                                <td className="py-1.5 pr-3">{statusBadge(p.status)}</td>
+                                <td className="py-1.5 pr-3">{live ? delayBadge(p) : <span className="text-gray-400">—</span>}</td>
+                                <td className="py-1.5 pr-3 text-gray-600 whitespace-nowrap">
+                                  {p.status === 'COMPLETED' ? `Completed ${fmtDate(p.actualEnd ?? p.archivedAt ?? effectiveEnd(p))}` : fmtDate(effectiveEnd(p))}
+                                </td>
+                                <td className="py-1.5 pr-3">
+                                  <span className="flex gap-1">
+                                    {p.isEscalated && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-orange-100 text-orange-700">Escalated</span>}
+                                    {p.isOveraged && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-purple-100 text-purple-700">Overaged</span>}
+                                  </span>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </Fragment>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
             </div>
           </SectionCard>
         </div>

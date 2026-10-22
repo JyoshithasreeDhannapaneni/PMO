@@ -13,6 +13,9 @@ jest.mock('../../services/projectService', () => ({
   },
 }));
 
+const mockCaseStudyByProject = jest.fn(async (_id: string): Promise<{ id: string } | null> => null);
+jest.mock('../../services/caseStudyService', () => ({ caseStudyService: { getByProjectId: mockCaseStudyByProject } }));
+
 import { projectController } from '../../controllers/projectController';
 import { projectService } from '../../services/projectService';
 
@@ -95,5 +98,34 @@ describe('projectController authorization (fails closed)', () => {
     expect(projectService.update).not.toHaveBeenCalled();
     await call(projectController.update as Handler, am, { archiveCsatStatus: 'X' });
     expect(jest.mocked(projectService.update).mock.calls[0]).toEqual(['p1', { archiveCsatStatus: 'X' }]);
+  });
+});
+
+// Value: protects=the UI is told to ask for a case study exactly when a migration project moves into COMPLETED without one;
+//   fails_when=the flag fires on every edit of an already-completed project, for POCs, when a case study exists, or never;
+//   no_claim=the frontend popup itself (no frontend tests); projectService and caseStudyService are mocked.
+describe('projectController.update caseStudyDue', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockCaseStudyByProject.mockResolvedValue(null);
+  });
+
+  const due = async (before: string, after: { status: string; projectType?: string }) => {
+    jest.mocked(projectService.getById).mockResolvedValueOnce({ id: 'p1', projectManager: 'Alice', status: before } as never);
+    jest.mocked(projectService.update).mockResolvedValueOnce({ id: 'p1', projectType: 'MIGRATION', ...after } as never);
+    const { json } = await call(projectController.update as Handler, pm('Alice'), { phase: 'COMPLETED' });
+    return (json.mock.calls[0][0] as { caseStudyDue: boolean }).caseStudyDue;
+  };
+
+  it('is set when an active project becomes COMPLETED with no case study', async () => {
+    expect(await due('ACTIVE', { status: 'COMPLETED' })).toBe(true);
+  });
+
+  it('is not set for an already-completed project, a POC, a project that is not completed, or one with a case study', async () => {
+    expect(await due('COMPLETED', { status: 'COMPLETED' })).toBe(false);
+    expect(await due('ACTIVE', { status: 'COMPLETED', projectType: 'POC' })).toBe(false);
+    expect(await due('ACTIVE', { status: 'ACTIVE' })).toBe(false);
+    mockCaseStudyByProject.mockResolvedValueOnce({ id: 'cs1' });
+    expect(await due('ACTIVE', { status: 'COMPLETED' })).toBe(false);
   });
 });

@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { projectService, ProjectFilters, PaginationOptions } from '../services/projectService';
 import { auditService } from '../services/auditService';
+import { caseStudyService } from '../services/caseStudyService';
 import { asyncHandler } from '../middleware/errorHandler';
 
 interface ActingUser {
@@ -157,9 +158,14 @@ getAll: asyncHandler(async (req: Request, res: Response): Promise<void> => {
       userAgent: req.headers['user-agent'],
     });
 
+    // Tells the UI to ask for the case study right away, only on the move into COMPLETED.
+    const caseStudyDue = previousStatus !== 'COMPLETED' && project.status === 'COMPLETED'
+      && project.projectType !== 'POC' && !(await caseStudyService.getByProjectId(project.id));
+
     res.json({
       success: true,
       data: project,
+      caseStudyDue,
       message: 'Project updated successfully',
     });
   }),

@@ -7,6 +7,7 @@ import { ToastProvider } from '@/context/ToastContext';
 import { ChatWidget } from '@/components/chat/ChatWidget';
 import { FeedbackWidget } from '@/components/feedback/FeedbackWidget';
 import { CsatRequestModal } from '@/components/projects/CsatRequestModal';
+import { CaseStudyPromptModal } from '@/components/projects/CaseStudyPromptModal';
 
 export default function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -35,6 +36,7 @@ export default function AuthenticatedLayout({ children }: { children: React.Reac
           <ChatWidget />
           <FeedbackWidget />
           <CsatRequestModal />
+          <CaseStudyPromptModal />
         </div>
       </ToastProvider>
     </ProtectedRoute>

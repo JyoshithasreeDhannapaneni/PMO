@@ -289,13 +289,16 @@ class CaseStudyService {
     logger.info(`Case study deleted: ${id}`);
   }
 
+  // Archived projects are included: a project is archived the moment it is completed, which is
+  // exactly when its case study is due. POCs have no case study.
   async getAwaiting(projectManager?: string) {
     let sql = `
-      SELECT p.id, p.name, p.customer_name, p.project_manager, p.status, p.phase
+      SELECT p.id, p.name, p.customer_name, p.client_name, p.project_manager, p.account_manager,
+             p.status, p.phase, p.source_platform, p.target_platform, p.actual_end, p.archived_at
       FROM projects p
       LEFT JOIN case_studies cs ON cs.project_id = p.id
       WHERE p.status = 'COMPLETED'
-        AND p.archived_at IS NULL
+        AND COALESCE(p.project_type, 'MIGRATION') <> 'POC'
         AND cs.id IS NULL
     `;
     const params: any[] = [];
@@ -303,15 +306,21 @@ class CaseStudyService {
       sql += ` AND p.project_manager = $1`;
       params.push(projectManager);
     }
-    sql += ` ORDER BY p.updated_at DESC`;
+    sql += ` ORDER BY COALESCE(p.actual_end, p.archived_at::date, p.updated_at::date) DESC`;
     const result = await query(sql, params);
     return result.rows.map((r: any) => ({
       id: r.id,
       name: r.name,
       customerName: r.customer_name,
+      clientName: r.client_name ?? null,
       projectManager: r.project_manager,
+      accountManager: r.account_manager ?? null,
       status: r.status,
       phase: r.phase,
+      sourcePlatform: r.source_platform ?? null,
+      targetPlatform: r.target_platform ?? null,
+      actualEnd: r.actual_end ?? null,
+      archivedAt: r.archived_at ?? null,
     }));
   }
 
