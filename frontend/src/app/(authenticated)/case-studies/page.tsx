@@ -81,6 +81,16 @@ interface AwaitingProject {
 
 type ListItem = { kind: 'awaiting'; p: AwaitingProject } | { kind: 'case'; cs: CaseStudy };
 
+type Category = 'all' | 'not_started' | 'pending' | 'in_progress' | 'completed';
+
+const CATEGORIES: { id: Category; label: string; icon: typeof FileText; bg: string; color: string }[] = [
+  { id: 'all', label: 'All', icon: FileText, bg: 'bg-gray-100', color: 'text-gray-600' },
+  { id: 'not_started', label: 'Not started', icon: AlertCircle, bg: 'bg-orange-100', color: 'text-orange-600' },
+  { id: 'pending', label: 'Pending', icon: Clock, bg: 'bg-yellow-100', color: 'text-yellow-600' },
+  { id: 'in_progress', label: 'In Progress', icon: Edit, bg: 'bg-blue-100', color: 'text-blue-600' },
+  { id: 'completed', label: 'Completed', icon: CheckCircle, bg: 'bg-green-100', color: 'text-green-600' },
+];
+
 const LIST_PAGE = 25;
 const CS_STATUS_ORDER: CaseStudy['status'][] = ['PENDING', 'IN_PROGRESS', 'COMPLETED', 'PUBLISHED'];
 
@@ -107,7 +117,7 @@ function CaseStudiesContent() {
   const [completedProjects, setCompletedProjects] = useState<AwaitingProject[]>([]);
   const [showAll, setShowAll] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'all' | 'pending' | 'completed'>('all');
+  const [activeTab, setActiveTab] = useState<Category>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [pmFilter, setPmFilter] = useState('');
   const [amFilter, setAmFilter] = useState('');
@@ -268,22 +278,29 @@ function CaseStudiesContent() {
     && (!searchTerm || [p.name, p.clientName, p.customerName, p.projectManager, p.accountManager].some((v) => includes(v, searchTerm))));
   const caseMatches = scopedCaseStudies.filter((cs) => ownerMatches(cs.project?.projectManager, cs.project?.accountManager)
     && (!searchTerm || [cs.title, cs.project?.name, cs.project?.customerName, cs.project?.projectManager, cs.project?.accountManager].some((v) => includes(v, searchTerm))));
-  const isOpenCs = (cs: CaseStudy) => cs.status === 'PENDING' || cs.status === 'IN_PROGRESS';
-  const isDoneCs = (cs: CaseStudy) => cs.status === 'COMPLETED' || cs.status === 'PUBLISHED';
-
-  const tabCounts = {
+  // One set of categories drives both the counts on the cards and the list below, so the
+  // numbers always agree (All = Not started + Pending + In Progress + Completed).
+  const inCategory = (cs: CaseStudy, cat: Category): boolean =>
+    cat === 'all' ? true
+      : cat === 'pending' ? cs.status === 'PENDING'
+      : cat === 'in_progress' ? cs.status === 'IN_PROGRESS'
+      : cat === 'completed' ? cs.status === 'COMPLETED' || cs.status === 'PUBLISHED'
+      : false;
+  const counts: Record<Category, number> = {
     all: awaitingMatches.length + caseMatches.length,
-    pending: awaitingMatches.length + caseMatches.filter(isOpenCs).length,
-    completed: caseMatches.filter(isDoneCs).length,
+    not_started: awaitingMatches.length,
+    pending: caseMatches.filter((cs) => inCategory(cs, 'pending')).length,
+    in_progress: caseMatches.filter((cs) => inCategory(cs, 'in_progress')).length,
+    completed: caseMatches.filter((cs) => inCategory(cs, 'completed')).length,
   };
 
-  // Case studies in the current tab (also what Export downloads), work still to do first.
+  // Case studies in the selected category (also what Export downloads), work still to do first.
   const filteredCaseStudies = caseMatches
-    .filter((cs) => (activeTab === 'pending' ? isOpenCs(cs) : activeTab === 'completed' ? isDoneCs(cs) : true))
+    .filter((cs) => inCategory(cs, activeTab))
     .sort((a, b) => CS_STATUS_ORDER.indexOf(a.status) - CS_STATUS_ORDER.indexOf(b.status));
 
   const listItems: ListItem[] = [
-    ...(activeTab === 'completed' ? [] : awaitingMatches.map((p) => ({ kind: 'awaiting' as const, p }))),
+    ...(activeTab === 'all' || activeTab === 'not_started' ? awaitingMatches.map((p) => ({ kind: 'awaiting' as const, p })) : []),
     ...filteredCaseStudies.map((cs) => ({ kind: 'case' as const, cs })),
   ];
   // The project the case study prompt or a link pointed at must be visible, even past the first page.
@@ -295,15 +312,6 @@ function CaseStudiesContent() {
       highlightRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   }, [highlightProjectId, isLoading]);
-
-  const stats = {
-    total: scopedCaseStudies.length,
-    pending: scopedCaseStudies.filter((cs) => cs.status === 'PENDING').length,
-    inProgress: scopedCaseStudies.filter((cs) => cs.status === 'IN_PROGRESS').length,
-    completed: scopedCaseStudies.filter((cs) => cs.status === 'COMPLETED').length,
-    published: scopedCaseStudies.filter((cs) => cs.status === 'PUBLISHED').length,
-    needsCaseStudy: scopedAwaiting.length,
-  };
 
   if (isLoading) {
     return (
@@ -349,64 +357,36 @@ function CaseStudiesContent() {
         </div>
       )}
 
-      {/* Stats Cards */}
+      {/* Category cards — the counts and the filter for the list below (click to filter) */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-gray-100 rounded-lg">
-              <FileText className="text-gray-600" size={20} />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-gray-900">{stats.total}</p>
-              <p className="text-sm text-gray-500">Total</p>
-            </div>
-          </div>
-        </Card>
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-yellow-100 rounded-lg">
-              <Clock className="text-yellow-600" size={20} />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-gray-900">{stats.pending}</p>
-              <p className="text-sm text-gray-500">Pending</p>
-            </div>
-          </div>
-        </Card>
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-blue-100 rounded-lg">
-              <Edit className="text-blue-600" size={20} />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-gray-900">{stats.inProgress}</p>
-              <p className="text-sm text-gray-500">In Progress</p>
-            </div>
-          </div>
-        </Card>
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-green-100 rounded-lg">
-              <CheckCircle className="text-green-600" size={20} />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-gray-900">{stats.completed + stats.published}</p>
-              <p className="text-sm text-gray-500">Completed</p>
-            </div>
-          </div>
-        </Card>
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-orange-100 rounded-lg">
-              <AlertCircle className="text-orange-600" size={20} />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-gray-900">{stats.needsCaseStudy}</p>
-              <p className="text-sm text-gray-500">Need Case Study</p>
-            </div>
-          </div>
-        </Card>
+        {CATEGORIES.map((c) => {
+          const Icon = c.icon;
+          const active = activeTab === c.id;
+          return (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => { setActiveTab(c.id); setShowAll(false); }}
+              aria-pressed={active}
+              className={`text-left rounded-xl border bg-white p-4 transition-all ${active ? 'border-primary-400 ring-2 ring-primary-200 shadow-sm' : 'border-gray-200 hover:border-primary-200 hover:shadow-sm'}`}
+            >
+              <div className="flex items-center gap-3">
+                <div className={`p-2 rounded-lg ${c.bg}`}>
+                  <Icon className={c.color} size={20} />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-gray-900">{counts[c.id]}</p>
+                  <p className="text-sm text-gray-500">{c.label}</p>
+                </div>
+              </div>
+            </button>
+          );
+        })}
       </div>
+      <p className="-mt-3 text-xs text-gray-500">
+        All = Not started + Pending + In Progress + Completed. Not started = completed projects with no case study yet; owners get a reminder email every Monday.
+        Counts follow the filters and search below.
+      </p>
 
       {/* PM / AM filters — apply to both the projects needing case studies and the case study list */}
       {!isManager && (
@@ -430,27 +410,11 @@ function CaseStudiesContent() {
         </div>
       )}
 
-      {/* Tabs and Search */}
+      {/* Selected category and Search */}
       <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
-        <div className="flex bg-gray-100 rounded-lg p-1">
-          {([
-            { id: 'all', label: 'All', count: tabCounts.all },
-            { id: 'pending', label: 'Pending', count: tabCounts.pending },
-            { id: 'completed', label: 'Completed', count: tabCounts.completed },
-          ] as const).map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => { setActiveTab(tab.id); setShowAll(false); }}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-                activeTab === tab.id
-                  ? 'bg-white text-primary-700 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              {tab.label} <span className="ml-1 text-xs text-gray-400">{tab.count}</span>
-            </button>
-          ))}
-        </div>
+        <h3 className="text-base font-semibold text-gray-900">
+          {CATEGORIES.find((c) => c.id === activeTab)?.label} <span className="text-sm font-normal text-gray-500">({counts[activeTab]})</span>
+        </h3>
 
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
@@ -463,13 +427,6 @@ function CaseStudiesContent() {
           />
         </div>
       </div>
-      {activeTab !== 'completed' && awaitingMatches.length > 0 && (
-        <p className="-mt-3 text-xs text-gray-500">
-          Includes {awaitingMatches.length} completed project{awaitingMatches.length === 1 ? '' : 's'} with no case study yet (Not started).
-          Owners get a reminder email every Monday.
-        </p>
-      )}
-
       {/* Case Studies List — Not started projects first, then case studies by status */}
       <Card>
         {listItems.length === 0 ? (
