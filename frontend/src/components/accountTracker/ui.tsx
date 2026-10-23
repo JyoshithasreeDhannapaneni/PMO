@@ -1,6 +1,7 @@
 'use client';
 
 import { ReactNode, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Check, Copy, ExternalLink, Loader2, Sparkles, X, AlertTriangle } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { cn } from '@/lib/utils';
@@ -147,29 +148,40 @@ export function CopyButton({ text }: { text: string | null | undefined }) {
 }
 
 /** Slide-in panel (filters): closes on Esc or backdrop click. */
-export function SidePanel({ open, title, onClose, children, footer }: {
+// Centered dialog. Rendered into document.body through a portal: the authenticated layout wraps
+// pages in an animated (transformed) container, which would otherwise make this `fixed` overlay
+// position against that container and slide under the sidebar.
+export function CenteredDialog({ open, title, onClose, children, footer }: {
   open: boolean; title: string; onClose: () => void; children: ReactNode; footer?: ReactNode;
 }) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   useEffect(() => {
     if (!open) return undefined;
     const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', esc);
-    return () => document.removeEventListener('keydown', esc);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', esc);
+      document.body.style.overflow = prevOverflow;
+    };
   }, [open, onClose]);
-  if (!open) return null;
-  return (
-    <div className="fixed inset-0 z-50 flex bg-slate-900/30 backdrop-blur-sm" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <aside className="flex h-full w-full max-w-sm flex-col bg-white shadow-2xl animate-fadeInLeft" role="dialog" aria-modal="true" aria-label={title}>
-        <header className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
+  if (!open || !mounted) return null;
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl animate-scaleIn" role="dialog" aria-modal="true" aria-label={title}>
+        <header className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
           <h2 className="text-lg font-semibold text-slate-800">{title}</h2>
           <button type="button" className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600" onClick={onClose} aria-label="Close">
             <X className="h-5 w-5" />
           </button>
         </header>
-        <div className="flex-1 space-y-6 overflow-y-auto px-5 py-4">{children}</div>
-        {footer && <footer className="flex justify-end gap-2 border-t border-gray-100 px-5 py-3">{footer}</footer>}
-      </aside>
-    </div>
+        <div className="flex-1 overflow-y-auto px-6 py-5">{children}</div>
+        {footer && <footer className="flex justify-end gap-2 border-t border-gray-100 px-6 py-3">{footer}</footer>}
+      </div>
+    </div>,
+    document.body,
   );
 }
 

@@ -5,7 +5,7 @@ import { Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { EMPTY_FILTERS } from '@/lib/accountTracker';
 import type { CompanyFilters, FilterOptions } from '@/types/accountTracker';
-import { SidePanel, btn } from './ui';
+import { CenteredDialog, btn } from './ui';
 
 function Group({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -80,7 +80,7 @@ function MultiSelect({ options, selected, onChange, placeholder }: {
   );
 }
 
-/** Filters open in a side panel and only apply on "Apply" (which closes the panel) — the list stays uncluttered. */
+/** Filters open in a centered dialog and only apply on "Apply" (which closes it) — the list stays uncluttered. */
 export function FilterPanel({ filters, options, onApply, onClose }: {
   filters: CompanyFilters; options: FilterOptions | undefined;
   onApply: (f: CompanyFilters) => void; onClose: () => void;
@@ -90,13 +90,14 @@ export function FilterPanel({ filters, options, onApply, onClose }: {
   const maxEmp = options?.maxEmployees ?? 0;
 
   return (
-    <SidePanel open title="Filters" onClose={onClose}
+    <CenteredDialog open title="Filters" onClose={onClose}
       footer={(
         <>
           <button type="button" className={btn.ghost} onClick={() => setDraft({ ...EMPTY_FILTERS, search: draft.search })}>Reset</button>
           <button type="button" className={btn.primary} onClick={() => onApply(draft)}>Apply filters</button>
         </>
       )}>
+      <div className="grid gap-x-8 gap-y-6 sm:grid-cols-2">
       <Group title="Company size">
         <div className="grid grid-cols-4 gap-1 rounded-xl bg-gray-100 p-1">
           {['All', 'Small', 'Mid', 'Enterprise'].map((t) => (
@@ -140,6 +141,7 @@ export function FilterPanel({ filters, options, onApply, onClose }: {
       <Group title={`Industry group${draft.industryGroups.length ? ` · ${draft.industryGroups.length}` : ''}`}>
         <MultiSelect options={options?.industryGroups ?? []} selected={draft.industryGroups} onChange={(v) => set({ industryGroups: v })} placeholder="Search industry groups…" />
       </Group>
-    </SidePanel>
+      </div>
+    </CenteredDialog>
   );
 }
