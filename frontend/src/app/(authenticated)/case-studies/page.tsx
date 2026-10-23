@@ -67,13 +67,19 @@ interface CaseStudy {
   };
 }
 
-interface Project {
+// A completed project with no case study yet (GET /api/case-studies/awaiting; archived included).
+interface AwaitingProject {
   id: string;
   name: string;
-  customerName: string;
-  status: string;
-  caseStudy: CaseStudy | null;
+  customerName: string | null;
+  clientName: string | null;
+  projectManager: string | null;
+  accountManager: string | null;
+  actualEnd: string | null;
+  archivedAt: string | null;
 }
+
+const AWAITING_PAGE = 20;
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -92,7 +98,9 @@ function CaseStudiesContent() {
   const highlightProjectId = searchParams.get('projectId');
   const highlightRef = useRef<HTMLDivElement>(null);
   const [caseStudies, setCaseStudies] = useState<CaseStudy[]>([]);
-  const [completedProjects, setCompletedProjects] = useState<Project[]>([]);
+  const [completedProjects, setCompletedProjects] = useState<AwaitingProject[]>([]);
+  const [awaitingSearch, setAwaitingSearch] = useState('');
+  const [showAllAwaiting, setShowAllAwaiting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'all' | 'pending' | 'completed'>('all');
   const [searchTerm, setSearchTerm] = useState('');
@@ -234,24 +242,37 @@ function CaseStudiesContent() {
   // Options for the PM/AM filter dropdowns — deduped from whatever's actually
   // present on the loaded case studies, not a separate lookup fetch.
   const pmOptions = Array.from(new Set(
-    caseStudies.map((cs) => cs.project?.projectManager).filter(Boolean)
+    [...caseStudies.map((cs) => cs.project?.projectManager), ...completedProjects.map((p) => p.projectManager)].filter(Boolean)
   )).sort() as string[];
   const amOptions = mergeAccountManagers(allUsersData?.data);
 
-  const filteredCaseStudies = caseStudies.filter((cs) => {
-    if (isManager && cs.project?.projectManager !== user?.name) return false;
-    if (pmFilter) {
-      const pms = pmFilter.split(',').filter(Boolean);
-      if (pms.length > 0 && !pms.includes(cs.project?.projectManager ?? '')) return false;
-    }
-    if (amFilter) {
-      const ams = amFilter.split(',').filter(Boolean);
-      if (ams.length > 0 && !ams.includes(cs.project?.accountManager ?? '')) return false;
-    }
-    const matchesSearch =
-      cs.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      cs.project?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      cs.project?.customerName.toLowerCase().includes(searchTerm.toLowerCase());
+  const pmList = pmFilter.split(',').filter(Boolean);
+  const amList = amFilter.split(',').filter(Boolean);
+  const includes = (value: string | null | undefined, term: string) => (value ?? '').toLowerCase().includes(term.toLowerCase());
+
+  // A project manager sees only their own projects, in the stats as well as the lists.
+  const scopedCaseStudies = isManager ? caseStudies.filter((cs) => cs.project?.projectManager === user?.name) : caseStudies;
+  const scopedAwaiting = isManager ? completedProjects.filter((p) => p.projectManager === user?.name) : completedProjects;
+
+  const filteredAwaiting = scopedAwaiting.filter((p) => {
+    if (pmList.length > 0 && !pmList.includes(p.projectManager ?? '')) return false;
+    if (amList.length > 0 && !amList.includes(p.accountManager ?? '')) return false;
+    if (!awaitingSearch) return true;
+    return [p.name, p.clientName, p.customerName, p.projectManager, p.accountManager].some((v) => includes(v, awaitingSearch));
+  });
+  // The project the case study prompt or a link pointed at must be visible, even past the first page.
+  const highlightIndex = filteredAwaiting.findIndex((p) => p.id === highlightProjectId);
+  const awaitingShown = showAllAwaiting || highlightIndex >= AWAITING_PAGE
+    ? filteredAwaiting
+    : filteredAwaiting.slice(0, AWAITING_PAGE);
+
+  const filteredCaseStudies = scopedCaseStudies.filter((cs) => {
+    if (pmList.length > 0 && !pmList.includes(cs.project?.projectManager ?? '')) return false;
+    if (amList.length > 0 && !amList.includes(cs.project?.accountManager ?? '')) return false;
+    const matchesSearch = !searchTerm
+      || includes(cs.title, searchTerm)
+      || includes(cs.project?.name, searchTerm)
+      || includes(cs.project?.customerName, searchTerm);
 
     if (activeTab === 'pending') {
       return matchesSearch && (cs.status === 'PENDING' || cs.status === 'IN_PROGRESS');
@@ -269,12 +290,12 @@ function CaseStudiesContent() {
   }, [highlightProjectId, isLoading]);
 
   const stats = {
-    total: caseStudies.length,
-    pending: caseStudies.filter((cs) => cs.status === 'PENDING').length,
-    inProgress: caseStudies.filter((cs) => cs.status === 'IN_PROGRESS').length,
-    completed: caseStudies.filter((cs) => cs.status === 'COMPLETED').length,
-    published: caseStudies.filter((cs) => cs.status === 'PUBLISHED').length,
-    needsCaseStudy: completedProjects.length,
+    total: scopedCaseStudies.length,
+    pending: scopedCaseStudies.filter((cs) => cs.status === 'PENDING').length,
+    inProgress: scopedCaseStudies.filter((cs) => cs.status === 'IN_PROGRESS').length,
+    completed: scopedCaseStudies.filter((cs) => cs.status === 'COMPLETED').length,
+    published: scopedCaseStudies.filter((cs) => cs.status === 'PUBLISHED').length,
+    needsCaseStudy: scopedAwaiting.length,
   };
 
   if (isLoading) {
@@ -380,35 +401,108 @@ function CaseStudiesContent() {
         </Card>
       </div>
 
-      {/* Projects Needing Case Studies (manual creation) */}
-      {completedProjects.length > 0 && (
+      {/* PM / AM filters — apply to both the projects needing case studies and the case study list */}
+      {!isManager && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-xl">
+          <MultiSelectDropdown
+            label="Project Manager"
+            value={pmFilter}
+            options={pmOptions.map((pm) => ({ value: pm, label: pm }))}
+            placeholder="All Project Managers"
+            searchable
+            onChange={setPmFilter}
+          />
+          <MultiSelectDropdown
+            label="Account Manager"
+            value={amFilter}
+            options={amOptions.map((am) => ({ value: am, label: am }))}
+            placeholder="All Account Managers"
+            searchable
+            onChange={setAmFilter}
+          />
+        </div>
+      )}
+
+      {/* Projects Needing Case Studies — every completed project without one (archived included) */}
+      {scopedAwaiting.length > 0 && (
         <Card>
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-4">
             <div>
               <h3 className="text-lg font-semibold text-gray-900">Projects Needing Case Studies</h3>
-              <p className="text-sm text-gray-500">Completed projects without documentation</p>
+              <p className="text-sm text-gray-500">
+                {filteredAwaiting.length === scopedAwaiting.length
+                  ? `${scopedAwaiting.length} completed project${scopedAwaiting.length === 1 ? '' : 's'} without a case study, most recently completed first.`
+                  : `${filteredAwaiting.length} of ${scopedAwaiting.length} completed projects without a case study match the filters.`}
+                {' '}Owners get a weekly reminder email every Monday.
+              </p>
+            </div>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+              <input
+                type="text"
+                placeholder="Search project, account, PM or AM..."
+                value={awaitingSearch}
+                onChange={(e) => setAwaitingSearch(e.target.value)}
+                className="pl-9 pr-3 py-2 w-72 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+              />
             </div>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {completedProjects.slice(0, 6).map((project) => (
-              <div
-                key={project.id}
-                ref={project.id === highlightProjectId ? highlightRef : undefined}
-                className={`p-4 border rounded-lg transition-all ${project.id === highlightProjectId ? 'border-yellow-500 bg-yellow-50 ring-2 ring-yellow-400' : 'border-orange-200 bg-orange-50'}`}
-              >
-                <p className="font-medium text-gray-900">{project.name}</p>
-                <p className="text-sm text-gray-600">{project.customerName}</p>
-                {!isViewer && (
-                  <Link href={`/case-studies/new?projectId=${project.id}`}>
-                    <Button size="sm" className="mt-3">
-                      <Plus size={14} className="mr-1" />
-                      Create Case Study
-                    </Button>
-                  </Link>
-                )}
-              </div>
-            ))}
-          </div>
+          {filteredAwaiting.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-6">No projects match these filters.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-xs text-gray-500 border-b border-gray-100">
+                    {['Project', 'Account', 'Project Manager', 'Account Manager', 'Completed', ''].map((h) => (
+                      <th key={h} className="text-left font-medium py-2 pr-3 whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {awaitingShown.map((project) => {
+                    const highlighted = project.id === highlightProjectId;
+                    const completedOn = project.actualEnd ?? project.archivedAt;
+                    return (
+                      <tr key={project.id} className={highlighted ? 'bg-yellow-50 ring-2 ring-inset ring-yellow-400' : 'hover:bg-orange-50/50'}>
+                        <td className="py-2 pr-3 font-medium text-gray-900">
+                          <div ref={highlighted ? highlightRef : undefined}>
+                            <Link href={`/projects/${project.id}`} className="hover:underline">{project.name}</Link>
+                          </div>
+                        </td>
+                        <td className="py-2 pr-3 text-gray-700">{project.clientName || project.name}</td>
+                        <td className="py-2 pr-3 text-gray-700">{project.projectManager || '—'}</td>
+                        <td className="py-2 pr-3 text-gray-700">{project.accountManager || '—'}</td>
+                        <td className="py-2 pr-3 text-gray-600 whitespace-nowrap">
+                          {completedOn ? new Date(completedOn).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
+                        </td>
+                        <td className="py-2 text-right">
+                          {!isViewer && (
+                            <Link href={`/case-studies/new?projectId=${project.id}`}>
+                              <Button size="sm">
+                                <Plus size={14} className="mr-1" />
+                                Create Case Study
+                              </Button>
+                            </Link>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              {filteredAwaiting.length > awaitingShown.length && (
+                <button onClick={() => setShowAllAwaiting(true)} className="mt-3 w-full py-2 text-sm font-medium text-primary-700 hover:bg-primary-50 rounded-lg">
+                  Show all {filteredAwaiting.length} projects
+                </button>
+              )}
+              {showAllAwaiting && filteredAwaiting.length > AWAITING_PAGE && (
+                <button onClick={() => setShowAllAwaiting(false)} className="mt-3 w-full py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 rounded-lg">
+                  Show fewer
+                </button>
+              )}
+            </div>
+          )}
         </Card>
       )}
 
@@ -445,28 +539,6 @@ function CaseStudiesContent() {
           />
         </div>
       </div>
-
-      {/* PM / AM filters — identify case studies by who ran or owned the project */}
-      {!isManager && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-xl">
-          <MultiSelectDropdown
-            label="Project Manager"
-            value={pmFilter}
-            options={pmOptions.map((pm) => ({ value: pm, label: pm }))}
-            placeholder="All Project Managers"
-            searchable
-            onChange={setPmFilter}
-          />
-          <MultiSelectDropdown
-            label="Account Manager"
-            value={amFilter}
-            options={amOptions.map((am) => ({ value: am, label: am }))}
-            placeholder="All Account Managers"
-            searchable
-            onChange={setAmFilter}
-          />
-        </div>
-      )}
 
       {/* Case Studies List */}
       <Card>

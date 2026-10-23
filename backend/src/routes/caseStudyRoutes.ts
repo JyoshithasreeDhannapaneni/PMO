@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { caseStudyController } from '../controllers/caseStudyController';
+import { requireRole } from '../middleware/auth';
 
 const router = Router();
 
@@ -8,6 +9,9 @@ router.get('/', caseStudyController.getAll);
 
 // GET /api/case-studies/awaiting - Completed migration projects (archived included) with no case study yet
 router.get('/awaiting', caseStudyController.getAwaiting);
+
+// POST /api/case-studies/reminders/run-now - Send this week's case study digest now (ADMIN)
+router.post('/reminders/run-now', requireRole('ADMIN'), caseStudyController.runDigestNow);
 
 // GET /api/case-studies/:id - Get case study by ID
 router.get('/:id', caseStudyController.getById);

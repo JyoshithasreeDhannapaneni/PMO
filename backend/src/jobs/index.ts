@@ -188,6 +188,17 @@ export function initializeCronJobs(): void {
     });
   }, { timezone: 'Asia/Kolkata' });
 
+  // Weekly case study digest — every Monday at 10:00 AM IST: one email per PM/AM listing their
+  // completed projects that still have no case study (the job guards against double sends).
+  cron.schedule('0 10 * * 1', async () => {
+    try {
+      const { caseStudyReminderJob } = require('./caseStudyReminderJob');
+      await caseStudyReminderJob.run();
+    } catch (error) {
+      logger.error('[CaseStudyDigest] Weekly digest failed:', error);
+    }
+  }, { timezone: 'Asia/Kolkata' });
+
   // Email hygiene monthly finalize-check — daily at 7:15 AM IST (after the weekly finalize
   // above). finalizeMonth() is idempotent (UNIQUE month_start), so calling it daily costs
   // one cheap SELECT on every day the month is already finalized, and only runs the real
@@ -275,6 +286,7 @@ export function initializeCronJobs(): void {
   logger.info('  - 45-minute reply-SLA breach alerts: Every 15 minutes');
   logger.info('  - Global logout (clear all sessions): Daily at 6:00 AM IST');
   logger.info('  - Weekly hygiene finalize (PMO/Email/Call): Every Monday at 7:00 AM IST');
+  logger.info('  - Case study digest (one email per PM/AM): Every Monday at 10:00 AM IST');
   logger.info('  - Email hygiene monthly finalize-check: Daily at 7:15 AM IST');
   logger.info('  - PMO hygiene monthly finalize-check: Daily at 7:16 AM IST');
   logger.info('  - Email hygiene daily finalize: Daily at 7:20 AM IST');

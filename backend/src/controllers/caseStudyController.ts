@@ -72,6 +72,15 @@ export const caseStudyController = {
   }),
 
   /**
+   * POST /api/case-studies/reminders/run-now (ADMIN)
+   * Sends the weekly case study digest immediately; people already emailed this week are skipped.
+   */
+  runDigestNow: asyncHandler(async (_req: Request, res: Response): Promise<void> => {
+    const { caseStudyReminderJob } = require('../jobs/caseStudyReminderJob');
+    res.json({ success: true, data: await caseStudyReminderJob.run() });
+  }),
+
+  /**
    * POST /api/case-studies
    * Create a new case study
    */
