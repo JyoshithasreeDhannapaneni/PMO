@@ -79,7 +79,13 @@ interface AwaitingProject {
   archivedAt: string | null;
 }
 
-const AWAITING_PAGE = 20;
+type ListItem = { kind: 'awaiting'; p: AwaitingProject } | { kind: 'case'; cs: CaseStudy };
+
+const LIST_PAGE = 25;
+const CS_STATUS_ORDER: CaseStudy['status'][] = ['PENDING', 'IN_PROGRESS', 'COMPLETED', 'PUBLISHED'];
+
+const fmtDay = (d: string | null | undefined) =>
+  d ? new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : null;
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -99,8 +105,7 @@ function CaseStudiesContent() {
   const highlightRef = useRef<HTMLDivElement>(null);
   const [caseStudies, setCaseStudies] = useState<CaseStudy[]>([]);
   const [completedProjects, setCompletedProjects] = useState<AwaitingProject[]>([]);
-  const [awaitingSearch, setAwaitingSearch] = useState('');
-  const [showAllAwaiting, setShowAllAwaiting] = useState(false);
+  const [showAll, setShowAll] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'all' | 'pending' | 'completed'>('all');
   const [searchTerm, setSearchTerm] = useState('');
@@ -254,34 +259,36 @@ function CaseStudiesContent() {
   const scopedCaseStudies = isManager ? caseStudies.filter((cs) => cs.project?.projectManager === user?.name) : caseStudies;
   const scopedAwaiting = isManager ? completedProjects.filter((p) => p.projectManager === user?.name) : completedProjects;
 
-  const filteredAwaiting = scopedAwaiting.filter((p) => {
-    if (pmList.length > 0 && !pmList.includes(p.projectManager ?? '')) return false;
-    if (amList.length > 0 && !amList.includes(p.accountManager ?? '')) return false;
-    if (!awaitingSearch) return true;
-    return [p.name, p.clientName, p.customerName, p.projectManager, p.accountManager].some((v) => includes(v, awaitingSearch));
-  });
+  const ownerMatches = (pm: string | null | undefined, am: string | null | undefined) =>
+    (pmList.length === 0 || pmList.includes(pm ?? '')) && (amList.length === 0 || amList.includes(am ?? ''));
+
+  // Completed projects with no case study yet are part of the list: they show as "Not started"
+  // under All and Pending, each with a Create button.
+  const awaitingMatches = scopedAwaiting.filter((p) => ownerMatches(p.projectManager, p.accountManager)
+    && (!searchTerm || [p.name, p.clientName, p.customerName, p.projectManager, p.accountManager].some((v) => includes(v, searchTerm))));
+  const caseMatches = scopedCaseStudies.filter((cs) => ownerMatches(cs.project?.projectManager, cs.project?.accountManager)
+    && (!searchTerm || [cs.title, cs.project?.name, cs.project?.customerName, cs.project?.projectManager, cs.project?.accountManager].some((v) => includes(v, searchTerm))));
+  const isOpenCs = (cs: CaseStudy) => cs.status === 'PENDING' || cs.status === 'IN_PROGRESS';
+  const isDoneCs = (cs: CaseStudy) => cs.status === 'COMPLETED' || cs.status === 'PUBLISHED';
+
+  const tabCounts = {
+    all: awaitingMatches.length + caseMatches.length,
+    pending: awaitingMatches.length + caseMatches.filter(isOpenCs).length,
+    completed: caseMatches.filter(isDoneCs).length,
+  };
+
+  // Case studies in the current tab (also what Export downloads), work still to do first.
+  const filteredCaseStudies = caseMatches
+    .filter((cs) => (activeTab === 'pending' ? isOpenCs(cs) : activeTab === 'completed' ? isDoneCs(cs) : true))
+    .sort((a, b) => CS_STATUS_ORDER.indexOf(a.status) - CS_STATUS_ORDER.indexOf(b.status));
+
+  const listItems: ListItem[] = [
+    ...(activeTab === 'completed' ? [] : awaitingMatches.map((p) => ({ kind: 'awaiting' as const, p }))),
+    ...filteredCaseStudies.map((cs) => ({ kind: 'case' as const, cs })),
+  ];
   // The project the case study prompt or a link pointed at must be visible, even past the first page.
-  const highlightIndex = filteredAwaiting.findIndex((p) => p.id === highlightProjectId);
-  const awaitingShown = showAllAwaiting || highlightIndex >= AWAITING_PAGE
-    ? filteredAwaiting
-    : filteredAwaiting.slice(0, AWAITING_PAGE);
-
-  const filteredCaseStudies = scopedCaseStudies.filter((cs) => {
-    if (pmList.length > 0 && !pmList.includes(cs.project?.projectManager ?? '')) return false;
-    if (amList.length > 0 && !amList.includes(cs.project?.accountManager ?? '')) return false;
-    const matchesSearch = !searchTerm
-      || includes(cs.title, searchTerm)
-      || includes(cs.project?.name, searchTerm)
-      || includes(cs.project?.customerName, searchTerm);
-
-    if (activeTab === 'pending') {
-      return matchesSearch && (cs.status === 'PENDING' || cs.status === 'IN_PROGRESS');
-    }
-    if (activeTab === 'completed') {
-      return matchesSearch && (cs.status === 'COMPLETED' || cs.status === 'PUBLISHED');
-    }
-    return matchesSearch;
-  });
+  const highlightIndex = listItems.findIndex((i) => i.kind === 'awaiting' && i.p.id === highlightProjectId);
+  const shownItems = showAll || highlightIndex >= LIST_PAGE ? listItems : listItems.slice(0, LIST_PAGE);
 
   useEffect(() => {
     if (highlightProjectId && !isLoading && highlightRef.current) {
@@ -423,107 +430,24 @@ function CaseStudiesContent() {
         </div>
       )}
 
-      {/* Projects Needing Case Studies — every completed project without one (archived included) */}
-      {scopedAwaiting.length > 0 && (
-        <Card>
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-4">
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900">Projects Needing Case Studies</h3>
-              <p className="text-sm text-gray-500">
-                {filteredAwaiting.length === scopedAwaiting.length
-                  ? `${scopedAwaiting.length} completed project${scopedAwaiting.length === 1 ? '' : 's'} without a case study, most recently completed first.`
-                  : `${filteredAwaiting.length} of ${scopedAwaiting.length} completed projects without a case study match the filters.`}
-                {' '}Owners get a weekly reminder email every Monday.
-              </p>
-            </div>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-              <input
-                type="text"
-                placeholder="Search project, account, PM or AM..."
-                value={awaitingSearch}
-                onChange={(e) => setAwaitingSearch(e.target.value)}
-                className="pl-9 pr-3 py-2 w-72 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-              />
-            </div>
-          </div>
-          {filteredAwaiting.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-6">No projects match these filters.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-xs text-gray-500 border-b border-gray-100">
-                    {['Project', 'Account', 'Project Manager', 'Account Manager', 'Completed', ''].map((h) => (
-                      <th key={h} className="text-left font-medium py-2 pr-3 whitespace-nowrap">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {awaitingShown.map((project) => {
-                    const highlighted = project.id === highlightProjectId;
-                    const completedOn = project.actualEnd ?? project.archivedAt;
-                    return (
-                      <tr key={project.id} className={highlighted ? 'bg-yellow-50 ring-2 ring-inset ring-yellow-400' : 'hover:bg-orange-50/50'}>
-                        <td className="py-2 pr-3 font-medium text-gray-900">
-                          <div ref={highlighted ? highlightRef : undefined}>
-                            <Link href={`/projects/${project.id}`} className="hover:underline">{project.name}</Link>
-                          </div>
-                        </td>
-                        <td className="py-2 pr-3 text-gray-700">{project.clientName || project.name}</td>
-                        <td className="py-2 pr-3 text-gray-700">{project.projectManager || '—'}</td>
-                        <td className="py-2 pr-3 text-gray-700">{project.accountManager || '—'}</td>
-                        <td className="py-2 pr-3 text-gray-600 whitespace-nowrap">
-                          {completedOn ? new Date(completedOn).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
-                        </td>
-                        <td className="py-2 text-right">
-                          {!isViewer && (
-                            <Link href={`/case-studies/new?projectId=${project.id}`}>
-                              <Button size="sm">
-                                <Plus size={14} className="mr-1" />
-                                Create Case Study
-                              </Button>
-                            </Link>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              {filteredAwaiting.length > awaitingShown.length && (
-                <button onClick={() => setShowAllAwaiting(true)} className="mt-3 w-full py-2 text-sm font-medium text-primary-700 hover:bg-primary-50 rounded-lg">
-                  Show all {filteredAwaiting.length} projects
-                </button>
-              )}
-              {showAllAwaiting && filteredAwaiting.length > AWAITING_PAGE && (
-                <button onClick={() => setShowAllAwaiting(false)} className="mt-3 w-full py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 rounded-lg">
-                  Show fewer
-                </button>
-              )}
-            </div>
-          )}
-        </Card>
-      )}
-
-      {/* Filters and Search */}
+      {/* Tabs and Search */}
       <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
         <div className="flex bg-gray-100 rounded-lg p-1">
-          {[
-            { id: 'all', label: 'All' },
-            { id: 'pending', label: 'Pending' },
-            { id: 'completed', label: 'Completed' },
-          ].map((tab) => (
+          {([
+            { id: 'all', label: 'All', count: tabCounts.all },
+            { id: 'pending', label: 'Pending', count: tabCounts.pending },
+            { id: 'completed', label: 'Completed', count: tabCounts.completed },
+          ] as const).map((tab) => (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
+              onClick={() => { setActiveTab(tab.id); setShowAll(false); }}
               className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
                 activeTab === tab.id
                   ? 'bg-white text-primary-700 shadow-sm'
                   : 'text-gray-600 hover:text-gray-900'
               }`}
             >
-              {tab.label}
+              {tab.label} <span className="ml-1 text-xs text-gray-400">{tab.count}</span>
             </button>
           ))}
         </div>
@@ -532,30 +456,79 @@ function CaseStudiesContent() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
           <input
             type="text"
-            placeholder="Search case studies..."
+            placeholder="Search project, account, PM or AM..."
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+            onChange={(e) => { setSearchTerm(e.target.value); setShowAll(false); }}
+            className="pl-10 pr-4 py-2 w-80 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
           />
         </div>
       </div>
+      {activeTab !== 'completed' && awaitingMatches.length > 0 && (
+        <p className="-mt-3 text-xs text-gray-500">
+          Includes {awaitingMatches.length} completed project{awaitingMatches.length === 1 ? '' : 's'} with no case study yet (Not started).
+          Owners get a reminder email every Monday.
+        </p>
+      )}
 
-      {/* Case Studies List */}
+      {/* Case Studies List — Not started projects first, then case studies by status */}
       <Card>
-        {filteredCaseStudies.length === 0 ? (
+        {listItems.length === 0 ? (
           <div className="text-center py-12">
             <FileText className="mx-auto text-gray-300" size={48} />
             <p className="text-gray-500 mt-4">No case studies found</p>
             <p className="text-sm text-gray-400">
-              {caseStudies.length === 0
+              {caseStudies.length === 0 && completedProjects.length === 0
                 ? 'Complete a project to create your first case study'
                 : 'Try adjusting your search or filters'}
             </p>
           </div>
         ) : (
           <div className="divide-y divide-gray-100">
-            {filteredCaseStudies.map((cs) => {
-              const config = statusConfig[cs.status];
+            {shownItems.map((item) => {
+              if (item.kind === 'awaiting') {
+                const p = item.p;
+                const highlighted = p.id === highlightProjectId;
+                const completedOn = fmtDay(p.actualEnd ?? p.archivedAt);
+                return (
+                  <div
+                    key={`awaiting-${p.id}`}
+                    ref={highlighted ? highlightRef : undefined}
+                    className={`p-4 transition-colors ${highlighted ? 'bg-yellow-50 ring-2 ring-inset ring-yellow-400' : 'hover:bg-gray-50'}`}
+                  >
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-4 min-w-0">
+                        <div className="p-2 rounded-lg bg-orange-50">
+                          <AlertCircle className="text-orange-500" size={20} />
+                        </div>
+                        <div className="min-w-0">
+                          <h4 className="font-medium text-gray-900 truncate">
+                            <Link href={`/projects/${p.id}`} className="hover:underline">{p.name}</Link>
+                          </h4>
+                          <p className="text-sm text-gray-500">
+                            {p.clientName || p.name} · {p.projectManager || 'No PM'}
+                            {p.accountManager ? ` · AM ${p.accountManager}` : ''}
+                            {completedOn ? ` · Completed ${completedOn}` : ''}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3 flex-shrink-0">
+                        <span className="text-xs px-2 py-1 rounded-full bg-orange-50 text-orange-600">Not started</span>
+                        {!isViewer && (
+                          <Link href={`/case-studies/new?projectId=${p.id}`}>
+                            <Button size="sm">
+                              <Plus size={14} className="mr-1" />
+                              Create
+                            </Button>
+                          </Link>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+
+              const cs = item.cs;
+              const config = statusConfig[cs.status] ?? statusConfig.PENDING;
               const StatusIcon = config.icon;
 
               return (
@@ -573,7 +546,7 @@ function CaseStudiesContent() {
                           {cs.title || cs.project?.name || 'Untitled Case Study'}
                         </h4>
                         <p className="text-sm text-gray-500">
-                          {cs.project?.customerName} · {cs.project?.projectManager}
+                          {[cs.project?.customerName, cs.project?.projectManager].filter(Boolean).join(' · ')}
                         </p>
                       </div>
                     </div>
@@ -592,6 +565,16 @@ function CaseStudiesContent() {
               );
             })}
           </div>
+        )}
+        {listItems.length > shownItems.length && (
+          <button onClick={() => setShowAll(true)} className="mt-3 w-full py-2 text-sm font-medium text-primary-700 hover:bg-primary-50 rounded-lg">
+            Showing {shownItems.length} of {listItems.length}. Show all
+          </button>
+        )}
+        {showAll && listItems.length > LIST_PAGE && (
+          <button onClick={() => setShowAll(false)} className="mt-3 w-full py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 rounded-lg">
+            Show fewer
+          </button>
         )}
       </Card>
     </div>
