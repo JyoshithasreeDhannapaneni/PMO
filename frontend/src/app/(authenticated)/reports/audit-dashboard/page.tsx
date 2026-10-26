@@ -206,12 +206,23 @@ function todayStr() { return format(new Date(), 'yyyy-MM-dd'); }
 // that could get one of them blocked by the browser).
 // Legend/subtitle label for a weekly-trend slot: its real dates (e.g. "Oct 19–25"), flagged when
 // it is the in-progress week or has no saved data, so a missing bar is never mistaken for a 0.
-interface TrendWeek { weekStart: string; weekEnd: string; isCurrent?: boolean; hasData?: boolean }
+interface TrendWeek { weekStart: string; weekEnd: string; isCurrent?: boolean; hasData?: boolean; weekNo?: number }
 function trendWeekLabel(w: TrendWeek): string {
   const s = new Date(`${w.weekStart}T00:00:00`);
   const e = new Date(`${w.weekEnd}T00:00:00`);
   const range = `${format(s, 'MMM d')}–${format(e, s.getMonth() === e.getMonth() ? 'd' : 'MMM d')}`;
-  return `${range}${w.isCurrent ? ' (this week)' : ''}${w.hasData === false ? ' · no data yet' : ''}`;
+  return `${w.weekNo ? `Week ${w.weekNo} · ` : ''}${range}${w.isCurrent ? ' (so far)' : ''}${w.hasData === false ? ' · no data yet' : ''}`;
+}
+
+// Weeks for the weekly images: the month's weeks from Week 1 (the Mon–Sun week containing the
+// 1st, e.g. Sep 28–Oct 4 for October), finished weeks only, up to 4. The in-progress week is
+// added only while fewer than 4 weeks have finished and it already has data.
+const IMAGE_WEEKS = 4;
+function imageWeeks<T extends TrendWeek>(trend: T[]): T[] {
+  const numbered = trend.map((w, i) => ({ ...w, weekNo: i + 1 }));
+  const finished = numbered.filter((w) => !w.isCurrent).slice(0, IMAGE_WEEKS);
+  const current = numbered.find((w) => w.isCurrent && w.hasData);
+  return finished.length < IMAGE_WEEKS && current ? [...finished, current] : finished;
 }
 
 function downloadHygieneWeeklySegmentSlide(
@@ -702,7 +713,7 @@ export default function AuditDashboardPage() {
   // of weekly bars -- matches the reference exactly, no data table.
   function handleDownloadPmoHygieneImage() {
     if (!hygieneBoard.length) return;
-    const weeks = pmoWeeklyTrend.slice(-4);
+    const weeks = imageWeeks(pmoWeeklyTrend);
 
     for (const seg of SEGMENT_CONFIG) {
       const rows = seg.managers.map((canonicalName) => {
@@ -733,7 +744,7 @@ export default function AuditDashboardPage() {
   // matches by projectManager.
   function handleDownloadEmailHygieneImage() {
     if (!emailMetrics.length) return;
-    const weeks = emailWeeklyTrend.slice(-4);
+    const weeks = imageWeeks(emailWeeklyTrend);
 
     for (const seg of SEGMENT_CONFIG) {
       const rows = seg.managers.map((canonicalName) => {
