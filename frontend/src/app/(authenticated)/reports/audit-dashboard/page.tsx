@@ -204,13 +204,24 @@ function todayStr() { return format(new Date(), 'yyyy-MM-dd'); }
 // request), no data table -- just the chart, matching the reference exactly. Synchronous
 // and self-contained (no image loading, so no async gap between the two segments' downloads
 // that could get one of them blocked by the browser).
+// Legend/subtitle label for a weekly-trend slot: its real dates (e.g. "Oct 19–25"), flagged when
+// it is the in-progress week or has no saved data, so a missing bar is never mistaken for a 0.
+interface TrendWeek { weekStart: string; weekEnd: string; isCurrent?: boolean; hasData?: boolean }
+function trendWeekLabel(w: TrendWeek): string {
+  const s = new Date(`${w.weekStart}T00:00:00`);
+  const e = new Date(`${w.weekEnd}T00:00:00`);
+  const range = `${format(s, 'MMM d')}–${format(e, s.getMonth() === e.getMonth() ? 'd' : 'MMM d')}`;
+  return `${range}${w.isCurrent ? ' (this week)' : ''}${w.hasData === false ? ' · no data yet' : ''}`;
+}
+
 function downloadHygieneWeeklySegmentSlide(
   metricLabel: string, // e.g. 'PMO HYGIENE' or 'EMAIL HYGIENE' -- goes into the subtitle line
   segmentLabel: string, // 'ENT' or 'SMB'
   rows: Array<{ name: string; weekScores: Array<number | null> }>,
-  weekCount: number,
+  weeks: TrendWeek[],
   filename: string,
 ) {
+  const weekCount = Math.max(weeks.length, 1);
   const BRAND = '#4B0BC4';
   const WHITE = '#FFFFFF';
   const WEEK_COLORS = ['#C7D2FE', '#A5B4FC', '#818CF8', '#4F46E5', '#4338CA', '#3730A3'];
@@ -264,13 +275,16 @@ function downloadHygieneWeeklySegmentSlide(
   ctx.font = 'bold 13px Calibri, Arial, sans-serif';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
+  const span = weeks.length
+    ? `${format(new Date(`${weeks[0].weekStart}T00:00:00`), 'MMM d')} – ${format(new Date(`${weeks[weeks.length - 1].weekEnd}T00:00:00`), 'MMM d, yyyy')}`.toUpperCase()
+    : 'NO WEEKS';
   ctx.fillText(
-    `WEEKLY ${metricLabel} SCORE · OUT OF 100 · WEEKS 1–${weekCount} · ${segmentLabel} MANAGERS`,
+    `WEEKLY ${metricLabel} SCORE · OUT OF 100 · WEEKS OF ${span} · ${segmentLabel} MANAGERS`,
     PAD, 34
   );
 
-  // ── Legend (one entry per week) ────────────────────────────────
-  const legendLabels = Array.from({ length: weekCount }, (_, i) => `Week ${i + 1}`);
+  // ── Legend (one entry per week, labelled with its real dates) ──
+  const legendLabels = weeks.length ? weeks.map(trendWeekLabel) : ['No weekly data'];
   ctx.font = '13px Calibri, Arial, sans-serif';
   const legendGap = 22;
   const swatchLabelGap = 8;
@@ -689,7 +703,6 @@ export default function AuditDashboardPage() {
   function handleDownloadPmoHygieneImage() {
     if (!hygieneBoard.length) return;
     const weeks = pmoWeeklyTrend.slice(-4);
-    const weekCount = Math.max(weeks.length, 1);
 
     for (const seg of SEGMENT_CONFIG) {
       const rows = seg.managers.map((canonicalName) => {
@@ -708,7 +721,7 @@ export default function AuditDashboardPage() {
         'PMO HYGIENE',
         seg.label,
         rows,
-        weekCount,
+        weeks,
         `pmo-hygiene-${seg.label.toLowerCase()}-${format(new Date(), 'yyyy-MM-dd')}.png`,
       );
     }
@@ -721,7 +734,6 @@ export default function AuditDashboardPage() {
   function handleDownloadEmailHygieneImage() {
     if (!emailMetrics.length) return;
     const weeks = emailWeeklyTrend.slice(-4);
-    const weekCount = Math.max(weeks.length, 1);
 
     for (const seg of SEGMENT_CONFIG) {
       const rows = seg.managers.map((canonicalName) => {
@@ -740,7 +752,7 @@ export default function AuditDashboardPage() {
         'EMAIL HYGIENE',
         seg.label,
         rows,
-        weekCount,
+        weeks,
         `email-hygiene-${seg.label.toLowerCase()}-${format(new Date(), 'yyyy-MM-dd')}.png`,
       );
     }

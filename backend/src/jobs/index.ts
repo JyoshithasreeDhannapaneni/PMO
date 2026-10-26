@@ -7,6 +7,38 @@ import { selfHealService } from '../services/selfHealService';
 import { execute } from '../config/database';
 import { getIstMonthBounds, istDateStr } from '../utils/weekBounds';
 
+// Email and call hygiene are recomputed from Graph for the exact past week, so any of the last
+// 5 weeks (a whole month of the weekly charts) can be saved late. PMO hygiene reads current
+// project state (data quality, delays, dates), so only last week is caught up: an older week
+// saved today would carry today's state, not that week's.
+const CATCH_UP_GRAPH_WEEKS = 5;
+let catchUpRunning = false;
+
+export async function catchUpWeeklySnapshots(): Promise<void> {
+  if (catchUpRunning) return;
+  catchUpRunning = true;
+  try {
+    const { callHygieneService } = require('../services/callHygieneService');
+    const saved: string[] = [];
+    const run = async (label: string, fn: () => Promise<{ finalized: boolean; weekStartDate: string }>) => {
+      try {
+        const r = await fn();
+        if (r.finalized) saved.push(`${label} ${r.weekStartDate}`);
+      } catch (error) {
+        logger.error(`[WeeklyCatchUp] ${label} finalize failed:`, error);
+      }
+    };
+    await run('PmoHygiene', () => auditService.finalizeWeek(1));
+    for (let weeksAgo = 1; weeksAgo <= CATCH_UP_GRAPH_WEEKS; weeksAgo++) {
+      await run('EmailHygiene', () => emailHygieneService.finalizeWeek(weeksAgo));
+      await run('CallHygiene', () => callHygieneService.finalizeWeek(weeksAgo));
+    }
+    logger.info(`[WeeklyCatchUp] ${saved.length ? `Saved missing weeks: ${saved.join(', ')}` : 'No missing weekly snapshots'}`);
+  } finally {
+    catchUpRunning = false;
+  }
+}
+
 /**
  * Initialize all cron jobs
  * Jobs run on a schedule to automate system maintenance tasks
@@ -188,6 +220,13 @@ export function initializeCronJobs(): void {
     });
   }, { timezone: 'Asia/Kolkata' });
 
+  // Weekly snapshot catch-up — daily at 7:30 AM IST and once shortly after startup. The Monday
+  // 7 AM finalize above is a single shot: if the backend was down then or a Graph sync failed,
+  // that week was never saved and the weekly charts/images showed it as empty forever.
+  // finalizeWeek() is idempotent (no-op when the row exists), so this only fills real gaps.
+  cron.schedule('30 7 * * *', () => { void catchUpWeeklySnapshots(); }, { timezone: 'Asia/Kolkata' });
+  setTimeout(() => { void catchUpWeeklySnapshots(); }, 2 * 60 * 1000);
+
   // Weekly case study digest — every Monday at 10:00 AM IST: one email per PM/AM listing their
   // completed projects that still have no case study (the job guards against double sends).
   cron.schedule('0 10 * * 1', async () => {
@@ -286,6 +325,7 @@ export function initializeCronJobs(): void {
   logger.info('  - 45-minute reply-SLA breach alerts: Every 15 minutes');
   logger.info('  - Global logout (clear all sessions): Daily at 6:00 AM IST');
   logger.info('  - Weekly hygiene finalize (PMO/Email/Call): Every Monday at 7:00 AM IST');
+  logger.info('  - Weekly snapshot catch-up (missed weeks): Daily at 7:30 AM IST, and 2 min after startup');
   logger.info('  - Case study digest (one email per PM/AM): Every Monday at 10:00 AM IST');
   logger.info('  - Email hygiene monthly finalize-check: Daily at 7:15 AM IST');
   logger.info('  - PMO hygiene monthly finalize-check: Daily at 7:16 AM IST');
