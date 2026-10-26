@@ -217,6 +217,14 @@ async function columnExists(table: string, column: string): Promise<boolean> {
 }
 
 async function runMigrations() {
+  // KB Articles feature removed 2026-10-26 (page, API and table): the table and its rows are
+  // dropped deliberately. Nothing references kb_articles; its trigger goes with it.
+  try {
+    await execute(`DROP TABLE IF EXISTS kb_articles`);
+  } catch (err) {
+    logger.error('Migration: dropping kb_articles failed:', err);
+  }
+
   // Convert ENUM columns to VARCHAR so queries can use values like 'CLOSED','DECOMMISSIONED'
   // that are not in the original ENUM definition without throwing a type error.
   const alterStatements = [

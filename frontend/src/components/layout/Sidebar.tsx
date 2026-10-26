@@ -10,7 +10,7 @@ import {
   Home, Folder, ShieldCheck, Gauge, Bell, Star,
   BarChart3, ChevronDown, ChevronRight, LogOut, Menu, PanelLeftClose, PanelLeftOpen,
   Archive, CircleUserRound, Handshake, Briefcase, Users, Target, Megaphone, FileText,
-  HandCoins, BookMarked, BookOpen, Settings,
+  HandCoins, BookMarked, Settings,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
@@ -55,7 +55,6 @@ const allNavigation = [
   // { name: 'Templates', href: '/templates', icon: FileText, color: '#0d9488', adminOnly: true },
   // { name: 'Deal Desk', href: '/deal-desk', icon: HandCoins, color: '#65a30d', adminOnly: true },
   { name: 'Case Studies',         href: '/case-studies',           icon: BookMarked,      color: '#9333ea', adminOnly: false },
-  { name: 'KB Articles',          href: '/kb-articles',            icon: BookOpen,        color: '#0284c7', adminOnly: false },
   {
     name: 'Reports', href: '#', icon: BarChart3, color: '#e11d48', adminOnly: false,
     children: [

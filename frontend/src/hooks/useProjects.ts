@@ -2,7 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect } from 'react';
-import { CASE_STUDY_DUE_EVENT, CSAT_REQUIRED_EVENT, csatRequiredDetail, projectsApi, dashboardApi, statusReportsApi, managerGoalsApi, migrationTypeApi, pocProjectsApi, accountManagerApi, customerSuccessApi, hubspotApi, psEngagementsApi, kbArticlesApi, emailHygieneApi, callHygieneApi, callTranscriptsApi, auditApi, feedbackApi, actionItemsApi, slaBreachAlertsApi, archiveSharePointApi, accountTrackerApi } from '@/services/api';
+import { CASE_STUDY_DUE_EVENT, CSAT_REQUIRED_EVENT, csatRequiredDetail, projectsApi, dashboardApi, statusReportsApi, managerGoalsApi, migrationTypeApi, pocProjectsApi, accountManagerApi, customerSuccessApi, hubspotApi, psEngagementsApi, emailHygieneApi, callHygieneApi, callTranscriptsApi, auditApi, feedbackApi, actionItemsApi, slaBreachAlertsApi, archiveSharePointApi, accountTrackerApi } from '@/services/api';
 import type { CreateProjectInput, UpdateProjectInput, ManagerDimension } from '@/types';
 import type { CaseStudyDueDetail } from '@/services/api';
 import type { DealQueryParams } from '@/types/accountTracker';
@@ -878,50 +878,6 @@ export function useUpdateDealMatch() {
   });
 }
 
-export function useKbArticles(params?: { search?: string; category?: string; caseStudyId?: string }) {
-  return useQuery({
-    queryKey: ['kb-articles', params],
-    queryFn: () => kbArticlesApi.getAll(params),
-    staleTime: 30_000,
-  });
-}
-
-export function useExtractKbArticles() {
-  return useMutation({
-    mutationFn: (caseStudyId: string) => kbArticlesApi.extract(caseStudyId),
-  });
-}
-
-export function useBulkSaveKbArticles() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ caseStudyId, articles }: { caseStudyId: string; articles: any[] }) =>
-      kbArticlesApi.bulkSave(caseStudyId, articles),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['kb-articles'] });
-    },
-  });
-}
-
-export function useUpdateKbArticle() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, updates }: { id: string; updates: any }) => kbArticlesApi.update(id, updates),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['kb-articles'] });
-    },
-  });
-}
-
-export function useDeleteKbArticle() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => kbArticlesApi.delete(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['kb-articles'] });
-    },
-  });
-}
 
 export function useDeleteClient() {
   const queryClient = useQueryClient();

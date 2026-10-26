@@ -11,7 +11,7 @@ export interface CaseStudySection {
 
 // The single case study template. Customer, PM/AM, platforms and dates
 // auto-fill from the linked project — sections only capture what the tracker
-// doesn't already know. The Issues & Resolutions blocks map 1:1 to KB articles.
+// doesn't already know.
 export const DEFAULT_CS_SECTIONS: CaseStudySection[] = [
   {
     id: 'project_snapshot',
@@ -43,7 +43,7 @@ export const DEFAULT_CS_SECTIONS: CaseStudySection[] = [
   {
     id: 'issues_resolutions',
     title: 'Issues & Resolutions',
-    description: 'One block per issue — each block is a ready-made KB article',
+    description: 'One block per issue: what happened, why, the fix and how to prevent it',
     placeholder: 'Issue 1:\n- Issue / error message:\n- Root cause:\n- Fix / workaround (steps):\n- How to prevent or detect early:',
     required: true,
     icon: '🛠️',
@@ -60,7 +60,7 @@ export const DEFAULT_CS_SECTIONS: CaseStudySection[] = [
   },
   {
     id: 'lessons_kb',
-    title: 'Lessons & KB Takeaways',
+    title: 'Lessons & Takeaways',
     description: 'Reusable knowledge for the next similar migration',
     placeholder: '• Do again / avoid next time:\n• Pre-migration checks for similar projects:\n• Reusable steps, settings or scripts:',
     required: true,
