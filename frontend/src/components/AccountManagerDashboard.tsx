@@ -136,7 +136,9 @@ interface AccountGroup {
   label: string;
   projects: (Project & { archivedAt?: string | null })[];
   types: string[];
+  migrationTypes: string[];
   pms: string[];
+  ams: string[];
   segments: string[];
   phases: string[];
   open: number;
@@ -146,6 +148,12 @@ interface AccountGroup {
   end: string | null;
   escalated: boolean;
   overaged: boolean;
+}
+
+// The project's migration types as History Archive shows them (e.g. "Slack to Teams"), one
+// entry per comma-separated value.
+function migrationTypeList(raw: string | null | undefined): string[] {
+  return (raw || '').split(',').map((s) => s.trim()).filter(Boolean);
 }
 
 function delayBadge(p: Project): React.ReactNode {
@@ -203,7 +211,10 @@ function ProjectTable({ projects, columns, empty }: {
 export default function AccountManagerDashboard({ fixedAm }: { fixedAm?: string } = {}) {
   const { settings } = useSettings();
   const [pickedAm, setPickedAm] = useState<string | null>(null);
+  // Whole-team project list (every AM's accounts in one view); not offered in an AM's My View.
+  const [teamListOn, setTeamListOn] = useState(false);
   const selectedAm = fixedAm ?? pickedAm;
+  const teamList = !fixedAm && !pickedAm && teamListOn;
   const setSelectedAm = (am: string | null) => { if (!fixedAm) setPickedAm(am); };
   const [leaderSegment, setLeaderSegment] = useState<'ALL' | 'ENT' | 'SMB'>('ALL');
 
@@ -280,7 +291,7 @@ export default function AccountManagerDashboard({ fixedAm }: { fixedAm?: string 
   const rangeActive = !!rangeFrom || !!rangeTo;
   // Also loaded while an AM's project list is open: completed projects are archived the
   // moment they finish, so without these the list's Completed filter is always empty.
-  const { data: archivedData, isLoading: archivedLoading } = useAllArchivedProjects(rangeActive || !!selectedAm);
+  const { data: archivedData, isLoading: archivedLoading } = useAllArchivedProjects(rangeActive || !!selectedAm || teamList);
   const archivedProjects: ArchivedProject[] = useMemo(() => {
     const liveIds = new Set(allProjects.map((p) => p.id));
     return ((archivedData?.projects ?? []) as ArchivedProject[])
@@ -339,8 +350,12 @@ export default function AccountManagerDashboard({ fixedAm }: { fixedAm?: string 
   // completed (most recent first), then the rest; within a group by account and project name.
   const [amStatusFilter, setAmStatusFilter] = useState<'ALL' | 'OPEN' | 'COMPLETED'>('ALL');
   const statusRank = (s: string) => { const i = STATUS_ORDER.indexOf(s); return i === -1 ? STATUS_ORDER.length : i; };
-  const amProjects: ArchivedProject[] = selectedAm
-    ? ([...scoped, ...archivedProjects.filter((p) => p.accountManager === selectedAm)] as ArchivedProject[]).sort((a, b) => {
+  // The list shows one AM's projects (a name was clicked) or, in team view, every AM's at once.
+  const listSource: ArchivedProject[] | null = selectedAm
+    ? [...scoped, ...archivedProjects.filter((p) => p.accountManager === selectedAm)]
+    : teamList ? [...allProjects, ...archivedProjects] : null;
+  const amProjects: ArchivedProject[] = listSource
+    ? listSource.slice().sort((a, b) => {
         const s = statusRank(a.status) - statusRank(b.status);
         if (s !== 0) return s;
         if (a.status === 'COMPLETED') {
@@ -360,8 +375,8 @@ export default function AccountManagerDashboard({ fixedAm }: { fixedAm?: string 
   useEffect(() => {
     setAmStatusFilter('ALL');
     setExpandedAccounts(new Set());
-    if (pickedAm) amProjectsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, [pickedAm]);
+    if (pickedAm || teamList) amProjectsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [pickedAm, teamList]);
 
   const escalations = scoped.filter((p) => p.isEscalated);
   const overages = scoped.filter((p) => p.isOveraged);
@@ -414,7 +429,9 @@ export default function AccountManagerDashboard({ fixedAm }: { fixedAm?: string 
         label: accountLabel(ps[0]),
         projects: ps,
         types: uniq(ps.map((p) => getCategory(p.migrationTypes || '').replace(' Migration', ''))),
+        migrationTypes: uniq(ps.flatMap((p) => migrationTypeList(p.migrationTypes))),
         pms: uniq(ps.map((p) => p.projectManager)),
+        ams: uniq(ps.map((p) => p.accountManager)),
         segments: uniq(ps.map((p) => segmentOf(p))),
         phases: uniq(live.map((p) => p.phase)),
         open: ps.filter((p) => OPEN_STATUSES.has(p.status)).length,
@@ -492,7 +509,16 @@ export default function AccountManagerDashboard({ fixedAm }: { fixedAm?: string 
       {/* AM overview cards */}
       <SectionCard
         title={fixedAm ? 'My Accounts' : 'Account Managers'}
-        subtitle={fixedAm ? `Projects where ${fixedAm} is the Account Manager. Open = Active + On Hold.` : 'Click a card to see all of that account manager\'s projects and focus every section on them. Open = Active + On Hold.'}
+        subtitle={fixedAm ? `Projects where ${fixedAm} is the Account Manager. Open = Active + On Hold.` : 'Click a card to see all of that account manager\'s projects and focus every section on them, or view the whole team at once. Open = Active + On Hold.'}
+        right={fixedAm ? undefined : (
+          <button
+            type="button"
+            onClick={() => { setPickedAm(null); setTeamListOn(!teamList); }}
+            className={`text-xs px-3 py-1.5 rounded-full font-medium whitespace-nowrap ${teamList ? 'bg-primary-600 text-white' : 'bg-white text-primary-700 border border-primary-200 hover:bg-primary-50'}`}
+          >
+            {teamList ? 'Hide whole team' : 'View whole team'}
+          </button>
+        )}
       >
         {amRows.length === 0 ? (
           <p className="text-sm text-gray-400 py-4 text-center">
@@ -622,11 +648,11 @@ export default function AccountManagerDashboard({ fixedAm }: { fixedAm?: string 
         )}
       </SectionCard>
 
-      {/* All projects of the selected AM */}
-      {selectedAm && (
+      {/* All projects of the selected AM, or of the whole team */}
+      {(selectedAm || teamList) && (
         <div ref={amProjectsRef} className="scroll-mt-4">
           <SectionCard
-            title={`${selectedAm}'s Projects`}
+            title={selectedAm ? `${selectedAm}'s Projects` : 'Whole Team: All Account Managers\' Projects'}
             subtitle={archivedLoading
               ? 'Loading projects, including completed and archived ones...'
               : `${new Set(amProjects.map((p) => accountLabel(p).toLowerCase())).size} accounts, ${amProjects.length} project${amProjects.length === 1 ? '' : 's'}: ${amOpenCount} open, ${amCompletedCount} completed${amProjects.length - amOpenCount - amCompletedCount > 0 ? `, ${amProjects.length - amOpenCount - amCompletedCount} other (inactive or cancelled)` : ''}. Completed include archived. Click an account to see its projects.`}
@@ -639,7 +665,7 @@ export default function AccountManagerDashboard({ fixedAm }: { fixedAm?: string 
                   </button>
                 ))}
                 {!fixedAm && (
-                  <button onClick={() => setSelectedAm(null)} className="ml-1 p-1 rounded-md text-gray-400 hover:bg-gray-100 hover:text-gray-600" aria-label="Close project list">
+                  <button onClick={() => { setSelectedAm(null); setTeamListOn(false); }} className="ml-1 p-1 rounded-md text-gray-400 hover:bg-gray-100 hover:text-gray-600" aria-label="Close project list">
                     <X size={14} />
                   </button>
                 )}
@@ -649,13 +675,13 @@ export default function AccountManagerDashboard({ fixedAm }: { fixedAm?: string 
             <div className="max-h-[520px] overflow-y-auto">
               {amAccounts.length === 0 ? (
                 <p className="text-sm text-gray-400 py-4 text-center">
-                  {amProjects.length === 0 ? `${selectedAm} has no projects.` : 'No accounts match this filter.'}
+                  {amProjects.length === 0 ? `${selectedAm ?? 'The team'} has no projects.` : 'No accounts match this filter.'}
                 </p>
               ) : (
                 <table className="w-full text-sm">
                   <thead className="sticky top-0 bg-white">
                     <tr className="text-xs text-gray-500 border-b border-gray-100">
-                      {['Account', 'Projects', 'Project Manager', 'Segment', 'Phase', 'Status', 'Delay', 'Ends', 'Flags'].map((h) => (
+                      {['Account', ...(teamList ? ['Account Manager'] : []), 'Projects', 'Migration Type', 'Project Manager', 'Segment', 'Phase', 'Status', 'Delay', 'Ends', 'Flags'].map((h) => (
                         <th key={h} className="text-left font-medium py-2 pr-3 whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
@@ -677,8 +703,12 @@ export default function AccountManagerDashboard({ fixedAm }: { fixedAm?: string 
                                 {a.label}
                               </button>
                             </td>
+                            {teamList && <td className="py-2 pr-3 text-xs text-gray-700">{a.ams.join(', ') || '—'}</td>}
                             <td className="py-2 pr-3 text-xs text-gray-700 whitespace-nowrap">
                               {a.projects.length} · {a.types.join(', ')}
+                            </td>
+                            <td className="py-2 pr-3 text-xs text-gray-600">
+                              <span className="inline-block max-w-[220px] truncate align-bottom" title={a.migrationTypes.join(', ')}>{a.migrationTypes.join(', ') || '—'}</span>
                             </td>
                             <td className="py-2 pr-3 text-xs text-gray-700">{a.pms.join(', ') || '—'}</td>
                             <td className="py-2 pr-3 text-xs text-gray-600">{a.segments.join(', ') || '—'}</td>
@@ -707,7 +737,11 @@ export default function AccountManagerDashboard({ fixedAm }: { fixedAm?: string 
                                     {p.name} <ExternalLink size={11} />
                                   </Link>
                                 </td>
+                                {teamList && <td className="py-1.5 pr-3 text-gray-700">{p.accountManager || '—'}</td>}
                                 <td className="py-1.5 pr-3 text-gray-600">{getCategory(p.migrationTypes || '').replace(' Migration', '')}</td>
+                                <td className="py-1.5 pr-3 text-gray-600">
+                                  <span className="inline-block max-w-[220px] truncate align-bottom" title={p.migrationTypes || ''}>{p.migrationTypes || '—'}</span>
+                                </td>
                                 <td className="py-1.5 pr-3 text-gray-700">{p.projectManager || '—'}</td>
                                 <td className="py-1.5 pr-3 text-gray-600">{segmentOf(p) ?? '—'}</td>
                                 <td className="py-1.5 pr-3 text-gray-600">{p.phase || '—'}</td>
