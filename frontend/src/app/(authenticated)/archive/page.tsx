@@ -759,7 +759,7 @@ export default function ArchivePage() {
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 dark:bg-gray-700/50">
                   <tr>
-                    {['', 'Project Name', 'Manager', 'Migration Type', 'Status', 'SOW Start', 'SOW End', 'Kickoff Date', 'Actual End', 'Delay', 'Cost', 'CSAT', 'Archived On', 'Actions'].map((h) => (
+                    {['', 'Project Name', 'Project Manager', 'Account Manager', 'Migration Type', 'Status', 'SOW Start', 'SOW End', 'Kickoff Date', 'Actual End', 'Delay', 'Cost', 'CSAT', 'Archived On', 'Actions'].map((h) => (
                       <th key={h} className={`py-3 px-3 text-xs font-semibold text-gray-500 dark:text-gray-400 whitespace-nowrap ${h === 'Project Name' ? 'text-left' : 'text-center'}`}>{h}</th>
                     ))}
                   </tr>
@@ -782,6 +782,7 @@ export default function ArchivePage() {
                             <div className="text-xs text-gray-400 truncate">{p.customerName}</div>
                           </td>
                           <td className="py-3 px-3 text-center text-xs text-gray-600 dark:text-gray-400">{p.projectManager || '—'}</td>
+                          <td className="py-3 px-3 text-center text-xs text-gray-600 dark:text-gray-400">{p.accountManager || '—'}</td>
                           <td className="py-3 px-3 text-center">
                             <span className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[120px] inline-block">{p.migrationTypes || '—'}</span>
                           </td>
@@ -836,7 +837,7 @@ export default function ArchivePage() {
                         </tr>
                         {isExpanded && (
                           <tr key={`${p.id}-exp`} className="bg-gray-50/60 dark:bg-gray-800/40">
-                            <td colSpan={14} className="px-6 py-4">
+                            <td colSpan={15} className="px-6 py-4">
                               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
                                 <div>
                                   <span className="font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide text-[10px]">Account Manager</span>
