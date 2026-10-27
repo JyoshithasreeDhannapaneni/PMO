@@ -245,12 +245,21 @@ const toCode = (name: string) =>
 
 const OLD_MIGRATION_CODES = new Set(['CONTENT', 'EMAIL', 'MESSAGING', 'IDENTITY', 'APPLICATION', 'DATABASE']);
 
+// Phases renamed before the Settings page regenerated codes from names kept their old code.
+// A phase like "Final Validation" still carrying code COMPLETED sends phase=COMPLETED when
+// picked, and the backend then marks the project COMPLETED and archives it.
+const phaseCode = (p: any): string => {
+  const fromName = toCode(p.name || '');
+  if (!p.code || (p.code === 'COMPLETED' && fromName !== 'COMPLETED')) return fromName;
+  return p.code;
+};
+
 function mergeWithDefaults(saved: any): PMOSettings {
   const savedPlanTypes = saved?.planTypes?.length
     ? saved.planTypes.map((p: any) => ({ ...p, code: p.code || toCode(p.name) }))
     : defaultSettings.planTypes;
   const savedPhases = saved?.phases?.length
-    ? saved.phases.map((p: any) => ({ ...p, code: p.code || toCode(p.name) }))
+    ? saved.phases.map((p: any) => ({ ...p, code: phaseCode(p) }))
     : defaultSettings.phases;
   const isOldMigrationFormat = saved?.migrationTypes?.some((t: any) => OLD_MIGRATION_CODES.has(t.code));
   const isMissingCategories = saved?.migrationTypes?.some((t: any) => !t.category);

@@ -291,7 +291,9 @@ export default function AccountManagerDashboard({ fixedAm }: { fixedAm?: string 
   const rangeActive = !!rangeFrom || !!rangeTo;
   // Also loaded while an AM's project list is open: completed projects are archived the
   // moment they finish, so without these the list's Completed filter is always empty.
-  const { data: archivedData, isLoading: archivedLoading } = useAllArchivedProjects(rangeActive || !!selectedAm || teamList);
+  // Export waits for the archived list too, so its workbook includes finished projects.
+  const [exportPending, setExportPending] = useState(false);
+  const { data: archivedData, isLoading: archivedLoading } = useAllArchivedProjects(rangeActive || !!selectedAm || teamList || exportPending);
   const archivedProjects: ArchivedProject[] = useMemo(() => {
     const liveIds = new Set(allProjects.map((p) => p.id));
     return ((archivedData?.projects ?? []) as ArchivedProject[])
@@ -487,6 +489,139 @@ export default function AccountManagerDashboard({ fixedAm }: { fixedAm?: string 
     .sort((a, b) => b.compositeScore - a.compositeScore);
   const leader = leaderboard[0];
 
+  const runExport = async () => {
+    const XLSX = await import('xlsx');
+    const wb = XLSX.utils.book_new();
+    const add = (name: string, data: Record<string, unknown>[]) => {
+      if (data.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data), name);
+    };
+    const day = (d: string | null | undefined) => (d ? isoDay(new Date(d)) : '');
+    const yesNo = (b: boolean | null | undefined) => (b ? 'Yes' : 'No');
+    const exportProjects: ArchivedProject[] = [
+      ...scoped,
+      ...archivedProjects.filter((p) => !selectedAm || p.accountManager === selectedAm),
+    ].sort((a, b) => accountLabel(a).localeCompare(accountLabel(b)) || (a.name || '').localeCompare(b.name || ''));
+    const projectRow = (p: ArchivedProject) => ({
+      Project: p.name,
+      Account: accountLabel(p),
+      'Account Manager': p.accountManager,
+      'Project Manager': p.projectManager || '',
+      'Migration Type': p.migrationTypes || '',
+      Category: getCategory(p.migrationTypes || ''),
+      Segment: segmentOf(p) ?? '',
+      Phase: p.phase || '',
+      Status: p.status,
+      'Delay Status': p.delayStatus || '',
+      'Delay Days': p.delayDays || 0,
+      'Start': day(p.actualStart ?? p.plannedStart),
+      'SOW End': day(p.plannedEnd),
+      'Extended To': day(p.extendedEndDate),
+      'Actual End': day(p.actualEnd),
+      Escalated: yesNo(p.isEscalated),
+      'Escalation Priority': p.isEscalated ? (p.escalationPriority || 'MEDIUM') : '',
+      Overaged: yesNo(p.isOveraged),
+      'Overage Amount': p.isOveraged ? Number(p.overageAmount) || 0 : '',
+      'Renewal Due': yesNo(isRenewalDue(p, today)),
+      Archived: p.archivedAt ? day(p.archivedAt) : '',
+    });
+
+    const summaryRows = selectedAm ? rows.filter((r) => r.manager === selectedAm) : rows;
+    add('Account Managers', summaryRows.map((r) => ({
+      'Account Manager': r.manager,
+      Accounts: r.customers,
+      'Total Projects': r.total,
+      Open: r.open,
+      Active: r.active,
+      Completed: r.completed,
+      Delayed: r.delayed,
+      'At Risk': r.atRisk,
+      Escalated: r.escalated,
+      Overaged: r.overaged,
+      'Overage Amount': r.overageAmount,
+      'Renewals Due': r.renewalsDue,
+      ENT: r.ent,
+      SMB: r.smb,
+      '% On Time': r.pctOnTime ?? '',
+      'Completion %': r.completionPct,
+      ...(fixedAm ? {} : { Score: r.compositeScore }),
+    })));
+    if (rangeRows) {
+      add(`Performance ${rangeFrom || 'start'} to ${rangeTo || 'today'}`.slice(0, 31), rangeRows.map((r) => ({
+        'Account Manager': r.manager,
+        Accounts: r.customers,
+        Total: r.total,
+        Active: r.active,
+        'Completed in Range': r.completed,
+        Delayed: r.delayed,
+        Escalated: r.escalated,
+        Overaged: r.overaged,
+        'Completion %': r.completionPct,
+      })));
+    }
+    if (!fixedAm && !selectedAm) {
+      add('Leaderboard', amRows.slice().sort((a, b) => b.compositeScore - a.compositeScore).map((r, i) => ({
+        Rank: i + 1,
+        'Account Manager': r.manager,
+        Segment: r.ent >= r.smb ? 'ENT' : 'SMB',
+        'Volume Score': r.volumeScore,
+        '% On Time': r.pctOnTime ?? '',
+        Escalated: r.escalated,
+        Score: r.compositeScore,
+      })));
+    }
+
+    const byAccount = new Map<string, ArchivedProject[]>();
+    for (const p of exportProjects) {
+      const key = accountLabel(p).toLowerCase();
+      if (!byAccount.has(key)) byAccount.set(key, []);
+      byAccount.get(key)!.push(p);
+    }
+    const join = (xs: (string | null | undefined)[]) => [...new Set(xs.filter((x): x is string => !!x))].join(', ');
+    add('Accounts', [...byAccount.values()].map((ps) => ({
+      Account: accountLabel(ps[0]),
+      'Account Manager': join(ps.map((p) => p.accountManager)),
+      Projects: ps.length,
+      Open: ps.filter((p) => OPEN_STATUSES.has(p.status)).length,
+      Completed: ps.filter((p) => p.status === 'COMPLETED').length,
+      'Migration Type': join(ps.flatMap((p) => migrationTypeList(p.migrationTypes))),
+      'Project Manager': join(ps.map((p) => p.projectManager)),
+      Segment: join(ps.map((p) => segmentOf(p))),
+      Phases: join(ps.filter((p) => OPEN_STATUSES.has(p.status)).map((p) => p.phase)),
+      Delayed: ps.filter((p) => p.delayStatus === 'DELAYED' && OPEN_STATUSES.has(p.status)).length,
+      Escalated: yesNo(ps.some((p) => p.isEscalated)),
+      Overaged: yesNo(ps.some((p) => p.isOveraged)),
+    })));
+    add('Projects', exportProjects.map(projectRow));
+    add('Migration Types', categoryStats.map((c) => ({
+      Category: c.key, Total: c.total, Active: c.active, Completed: c.completed, Delayed: c.delayed, Overaged: c.overaged,
+    })));
+    add('Escalated', escalations.map(projectRow));
+    add('Overaged', overages.map(projectRow));
+    add('Renewals Due', renewals.map((p) => {
+      const e = effectiveEnd(p);
+      return { ...projectRow(p), 'Days Past End': e ? Math.floor((today.getTime() - new Date(e).getTime()) / 86400000) : '' };
+    }));
+    add('Delayed', openScoped.filter((p) => p.delayStatus === 'DELAYED')
+      .sort((a, b) => (b.delayDays || 0) - (a.delayDays || 0)).map(projectRow));
+    add('Upcoming Deadlines', upcoming.map(projectRow));
+    if (upsellDeals?.length) {
+      add('Upsell & Cross-sell', upsellDeals.map((d) => ({
+        Account: d.account, 'Account Manager': d.am, Deal: d.name,
+        Type: d.category === 'upsell' ? 'Upsell' : 'Cross-sell', Stage: d.stage, Amount: d.amount ?? '',
+      })));
+    }
+
+    const who = (selectedAm ?? 'all').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    XLSX.writeFile(wb, `am-dashboard-${who}-${isoDay(new Date())}.xlsx`);
+  };
+
+  // Runs once the archived list has loaded, so the export never misses finished projects.
+  useEffect(() => {
+    if (!exportPending || archivedLoading || !archivedData) return;
+    setExportPending(false);
+    runExport().catch(() => { /* the button simply re-enables */ });
+  }, [exportPending, archivedLoading, archivedData]); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (projectsLoading || statsLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -497,6 +632,19 @@ export default function AccountManagerDashboard({ fixedAm }: { fixedAm?: string 
 
   return (
     <div className="space-y-5">
+      <div className="flex items-center justify-end">
+        <button
+          type="button"
+          onClick={() => setExportPending(true)}
+          disabled={exportPending}
+          title={selectedAm ? `Download ${selectedAm}'s dashboard data as Excel` : 'Download the whole AM dashboard as Excel'}
+          className="inline-flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg font-medium bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-60"
+        >
+          {exportPending && <Loader2 size={14} className="animate-spin" />}
+          {exportPending ? 'Preparing export…' : selectedAm ? `Export ${selectedAm}'s data` : 'Export to Excel'}
+        </button>
+      </div>
+
       {selectedAm && !fixedAm && (
         <div className="flex items-center gap-2 px-3 py-2 bg-indigo-50 border border-indigo-200 rounded-lg text-sm text-indigo-800">
           Showing <strong>{selectedAm}</strong>&apos;s accounts in every section below.
