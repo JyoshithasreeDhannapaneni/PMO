@@ -583,6 +583,17 @@ async function runMigrations() {
   if (!await columnExists('projects', 'client_name')) {
     try { await execute(`ALTER TABLE projects ADD COLUMN client_name VARCHAR(255) DEFAULT NULL`); } catch {}
   }
+  // 2026-10-29: admins can mark a completed project as not needing a case study (closed long
+  // ago, PM has left), which drops it from the case studies list and the weekly digest.
+  if (!await columnExists('projects', 'case_study_not_needed_at')) {
+    try { await execute(`ALTER TABLE projects ADD COLUMN case_study_not_needed_at TIMESTAMP DEFAULT NULL`); } catch {}
+  }
+  if (!await columnExists('projects', 'case_study_not_needed_by')) {
+    try { await execute(`ALTER TABLE projects ADD COLUMN case_study_not_needed_by VARCHAR(255) DEFAULT NULL`); } catch {}
+  }
+  if (!await columnExists('projects', 'case_study_not_needed_reason')) {
+    try { await execute(`ALTER TABLE projects ADD COLUMN case_study_not_needed_reason TEXT DEFAULT NULL`); } catch {}
+  }
   if (!await columnExists('projects', 'rca_doc_url')) {
     try { await execute(`ALTER TABLE projects ADD COLUMN rca_doc_url VARCHAR(1000) DEFAULT NULL`); } catch {}
   }

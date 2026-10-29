@@ -79,6 +79,13 @@ interface AwaitingProject {
   archivedAt: string | null;
 }
 
+// A completed project an admin marked as not needing a case study (closed long ago, PM left).
+interface NotNeededProject extends AwaitingProject {
+  notNeededAt: string;
+  notNeededBy: string | null;
+  notNeededReason: string | null;
+}
+
 type ListItem = { kind: 'awaiting'; p: AwaitingProject } | { kind: 'case'; cs: CaseStudy };
 
 type Category = 'all' | 'not_started' | 'pending' | 'in_progress' | 'completed';
@@ -110,6 +117,10 @@ function CaseStudiesContent() {
   const { user } = useAuth();
   const isManager = user?.role === 'PROJECT_MANAGER';
   const isViewer = user?.role === 'VIEWER';
+  const isAdmin = user?.role === 'ADMIN';
+  const [notNeeded, setNotNeeded] = useState<NotNeededProject[]>([]);
+  const [showNotNeeded, setShowNotNeeded] = useState(false);
+  const [savingNotNeeded, setSavingNotNeeded] = useState(false);
   const searchParams = useSearchParams();
   const highlightProjectId = searchParams.get('projectId');
   const highlightRef = useRef<HTMLDivElement>(null);
@@ -148,11 +159,53 @@ function CaseStudiesContent() {
       if (awaitingData.success) {
         setCompletedProjects(awaitingData.data || []);
       }
+
+      const notNeededResponse = await fetch(`${API_URL}/api/case-studies/not-needed`, { headers });
+      const notNeededData = await notNeededResponse.json();
+      if (notNeededData.success) {
+        setNotNeeded(notNeededData.data || []);
+      }
     } catch (error) {
       console.error('Failed to fetch data:', error);
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const postNotNeeded = async (path: string, body: Record<string, unknown>) => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    setSavingNotNeeded(true);
+    try {
+      const res = await fetch(`${API_URL}/api/case-studies/${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify(body),
+      });
+      const json = await res.json();
+      if (!json.success) window.alert(json.error || 'Could not update the projects.');
+      await fetchData();
+    } catch {
+      window.alert('Could not update the projects.');
+    } finally {
+      setSavingNotNeeded(false);
+    }
+  };
+
+  // Removes completed projects from "Not started" without deleting anything; restorable below.
+  const markNotNeeded = (projects: AwaitingProject[]) => {
+    if (projects.length === 0) return;
+    const what = projects.length === 1 ? `"${projects[0].name}"` : `these ${projects.length} projects`;
+    const reason = window.prompt(
+      `Mark ${what} as not needing a case study?\nThey leave the list and the Monday reminder email; you can restore them later.\n\nReason (optional):`,
+      'Closed long ago; project manager no longer with the company',
+    );
+    if (reason === null) return;
+    postNotNeeded('not-needed', { projectIds: projects.map((p) => p.id), reason });
+  };
+
+  const restoreNeeded = (projects: NotNeededProject[]) => {
+    if (projects.length === 0) return;
+    postNotNeeded('not-needed/restore', { projectIds: projects.map((p) => p.id) });
   };
 
   const exportCSV = () => {
@@ -276,6 +329,12 @@ function CaseStudiesContent() {
   // under All and Pending, each with a Create button.
   const awaitingMatches = scopedAwaiting.filter((p) => ownerMatches(p.projectManager, p.accountManager)
     && (!searchTerm || [p.name, p.clientName, p.customerName, p.projectManager, p.accountManager].some((v) => includes(v, searchTerm))));
+  const notNeededMatches = (isManager ? notNeeded.filter((p) => p.projectManager === user?.name) : notNeeded)
+    .filter((p) => ownerMatches(p.projectManager, p.accountManager)
+      && (!searchTerm || [p.name, p.clientName, p.projectManager, p.accountManager].some((v) => includes(v, searchTerm))));
+  // Bulk marking only once the list is narrowed by a filter or search, so it can't sweep everything.
+  const canBulkMark = isAdmin && awaitingMatches.length > 1 && (activeTab === 'all' || activeTab === 'not_started')
+    && (pmList.length > 0 || amList.length > 0 || !!searchTerm);
   const caseMatches = scopedCaseStudies.filter((cs) => ownerMatches(cs.project?.projectManager, cs.project?.accountManager)
     && (!searchTerm || [cs.title, cs.project?.name, cs.project?.customerName, cs.project?.projectManager, cs.project?.accountManager].some((v) => includes(v, searchTerm))));
   // One set of categories drives both the counts on the cards and the list below, so the
@@ -416,6 +475,12 @@ function CaseStudiesContent() {
           {CATEGORIES.find((c) => c.id === activeTab)?.label} <span className="text-sm font-normal text-gray-500">({counts[activeTab]})</span>
         </h3>
 
+        <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+        {canBulkMark && (
+          <Button variant="outline" size="sm" disabled={savingNotNeeded} onClick={() => markNotNeeded(awaitingMatches)}>
+            Mark {awaitingMatches.length} not started as not needed
+          </Button>
+        )}
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
           <input
@@ -425,6 +490,7 @@ function CaseStudiesContent() {
             onChange={(e) => { setSearchTerm(e.target.value); setShowAll(false); }}
             className="pl-10 pr-4 py-2 w-80 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
           />
+        </div>
         </div>
       </div>
       {/* Case Studies List — Not started projects first, then case studies by status */}
@@ -470,6 +536,11 @@ function CaseStudiesContent() {
                       </div>
                       <div className="flex items-center gap-3 flex-shrink-0">
                         <span className="text-xs px-2 py-1 rounded-full bg-orange-50 text-orange-600">Not started</span>
+                        {isAdmin && (
+                          <Button variant="ghost" size="sm" disabled={savingNotNeeded} onClick={() => markNotNeeded([p])} title="No case study will be written for this project">
+                            Not needed
+                          </Button>
+                        )}
                         {!isViewer && (
                           <Link href={`/case-studies/new?projectId=${p.id}`}>
                             <Button size="sm">
@@ -534,6 +605,58 @@ function CaseStudiesContent() {
           </button>
         )}
       </Card>
+
+      {/* Projects marked as not needing a case study — out of every count above; restorable */}
+      {notNeededMatches.length > 0 && (
+        <Card>
+          <button
+            type="button"
+            onClick={() => setShowNotNeeded(!showNotNeeded)}
+            className="w-full flex items-center justify-between text-left"
+          >
+            <span className="text-sm font-semibold text-gray-700">
+              No case study needed <span className="font-normal text-gray-500">({notNeededMatches.length})</span>
+            </span>
+            <span className="text-xs text-primary-700">{showNotNeeded ? 'Hide' : 'Show'}</span>
+          </button>
+          <p className="text-xs text-gray-500 mt-1">
+            Completed projects an admin took off the list (for example, closed long ago or the project manager has left). They are not counted above and get no reminder email.
+          </p>
+          {showNotNeeded && (
+            <div className="mt-3 divide-y divide-gray-100">
+              {isAdmin && notNeededMatches.length > 1 && (
+                <div className="pb-2 flex justify-end">
+                  <Button variant="outline" size="sm" disabled={savingNotNeeded} onClick={() => restoreNeeded(notNeededMatches)}>
+                    Restore all {notNeededMatches.length}
+                  </Button>
+                </div>
+              )}
+              {notNeededMatches.map((p) => (
+                <div key={p.id} className="py-3 flex items-center justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-800 truncate">
+                      <Link href={`/projects/${p.id}`} className="hover:underline">{p.name}</Link>
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      {p.clientName || p.name} · {p.projectManager || 'No PM'}
+                      {p.accountManager ? ` · AM ${p.accountManager}` : ''}
+                      {fmtDay(p.actualEnd ?? p.archivedAt) ? ` · Completed ${fmtDay(p.actualEnd ?? p.archivedAt)}` : ''}
+                    </p>
+                    <p className="text-xs text-gray-400">
+                      Marked {fmtDay(p.notNeededAt)}{p.notNeededBy ? ` by ${p.notNeededBy}` : ''}{p.notNeededReason ? ` · ${p.notNeededReason}` : ''}
+                    </p>
+                  </div>
+                  {isAdmin && (
+                    <Button variant="ghost" size="sm" disabled={savingNotNeeded} onClick={() => restoreNeeded([p])}>
+                      Restore
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      )}
     </div>
   );
 }

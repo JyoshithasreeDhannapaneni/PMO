@@ -18,6 +18,15 @@ async function getActingUser(req: Request): Promise<{ id: string; name: string }
   }
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const MAX_BULK_IDS = 1000;
+
+function validProjectIds(raw: unknown): string[] | null {
+  if (!Array.isArray(raw) || raw.length === 0 || raw.length > MAX_BULK_IDS) return null;
+  if (!raw.every((id) => typeof id === 'string' && UUID_RE.test(id))) return null;
+  return [...new Set(raw as string[])];
+}
+
 export const caseStudyController = {
   /**
    * GET /api/case-studies
@@ -69,6 +78,43 @@ export const caseStudyController = {
     const projectManager = req.query.projectManager as string | undefined;
     const projects = await caseStudyService.getAwaiting(projectManager);
     res.json({ success: true, data: projects });
+  }),
+
+  getNotNeeded: asyncHandler(async (_req: Request, res: Response): Promise<void> => {
+    res.json({ success: true, data: await caseStudyService.getNotNeeded() });
+  }),
+
+  markNotNeeded: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const ids = validProjectIds(req.body?.projectIds);
+    if (!ids) {
+      res.status(400).json({ success: false, error: 'projectIds must be a non-empty list of project IDs' });
+      return;
+    }
+    const rawReason = typeof req.body?.reason === 'string' ? req.body.reason.trim().slice(0, 500) : '';
+    const user = (req as Request & { user?: { id: string; name?: string; email?: string } }).user;
+    const by = user?.name || user?.email || 'Admin';
+    const updated = await caseStudyService.markNotNeeded(ids, by, rawReason || null);
+    if (user?.id) {
+      await auditService.log({
+        userId: user.id,
+        action: 'UPDATE',
+        entityType: 'case_study',
+        entityId: ids[0],
+        entityName: `Marked ${updated} project(s) as not needing a case study${rawReason ? `: ${rawReason}` : ''}`,
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      });
+    }
+    res.json({ success: true, data: { updated } });
+  }),
+
+  restoreNeeded: asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const ids = validProjectIds(req.body?.projectIds);
+    if (!ids) {
+      res.status(400).json({ success: false, error: 'projectIds must be a non-empty list of project IDs' });
+      return;
+    }
+    res.json({ success: true, data: { updated: await caseStudyService.restoreNeeded(ids) } });
   }),
 
   /**

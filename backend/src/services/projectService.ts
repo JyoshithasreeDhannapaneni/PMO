@@ -976,7 +976,7 @@ class ProjectService {
     const result = await query(
       `SELECT p.* FROM projects p
        LEFT JOIN case_studies cs ON p.id = cs.project_id
-       WHERE p.status = 'COMPLETED' AND cs.id IS NULL`
+       WHERE p.status = 'COMPLETED' AND cs.id IS NULL AND p.case_study_not_needed_at IS NULL`
     );
     return result.rows.map(mapProjectRow);
   }

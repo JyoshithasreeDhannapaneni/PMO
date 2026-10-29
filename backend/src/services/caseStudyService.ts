@@ -300,6 +300,7 @@ class CaseStudyService {
       WHERE p.status = 'COMPLETED'
         AND COALESCE(p.project_type, 'MIGRATION') <> 'POC'
         AND cs.id IS NULL
+        AND p.case_study_not_needed_at IS NULL
     `;
     const params: any[] = [];
     if (projectManager) {
@@ -322,6 +323,57 @@ class CaseStudyService {
       actualEnd: r.actual_end ?? null,
       archivedAt: r.archived_at ?? null,
     }));
+  }
+
+  async getNotNeeded() {
+    const result = await query(
+      `SELECT p.id, p.name, p.client_name, p.project_manager, p.account_manager, p.actual_end, p.archived_at,
+              p.case_study_not_needed_at, p.case_study_not_needed_by, p.case_study_not_needed_reason
+       FROM projects p
+       WHERE p.case_study_not_needed_at IS NOT NULL
+       ORDER BY p.case_study_not_needed_at DESC`
+    );
+    return result.rows.map((r: any) => ({
+      id: r.id,
+      name: r.name,
+      clientName: r.client_name ?? null,
+      projectManager: r.project_manager ?? null,
+      accountManager: r.account_manager ?? null,
+      actualEnd: r.actual_end ?? null,
+      archivedAt: r.archived_at ?? null,
+      notNeededAt: r.case_study_not_needed_at,
+      notNeededBy: r.case_study_not_needed_by ?? null,
+      notNeededReason: r.case_study_not_needed_reason ?? null,
+    }));
+  }
+
+  // Only completed projects still without a case study can be marked; anything else is skipped.
+  async markNotNeeded(projectIds: string[], markedBy: string, reason: string | null): Promise<number> {
+    if (projectIds.length === 0) return 0;
+    const result = await query(
+      `UPDATE projects p
+       SET case_study_not_needed_at = NOW(), case_study_not_needed_by = $2, case_study_not_needed_reason = $3
+       WHERE p.id = ANY($1::uuid[])
+         AND p.status = 'COMPLETED'
+         AND p.case_study_not_needed_at IS NULL
+         AND NOT EXISTS (SELECT 1 FROM case_studies cs WHERE cs.project_id = p.id)
+       RETURNING p.id`,
+      [projectIds, markedBy, reason]
+    );
+    logger.info(`Case study marked not needed for ${result.rows.length} project(s) by ${markedBy}`);
+    return result.rows.length;
+  }
+
+  async restoreNeeded(projectIds: string[]): Promise<number> {
+    if (projectIds.length === 0) return 0;
+    const result = await query(
+      `UPDATE projects
+       SET case_study_not_needed_at = NULL, case_study_not_needed_by = NULL, case_study_not_needed_reason = NULL
+       WHERE id = ANY($1::uuid[]) AND case_study_not_needed_at IS NOT NULL
+       RETURNING id`,
+      [projectIds]
+    );
+    return result.rows.length;
   }
 
   async getPendingCount(): Promise<number> {

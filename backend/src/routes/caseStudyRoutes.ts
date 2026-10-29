@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { caseStudyController } from '../controllers/caseStudyController';
-import { requireRole } from '../middleware/auth';
+import { requireAuth, requireRole } from '../middleware/auth';
 
 const router = Router();
 
@@ -9,6 +9,15 @@ router.get('/', caseStudyController.getAll);
 
 // GET /api/case-studies/awaiting - Completed migration projects (archived included) with no case study yet
 router.get('/awaiting', caseStudyController.getAwaiting);
+
+// GET /api/case-studies/not-needed - Completed projects an admin marked as not needing a case study
+router.get('/not-needed', requireAuth, caseStudyController.getNotNeeded);
+
+// POST /api/case-studies/not-needed - Mark projects as not needing a case study (ADMIN) { projectIds, reason? }
+router.post('/not-needed', requireRole('ADMIN'), caseStudyController.markNotNeeded);
+
+// POST /api/case-studies/not-needed/restore - Put projects back on the "needs a case study" list (ADMIN) { projectIds }
+router.post('/not-needed/restore', requireRole('ADMIN'), caseStudyController.restoreNeeded);
 
 // POST /api/case-studies/reminders/run-now - Send this week's case study digest now (ADMIN)
 router.post('/reminders/run-now', requireRole('ADMIN'), caseStudyController.runDigestNow);
